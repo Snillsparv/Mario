@@ -10,15 +10,17 @@
 //   emit(a, b, c, tags, label, sides)
 //     a, b, c: vertices { id, x, z } counter-clockwise seen from above (+Y, front face up)
 //     tags[k]: index of the field whose contour produced edge k (a->b, b->c, c->a), or -1
+//   flip(i, j): grid cell (i, j) is split along its v01-v10 diagonal when true, else along
+//     v00-v11 (default: alternating, so the grid has no directional bias)
 //
 // The interior of a piece lies to the (dz, -dx) side of each of its directed edges.
+// Returns { grid: rows of grid vertices (grid[j][i]), vertexCount }.
 
 const NUDGE = 0.5;
 
-// Grid cell (i, j) is split along its v01-v10 diagonal when this is true, else along v00-v11.
-export const antiDiagonal = (i, j) => ((i + j) & 1) === 1;
+const alternate = (i, j) => ((i + j) & 1) === 1;
 
-export function tessellate({ minX, minZ, cols, rows, step, fields, decide, emit }) {
+export function tessellate({ minX, minZ, cols, rows, step, fields, decide, emit, flip = alternate }) {
   const nf = fields.length;
   let nextId = 0;
   const vertex = (x, z) => ({ id: nextId++, x, z, f: new Float64Array(nf).fill(NaN) });
@@ -99,8 +101,7 @@ export function tessellate({ minX, minZ, cols, rows, step, fields, decide, emit 
       const v10 = grid[j][i + 1];
       const v01 = grid[j + 1][i];
       const v11 = grid[j + 1][i + 1];
-      // Alternate the diagonal so the grid has no directional bias.
-      if (antiDiagonal(i, j)) {
+      if (flip(i, j)) {
         process(v00, v01, v10, none, []);
         process(v10, v01, v11, none, []);
       } else {
@@ -109,4 +110,5 @@ export function tessellate({ minX, minZ, cols, rows, step, fields, decide, emit 
       }
     }
   }
+  return { grid, vertexCount: nextId };
 }

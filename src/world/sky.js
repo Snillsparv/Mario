@@ -15,9 +15,10 @@ export const SKY_HORIZON_COLOR = 0xa9caee;
 
 const RADIUS = 20000; // inside the camera far plane (~45000)
 const DRIFT = 0.0035; // radians per second
-// Panorama: 2048 x 512 px covering all longitudes and latitudes LAT_MIN..LAT_MAX (degrees).
-const TEX_W = 2048;
-const TEX_H = 512;
+// Panorama: 1024 x 256 px covering all longitudes and latitudes LAT_MIN..LAT_MAX (degrees):
+// under 3 texels per degree, so bilinear filtering keeps the clouds soft, era-style.
+const TEX_W = 1024;
+const TEX_H = 256;
 const LAT_MIN = -10;
 const LAT_MAX = 90;
 
@@ -105,29 +106,31 @@ function periodicNoise(cells, seed) {
   };
 }
 
-// A cumulus: small puffs { x (deg from the cloud centre), y (lat), r } packed into a dome
-// over a flat base - a row along the base, a body biased toward the dome's surface, and a
-// few bigger towers on top.
+// A cumulus: puffs { x (deg from the cloud centre), y (lat), r } packed into a dome over a
+// flat base - a row along the base, a body biased toward the dome's surface, and a few bigger
+// towers on top. Puffs are a few texels across at the panorama's resolution, so the lumpy
+// outline stays bold after filtering.
+const PUFF = 1.3; // puff size scale
 function makeCumulus(rng, lon, base, width, height) {
   const puffs = [];
-  const k = Math.max(3, Math.round(width / 2.4));
+  const k = Math.max(3, Math.round(width / (2.4 * PUFF)));
   for (let j = 0; j < k; j++) {
     const x = -width / 2 + ((j + 0.5) * width) / k + (rng() - 0.5) * 1.2;
-    const r = 1.5 + rng() * 1.1;
+    const r = (1.5 + rng() * 1.1) * PUFF;
     puffs.push({ x, y: base + r * 0.5, r });
   }
   const dome = (x) => Math.sqrt(Math.max(0, 1 - ((2 * x) / width) ** 2));
-  const m = Math.max(4, Math.round((width * height) / 7));
+  const m = Math.max(4, Math.round((width * height) / (7 * PUFF * PUFF)));
   for (let j = 0; j < m; j++) {
     const x = (rng() - 0.5) * width * 0.86;
     const p = dome(x);
     const surface = base + height * p * (0.75 + 0.25 * rng());
-    const r = 1.4 + 2.4 * p * (0.5 + 0.5 * rng());
-    puffs.push({ x, y: base + 1 + (surface - base - 1 - r * 0.6) * Math.sqrt(rng()), r });
+    const r = (1.4 + 2.4 * p * (0.5 + 0.5 * rng())) * PUFF;
+    puffs.push({ x, y: base + 1 + Math.max(0, surface - base - 1 - r * 0.6) * Math.sqrt(rng()), r });
   }
   for (let j = 0; j < 1 + Math.floor(rng() * 3); j++) {
     const x = (rng() - 0.5) * width * 0.4;
-    const r = 2.6 + rng() * 1.8;
+    const r = (2.6 + rng() * 1.8) * PUFF;
     puffs.push({ x, y: base + height * dome(x) * 0.9 - r * 0.5, r });
   }
   const top = Math.max(...puffs.map((p) => p.y + p.r));

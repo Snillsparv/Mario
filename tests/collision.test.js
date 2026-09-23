@@ -75,3 +75,21 @@ test('raycast crosses grid cells and respects maxDist', () => {
   // Straight down, and repeated rays still find the same surface (stamps reset per ray).
   for (let i = 0; i < 3; i++) assert.equal(w.raycast({ x: 3000, y: 500, z: 3000 }, { x: 0, y: -1, z: 0 }, 1000).distance, 500);
 });
+
+test('diagonal walls use their true extent along the face', () => {
+  const w = new CollisionWorld();
+  // A 45-degree wall from (0,0) to (1000,1000) in XZ, facing +x/-z, 0..500 tall.
+  w.addTriangles(quad([0, 0, 0], [1000, 0, 1000], [1000, 500, 1000], [0, 500, 0]));
+  w.finalize();
+  const s = w.surfaces[0];
+  const n = s.hn;
+  // A point just in front of the wall near its far end must still be pushed out.
+  const px = 950 + n.x * 20;
+  const pz = 950 + n.z * 20;
+  const r = w.findWalls(px, 0, pz, 60, 50);
+  assert.equal(r.walls.length, 1);
+  const off = (r.x - 950) * n.x + (r.z - 950) * n.z;
+  assert.ok(Math.abs(off - 50) < 1e-6, `pushed to radius, off=${off}`);
+  // Beyond the end of the face: no push.
+  assert.equal(w.findWalls(1100 + n.x * 20, 0, 1100 + n.z * 20, 60, 50).walls.length, 0);
+});

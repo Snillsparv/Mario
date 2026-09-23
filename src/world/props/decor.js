@@ -9,8 +9,8 @@ import * as THREE from 'three';
 import { makeRng, smoothstep } from '../../core/math.js';
 import { worldMaterial } from '../../render/materials.js';
 import { BillboardBatch } from './billboards.js';
-import { addSolid, cone, lumpyDome, solidBox, solidMound } from './geom.js';
-import { BUSH_CELL_HEIGHT, FLOWER_VARIANTS, FOLIAGE, cellUV, flowerAtlas } from './textures.js';
+import { addSolid, cone, footprintRadii, lumpyDome, solidBox, solidMound } from './geom.js';
+import { BUSH_CELL_HEIGHT, FLOWER_VARIANTS, FOLIAGE, ROCK_TILE, cellUV, flowerAtlas } from './textures.js';
 
 // Boulders and bushes: radius r, height h. Boulders stand well clear of the ground around
 // them (at least ~85 above its highest point) so they are real obstacles; the small ones
@@ -56,7 +56,9 @@ export const SIGNPOST = { x: 430, z: 5150 };
 // board (local z -16..24, x across the board), flat on top at the board's top edge.
 export const SIGN_BOX = { centreZ: 4, halfWidth: 88, halfDepth: 20, top: 191 };
 
-const ROCK_TILE = 360;
+const BOULDER_SIDES = 12;
+const BOULDER_INSET = 15;
+const BODY_PROBE = 60; // height of the hero's upper wall probe above his feet
 // Bush sprite width per unit of bush radius: the painted bush fills ~84 % of the cell's
 // width, so it ends up ~2 r wide.
 const BUSH_SPRITE_W = 2.4;
@@ -96,11 +98,21 @@ function addBoulder(kit, layout, { x, z, r, h, seed }, rng) {
     return [tone * ao * (1 + warm), tone * ao, tone * ao * (1 - warm)];
   };
   addSolid(kit.rock, geo, m, { tile: ROCK_TILE, colorFn });
+  // Collider walls hug the drawn rock's widest reach where the hero's body meets it: from
+  // the ground he walks up on from that side (on a bank, high above the rock's foot) up to
+  // his upper wall probe; less a little, so his hands still touch the rock.
+  const band = (a) => {
+    const g = layout.groundHeight(x + Math.cos(a) * (r + HERO_REACH), z + Math.sin(a) * (r + HERO_REACH));
+    return [g - 10, g + BODY_PROBE];
+  };
+  const fit = (phase) =>
+    footprintRadii(geo, m, x, z, { sides: BOULDER_SIDES, phase, band }).map((q) => q - BOULDER_INSET);
   const top = base + h;
-  moundCollider(kit.colliders.stone, layout, x, z, r * 0.85 * (1 + depth) * 0.5, top, ground + 0.55 * (top - ground));
+  moundCollider(kit.colliders.stone, layout, x, z, fit(0), top, ground + 0.55 * (top - ground));
 }
 
-// Collider for a round lump (rock, bush) of the given radius and top height:
+// Collider for a round lump (rock, bush) of the given radius (or per-corner radii, see
+// geom.js ring) and top height. The collider:
 // - Stepping stone, when the top is within step-up reach of the ground all around it: a
 //   floor-only cone from the ground up, walked straight over.
 // - Otherwise walls up to a shoulder, then a low cone. The shoulder stands WALL_CLEAR above
@@ -113,14 +125,16 @@ const WALL_CLEAR = 70;
 const CAP_RISE = 15;
 const STEP_UP = 70; // under the player's 78-unit floor snap
 function moundCollider(out, layout, x, z, radius, top, minShoulder) {
-  const rim = rimGround(layout, x, z, radius + HERO_REACH);
-  const edge = rimGround(layout, x, z, radius);
+  const reach = Array.isArray(radius) ? Math.max(...radius) : radius;
+  const rim = rimGround(layout, x, z, reach + HERO_REACH);
+  const edge = rimGround(layout, x, z, reach);
   if (top - Math.min(rim.min, edge.min) < STEP_UP) {
     cone(out, x, z, top, radius, 8, (px, pz) => layout.groundHeight(px, pz) - 2);
     return;
   }
   const shoulder = Math.min(top - CAP_RISE, Math.max(Math.max(rim.max, edge.max) + WALL_CLEAR, minShoulder));
-  solidMound(out, x, z, Math.min(rim.min, edge.min) - 80, shoulder, top, radius);
+  const foot = Math.min(rim.min, edge.min) - 80;
+  solidMound(out, x, z, foot, shoulder, top, radius);
 }
 
 export function buildDecor(layout, kit) {

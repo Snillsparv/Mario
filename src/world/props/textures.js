@@ -1,7 +1,8 @@
 // Procedural textures for the props, painted per pixel on small canvases: the billboard
-// atlases (round bushy trees and bushes, little flowers), wood, boulder rock, the
-// waterfall's streaks and foam puffs, and the soft ground shadow. Every getter paints once
-// and caches; in node (no canvas) canvasTexture returns an empty texture without painting.
+// atlases (round bushy trees and bushes, little flowers), wood, the waterfall's streaks and
+// foam puffs, and the soft ground shadow (rock comes from the terrain's textures). Every
+// getter paints once and caches; in node (no canvas) canvasTexture returns an empty texture
+// without painting.
 
 import { canvasTexture, paintPixels, tileableFbm, tileableNoise, mixRgb } from '../../render/texgen.js';
 import { clamp, makeRng, smoothstep } from '../../core/math.js';
@@ -43,29 +44,37 @@ function streakNoise(w, h, cellsX, stretch, seed) {
 
 // ---------------------------------------------------------------- foliage (trees, bushes)
 
-export const FOLIAGE_CELL = 128;
+// 64-px cells: a ~800-unit tree gets ~12 units per texel, as coarse as the grass and castle
+// textures, so the billboards read as small, soft era sprites rather than crisp CG.
+export const FOLIAGE_CELL = 64;
 // 2 x 2 atlas cells: two round bushy trees, two round bushes.
 export const FOLIAGE = { tree: [0, 1], bush: [2, 3] };
 // Bushes only use the lower part of their cell (the quad is shorter than it is wide).
 export const BUSH_CELL_HEIGHT = 0.68;
 
 // Shapes (cell units, y up): canopy ellipse centre/radii, rim and inner clump counts, clump
-// size (x the smaller radius), optional trunk, and a flat base for bushes.
+// size (x the smaller radius), optional trunk, and a flat base for bushes. A handful of big
+// clumps give the bumpy round outline.
 const FOLIAGE_SHAPES = [
-  { cx: 0.5, cy: 0.62, rx: 0.33, ry: 0.31, ring: 11, inner: 7, clump: 0.36, trunk: true, seed: 11 },
-  { cx: 0.5, cy: 0.63, rx: 0.29, ry: 0.3, ring: 10, inner: 8, clump: 0.36, trunk: true, seed: 23 },
-  { cx: 0.5, cy: 0.3, rx: 0.34, ry: 0.22, ring: 12, inner: 7, clump: 0.5, base: 0.03, seed: 37 },
-  { cx: 0.5, cy: 0.28, rx: 0.3, ry: 0.2, ring: 10, inner: 6, clump: 0.55, base: 0.03, seed: 41 },
+  { cx: 0.5, cy: 0.62, rx: 0.33, ry: 0.31, ring: 8, inner: 4, clump: 0.46, trunk: true, seed: 11 },
+  { cx: 0.5, cy: 0.63, rx: 0.3, ry: 0.3, ring: 7, inner: 4, clump: 0.48, trunk: true, seed: 23 },
+  { cx: 0.5, cy: 0.3, rx: 0.34, ry: 0.22, ring: 8, inner: 3, clump: 0.6, base: 0.03, seed: 37 },
+  { cx: 0.5, cy: 0.28, rx: 0.3, ry: 0.2, ring: 7, inner: 3, clump: 0.65, base: 0.03, seed: 41 },
 ];
 
-const LEAF_RAMP = [
-  [0, [16, 44, 18]],
-  [0.3, [30, 78, 26]],
-  [0.55, [52, 118, 36]],
-  [0.78, [92, 156, 50]],
-  [1, [152, 196, 78]],
+// Flat leaf tones, shadow to sunlit; each clump is painted in bands of these.
+const LEAF_TONES = [
+  [22, 54, 22],
+  [38, 90, 30],
+  [64, 128, 40],
+  [108, 166, 56],
 ];
 const LEAF_OUTLINE = [14, 36, 14];
+const BARK_TONES = [
+  [62, 40, 22],
+  [100, 66, 36],
+  [140, 98, 56],
+];
 
 // Light for the painted shading (image space: x right, y up, z toward the viewer). Upper
 // right, matching the sun as seen from the default northward view.
@@ -74,11 +83,14 @@ const FOLIAGE_LIGHT = (() => {
   return [0.55 / l, 0.62 / l, 0.56 / l];
 })();
 
-// One round, bushy tree or bush: the canopy is an ellipsoid body covered by smaller clump
+// Index into a list of flat tones for a light value in 0..1.
+const band = (tones, lit) => tones[clamp(Math.floor(lit * tones.length), 0, tones.length - 1)];
+
+// One round, bushy tree or bush: the canopy is an ellipsoid body covered by big clump
 // spheres (the visible clump at a pixel is the one that bulges furthest toward the viewer),
-// shaded by the clump and body normals, with dark creases between clumps, leafy speckle and
-// a crisp dark outline; trees get a short flared trunk below. Returns fn(px, py) for pixels
-// in the cell.
+// lit by the clump and body normals and painted in a few flat tone bands, with dark creases
+// between clumps, small leafy flecks and a crisp dark outline; trees get a short
+// flared trunk below. Returns fn(px, py) for pixels in the cell.
 function foliagePainter(size, shape) {
   const rng = makeRng(shape.seed);
   const { cx, cy, rx, ry } = shape;
@@ -88,25 +100,25 @@ function foliagePainter(size, shape) {
   const clumps = [];
   for (let i = 0; i < shape.ring; i++) {
     const a = (i / shape.ring) * TAU + (rng() - 0.5) * 0.4;
-    const q = 0.72 + rng() * 0.12;
+    const q = 0.7 + rng() * 0.12;
     const sag = shape.trunk && Math.sin(a) < -0.5 ? 0.03 : 0; // hide the top of the trunk
     const r = rmin * shape.clump * (0.85 + rng() * 0.3);
     clumps.push({ x: cx + Math.cos(a) * q * rx, y: cy + Math.sin(a) * q * ry - sag, r, z: onBody(q) });
   }
   for (let i = 0; i < shape.inner; i++) {
     const a = rng() * TAU;
-    const q = 0.55 * Math.sqrt(rng());
+    const q = 0.5 * Math.sqrt(rng());
     const r = rmin * shape.clump * (0.85 + rng() * 0.3);
     clumps.push({ x: cx + Math.cos(a) * q * rx, y: cy + Math.sin(a) * q * ry + 0.03, r, z: onBody(q) });
   }
-  const edgeNoise = tileableNoise(size, size, 20, shape.seed + 1);
-  const leaf = tileableFbm(size, size, 16, 2, shape.seed + 2);
-  const bark = streakNoise(size, size, 24, 6, shape.seed + 3);
+  const edgeNoise = tileableNoise(size, size, 12, shape.seed + 1);
+  const fleck = tileableNoise(size, size, size / 4, shape.seed + 2);
+  const bark = streakNoise(size, size, 12, 4, shape.seed + 3);
   const L = FOLIAGE_LIGHT;
   const base = shape.base ?? -1;
 
   const trunkTop = cy - ry * 0.4;
-  const trunkHalf = (y) => 0.042 + 0.035 * (1 - smoothstep(0, 0.1, y));
+  const trunkHalf = (y) => 0.045 + 0.035 * (1 - smoothstep(0, 0.1, y));
 
   return (px, py) => {
     const x = (px + 0.5) / size;
@@ -131,7 +143,7 @@ function foliagePainter(size, shape) {
         } else if (h > second) second = h;
       }
     }
-    sd += (edgeNoise(px, py) - 0.5) * 0.03; // leafy, slightly ragged outline
+    sd += (edgeNoise(px, py) - 0.5) * 0.025; // leafy, slightly ragged outline
     sd = Math.max(sd, base - y); // bushes sit on a flat base
     const canopyPx = sd * size;
 
@@ -143,8 +155,8 @@ function foliagePainter(size, shape) {
     if (alpha <= 0) return [...LEAF_OUTLINE, 0];
 
     if (canopyPx < 0.5) {
-      // Fringe pulled out by the edge noise (outside every clump): outline colour.
-      if (!top) return [...LEAF_OUTLINE, alpha];
+      // Outline, and fringe pulled out by the edge noise (outside every clump).
+      if (!top || canopyPx > -1) return [...LEAF_OUTLINE, alpha];
       let n;
       if (top === 'body') n = [gx, gy, Math.sqrt(Math.max(0, 1 - g * g))];
       else {
@@ -155,19 +167,18 @@ function foliagePainter(size, shape) {
       const bz = Math.sqrt(Math.max(0, 1 - g * g));
       const clumpLit = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]);
       const bodyLit = Math.max(0, gx * L[0] + gy * L[1] + bz * L[2]);
-      let lit = 0.55 * clumpLit + 0.45 * bodyLit;
-      lit *= 0.62 + 0.38 * smoothstep(cy - ry * 1.1, cy + ry * 0.3, y); // shaded underside
-      if (second > -Infinity) lit *= 0.7 + 0.3 * smoothstep(0, 0.03, best - second); // creases
-      lit += (leaf(px, py) - 0.5) * 0.55;
-      if (canopyPx > -1.6) lit = lit * 0.45 - 0.05; // dark outline
-      return [...ramp(LEAF_RAMP, lit), alpha];
+      let lit = 0.6 * clumpLit + 0.4 * bodyLit;
+      lit *= 0.6 + 0.4 * smoothstep(cy - ry * 1.1, cy + ry * 0.3, y); // shaded underside
+      if (second > -Infinity && best - second < 0.012) lit -= 0.3; // crease between clumps
+      lit += (fleck(px, py) - 0.5) * 0.4; // leafy flecks a few texels across, a band up or down
+      return [...band(LEAF_TONES, lit), alpha];
     }
-    // Bark: lit from the right, darker under the canopy.
+    // Bark: lit from the right, darker under the canopy and at the edges.
     const across = clamp((x - cx) / hw, -1, 1);
-    let shade = 0.55 + 0.35 * (across * 0.5 + 0.5) + (bark(px, py) - 0.5) * 0.4;
-    shade *= 1 - 0.45 * smoothstep(trunkTop - 0.14, trunkTop, y);
-    if (trunkPx > -1.2) shade *= 0.6;
-    return [...mixRgb([54, 34, 20], [150, 104, 60], clamp(shade, 0, 1)), alpha];
+    let lit = 0.35 + 0.4 * (across * 0.5 + 0.5) + (bark(px, py) - 0.5) * 0.3;
+    lit -= 0.4 * smoothstep(trunkTop - 0.12, trunkTop, y);
+    if (trunkPx > -1) lit = 0;
+    return [...band(BARK_TONES, lit), alpha];
   };
 }
 
@@ -272,7 +283,7 @@ export function flowerAtlas() {
   );
 }
 
-// ---------------------------------------------------------------- wood, rock
+// ---------------------------------------------------------------- wood
 
 // Brown wood with grain running along v and a couple of knots (32 x 64).
 export function woodTexture() {
@@ -304,29 +315,10 @@ export function woodTexture() {
   );
 }
 
-// Grey-tan speckled stone with a few dark cracks (64 x 64), for boulders and crags.
-export function rockTexture() {
-  return cached('rock', () =>
-    painted(64, 64, () => {
-      const broad = tileableFbm(64, 64, 4, 3, 401);
-      const speck = tileableNoise(64, 64, 32, 402);
-      const cracks = tileableNoise(64, 64, 6, 403);
-      return (x, y) => {
-        let t = 0.2 + 0.6 * broad(x, y) + 0.3 * (speck(x, y) - 0.5);
-        const c = Math.abs(cracks(x, y) - 0.5);
-        if (c < 0.018) t *= 0.62; // thin dark crack lines along a noise contour
-        return ramp(
-          [
-            [0, [88, 80, 70]],
-            [0.5, [142, 134, 118]],
-            [1, [192, 184, 164]],
-          ],
-          t,
-        );
-      };
-    }),
-  );
-}
+// Boulders, crags and the spillway use the terrain's cliff rock, at the cliffs' texel scale
+// (terrain/walls.js maps it at u 640 x v 1280 world units), so they read as the same stone.
+export { rockTexture } from '../terrainTextures.js';
+export const ROCK_TILE = { u: 640, v: 1280 };
 
 // ---------------------------------------------------------------- water, foam, shadow
 

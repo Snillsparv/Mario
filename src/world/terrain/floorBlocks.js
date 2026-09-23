@@ -13,10 +13,9 @@
 //     key: ground type (a rectangle must be uniform), terrain: collision tag, y: height,
 //     clear: lower bound of the distance to the nearest region contour.
 //   minClear: contours must stay this far from every vertex of a merged cell.
+//   flip(i, j): how the fine mesh splits cell (i, j) (see tessellate.js).
 
-import { antiDiagonal } from './tessellate.js';
-
-export function floorBlocks({ minX, minZ, cols, rows, step, maxCells, tol, minClear, sample }) {
+export function floorBlocks({ minX, minZ, cols, rows, step, maxCells, tol, minClear, sample, flip }) {
   const samples = new Array((cols + 1) * (rows + 1));
   const at = (i, j) => {
     const k = j * (cols + 1) + i;
@@ -78,7 +77,7 @@ export function floorBlocks({ minX, minZ, cols, rows, step, maxCells, tol, minCl
     // ...and across each cell's own diagonal.
     for (let b = 0; b < h; b++) {
       for (let a = 0; a < w; a++) {
-        const anti = antiDiagonal(i0 + a, j0 + b);
+        const anti = flip(i0 + a, j0 + b);
         if (anti && w === h) continue; // parallel to the big diagonal
         const t = anti ? (1 + a + b - w) / (h - w) : (w - a + b) / (w + h);
         const u = w * (1 - t) - a;

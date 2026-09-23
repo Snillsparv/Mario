@@ -5,19 +5,27 @@
 // Rendering: each end of a segment is a "column" of rows (more rows on cliffs, plus rows at
 // the waterline for a crisp underwater tint); columns depend only on the vertex, so adjacent
 // segments share identical columns. Rock rows are pushed back into the high side with 3D
-// noise for a craggy, faceted face (never toward the player), and the rock texture is slid
-// up and down along the outline so its blocks never line up into horizontal stripes.
-// Collision uses the straight, truly vertical quad.
+// noise for a craggy, faceted face (never toward the player): only a little within reach of
+// the hero, so the drawn rock stays within FLUSH of the collider there, and deeply above it.
+// The rock texture is slid up and down along the outline, and broad light/dark bands run
+// along it, so its slabs never line up into rows. Collision uses the straight, truly
+// vertical quad.
 
 import { smoothstep } from '../../core/math.js';
 import { WATER_LEVEL } from '../layout.js';
 import { applyUnderwater, noise3 } from './shading.js';
 
 const LIP = 110; // grassy lip at the top of the cliffs
+// The hero can touch walls up to about REACH above the ground (or the water surface) at their
+// foot (a triple jump or a wall kick, plus body height); rock there is pushed back at most
+// FLUSH. Deep crags fade in over the next REACH_BLEND.
+const REACH = 700;
+const REACH_BLEND = 500;
+const FLUSH = 15;
 const TEX = {
-  rock: { u: 640, v: 1280 },
+  rock: { u: 1280, v: 1280 },
   masonry: { u: 480, v: 480 },
-  grass: { u: 384, v: 384 },
+  grass: { u: 640, v: 640 },
 };
 
 // Wall styles: spacing of the intermediate rows (at absolute heights, so two walls sharing a
@@ -25,7 +33,7 @@ const TEX = {
 // colour tint, and how much darker the foot of the wall is than its top.
 const STYLES = {
   cliff: { rowStep: 200, depth: 300, buffer: 'rock', lip: true, tint: [1, 1, 1], foot: 0.62 },
-  bank: { rowStep: 200, depth: 70, buffer: 'rock', lip: false, tint: [0.92, 1, 0.84], foot: 0.7 },
+  bank: { rowStep: 200, depth: 70, buffer: 'rock', lip: false, tint: [0.96, 0.98, 0.9], foot: 0.7 },
   masonry: { rowStep: Infinity, depth: 0, buffer: 'masonry', lip: false, tint: [1, 1, 1], foot: 0.8 },
 };
 
@@ -74,9 +82,9 @@ export class WallBuilder {
     // column's vertical edge and must meet it exactly.
     let gx = 0;
     let gz = 0;
-    let depth = 0;
+    let fade = 0;
     if (st.depth) {
-      depth = st.depth * smoothstep(20, 300, contour.junction(v.x, v.z));
+      fade = smoothstep(20, 300, contour.junction(v.x, v.z));
       const e = 4;
       gx = contour.sdf(v.x + e, v.z) - contour.sdf(v.x - e, v.z);
       gz = contour.sdf(v.x, v.z + e) - contour.sdf(v.x, v.z - e);
@@ -84,21 +92,25 @@ export class WallBuilder {
       gx /= l;
       gz /= l;
     }
+    const reachTop = Math.max(lo, WATER_LEVEL) + REACH;
     const tiles = (tex) => Math.max(1, Math.round(param.length / tex.u)) / param.length;
     const uRock = param.s * tiles(TEX[st.buffer]);
     const uGrass = param.s * tiles(TEX.grass);
-    // Slow vertical slide of the rock texture along the outline (masonry courses stay level).
+    // Slow vertical slide of the rock texture along the outline (masonry courses stay level),
+    // and broad light/dark bands (period ~3000 along the outline, +-12%).
     const slide = st.depth ? 500 * noise3(v.x / 1500, 0.7, v.z / 1500) : 0;
+    const band = st.depth ? 1 + 0.24 * (noise3(v.x / 1500, 9.7, v.z / 1500) - 0.5) : 1;
+    const warm = noise3(v.x / 1800, 3.3, v.z / 1800) - 0.5;
+    const tint = [st.tint[0] * band * (1 + 0.04 * warm), st.tint[1] * band, st.tint[2] * band * (1 - 0.05 * warm)];
 
     return ys.map((y) => {
       const t = span > 1e-3 ? (y - lo) / span : 0; // 0 at the foot, 1 at the top
       const tr = rockTop - lo > 1e-3 ? Math.min(1, (y - lo) / (rockTop - lo)) : 0;
       const n = noise3(v.x / 280, y / 230, v.z / 280);
-      const push = depth * Math.sin(Math.PI * tr) * (0.1 + 0.9 * n);
-      // Darker toward the foot, with blotchy variation and broad warm/cool bands.
+      const depth = Math.min(st.depth, FLUSH) + Math.max(0, st.depth - FLUSH) * smoothstep(reachTop, reachTop + REACH_BLEND, y);
+      const push = fade * depth * Math.sqrt(Math.sin(Math.PI * tr)) * (0.1 + 0.9 * n);
+      // Darker toward the foot, with blotchy variation.
       const k = (st.foot + (1 - st.foot) * smoothstep(-0.05, 0.9, t)) * (0.88 + 0.22 * n);
-      const warm = noise3(v.x / 1800, 3.3, v.z / 1800) - 0.5;
-      const tint = [st.tint[0] * (1 + 0.14 * warm), st.tint[1], st.tint[2] * (1 - 0.16 * warm)];
       return {
         x: v.x + gx * push,
         y,

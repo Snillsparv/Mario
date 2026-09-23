@@ -2,6 +2,7 @@
 // inside the perimeter, face the right way, and let a swimmer climb out of the water.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as THREE from 'three';
 import * as layout from '../src/world/layout.js';
 import { buildTerrain } from '../src/world/terrain.js';
 import { CollisionWorld } from '../src/collision/CollisionWorld.js';
@@ -182,6 +183,56 @@ test('a swimmer can reach the pond shelf from the moat and walk out', () => {
   }
   assert.ok(crossed, 'the bank rises above the water');
   assert.equal(world.findWalls(L.POND.x, L.WATER_LEVEL + 40, L.POND.z - 1000, 0, 50).walls.length, 0, 'no wall on the shelf');
+});
+
+test('dry banks and beaches are walkable (no steep sliver floors above the water)', () => {
+  const limit = Math.cos((38 * Math.PI) / 180);
+  for (const s of world.surfaces) {
+    if (s.kind !== 'floor') continue;
+    const cx = (s.a[0] + s.b[0] + s.c[0]) / 3;
+    const cy = (s.a[1] + s.b[1] + s.c[1]) / 3;
+    const cz = (s.a[2] + s.b[2] + s.c[2]) / 3;
+    if (L.regionAt(cx, cz) !== 'water' || cy < L.WATER_LEVEL) continue;
+    assert.ok(s.normal.y > limit, `steep dry floor (${((Math.acos(s.normal.y) * 180) / Math.PI).toFixed(1)} deg) at ${cx.toFixed(0)},${cy.toFixed(0)},${cz.toFixed(0)}`);
+  }
+});
+
+test('the drawn cliff face stays close to its collider within the hero\'s reach', () => {
+  // Horizontal rays from inside the lawn toward the perimeter, at heights the hero can reach
+  // from the foot of the cliff: the rendered rock is at most a few units behind the wall.
+  const cliffs = part.object3D.getObjectByName('cliffs');
+  const P = L.PERIMETER;
+  const cx = (P.minX + P.maxX) / 2;
+  const cz = (P.minZ + P.maxZ) / 2;
+  const ray = new THREE.Raycaster();
+  let checked = 0;
+  for (let k = 0; k < 120; k++) {
+    const a = (k / 120) * Math.PI * 2;
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    let lo = 0;
+    let hi = 20000;
+    while (hi - lo > 0.5) {
+      const m = (lo + hi) / 2;
+      if (L.sdRoundRect(cx + dx * m, cz + dz * m, P) < 0) lo = m;
+      else hi = m;
+    }
+    const sx = cx + dx * (lo - 300);
+    const sz = cz + dz * (lo - 300);
+    if (L.regionAt(sx, sz) !== 'lawn') continue;
+    const foot = world.findFloor(cx + dx * (lo - 5), HIGH, cz + dz * (lo - 5)).y;
+    for (const dh of [100, 300, 500, 650]) {
+      const origin = { x: sx, y: foot + dh, z: sz };
+      const wall = world.raycast(origin, { x: dx, y: 0, z: dz }, 1000, { floors: false, ceilings: false });
+      ray.set(new THREE.Vector3(origin.x, origin.y, origin.z), new THREE.Vector3(dx, 0, dz));
+      const drawn = ray.intersectObject(cliffs, false)[0];
+      assert.ok(wall && drawn, `cliff at angle ${k}`);
+      const gap = drawn.distance - wall.distance;
+      assert.ok(gap > -1 && gap < 20, `rock drawn ${gap.toFixed(0)} behind the collider at ${origin.x.toFixed(0)},${origin.y.toFixed(0)},${origin.z.toFixed(0)}`);
+      checked++;
+    }
+  }
+  assert.ok(checked > 300, `${checked} samples`);
 });
 
 test('terrain part has a scene graph and an animating water surface', () => {

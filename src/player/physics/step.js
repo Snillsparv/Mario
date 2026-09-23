@@ -5,6 +5,7 @@
 import { NO_WATER, PLAYER_HEIGHT } from '../../core/constants.js';
 import { POLE_BODY, SURFACE_FLOAT_DEPTH } from './tuning.js';
 import { isSteep } from './slopes.js';
+import { WALL_EDGE_MARGIN, wallContains } from '../../collision/CollisionWorld.js';
 
 export const STEP_NONE = 'none';
 export const STEP_HIT_WALL = 'hit_wall';
@@ -46,16 +47,8 @@ function wallOffset(s, x, py, z) {
   return (n.x * x + n.y * py + n.z * z + s.d) / Math.hypot(n.x, n.z);
 }
 
-// Whether the point lies within wall s's triangle, seen along the axis its normal faces most.
-function withinWall(s, x, y, z) {
-  const u = Math.abs(s.hn.x) > Math.abs(s.hn.z) ? 2 : 0;
-  const pu = u === 2 ? z : x;
-  const { a, b, c } = s;
-  const d1 = (b[u] - a[u]) * (y - a[1]) - (b[1] - a[1]) * (pu - a[u]);
-  const d2 = (c[u] - b[u]) * (y - b[1]) - (c[1] - b[1]) * (pu - b[u]);
-  const d3 = (a[u] - c[u]) * (y - c[1]) - (a[1] - c[1]) * (pu - c[u]);
-  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
-}
+// Whether the point lies within wall s's extent (see CollisionWorld.wallContains).
+const withinWall = wallContains;
 
 // True when the mover at `from` was already pressed against the back of wall s: within reach
 // of its plane, with the probe inside the wall's height range and extent.
@@ -63,7 +56,7 @@ function engagedBehind(s, from, offsetY, radius) {
   const py = from.y + offsetY;
   if (py < s.minY || py > s.maxY) return false;
   const off = wallOffset(s, from.x, py, from.z);
-  return off >= -radius - ENGAGE_MARGIN && withinWall(s, from.x, py, from.z);
+  return off >= -radius - ENGAGE_MARGIN && withinWall(s, from.x, py, from.z, radius * WALL_EDGE_MARGIN);
 }
 
 // The first other wall between the point (at probe height py) and wall s's plane, or null.
@@ -115,7 +108,7 @@ function pushOutOfWalls(col, from, x, y, z, offsetY, radius) {
   for (const s of use) {
     if (py < s.minY || py > s.maxY) continue;
     const off = wallOffset(s, x, py, z);
-    if (off < -radius || off > radius || !withinWall(s, x, py, z)) continue;
+    if (off < -radius || off > radius || !withinWall(s, x, py, z, radius * WALL_EDGE_MARGIN)) continue;
     x += s.hn.x * (radius - off);
     z += s.hn.z * (radius - off);
     walls.push(s);

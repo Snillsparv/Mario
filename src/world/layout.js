@@ -25,11 +25,11 @@ import { clamp, smoothstep } from '../core/math.js';
 
 // ---------------------------------------------------------------- heights
 
-export const WATER_LEVEL = -100; // moat + pond surface (200 below the lawn rim, so it shows)
+export const WATER_LEVEL = -20; // moat + pond surface (120 below the lawn rim, so it shows from the path)
 export const MOAT_FLOOR = -1100; // moat/pond bottom (deep enough to swim)
 export const LAWN_BASE = 100; // lawn height at the moat edge / bridge
 export const ISLAND_TOP = 160; // castle island plateau (castle base, courtyard, rim)
-export const CLIFF_TOP = 2600; // top of the perimeter cliffs (not reachable)
+export const CLIFF_TOP = 1600; // top of the perimeter cliffs: out of reach, but below the castle's walls
 
 // ---------------------------------------------------------------- regions
 
@@ -44,7 +44,7 @@ export const MOAT = { minX: -4300, maxX: 4300, minZ: -9000, maxZ: 1150, radius: 
 
 // Pond on the west side, fed by the waterfall, connected to the west arm of the moat.
 export const POND = { x: -5900, z: -1900, radius: 1800 };
-const POND_DIP = 150; // how far the lawn sinks toward the pond edge (lawnHeight)
+const POND_DIP = LAWN_BASE - (WATER_LEVEL + 50); // the lawn sinks to 50 above the water at the pond edge
 
 // Waterfall pours from the west perimeter cliff top into the pond.
 export const WATERFALL = { x: -7600, z: -1900, width: 900, topY: CLIFF_TOP - 300, faceNormalX: 1 };
@@ -158,8 +158,8 @@ export const COINS = [
     x: -4600 + Math.cos((i / 8) * Math.PI * 2) * 500,
     z: 4200 + Math.sin((i / 8) * Math.PI * 2) * 500,
   })),
-  // line up the east hill
-  ...[0, 1, 2, 3, 4, 5].map((i) => ({ x: 3600 + i * 380, z: -1400 - i * 230 })),
+  // line up the east hill, from just past the moat rim toward the red coin on its summit
+  ...[0, 1, 2, 3, 4, 5].map((i) => ({ x: 4600 + i * 320, z: -1450 - i * 175 })),
   // along the island front courtyard
   ...[-1, 0, 1].map((i) => ({ x: i * 700, z: -50 })),
 ];
@@ -168,7 +168,7 @@ export const COINS = [
 export const RED_COINS = [
   { x: -6800, z: 5600 },
   { x: 6900, z: 5200 },
-  { x: EAST_HILL.x, z: EAST_HILL.z }, // hill top
+  { x: 6500, z: -2500 }, // east hill summit (east of EAST_HILL: the hill fades toward the moat)
   { x: -5900, z: -1900, y: WATER_LEVEL - 450 }, // underwater in the pond
   { x: 0, z: 850, y: WATER_LEVEL - 300 }, // underwater under the bridge
   { x: 3000, z: -5600 }, // behind the castle, east
@@ -258,8 +258,56 @@ export function sdWater(x, z) {
   return b + (a - b) * h - WATER_FILLET * h * (1 - h);
 }
 
-// Smooth lawn surface height (ignores region; valid anywhere).
+// ---------------------------------------------------------------- low-poly facets
+
+// The open lawn and the cliff-top plateau are low-poly, like an N64 level: their heights are
+// linear over the triangles of a coarse FACET-unit lattice, so hills and slopes read as big
+// flat facets. Lattice cell (i, j) spans [i, i + 1] x [j, j + 1] * FACET and is split along
+// its (0,1)-(1,0) diagonal when facetFlip(i, j), else along (0,0)-(1,1); terrain meshes split
+// their grid cells the same way so they follow the facets exactly.
+export const FACET = 500;
+export const facetFlip = (i, j) => ((i + j) & 1) === 1;
+
+// Piecewise-linear interpolation of fn(x, z) over the facet lattice (lattice values cached).
+function faceted(fn) {
+  const cache = new Map();
+  const at = (i, j) => {
+    const key = i * 8192 + j;
+    let h = cache.get(key);
+    if (h === undefined) {
+      h = fn(i * FACET, j * FACET);
+      cache.set(key, h);
+    }
+    return h;
+  };
+  return (x, z) => {
+    const i = Math.floor(x / FACET);
+    const j = Math.floor(z / FACET);
+    const u = x / FACET - i;
+    const v = z / FACET - j;
+    const h00 = at(i, j);
+    const h10 = at(i + 1, j);
+    const h01 = at(i, j + 1);
+    const h11 = at(i + 1, j + 1);
+    if (facetFlip(i, j)) {
+      return u + v <= 1 ? h00 + u * (h10 - h00) + v * (h01 - h00) : h11 + (1 - u) * (h01 - h11) + (1 - v) * (h10 - h11);
+    }
+    return u >= v ? h00 + u * (h10 - h00) + v * (h11 - h10) : h00 + v * (h01 - h00) + u * (h11 - h01);
+  };
+}
+
+// Lawn height: faceted, except within ~700 of the water where it blends back to the smooth
+// profile, so the moat rim stays exactly level and the pond banks stay smooth (valid anywhere).
+const facetedLawn = faceted(smoothLawnHeight);
 export function lawnHeight(x, z) {
+  const w = smoothstep(100, 700, sdWater(x, z));
+  if (w >= 1) return facetedLawn(x, z);
+  const h = smoothLawnHeight(x, z);
+  return w <= 0 ? h : h + (facetedLawn(x, z) - h) * w;
+}
+
+// The lawn's underlying smooth profile.
+function smoothLawnHeight(x, z) {
   let h = LAWN_BASE;
   // Rises gently toward the perimeter cliffs.
   const edge = -sdRoundRect(x, z, PERIMETER); // distance inside the perimeter
@@ -286,7 +334,7 @@ export function lawnHeight(x, z) {
 // out, then curves down to the deep bed. The profile has a continuous slope so a 100-unit
 // terrain mesh follows it closely.
 export function waterFloorHeight(x, z) {
-  const bank = smoothstep(200, 1100, -sdRoundRect(x, z, PERIMETER)) * smoothstep(0, 900, sdRoundRect(x, z, MOAT));
+  const bank = smoothstep(150, 1250, -sdRoundRect(x, z, PERIMETER)) * smoothstep(0, 1050, sdRoundRect(x, z, MOAT));
   if (bank <= 0) return MOAT_FLOOR;
   const shelf = Math.max(MOAT_FLOOR, lawnHeight(x, z) - pondDrop(-sdCircle(x, z, POND)));
   return MOAT_FLOOR + (shelf - MOAT_FLOOR) * bank;
@@ -312,10 +360,11 @@ function pondDrop(d) {
   return 0.4 * BEACH + ((0.4 + POND_STEEP) * RAMP_UP) / 2 + POND_STEEP * t - (POND_STEEP * t * t) / (2 * RAMP_DOWN);
 }
 
-// Cliff-top plateau: CLIFF_TOP near the rim, rolling up into distant hills farther out. The
-// rim itself swells by 0..300 in long, irregular waves (fading out over the first 800 units
-// behind it) so the skyline undulates; it stays level around the waterfall's spillway.
-export function cliffHeight(x, z) {
+// Cliff-top plateau (faceted): CLIFF_TOP near the rim, rolling up into low distant hills
+// farther out. The rim itself swells by 0..300 in long, irregular waves (fading out over the
+// first 800 units behind it) so the skyline undulates; it stays level around the waterfall's
+// spillway.
+export const cliffHeight = faceted((x, z) => {
   const sd = sdRoundRect(x, z, PERIMETER);
   let h = CLIFF_TOP;
   const crest = (1 - smoothstep(0, 800, sd)) * smoothstep(700, 1500, Math.hypot(x - WATERFALL.x, z - WATERFALL.z));
@@ -327,8 +376,8 @@ export function cliffHeight(x, z) {
   if (ramp <= 0) return h;
   const roll =
     0.62 + 0.3 * Math.sin(x * 0.00061 + 1.1) * Math.cos(z * 0.00053 - 0.3) + 0.18 * Math.sin((x + 2 * z) * 0.0011);
-  return h + ramp * 1500 * roll;
-}
+  return h + ramp * 500 * roll;
+});
 
 // Castle island top: ISLAND_TOP along its retaining walls, around the castle and on the
 // courtyard; the open lawns beside and behind the castle swell gently (up to ~+100 toward

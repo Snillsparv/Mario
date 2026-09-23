@@ -2,13 +2,16 @@
 // following the ground and the moat's rim. All fence wood goes into the shared wood builder.
 //
 // Collision: every post interval gets a closed slab (two walls facing away from each other,
-// SLAB_HALF from the centre line, and a flat top) and every polyline corner/end a capped
-// octagonal post. The slab must be thick: SM64-style wall pushes act on points up to
-// `radius` *behind* a wall too, so a paper-thin double wall would pull a fast hero through
-// to the far side. With a 2 x 20 slab the far wall only engages once the hero's centre is
-// 20 units from the centre line, i.e. after penetrating 50 units in one quarter step, which
-// never happens. The tops matter as much: a hero coming down between the walls lands on
-// the fence instead of inside it (where the walls, facing away from him, would not hold him).
+// SLAB_HALF from the centre line, and a flat top) and every post where the fence ends or
+// bends a capped octagonal post. The bend posts matter: on the outer side of a bend the two
+// slabs' faces do not meet, and CollisionWorld tests a wall's extent along one axis only, so
+// without the post a hero could slip into the gap between them. The slab must be thick:
+// SM64-style wall pushes act on points up to `radius` *behind* a wall too, so a paper-thin
+// double wall would pull a fast hero through to the far side. With a 2 x 20 slab the far
+// wall only engages once the hero's centre is 20 units from the centre line, i.e. after
+// penetrating 50 units in one quarter step, which never happens. The tops matter as much: a
+// hero coming down between the walls lands on the fence instead of inside it (where the
+// walls, facing away from him, would not hold him).
 
 import { makeRng } from '../../core/math.js';
 import { floorPolygon, solidMound, wallQuad } from './geom.js';
@@ -40,12 +43,21 @@ export function buildFences(layout, kit) {
       for (const rail of RAILS) addRail(kit.wood, a, b, rail, 0.92 + 0.12 * rng());
       addSlab(kit.colliders.wood, a, b);
     }
-    for (const p of posts) {
-      if (!p.corner) continue;
+    posts.forEach((p, i) => {
+      if (!p.corner && !bends(posts[i - 1], p, posts[i + 1])) return;
       const top = p.y + COLLIDER_TOP;
       solidMound(kit.colliders.wood, p.x, p.z, p.y - COLLIDER_FOOT, top, top, CORNER_RADIUS);
-    }
+    });
   }
+}
+
+// Whether the fence turns at post b (by more than about half a degree).
+function bends(a, b, c) {
+  const ux = b.x - a.x;
+  const uz = b.z - a.z;
+  const vx = c.x - b.x;
+  const vz = c.z - b.z;
+  return Math.abs(ux * vz - uz * vx) > 0.01 * Math.hypot(ux, uz) * Math.hypot(vx, vz);
 }
 
 // Posts of every layout fence: evenly spaced along the polyline (corners and ends are posts

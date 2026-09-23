@@ -35,6 +35,12 @@ export class MeshBuffer {
     return i;
   }
 
+  // Shared vertex stored under key, created with make() on first use.
+  keyed(key, make) {
+    const found = this.shared.get(key);
+    return found !== undefined ? found : this.vertex(make(), key);
+  }
+
   tri(i0, i1, i2) {
     this.index.push(i0, i1, i2);
   }

@@ -17,12 +17,21 @@ import { flagTexture, roofTexture, roseTexture, stoneTexture, wallTexture, woodT
 // World units per texture repeat (32 px tiles -> ~9-12 units per texel, as on the N64).
 const REPEAT = { wall: 384, trim: 320, roof: 320, wood: 288, glass: 1 };
 
+// Baked key light: the world sun swung toward the facade, so the front (+Z) and east (+X)
+// faces bake ~17% apart instead of ~3% (with SUN_DIR itself their corners vanish).
+const KEY = new THREE.Vector3(0.25, 0.8, 0.55).normalize();
+
+// Faces turned away from the key both sit at ambient; dim the west side a little more than
+// the back so those corners separate too.
+const faceShade = (x, y, z, nx) => 1 - 0.1 * Math.max(0, -nx);
+
 // Baked lighting per material; the stained glass glows at full brightness.
+const LIT = { sun: KEY, occlusion: faceShade };
 const LIGHT = {
-  wall: { ambient: 0.62, diffuse: 0.5, maxBright: 1.08 },
-  trim: { ambient: 0.6, diffuse: 0.5, maxBright: 1.05 },
-  roof: { ambient: 0.58, diffuse: 0.58, maxBright: 1.1 },
-  wood: { ambient: 0.6, diffuse: 0.5, maxBright: 1.05 },
+  wall: { ...LIT, ambient: 0.62, diffuse: 0.5, maxBright: 1.08 },
+  trim: { ...LIT, ambient: 0.6, diffuse: 0.5, maxBright: 1.05 },
+  roof: { ...LIT, ambient: 0.58, diffuse: 0.58, maxBright: 1.1 },
+  wood: { ...LIT, ambient: 0.6, diffuse: 0.5, maxBright: 1.05 },
   glass: { ambient: 1, diffuse: 0 },
 };
 

@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { makeRng, smoothstep } from '../../core/math.js';
 import { worldMaterial } from '../../render/materials.js';
 import { MeshBuilder, addSolid, lumpyDome } from './geom.js';
-import { puffTexture, waterfallTexture } from './textures.js';
+import { ROCK_TILE, puffTexture, waterfallTexture } from './textures.js';
 
 const LIP = 300; // how far the spillway lip juts out from the cliff face
 const CHUTE_TOP = 20; // where the chute leaves the rim
@@ -18,7 +18,6 @@ const STREAM_BACK = -760; // start of the visible stream on the plateau
 const BULGE = 170; // how far the falling sheet drifts outward by the bottom
 const FALL_ROWS = 12;
 const FLOW_SPEED = 1.1; // texture repeats per second
-const ROCK_TINT = [1.04, 0.93, 0.78]; // warm the grey rock toward the tan cliffs
 
 export function buildWaterfall(layout, kit) {
   const WF = layout.WATERFALL;
@@ -86,8 +85,8 @@ export function buildWaterfall(layout, kit) {
   // ------------------------------------------------------------ rock notch
   buildSpillway(kit.rock, { W, outDir, width, rim, lipY });
   const rockColor = (bottom, top) => (x, y) => {
-    const ao = 0.6 + 0.4 * smoothstep(bottom, top, y);
-    return ROCK_TINT.map((c) => c * ao);
+    const ao = 0.6 + 0.4 * smoothstep(bottom, top, y); // darker toward the foot, like the cliffs
+    return [ao, ao, ao];
   };
   // Craggy buttress: a jittered, rounded-bottom ellipsoid half sunk into the cliff face.
   const crag = (o, s, bottom, top, ro, rs, seed) => {
@@ -99,7 +98,7 @@ export function buildWaterfall(layout, kit) {
       new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), seed),
       new THREE.Vector3(ro, S, rs),
     );
-    addSolid(kit.rock, geo, m, { tile: 360, colorFn: rockColor(bottom, top) });
+    addSolid(kit.rock, geo, m, { tile: ROCK_TILE, colorFn: rockColor(bottom, top) });
   };
   // Tall buttresses framing the notch (their tops rise above the rim), smaller ones lower
   // down beside the lip, and low banks along the stream on the plateau.
@@ -150,10 +149,10 @@ function buildSpillway(builder, { W, outDir, width, rim, lipY }) {
   const grid = cols.map((s, i) => profile.map((_, k) => ({ ...point(k, i), s })));
   const shade = (y) => {
     const ao = 0.55 + 0.45 * smoothstep(lipY - 560, lipY, y);
-    return { r: ROCK_TINT[0] * ao, g: ROCK_TINT[1] * ao, b: ROCK_TINT[2] * ao };
+    return { r: ao, g: ao, b: ao };
   };
-  const vert = (p, u, v) => ({ ...W(p.o, p.y, p.s), u, v, ...shade(p.y) });
-  const TILE = 360;
+  // Texture u runs along the notch (or out from the cliff on the end caps), v along the profile.
+  const vert = (p, u, v) => ({ ...W(p.o, p.y, p.s), u: u / ROCK_TILE.u, v: v / ROCK_TILE.v, ...shade(p.y) });
   // Profile runs clockwise in (o, y), so each edge's outward normal is (-dy, do).
   for (let k = 0; k < profile.length; k++) {
     const k1 = (k + 1) % profile.length;
@@ -162,9 +161,9 @@ function buildSpillway(builder, { W, outDir, width, rim, lipY }) {
       const b = grid[i][k1];
       const c = grid[i + 1][k1];
       const d = grid[i + 1][k];
-      const along = (p) => (p.o + p.y) / TILE;
       const out = outDir(-(b.y - a.y), b.o - a.o, 0);
-      builder.facingQuad(vert(a, a.s / TILE, along(a)), vert(b, b.s / TILE, along(b)), vert(c, c.s / TILE, along(c)), vert(d, d.s / TILE, along(d)), out);
+      const v = (p) => vert(p, p.s, p.o + p.y);
+      builder.facingQuad(v(a), v(b), v(c), v(d), out);
     }
   }
   // End caps (mostly hidden inside the crags): fan over the profile polygon.
@@ -172,10 +171,8 @@ function buildSpillway(builder, { W, outDir, width, rim, lipY }) {
     [0, -1],
     [segs, 1],
   ]) {
-    const ring = grid[i];
-    for (let k = 1; k + 1 < ring.length; k++) {
-      builder.facingTri(vert(ring[0], ring[0].o / TILE, ring[0].y / TILE), vert(ring[k], ring[k].o / TILE, ring[k].y / TILE), vert(ring[k + 1], ring[k + 1].o / TILE, ring[k + 1].y / TILE), outDir(0, 0, dir));
-    }
+    const cap = grid[i].map((p) => vert(p, p.o, p.y));
+    for (let k = 1; k + 1 < cap.length; k++) builder.facingTri(cap[0], cap[k], cap[k + 1], outDir(0, 0, dir));
   }
 }
 
@@ -187,11 +184,10 @@ class SplashSprites {
     this.W = W;
     this.water = water;
     const make = (kind, count, f) => Array.from({ length: count }, (_, i) => ({ kind, ...f(i) }));
-    const across = () => (rng() - 0.5) * width * 1.05;
     this.sprites = [
       ...make('foam', 26, () => ({
         o: impactO + (rng() - 0.3) * 120,
-        s: across(),
+        s: (rng() - 0.5) * width * 1.05,
         driftO: 350 + rng() * 650,
         driftS: (rng() - 0.5) * 700,
         size: [240 + rng() * 120, 520 + rng() * 260],
@@ -200,15 +196,19 @@ class SplashSprites {
         alpha: 0.75,
         rot: rng() * Math.PI * 2,
       })),
-      ...make('spray', 28, () => ({
+      // Churned water thrown up where the sheet hits: translucent, taller than wide, kept
+      // inside the falling sheet's width and low over the water, so it never reads as a
+      // cloud stuck to the rock.
+      ...make('spray', 24, () => ({
         o: impactO + (rng() - 0.5) * 90,
-        s: across(),
-        driftO: 60 + rng() * 180,
-        rise: 160 + rng() * 260,
-        size: [150 + rng() * 60, 320 + rng() * 180],
-        period: 1.2 + rng() * 0.9,
+        s: (rng() - 0.5) * width * 0.8,
+        driftO: 40 + rng() * 120,
+        rise: 60 + rng() * 90,
+        size: [110 + rng() * 40, 190 + rng() * 70],
+        period: 1.1 + rng() * 0.8,
         phase: rng(),
-        alpha: 0.9,
+        alpha: 0.45,
+        aspect: 0.6,
       })),
       // Light mist hugging the impact: small, faint, never drifting far from the fall.
       ...make('mist', 7, () => ({
@@ -281,8 +281,8 @@ class SplashSprites {
       } else {
         const lift = 1 - (1 - a) * (1 - a);
         const ctr = this.W(sp.o + sp.driftO * a, this.water + h * 0.55 + sp.rise * lift, sp.s);
-        const hx = rx * h;
-        const hz = rz * h;
+        const hx = rx * h * (sp.aspect ?? 1);
+        const hz = rz * h * (sp.aspect ?? 1);
         p.set(
           [
             ctr.x - hx, ctr.y - h, ctr.z - hz,

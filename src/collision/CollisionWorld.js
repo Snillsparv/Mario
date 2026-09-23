@@ -13,6 +13,8 @@ import { CEIL_NONE, FLOOR_LOWER_LIMIT, FLOOR_TOLERANCE, NO_WATER } from '../core
 export const FLOOR_MIN_NY = 0.1;
 const CELL_SIZE = 1000;
 const WALL_MARGIN = 200; // walls are inserted into cells within this distance so pushes near cell borders work
+// Sideways extent tolerance for wall pushes, as a fraction of the pushed radius.
+export const WALL_EDGE_MARGIN = 0.75;
 
 // Surface kinds affect slope sliding and friction in player physics.
 export const SURFACE = Object.freeze({
@@ -149,8 +151,11 @@ export class CollisionWorld {
     if (kind === 'wall') {
       const h = Math.hypot(nx, nz);
       s.hn = { x: nx / h, z: nz / h };
-      // Project onto the plane most facing the normal for inside tests: 'x' uses (z,y), 'z' uses (x,y).
-      s.axis = Math.abs(nx) > Math.abs(nz) ? 'x' : 'z';
+      // Horizontal tangent along the face; extent tests use (along-face, y) coordinates so
+      // diagonal walls keep their true width.
+      s.tx = -s.hn.z;
+      s.tz = s.hn.x;
+      s.pu = [a[0] * s.tx + a[2] * s.tz, b[0] * s.tx + b[2] * s.tz, c[0] * s.tx + c[2] * s.tz];
     }
     this.surfaces.push(s);
     const m = kind === 'wall' ? WALL_MARGIN : 0;
@@ -241,7 +246,7 @@ export class CollisionWorld {
       const hscale = Math.hypot(s.normal.x, s.normal.z);
       const offset = planeDist / hscale;
       if (offset < -radius || offset > radius) continue;
-      if (!insideWall(s, x, py, z)) continue;
+      if (!wallContains(s, x, py, z, radius * WALL_EDGE_MARGIN)) continue;
       const push = radius - offset;
       x += hn.x * push;
       z += hn.z * push;
@@ -355,20 +360,31 @@ function insideXZ(s, x, z) {
   return !(hasNeg && hasPos);
 }
 
-// Point-in-triangle for walls, projected on the plane most aligned with the wall.
-function insideWall(s, x, y, z) {
-  const a = s.a;
-  const b = s.b;
-  const c = s.c;
-  // u coordinate: z for x-facing walls, x for z-facing walls; v coordinate: y.
-  const ui = s.axis === 'x' ? 2 : 0;
-  const pu = s.axis === 'x' ? z : x;
-  const d1 = (b[ui] - a[ui]) * (y - a[1]) - (b[1] - a[1]) * (pu - a[ui]);
-  const d2 = (c[ui] - b[ui]) * (y - b[1]) - (c[1] - b[1]) * (pu - b[ui]);
-  const d3 = (a[ui] - c[ui]) * (y - c[1]) - (a[1] - c[1]) * (pu - c[ui]);
-  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
-  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(hasNeg && hasPos);
+// Whether (x, y, z) lies within wall s's extent, measured in the wall's own face
+// coordinates (distance along the face, height). `margin` widens the extent sideways so a
+// body just past a wall's vertical edge is still pushed: without it, points in the wedge
+// outside a convex corner (box corners, polygonal posts and towers) touch neither face.
+export function wallContains(s, x, y, z, margin = 0) {
+  const pu = x * s.tx + z * s.tz;
+  const P = s.pu;
+  const ys = [s.a[1], s.b[1], s.c[1]];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < 3; i++) {
+    const j = i === 2 ? 0 : i + 1;
+    const y0 = ys[i];
+    const y1 = ys[j];
+    if (y < Math.min(y0, y1) || y > Math.max(y0, y1)) continue;
+    if (y0 === y1) {
+      lo = Math.min(lo, P[i], P[j]);
+      hi = Math.max(hi, P[i], P[j]);
+    } else {
+      const u = P[i] + ((P[j] - P[i]) * (y - y0)) / (y1 - y0);
+      lo = Math.min(lo, u);
+      hi = Math.max(hi, u);
+    }
+  }
+  return lo <= hi && pu >= lo - margin && pu <= hi + margin;
 }
 
 // Möller–Trumbore, two sided. Returns t or null.

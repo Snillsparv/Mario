@@ -124,14 +124,16 @@ export function woodTexture() {
   });
 }
 
-// Round stained-glass rose window: an original geometric sunburst — an eight-pointed
-// golden star, a ring of petals, an outer ring of panes — with dark leading.
+// Round stained-glass rose window: an original geometric sunburst — a bold eight-pointed
+// golden star, a ring of eight petals, an outer ring of sixteen panes — with dark leading.
+// Painted at 64 px so its texel density (~8 units) sits close to the surrounding walls.
 export function roseTexture() {
   return canvasTexture(
-    128,
-    128,
+    64,
+    64,
     (ctx, w, h) => {
-      const noise = tileableFbm(w, h, 16, 2, 51);
+      const R = w / 2;
+      const noise = tileableFbm(w, h, 8, 2, 51);
       const lead = [34, 28, 36];
       const gold = [255, 206, 70];
       const blue = [48, 92, 214];
@@ -140,37 +142,33 @@ export function roseTexture() {
       const violet = [140, 70, 190];
       const sky = [110, 190, 250];
       paintPixels(ctx, w, h, (x, y) => {
-        const dx = x + 0.5 - w / 2;
-        const dy = y + 0.5 - h / 2;
-        const r = Math.hypot(dx, dy) / (w / 2); // 0..1 at the rim
+        const dx = x + 0.5 - R;
+        const dy = y + 0.5 - R;
+        const r = Math.hypot(dx, dy) / R; // 0..1 at the rim
         const a = Math.atan2(dy, dx) + Math.PI; // 0..2pi
         const seg = (n) => (a / (Math.PI * 2)) * n;
-        const onLine = (v, width) => Math.abs(v - Math.round(v)) < width;
+        // Leading about one pixel wide: on a ring of radius r0, or on a spoke of an n-way split.
+        const ring = (r0) => Math.abs(r - r0) * R < 0.7;
+        const spoke = (s, n) => Math.abs(s - Math.round(s)) * ((Math.PI * 2 * r * R) / n) < 0.6;
+        if (r > 0.93) return lead;
         let c;
-        if (r > 0.97) return lead;
         const t8 = seg(8) % 1;
-        const star = 0.13 + 0.2 * (1 - Math.abs(2 * t8 - 1));
+        const star = 0.16 + 0.26 * (1 - Math.abs(2 * t8 - 1)); // points at segment centres
         if (r < star) {
-          c = r < 0.09 ? [255, 244, 190] : gold;
-          if (Math.abs(r - star) < 0.02) return lead;
-        } else if (r < 0.42) {
-          if (Math.abs(r - 0.42) < 0.02 || onLine(seg(16), 0.05 / Math.max(r, 0.2))) return lead;
-          c = Math.floor(seg(16)) % 2 ? blue : red;
-          if (r < 0.26) c = mixRgb(c, sky, 0.35);
+          if (ring(star)) return lead;
+          c = r < 0.12 ? [255, 244, 190] : gold;
+        } else if (r < 0.46) {
+          if (ring(0.46)) return lead;
+          c = Math.floor(seg(8) + 0.5) % 2 ? blue : red;
         } else if (r < 0.7) {
-          const s = seg(16) + 0.5;
-          if (Math.abs(r - 0.7) < 0.018 || onLine(s, 0.03 / r)) return lead;
-          c = [green, gold, violet, gold][Math.floor(s) % 4];
-          // A small lens in each pane.
-          const lr = Math.hypot(r - 0.56, ((s % 1) - 0.5) * 0.3);
-          if (lr < 0.07) c = mixRgb(c, [255, 255, 230], 0.45);
+          if (ring(0.7) || spoke(seg(8), 8)) return lead;
+          c = [green, gold, violet, gold][Math.floor(seg(8)) % 4];
         } else {
-          const s = seg(24);
-          if (onLine(s, 0.05)) return lead;
+          const s = seg(16) + 0.5;
+          if (spoke(s, 16)) return lead;
           c = Math.floor(s) % 2 ? blue : sky;
-          if (Math.abs(r - 0.84) < 0.1 && Math.hypot(r - 0.84, ((s % 1) - 0.5) * 0.26) < 0.06) c = red;
         }
-        const k = 0.88 + noise(x, y) * 0.24;
+        const k = 0.9 + noise(x, y) * 0.2;
         return clamp255(c.map((v) => v * k));
       });
     },

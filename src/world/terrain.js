@@ -9,6 +9,11 @@
 // so the ground and walls are crack-free and the walls are clean collision walls. A coarse
 // ring of hills beyond the cliffs keeps the world's edge out of sight.
 //
+// The open lawn and the cliff top are low-poly: layout makes their heights linear over the
+// triangles of a coarse FACET lattice, the fine grid splits its cells along the same
+// diagonals, and those facets are lit with flat normals so they read as big N64 facets.
+// Lattice cells that no contour, path or smooth blend touches are drawn as whole facets.
+//
 // Collision uses the same walls and floors, except that flat-enough stretches of ground are
 // merged into large blocks (floorBlocks.js) to keep camera raycasts cheap.
 
@@ -25,24 +30,25 @@ import { buildWater } from './water.js';
 
 const STEP = 100; // fine grid cell size
 const FAR = 13000; // half-size of the cliff-top plateau
-const FAR_STEP = 500;
 const PLATEAU = 800; // fine grid margin beyond the perimeter (covers the cliff rim's swell)
 const CLIFF_COLLIDE = 400; // cliff-top collision reaches this far beyond the perimeter
 const TOL = 3; // merged collision floors lie at most this far above the rendered ground
 const SHORE = 55; // pond bank: grass above WATER_LEVEL + SHORE, sandy beach/bed below
+const DECAL_MIN = 0.004; // path decal strength below which no decal is drawn
+const SLIVER = 15; // collision triangles narrower than this get the ground's tangent plane
 
 // World size of one texture tile.
-const TILE = { grass: 384, path: 448, flagstone: 520, sand: 400 };
+const TILE = { grass: 640, path: 448, flagstone: 520, sand: 400 };
 
 // Fields used to split the grid (<= 0 is inside), in clip order.
 const F = { PERIMETER: 0, ISLAND: 1, WATER: 2, COURTYARD: 3, SHORE: 4 };
 
-// Piece labels -> region (height function) and ground material.
+// Piece labels -> region (height function), ground material, and whether it is faceted.
 const LABELS = {
-  cliff: { region: 'cliff', material: 'grass', terrain: 'grass' },
+  cliff: { region: 'cliff', material: 'grass', terrain: 'grass', faceted: true },
   island: { region: 'island', material: 'grass', terrain: 'grass' },
   courtyard: { region: 'island', material: 'flagstone', terrain: 'stone' },
-  lawn: { region: 'lawn', material: 'grass', terrain: 'grass' },
+  lawn: { region: 'lawn', material: 'grass', terrain: 'grass', faceted: true },
   bed: { region: 'water', material: 'sand', terrain: 'sand' },
   bank: { region: 'water', material: 'grass', terrain: 'grass' },
 };
@@ -125,14 +131,23 @@ export function buildTerrain(layout) {
     return p;
   };
 
-  const groundVertex = (v, label) => {
+  const facets = facetLattice(L);
+
+  // A ground vertex of a piece with the given label (and facet, for faceted ground).
+  const groundVertex = (v, label, facet) => {
     const { region, material } = LABELS[label];
     const p = surface(v, region);
-    const rgb = material === 'grass' ? grassTint(v.x, p.y, v.z, p.nx, p.ny, p.nz) : groundTint(v.x, p.y, v.z);
+    const n = facet ? facets.normal(region, facet) : p;
+    const rgb = material === 'grass' ? grassTint(v.x, p.y, v.z, n.nx, n.ny, n.nz) : groundTint(v.x, p.y, v.z);
     const t = TILE[material];
     const col = rgbOf(applyUnderwater(rgb, p.y));
-    return { x: v.x, y: p.y, z: v.z, nx: p.nx, ny: p.ny, nz: p.nz, u: v.x / t, v: v.z / t, ...col };
+    return { x: v.x, y: p.y, z: v.z, nx: n.nx, ny: n.ny, nz: n.nz, u: v.x / t, v: v.z / t, ...col };
   };
+  // Vertices are shared per region (contour vertices border regions at different heights)
+  // and, on faceted ground, per facet (flat lighting).
+  const vertexKey = (v, label, facet) => (v.id * 4 + REGION_KEY[LABELS[label].region]) * 8 + (facet ? facet.slot : 0);
+  const facetFor = (label, verts) =>
+    LABELS[label].faceted ? facets.at((verts[0].x + verts[1].x + verts[2].x) / 3, (verts[0].z + verts[1].z + verts[2].z) / 3) : null;
 
   const fields = [
     (x, z) => L.sdRoundRect(x, z, L.PERIMETER),
@@ -141,20 +156,23 @@ export function buildTerrain(layout) {
     (x, z) => L.sdRoundRect(x, z, L.COURTYARD),
     (x, z) => L.waterFloorHeight(x, z) - (L.WATER_LEVEL + SHORE),
   ];
-  // Fine grid over the playable area and the cliff rim (aligned to FAR_STEP so the far ring
-  // abuts it exactly).
+  // Fine grid over the playable area and the cliff rim, aligned to the facet lattice (so its
+  // cells split along the facets and the far ring abuts it exactly).
+  const FACET = L.FACET;
   const bounds = {
-    minX: Math.floor((L.PERIMETER.minX - PLATEAU) / FAR_STEP) * FAR_STEP,
-    maxX: Math.ceil((L.PERIMETER.maxX + PLATEAU) / FAR_STEP) * FAR_STEP,
-    minZ: Math.floor((L.PERIMETER.minZ - PLATEAU) / FAR_STEP) * FAR_STEP,
-    maxZ: Math.ceil((L.PERIMETER.maxZ + PLATEAU) / FAR_STEP) * FAR_STEP,
+    minX: Math.floor((L.PERIMETER.minX - PLATEAU) / FACET) * FACET,
+    maxX: Math.ceil((L.PERIMETER.maxX + PLATEAU) / FACET) * FACET,
+    minZ: Math.floor((L.PERIMETER.minZ - PLATEAU) / FACET) * FACET,
+    maxZ: Math.ceil((L.PERIMETER.maxZ + PLATEAU) / FACET) * FACET,
   };
+  const K = FACET / STEP; // fine cells per facet cell side
   const grid = {
     minX: bounds.minX,
     minZ: bounds.minZ,
     cols: (bounds.maxX - bounds.minX) / STEP,
     rows: (bounds.maxZ - bounds.minZ) / STEP,
     step: STEP,
+    flip: (i, j) => L.facetFlip(Math.floor((bounds.minX + i * STEP) / FACET), Math.floor((bounds.minZ + j * STEP) / FACET)),
   };
 
   // Paths sound like stone.
@@ -193,34 +211,94 @@ export function buildTerrain(layout) {
     return m * TRAIL_STRENGTH;
   };
 
-  // Rendered ground, path decal, collision floors (where no block covers them) and walls.
-  const emit = (a, b, c, tags, label) => {
-    const info = LABELS[label];
-    const verts = [a, b, c];
-    const gv = verts.map((v) => groundVertex(v, label));
-    const buf = buffers[info.material];
-    // Contour vertices are shared by regions at different heights: key by vertex + region.
-    const rk = REGION_KEY[info.region];
-    buf.tri(...verts.map((v, i) => buf.vertex(gv[i], v.id * 4 + rk)));
+  // Split the grid into labelled pieces, and note which fine cells stayed whole (exactly two
+  // triangles of one label).
+  const pieces = [];
+  const cellPieces = new Uint16Array(grid.cols * grid.rows);
+  const cellLabel = new Array(grid.cols * grid.rows);
+  const cellOf = (verts) => {
+    const i = Math.floor(((verts[0].x + verts[1].x + verts[2].x) / 3 - grid.minX) / STEP);
+    const j = Math.floor(((verts[0].z + verts[1].z + verts[2].z) / 3 - grid.minZ) / STEP);
+    return j * grid.cols + i;
+  };
+  const tess = tessellate({
+    ...grid,
+    fields,
+    decide,
+    emit(a, b, c, tags, label) {
+      const verts = [a, b, c];
+      const cell = cellOf(verts);
+      cellPieces[cell]++;
+      cellLabel[cell] = cellLabel[cell] === undefined || cellLabel[cell] === label ? label : 'mixed';
+      pieces.push({ verts, tags, label, cell });
+    },
+  });
+
+  // Facet cells drawn as whole facets: every fine cell whole and of one faceted label, no
+  // decal, and the ground exactly planar over each facet.
+  const ccols = grid.cols / K;
+  const crows = grid.rows / K;
+  const coarse = new Uint8Array(ccols * crows);
+  const coarseLabel = [];
+  for (let cj = 0; cj < crows; cj++) {
+    for (let ci = 0; ci < ccols; ci++) {
+      let label = null;
+      let ok = true;
+      for (let j = cj * K; ok && j < (cj + 1) * K; j++) {
+        for (let i = ci * K; ok && i < (ci + 1) * K; i++) {
+          const k = j * grid.cols + i;
+          label ??= cellLabel[k];
+          ok = cellPieces[k] === 2 && cellLabel[k] === label && LABELS[label]?.faceted === true;
+        }
+      }
+      for (let j = cj * K; ok && j <= (cj + 1) * K; j++) {
+        for (let i = ci * K; ok && i <= (ci + 1) * K; i++) {
+          const v = tess.grid[j][i];
+          const region = LABELS[label].region;
+          ok = decalMask(label, v.x, v.z) <= DECAL_MIN && Math.abs(surface(v, region).y - facets.height(region, v.x, v.z)) < 0.25;
+        }
+      }
+      if (ok) {
+        coarse[cj * ccols + ci] = 1;
+        coarseLabel[cj * ccols + ci] = label;
+      }
+    }
+  }
+  const inCoarse = (cell) => coarse[Math.floor(Math.floor(cell / grid.cols) / K) * ccols + Math.floor((cell % grid.cols) / K)] === 1;
+
+  // Rendered ground triangle (with its path decal) for three vertices of a labelled piece.
+  const renderTri = (verts, label) => {
+    const facet = facetFor(label, verts);
+    const buf = buffers[LABELS[label].material];
+    buf.tri(...verts.map((v) => buf.keyed(vertexKey(v, label, facet), () => groundVertex(v, label, facet))));
 
     const masks = verts.map((v) => decalMask(label, v.x, v.z));
-    if (Math.max(...masks) > 0.004) {
-      const decal = verts.map((v, i) => ({
-        ...gv[i],
-        ...rgbOf(groundTint(v.x, gv[i].y, v.z)),
-        u: v.x / TILE.path,
-        v: v.z / TILE.path,
-        a: masks[i],
-      }));
-      pathOverlay.tri(...verts.map((v, i) => pathOverlay.vertex(decal[i], v.id)));
+    if (Math.max(...masks) > DECAL_MIN) {
+      const decal = (v, i) => {
+        const g = groundVertex(v, label, facet);
+        return { ...g, ...rgbOf(groundTint(v.x, g.y, v.z)), u: v.x / TILE.path, v: v.z / TILE.path, a: masks[i] };
+      };
+      pathOverlay.tri(...verts.map((v, i) => pathOverlay.keyed(vertexKey(v, label, facet), () => decal(v, i))));
     }
+    return masks;
+  };
 
-    // Collision (CCW from above = floor facing up).
-    const cx = (a.x + b.x + c.x) / 3;
-    const cz = (a.z + b.z + c.z) / 3;
-    if (floorLike(gv) && !blocks.covers(cx, cz) && (label !== 'cliff' || L.sdRoundRect(cx, cz, L.PERIMETER) < CLIFF_COLLIDE)) {
+  // Fine pieces: ground (unless drawn as a whole facet), collision floors (where no merged
+  // block covers them) and walls.
+  for (const { verts, tags, label, cell } of pieces) {
+    const info = LABELS[label];
+    const masks = inCoarse(cell) ? [0, 0, 0] : renderTri(verts, label);
+
+    // Collision (CCW from above = floor facing up). A thin sliver cut off by a contour takes
+    // the ground's tangent plane at its centre: its own vertices are too close together to
+    // pin down the slope across it, which could otherwise read as a steep, slippery floor.
+    let pos = verts.map((v) => ({ x: v.x, y: surface(v, info.region).y, z: v.z }));
+    if (minAltitude(pos) < SLIVER) pos = tangentPlane(pos, (x, z) => L.regionHeight(info.region, x, z));
+    const cx = (pos[0].x + pos[1].x + pos[2].x) / 3;
+    const cz = (pos[0].z + pos[1].z + pos[2].z) / 3;
+    if (floorLike(pos) && !blocks.covers(cx, cz) && (label !== 'cliff' || L.sdRoundRect(cx, cz, L.PERIMETER) < CLIFF_COLLIDE)) {
       const path = label === 'lawn' ? (masks[0] + masks[1] + masks[2]) / 3 : 0;
-      colliders[floorTerrain(label, path)].push(...gv.flatMap((g) => [g.x, g.y, g.z]));
+      colliders[floorTerrain(label, path)].push(...pos.flatMap((g) => [g.x, g.y, g.z]));
     }
 
     // Walls along region contours, built once from the side that knows both regions.
@@ -228,11 +306,43 @@ export function buildTerrain(layout) {
       const wall = wallAcross(tags[k], info.region, verts[k], verts[(k + 1) % 3]);
       if (wall) addWall(wall, info.region, verts[k], verts[(k + 1) % 3]);
     }
-  };
+  }
+
+  // Whole facet cells: two triangles, or, when a neighbour is drawn with fine cells, a fan
+  // from the centre through every fine vertex on the shared sides (no T-junctions). Each fan
+  // triangle lies within one facet, so the surface is unchanged.
+  let nextId = tess.vertexCount;
+  const isCoarse = (ci, cj) => ci >= 0 && cj >= 0 && ci < ccols && cj < crows && coarse[cj * ccols + ci] === 1;
+  for (let cj = 0; cj < crows; cj++) {
+    for (let ci = 0; ci < ccols; ci++) {
+      if (!isCoarse(ci, cj)) continue;
+      const label = coarseLabel[cj * ccols + ci];
+      const g = (a, b) => tess.grid[cj * K + b][ci * K + a];
+      // Boundary loop, counter-clockwise from above: -X side (+Z), +Z side (+X), +X side (-Z),
+      // -Z side (-X); only the corners on sides shared with another whole facet cell.
+      const sides = [
+        [isCoarse(ci - 1, cj), (t) => g(0, t)],
+        [isCoarse(ci, cj + 1), (t) => g(t, K)],
+        [isCoarse(ci + 1, cj), (t) => g(K, K - t)],
+        [isCoarse(ci, cj - 1), (t) => g(K - t, 0)],
+      ];
+      if (sides.every(([whole]) => whole)) {
+        const flip = L.facetFlip(Math.floor(g(0, 0).x / FACET), Math.floor(g(0, 0).z / FACET));
+        const [v00, v10, v01, v11] = [g(0, 0), g(K, 0), g(0, K), g(K, K)];
+        const tris = flip ? [[v00, v01, v10], [v10, v01, v11]] : [[v00, v11, v10], [v00, v01, v11]];
+        for (const t of tris) renderTri(t, label);
+        continue;
+      }
+      const loop = [];
+      for (const [whole, at] of sides) for (let t = 0; t < K; t += whole ? K : 1) loop.push(at(t));
+      const centre = { id: nextId++, x: g(0, 0).x + FACET / 2, z: g(0, 0).z + FACET / 2 };
+      loop.forEach((p, k) => renderTri([centre, p, loop[(k + 1) % loop.length]], label));
+    }
+  }
 
   // What lies across a contour edge of a piece in `region`, or null when this piece does not
   // own that wall: returns { other, style, contour }.
-  const wallAcross = (tag, region, p, q) => {
+  function wallAcross(tag, region, p, q) {
     if (tag === F.PERIMETER && region !== 'cliff') return { other: 'cliff', style: 'cliff', contour: contours.perimeter };
     if (tag === F.ISLAND && region !== 'island') return { other: 'island', style: 'masonry', contour: contours.island };
     if (tag === F.WATER && region === 'water') {
@@ -246,9 +356,9 @@ export function buildTerrain(layout) {
         : { other: 'lawn', style: 'masonry', contour: contours.moat };
     }
     return null;
-  };
+  }
 
-  const addWall = ({ other, style, contour }, region, p, q) => {
+  function addWall({ other, style, contour }, region, p, q) {
     const selfP = surface(p, region).y;
     const selfQ = surface(q, region).y;
     const otherP = surface(p, other).y;
@@ -260,9 +370,8 @@ export function buildTerrain(layout) {
     } else {
       walls.add({ style, contour, p, q, loP: otherP, hiP: selfP, loQ: otherQ, hiQ: selfQ });
     }
-  };
+  }
 
-  tessellate({ ...grid, fields, decide, emit });
   for (const [terrain, positions] of Object.entries(blocks.positions)) colliders[terrain].push(...positions);
 
   buildFarRing(L, buffers.grass, bounds);
@@ -300,6 +409,60 @@ export function buildTerrain(layout) {
   };
 }
 
+// The layout's facet lattice: which facet a point lies in, and each facet's plane (the
+// region's heights at its three lattice corners) for flat lighting.
+function facetLattice(L) {
+  const S = L.FACET;
+  const planes = new Map();
+  const at = (x, z) => {
+    const i = Math.floor(x / S);
+    const j = Math.floor(z / S);
+    const u = x / S - i;
+    const v = z / S - j;
+    const flip = L.facetFlip(i, j);
+    const half = flip ? (u + v > 1 ? 1 : 0) : u < v ? 1 : 0;
+    // slot tells apart the (up to 8) facets that share a vertex.
+    return { i, j, flip, half, slot: ((i & 1) << 2) | ((j & 1) << 1) | half };
+  };
+  const plane = (region, f) => {
+    const key = `${region}:${f.i}:${f.j}:${f.half}`;
+    let p = planes.get(key);
+    if (!p) {
+      const corners = f.flip ? (f.half ? [[1, 1], [0, 1], [1, 0]] : [[0, 0], [1, 0], [0, 1]]) : f.half ? [[0, 0], [1, 1], [0, 1]] : [[0, 0], [1, 0], [1, 1]];
+      const [a, b, c] = corners.map(([di, dj]) => {
+        const x = (f.i + di) * S;
+        const z = (f.j + dj) * S;
+        return { x, y: L.regionHeight(region, x, z), z };
+      });
+      const ux = b.x - a.x;
+      const uy = b.y - a.y;
+      const uz = b.z - a.z;
+      const vx = c.x - a.x;
+      const vy = c.y - a.y;
+      const vz = c.z - a.z;
+      let nx = uy * vz - uz * vy;
+      let ny = uz * vx - ux * vz;
+      let nz = ux * vy - uy * vx;
+      const l = Math.sign(ny) * Math.hypot(nx, ny, nz); // facing up
+      nx /= l;
+      ny /= l;
+      nz /= l;
+      p = { nx, ny, nz, a };
+      planes.set(key, p);
+    }
+    return p;
+  };
+  return {
+    at,
+    normal: (region, f) => plane(region, f),
+    // Height of the facet plane through (x, z).
+    height(region, x, z) {
+      const p = plane(region, at(x, z));
+      return p.a.y - (p.nx * (x - p.a.x) + p.nz * (z - p.a.z)) / p.ny;
+    },
+  };
+}
+
 // Ground triangle faces clearly upward (guards collision against numerically noisy slivers).
 function floorLike([a, b, c]) {
   const ux = b.x - a.x;
@@ -310,6 +473,24 @@ function floorLike([a, b, c]) {
   const vz = c.z - a.z;
   const ny = uz * vx - ux * vz;
   return ny > 0.5 * Math.hypot(uy * vz - uz * vy, ny, ux * vy - uy * vx);
+}
+
+// Smallest altitude of a triangle in XZ (its width across the longest edge).
+function minAltitude([a, b, c]) {
+  const area2 = Math.abs((b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z));
+  const longest = Math.max(Math.hypot(b.x - a.x, b.z - a.z), Math.hypot(c.x - b.x, c.z - b.z), Math.hypot(a.x - c.x, a.z - c.z));
+  return area2 / longest;
+}
+
+// The triangle's points lifted onto the tangent plane of height(x, z) at its centre.
+function tangentPlane(pts, height) {
+  const cx = (pts[0].x + pts[1].x + pts[2].x) / 3;
+  const cz = (pts[0].z + pts[1].z + pts[2].z) / 3;
+  const e = 4;
+  const gx = (height(cx + e, cz) - height(cx - e, cz)) / (2 * e);
+  const gz = (height(cx, cz + e) - height(cx, cz - e)) / (2 * e);
+  const h = height(cx, cz);
+  return pts.map((p) => ({ x: p.x, y: h + gx * (p.x - cx) + gz * (p.z - cz), z: p.z }));
 }
 
 function rgbOf(c) {
@@ -336,36 +517,36 @@ function addPathOverlay(group, buffer) {
   group.add(mesh);
 }
 
-// Coarse cliff-top plateau and distant rolling hills around the fine grid (visual only).
+// Faceted cliff-top plateau and distant rolling hills around the fine grid (visual only),
+// one flat-lit triangle per facet.
 function buildFarRing(L, buffer, b) {
-  const n = (2 * FAR) / FAR_STEP;
-  const key = (i, j) => -1 - (j * (n + 1) + i);
-  const vert = (i, j) => {
-    const x = -FAR + i * FAR_STEP;
-    const z = -FAR + j * FAR_STEP;
-    const h = (px, pz) => L.cliffHeight(px, pz);
-    const e = 60;
-    const dx = (h(x + e, z) - h(x - e, z)) / (2 * e);
-    const dz = (h(x, z + e) - h(x, z - e)) / (2 * e);
-    const l = Math.hypot(dx, 1, dz);
-    const y = h(x, z);
-    const nx = -dx / l;
-    const ny = 1 / l;
-    const nz = -dz / l;
-    const c = grassTint(x, y, z, nx, ny, nz);
-    return buffer.vertex({ x, y, z, nx, ny, nz, u: x / TILE.grass, v: z / TILE.grass, ...rgbOf(c) }, key(i, j));
-  };
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const x0 = -FAR + i * FAR_STEP;
-      const z0 = -FAR + j * FAR_STEP;
-      if (x0 >= b.minX && x0 + FAR_STEP <= b.maxX && z0 >= b.minZ && z0 + FAR_STEP <= b.maxZ) continue;
-      const v00 = vert(i, j);
-      const v10 = vert(i + 1, j);
-      const v01 = vert(i, j + 1);
-      const v11 = vert(i + 1, j + 1);
-      buffer.tri(v00, v01, v10);
-      buffer.tri(v10, v01, v11);
+  const S = L.FACET;
+  const n0 = -Math.round(FAR / S);
+  const n1 = Math.round(FAR / S);
+  const corner = (i, j) => ({ x: i * S, y: L.cliffHeight(i * S, j * S), z: j * S });
+  for (let j = n0; j < n1; j++) {
+    for (let i = n0; i < n1; i++) {
+      if (i * S >= b.minX && (i + 1) * S <= b.maxX && j * S >= b.minZ && (j + 1) * S <= b.maxZ) continue;
+      const [v00, v10, v01, v11] = [corner(i, j), corner(i + 1, j), corner(i, j + 1), corner(i + 1, j + 1)];
+      const tris = L.facetFlip(i, j) ? [[v00, v01, v10], [v10, v01, v11]] : [[v00, v11, v10], [v00, v01, v11]];
+      for (const [p, q, r] of tris) {
+        const ux = q.x - p.x;
+        const uy = q.y - p.y;
+        const uz = q.z - p.z;
+        const vx = r.x - p.x;
+        const vy = r.y - p.y;
+        const vz = r.z - p.z;
+        const nx = uy * vz - uz * vy;
+        const ny = uz * vx - ux * vz;
+        const nz = ux * vy - uy * vx;
+        const l = Math.hypot(nx, ny, nz);
+        const n = { nx: nx / l, ny: ny / l, nz: nz / l };
+        const idx = [p, q, r].map((v) => {
+          const c = grassTint(v.x, v.y, v.z, n.nx, n.ny, n.nz);
+          return buffer.vertex({ ...v, ...n, u: v.x / TILE.grass, v: v.z / TILE.grass, ...rgbOf(c) });
+        });
+        buffer.tri(...idx);
+      }
     }
   }
 }

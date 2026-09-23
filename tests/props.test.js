@@ -44,7 +44,7 @@ function walk(from, to, step) {
     const top = world.findFloor(x, 1e5, z, 0);
     if (top.surface) inside = Math.max(inside, top.y - y);
   }
-  return { x, z, inside };
+  return { x, y, z, inside };
 }
 
 // Height of the first props floor under (x, z) when dropping from high above, or null.
@@ -152,6 +152,11 @@ function pathClear(from, to) {
   });
 }
 
+// Whether `from` lies clear of every rock and bush other than `target`.
+function startsClear(from, target) {
+  return [...ROCKS, ...BUSHES].every((o) => o === target || Math.hypot(from.x - o.x, from.z - o.z) > o.r + RADIUS);
+}
+
 test('boulders and bushes block, stepping stones are walked over, nobody ends up inside', () => {
   for (const r of ROCKS) {
     const ground = L.groundHeight(r.x, r.z);
@@ -165,11 +170,46 @@ test('boulders and bushes block, stepping stones are walked over, nobody ends up
       const a = (k / 16) * Math.PI * 2;
       const from = { x: t.x + Math.cos(a) * (t.r + 300), z: t.z + Math.sin(a) * (t.r + 300) };
       if (L.groundHeight(from.x, from.z) < L.WATER_LEVEL) continue; // swims in from the pond
+      if (!startsClear(from, t)) continue; // would start inside a neighbouring rock
       const end = walk(from, t, 8);
       assert.ok(end.inside < 1, `${t.x},${t.z} from ${k}: feet ${end.inside.toFixed(1)} inside the collider`);
       const d = Math.hypot(end.x - t.x, end.z - t.z);
       if (!stone && L.regionAt(t.x, t.z) === 'lawn') assert.ok(d > t.r * 0.5, `${t.x},${t.z} from ${k} blocks: ${d.toFixed(0)}`);
       if (stone && pathClear(from, t)) assert.ok(d < 10, `stepping stone ${t.x},${t.z} from ${k}: stopped ${d.toFixed(0)} short`);
+    }
+  }
+});
+
+test('boulder colliders hug the drawn rock: the hero neither sinks into it nor stops far off', () => {
+  const rocks = part.object3D.getObjectByName('rocks');
+  const ray = new THREE.Raycaster();
+  for (const t of ROCKS.filter((r) => r.h > 60)) {
+    const gaps = [];
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const from = { x: t.x + Math.cos(a) * (t.r + 300), z: t.z + Math.sin(a) * (t.r + 300) };
+      if (L.groundHeight(from.x, from.z) < L.WATER_LEVEL || !startsClear(from, t)) continue;
+      const end = walk(from, t, 8);
+      if (end.y > L.groundHeight(end.x, end.z) + 5) continue; // walked up onto it
+      // Distance from the hero's centre to the drawn rock ahead, at knee height.
+      const dx = t.x - end.x;
+      const dz = t.z - end.z;
+      const d = Math.hypot(dx, dz);
+      const back = 300;
+      const dir = new THREE.Vector3(dx / d, 0, dz / d);
+      ray.set(new THREE.Vector3(end.x - dir.x * back, end.y + 30, end.z - dir.z * back), dir);
+      const hit = ray.intersectObject(rocks, false)[0];
+      assert.ok(hit, `rock ${t.x},${t.z} from ${k}: no rock ahead`);
+      gaps.push(hit.distance - back);
+    }
+    assert.ok(gaps.length >= 4, `rock ${t.x},${t.z}: only ${gaps.length} approaches`);
+    const mean = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+    const closest = Math.min(...gaps);
+    assert.ok(closest > 25, `rock ${t.x},${t.z}: the hero's centre gets ${closest.toFixed(0)} from the rock`);
+    // (A rock set into the pond bank is walled at its wide underwater foot on the pond side,
+    // which also pushes the corners toward the bank out a little.)
+    if (L.regionAt(t.x, t.z) === 'lawn') {
+      assert.ok(mean < 90, `rock ${t.x},${t.z}: the hero stops ${mean.toFixed(0)} from the rock on average`);
     }
   }
 });

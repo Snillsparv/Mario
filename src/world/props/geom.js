@@ -103,19 +103,26 @@ export function wallQuad(out, ax, az, bx, bz, a0, a1, b0, b1) {
   out.push(ax, a0, az, bx, b1, bz, bx, b0, bz);
 }
 
+// Corners of a polygon around (x, z): `sides` corners on a circle of `radius`, or, when
+// `radius` is an array, one corner per entry at that distance. Corner i sits at angle
+// (i + phase) / sides turns, running from +x toward +z.
+function ring(x, z, radius, sides, phase = 0) {
+  const radii = Array.isArray(radius) ? radius : Array(sides).fill(radius);
+  return radii.map((r, i) => {
+    const a = ((i + phase) / radii.length) * Math.PI * 2;
+    return [x + Math.cos(a) * r, z + Math.sin(a) * r];
+  });
+}
+
 // Open vertical prism (walls only, no caps) around (x, z): a solid trunk you can bump into
-// but not stand on. Walls face outward.
-export function prismWalls(out, x, z, y0, y1, radius, sides = 8) {
-  for (let i = 0; i < sides; i++) {
-    const a0 = (i / sides) * Math.PI * 2;
-    const a1 = ((i + 1) / sides) * Math.PI * 2;
-    // Angles run from +x toward +z, so each edge's (dz, -dx) points away from the axis.
-    const ax = x + Math.cos(a0) * radius;
-    const az = z + Math.sin(a0) * radius;
-    const bx = x + Math.cos(a1) * radius;
-    const bz = z + Math.sin(a1) * radius;
+// but not stand on. Walls face outward (each edge's (dz, -dx) points away from the axis).
+// `radius` is a number (regular prism of `sides` sides) or per-corner radii (see ring).
+export function prismWalls(out, x, z, y0, y1, radius, sides = 8, phase = 0) {
+  const pts = ring(x, z, radius, sides, phase);
+  pts.forEach(([ax, az], i) => {
+    const [bx, bz] = pts[(i + 1) % pts.length];
     wallQuad(out, ax, az, bx, bz, y0, y1, y0, y1);
-  }
+  });
 }
 
 // Solid round obstacle (boulder, bush, post): an open prism of walls up to `shoulder` and a
@@ -126,18 +133,50 @@ export function solidMound(out, x, z, y0, shoulder, top, radius, sides = 8) {
   cone(out, x, z, top, radius, sides, () => shoulder);
 }
 
-// Floor-only cone from a rim of `sides` points (rimY(px, pz) high) up to an apex at (x, top, z).
+// Floor-only cone from a rim of corners (see ring; rimY(px, pz) high) up to an apex at
+// (x, top, z).
 export function cone(out, x, z, top, radius, sides, rimY) {
-  for (let i = 0; i < sides; i++) {
-    const a0 = (i / sides) * Math.PI * 2;
-    const a1 = ((i + 1) / sides) * Math.PI * 2;
-    const x0 = x + Math.cos(a0) * radius;
-    const z0 = z + Math.sin(a0) * radius;
-    const x1 = x + Math.cos(a1) * radius;
-    const z1 = z + Math.sin(a1) * radius;
-    // apex, a1, a0: counter-clockwise seen from above (faces up).
+  const pts = ring(x, z, radius, sides);
+  pts.forEach(([x0, z0], i) => {
+    const [x1, z1] = pts[(i + 1) % pts.length];
+    // apex, corner i + 1, corner i: counter-clockwise seen from above (faces up).
     out.push(x, top, z, x1, rimY(x1, z1), z1, x0, rimY(x0, z0), z0);
+  });
+}
+
+// Per-corner radii (for ring, with the same sides and phase) of a polygon around (x, z) that
+// encloses the horizontal cross-sections of a placed solid (indexed geometry, transformed by
+// `matrix`) within a height band that may differ by direction (band(angle) -> [lo, hi],
+// taken at each angular sector's middle): the solid's farthest reach in each sector (sampled
+// along its edges), pushed out by 1 / cos(half a sector) so the polygon's edges, not only
+// its corners, clear it. A sector where nothing lies in its band takes the solid's full reach.
+export function footprintRadii(geo, matrix, x, z, { sides, phase = 0, band }) {
+  const reach = new Array(sides).fill(0);
+  const anywhere = new Array(sides).fill(0);
+  const bands = reach.map((_, k) => band(((k + phase + 0.5) / sides) * Math.PI * 2));
+  const pos = geo.attributes.position;
+  const index = geo.index;
+  const p = (i) => new THREE.Vector3().fromBufferAttribute(pos, index.getX(i)).applyMatrix4(matrix);
+  const SAMPLES = 16;
+  for (let t = 0; t < index.count; t += 3) {
+    const tri = [p(t), p(t + 1), p(t + 2)];
+    tri.forEach((a, e) => {
+      const b = tri[(e + 1) % 3];
+      for (let j = 0; j <= SAMPLES; j++) {
+        const q = new THREE.Vector3().lerpVectors(a, b, j / SAMPLES);
+        const turn = (Math.atan2(q.z - z, q.x - x) / (Math.PI * 2)) * sides - phase;
+        const k = ((Math.floor(turn) % sides) + sides) % sides;
+        const r = Math.hypot(q.x - x, q.z - z);
+        const [lo, hi] = bands[k];
+        anywhere[k] = Math.max(anywhere[k], r);
+        if (q.y >= lo && q.y <= hi) reach[k] = Math.max(reach[k], r);
+      }
+    });
   }
+  const grow = 1 / Math.cos(Math.PI / sides);
+  const sector = reach.map((r, k) => r || anywhere[k]);
+  // Corner i sits between sectors i - 1 and i.
+  return sector.map((r, i) => Math.max(r, sector[(i + sides - 1) % sides]) * grow);
 }
 
 // Convex polygon of [x, y, z] points as floor triangles (a fan), wound to face up.
@@ -229,9 +268,12 @@ function weld(source) {
 }
 
 // Appends an indexed unit-space solid to a builder as flat-shaded faces, transformed by
-// `matrix`. UVs are a box projection chosen per face (world units / tile) so texel density
-// stays even. colorFn(x, y, z) -> [r, g, b] tints each vertex (world space, before lighting).
+// `matrix`. UVs are a box projection chosen per face (world units / tile, where tile is a
+// number or { u, v }; v runs up on the sides) so texel density stays even.
+// colorFn(x, y, z) -> [r, g, b] tints each vertex (world space, before lighting).
 export function addSolid(builder, geo, matrix, { tile = 400, colorFn = null } = {}) {
+  const tu = tile.u ?? tile;
+  const tv = tile.v ?? tile;
   const pos = geo.attributes.position;
   const index = geo.index;
   const p = new THREE.Vector3();
@@ -247,9 +289,9 @@ export function addSolid(builder, geo, matrix, { tile = 400, colorFn = null } = 
     const fy = Math.abs((b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z));
     const fz = Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
     for (const v of vs) {
-      if (fy >= fx && fy >= fz) [v.u, v.v] = [v.x / tile, v.z / tile];
-      else if (fx >= fz) [v.u, v.v] = [v.z / tile, v.y / tile];
-      else [v.u, v.v] = [v.x / tile, v.y / tile];
+      if (fy >= fx && fy >= fz) [v.u, v.v] = [v.x / tu, v.z / tv];
+      else if (fx >= fz) [v.u, v.v] = [v.z / tu, v.y / tv];
+      else [v.u, v.v] = [v.x / tu, v.y / tv];
       if (colorFn) [v.r, v.g, v.b] = colorFn(v.x, v.y, v.z);
     }
     builder.tri(a, b, c);

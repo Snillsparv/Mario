@@ -38,6 +38,16 @@ class Pixmap {
     for (let k = 0; k < 3; k++) this.d[i + k] += (c[k] - this.d[i + k]) * a;
   }
 
+  // Soft round dab about 2 px wide (a crack or scratch stroke), wrapping around the edges.
+  dab(cx, cy, color, a) {
+    for (let y = Math.floor(cy - 1.5); y <= cy + 1.5; y++) {
+      for (let x = Math.floor(cx - 1.5); x <= cx + 1.5; x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+        if (d < 1.5) this.blend(x, y, color, a * (1 - smoothstep(0.4, 1.5, d)));
+      }
+    }
+  }
+
   // Round blob of radius r (pixels) with a lit top-left and a shaded bottom-right rim.
   pebble(cx, cy, r, color) {
     for (let y = Math.floor(cy - r - 1); y <= cy + r + 1; y++) {
@@ -187,80 +197,77 @@ export function masonryTexture() {
   );
 }
 
-// Blocky crags for the perimeter cliffs and the pond's rocky banks (64 x 128): a tileable
-// Voronoi of large angular slabs, each broken into two facets tilted toward and away from
-// the light, in a few low-contrast tan-greys, with dark crevices along some of the joints.
+// Layered rock for the perimeter cliffs and the pond's rocky banks (128 px = 1280 units):
+// uneven horizontal strata with wobbly, softly shadowed ledges (lit along the top of each
+// band, darker toward its foot), broken into blocks by slanted joints, each block split
+// into a lit and a shaded facet, in a few warm grey-browns. A few short soft cracks too.
 export function rockTexture() {
   return cached('rock', () =>
-    painted(64, 128, (px, w, h) => {
+    painted(128, 128, (px, w, h) => {
       const rng = makeRng(501);
       const tones = [
-        [148, 128, 102],
-        [138, 122, 100],
-        [156, 136, 106],
+        [148, 136, 118],
+        [136, 126, 112],
+        [158, 144, 122],
       ];
-      const cells = Array.from({ length: 13 }, () => {
-        const a = rng() * Math.PI * 2;
-        return {
-          x: rng() * w,
-          y: rng() * h,
-          color: tones[Math.floor(rng() * tones.length)].map((v) => v * (0.95 + rng() * 0.1)),
-          fx: Math.cos(a), // facet split direction
-          fy: Math.sin(a),
-          lit: 1.04 + rng() * 0.06, // brighter facet (the other is darker by as much)
+      const heights = [27, 19, 31, 22, 29]; // sums to h, so the strata tile vertically
+      const wobble = tileableNoise(w, h, 6, 504);
+      let top = 0;
+      const bands = heights.map((bh, b) => {
+        // Joints: slanted lines at uneven spacing (wrapping around in x); only some are
+        // open, dark cracks, the rest just separate blocks of different tone.
+        const joints = [];
+        for (let x = rng() * 24; x < w; x += 16 + rng() * 26) joints.push({ x, slant: jitter(rng, 0.35), open: rng() < 0.6 });
+        const shade = () => {
+          const k = 0.94 + rng() * 0.12; // one factor for all channels: blocks differ in value, not hue
+          return tones[Math.floor(rng() * tones.length)].map((v) => v * k);
         };
+        const band = { top, h: bh, joints, tones: joints.map(shade), facet: joints.map(() => jitter(rng, 1)) };
+        top += bh;
+        return { ...band, edge: (x) => band.top + (wobble(x, b * 25.6) - 0.5) * 9 };
       });
-      // Angular distance: a blend of Euclidean and Chebyshev, stretched so slabs are wide.
-      const dist = (dx, dy) => 0.5 * Math.hypot(dx, dy * 1.4) + 0.5 * Math.max(Math.abs(dx), Math.abs(dy) * 1.4);
-      const grain = tileableNoise(w, h, 16, 503);
+      const grain = tileableNoise(w, h, 32, 503);
       const mottle = tileableFbm(w, h, 4, 2, 502);
+      const wrap = (d) => d - w * Math.round(d / w);
       px.fill((x, y) => {
-        let d1 = Infinity;
-        let d2 = Infinity;
-        let best = 0;
-        let second = 0;
-        let bdx = 0;
-        let bdy = 0;
-        cells.forEach((c, k) => {
-          for (let oy = -h; oy <= h; oy += h) {
-            for (let ox = -w; ox <= w; ox += w) {
-              const dx = x + 0.5 - c.x - ox;
-              const dy = y + 0.5 - c.y - oy;
-              const d = dist(dx, dy);
-              if (d < d1) {
-                d2 = d1;
-                second = best;
-                d1 = d;
-                best = k;
-                bdx = dx;
-                bdy = dy;
-              } else if (d < d2) {
-                d2 = d;
-                second = k;
-              }
-            }
+        // Which band (strata edges wobble; the last band wraps into the first).
+        let yy = y + 0.5;
+        if (yy < bands[0].edge(x)) yy += h;
+        let b = 0;
+        while (b + 1 < bands.length && yy >= bands[b + 1].edge(x)) b++;
+        const band = bands[b];
+        const y0 = band.edge(x);
+        const y1 = b + 1 < bands.length ? bands[b + 1].edge(x) : h + bands[0].edge(x);
+        const t = (yy - y0) / (y1 - y0); // 0 at the band's top ledge, 1 at its foot
+        // Block between the joints left and right of this pixel (joints lean by their slant).
+        let block = 0;
+        let jointDist = Infinity;
+        let right = Infinity;
+        band.joints.forEach((j, k) => {
+          const d = wrap(x + 0.5 - (j.x + j.slant * (yy - y0)));
+          if (j.open) jointDist = Math.min(jointDist, Math.abs(d));
+          if (d < 0 && -d < right) {
+            right = -d;
+            block = (k + band.joints.length - 1) % band.joints.length;
           }
         });
-        const c = cells[best];
-        const facet = bdx * c.fx + bdy * c.fy > 0 ? c.lit : 2 - c.lit;
-        const k = facet * (0.92 + 0.1 * grain(x, y)) * (0.93 + 0.12 * mottle(x, y));
-        let rgb = c.color.map((v) => v * k);
-        // Joints: a dark crevice (with a lit lip above it) on some of them; elsewhere the
-        // slabs just meet with their own tones.
-        const edge = d2 - d1;
-        const crevice = (best * 7 + second * 13) % 5 < 2;
-        if (crevice && edge < 1.3) rgb = [86, 74, 60];
-        else if (crevice && edge < 2.6) rgb = rgb.map((v) => v * (bdy < 0 ? 1.08 : 0.86));
-        return rgb.map((v) => v + jitter(rng, 4));
+        // Lit upper facet and shaded lower facet, split along a tilted line through the block.
+        const facet = t - 0.45 + band.facet[block] * 0.2 * (right / 30 - 0.5) < 0 ? 1.06 : 0.92;
+        const ledge = 1.12 - 0.26 * smoothstep(0, 1, t);
+        const k = facet * ledge * (0.93 + 0.1 * grain(x, y)) * (0.92 + 0.14 * mottle(x, y));
+        // Soft dark crevices under each ledge and along the open joints (about 2 px).
+        const edgeDist = Math.min(yy - y0, y1 - yy);
+        const crevice = Math.max(1 - smoothstep(0.2, 2.4, edgeDist), 0.8 * (1 - smoothstep(0.3, 2, jointDist)));
+        return band.tones[block].map((v) => v * k * (1 - 0.45 * crevice) + jitter(rng, 3));
       });
-      // A few short hairline cracks inside the slabs.
-      for (let i = 0; i < 10; i++) {
+      // Short soft cracks wandering down inside the blocks.
+      for (let i = 0; i < 14; i++) {
         let x = rng() * w;
         const y0 = rng() * h;
-        const len = 3 + Math.floor(rng() * 6);
+        const len = 4 + Math.floor(rng() * 7);
         for (let k = 0; k < len; k++) {
-          x += jitter(rng, 0.8);
-          px.blend(x, y0 + k, [90, 78, 64], 0.45);
+          x += jitter(rng, 0.7);
+          px.dab(x, y0 + k, [98, 86, 72], 0.35);
         }
       }
     }),

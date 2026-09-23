@@ -97,7 +97,7 @@ function ambientOcclusion(x, z) {
 export function grassTint(x, y, z, nx, ny, nz) {
   const sun = nx * SUN_DIR.x + ny * SUN_DIR.y + nz * SUN_DIR.z; // ~0.8 on flat ground
   const broad = noise3(x / 2300, 0.5, z / 2300);
-  const patch = noise3(x / 650, 7.5, z / 650);
+  const patch = noise3(x / 1000, 7.5, z / 1000);
   const island = smoothstep(0, 400, -sdRoundRect(x, z, ISLAND));
   const swath = 1 + 0.4 * island * (noise3(x / 1500, 11.5, z / 1500) - 0.5);
   const warm = clamp(0.45 + (sun - 0.8) * 3.5 + (broad - 0.5) * (1.4 + island), 0, 1);
