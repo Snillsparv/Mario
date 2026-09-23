@@ -96,7 +96,7 @@ export class CameraController {
     return this.lookYaw;
   }
 
-  // Snap behind the hero (level start, respawn).
+  // Snap behind the hero (level start, respawn), or to the nearest open side if walled in.
   reset(player) {
     this.hero.submerged = false;
     const hero = this._readHero(player);
@@ -114,7 +114,7 @@ export class CameraController {
     this.focusY = hero.y;
     this._snapToHero(hero);
     this.collider.reset();
-    this._setOrbitYaw(hero.faceYaw + Math.PI);
+    this._setOrbitYaw(this.collider.openYaw(this.look, hero.faceYaw + Math.PI, this._orbitPitch(), this.dist));
     this._updateOrbit(NEUTRAL, hero);
     this._finishTick(true);
   }
@@ -338,13 +338,15 @@ export class CameraController {
   }
 
   // When a wall squeezes the camera in or hides the hero, slide the orbit along the wall
-  // (while moving). The rate is eased so it does not switch on and off with the ray hits.
+  // (while the hero moves, or always once badly squeezed). The rate is eased so it does not
+  // switch on and off with the ray hits.
   _slideAlongWall(hero) {
     const wall = this.collider.blocker;
     const ratio = this.collider.ratio ?? 1;
     const pressure = Math.max(1 - ratio / K.WALL_SLIDE_START, this.collider.occluded ? K.OCCLUDED_SLIDE : 0);
     let goal = 0;
-    if (wall?.kind === 'wall' && pressure > 0 && !this.tween && hero.speed >= K.MOVING_SPEED) {
+    const moving = hero.speed >= K.MOVING_SPEED || ratio < K.CRAMPED_RATIO;
+    if (wall?.kind === 'wall' && pressure > 0 && !this.tween && moving) {
       const n = wall.hn;
       let tx = n.z;
       let tz = -n.x;

@@ -29,9 +29,11 @@ async function start() {
   const events = new Events();
   const input = new Input(window);
   const view = new N64Renderer(container);
+  view.alignOverlay(uiRoot); // HUD and title follow the picture when F3 pillarboxes it to 4:3
   const { scene, camera } = view;
 
   const level = buildLevel(scene);
+  view.setWaterLevelFn((x, z) => level.collision.waterLevelAt(x, z));
   const player = new Player({ collision: level.collision, events, spawn: level.spawn });
   const model = new PlayerModel();
   scene.add(model.object3D);
@@ -40,7 +42,7 @@ async function start() {
   const audio = new AudioEngine(events);
   if (params.has('mute')) audio.muted = true;
   const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player });
-  const hud = new HUD(uiRoot);
+  const hud = new HUD(uiRoot, { events });
 
   const state = {
     frame: 0,
@@ -64,6 +66,7 @@ async function start() {
     let titleRaf = 0;
     const titleLoop = (t) => {
       level.update(t / 1000, camera);
+      objects.animate(t / 1000, 1, camera);
       cam.titleOrbit?.(t / 1000);
       cam.apply(1);
       view.render();
@@ -89,7 +92,8 @@ async function start() {
       events.emit(state.paused ? 'pause' : 'unpause');
     }
     if (state.paused) return;
-    player.update(controller, cam.getYaw());
+    // The camera withholds movement input while in first-person look mode.
+    player.update(cam.playerInput(controller), cam.getYaw());
     objects.update({ player, frame: state.frame, camera: cam });
     cam.update(controller, player);
     hud.update({
@@ -109,6 +113,7 @@ async function start() {
   function draw(dt) {
     const rs = player.getRenderState(renderAlpha);
     model.update(rs, dt);
+    model.object3D.visible = !cam.hideHero;
     cam.apply(renderAlpha);
     level.update(state.time, camera);
     objects.animate(state.time, renderAlpha, camera);
@@ -126,6 +131,8 @@ async function start() {
     state,
     view,
     input,
+    hud,
+    audio,
     // Advance n simulation ticks with a fixed controller state (partial, like setOverride).
     step(n = 1, controllerState = null) {
       for (let i = 0; i < n; i++) {

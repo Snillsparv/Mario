@@ -1,11 +1,25 @@
 // Small dark low-poly birds circling high over the grounds in loose flocks, alternating bouts
 // of flapping with glides. Purely decorative: the pose is a function of time, and every bird is
 // written into one dynamic flat-shaded mesh (one draw call) without per-frame allocations.
+//
+// A circle may pass over the castle, so at startup each bird's ring is checked against the
+// scenery: a bird whose path would clip a tower moves to the nearest clear radius at its
+// altitude, or (if there is none) climbs over the tallest scenery under its ring.
 
 import * as THREE from 'three';
 import { TAU, smoothstep } from '../core/math.js';
 
 const BANK = 0.32;
+const SWAY = 140; // the circle's radius breathes by this much
+const BOB = 90; // altitude bob
+const DIP = 60; // lowest wing tip below the body centre
+const REACH = 160; // horizontal clearance from scenery (wing half-span ~110 + margin)
+const HEADROOM = 250; // vertical clearance over the scenery under the path
+const RADIUS_RANGE = [0.75, 1.3]; // radii (x circle radius) a bird may move to
+const ROW = 50; // radial step of the scenery profile
+const ARC = 100; // sample spacing along a profile ring
+const WALL_PROBES = [-300, 0, 300]; // wall probe heights around the circle's altitude
+const SKY = 1e5;
 const INNER_SPAN = 48;
 const OUTER_SPAN = 56;
 
@@ -85,14 +99,63 @@ function faceNormals(P, N) {
   }
 }
 
+// Highest scenery near each ring of circle c, for radii rMin + k * ROW across the radii its
+// birds may use: roofs (floor tops) plus the tops of walls standing at the flock's altitude.
+// The birds sweep every angle of their ring, so only the radius matters.
+function sceneryProfile(c, collision) {
+  const rMin = Math.max(0, c.radius * RADIUS_RANGE[0] - SWAY - REACH);
+  const rMax = c.radius * RADIUS_RANGE[1] + SWAY + REACH;
+  const tops = [];
+  for (let r = rMin; r <= rMax; r += ROW) {
+    const n = Math.max(12, Math.ceil((TAU * r) / ARC));
+    let top = -Infinity;
+    for (let k = 0; k < n; k++) {
+      const x = c.x + Math.cos((k / n) * TAU) * r;
+      const z = c.z + Math.sin((k / n) * TAU) * r;
+      top = Math.max(top, collision.findFloor(x, SKY, z).y);
+      for (const dy of WALL_PROBES) {
+        for (const w of collision.findWalls(x, c.y + dy, z, 0, ARC).walls) top = Math.max(top, w.maxY);
+      }
+    }
+    tops.push(top);
+  }
+  // Highest scenery within reach of a ring of radius r (with its sway).
+  return (r) => {
+    const k0 = Math.max(0, Math.floor((r - SWAY - REACH - rMin) / ROW));
+    const k1 = Math.min(tops.length - 1, Math.ceil((r + SWAY + REACH - rMin) / ROW));
+    let top = -Infinity;
+    for (let k = k0; k <= k1; k++) top = Math.max(top, tops[k]);
+    return top;
+  };
+}
+
+// Moves bird b off the scenery: to the nearest radius whose ring stays HEADROOM above
+// everything under the bird's lowest point, else it climbs over its ring's tallest scenery.
+function clearOfScenery(b, topNear) {
+  const margin = BOB + DIP + HEADROOM;
+  const lo = b.c.radius * RADIUS_RANGE[0];
+  const hi = b.c.radius * RADIUS_RANGE[1];
+  for (let d = 0; d <= hi - lo; d += ROW) {
+    for (const r of [b.radius + d, b.radius - d]) {
+      if (r >= lo && r <= hi && topNear(r) + margin < b.alt) {
+        b.radius = r;
+        return;
+      }
+    }
+  }
+  b.alt = topNear(b.radius) + margin;
+}
+
 export class Birds {
-  constructor(circles, rng) {
+  // collision: CollisionWorld (findFloor, findWalls) used once to keep the rings clear.
+  constructor(circles, { collision, rng }) {
     this.birds = [];
     circles.forEach((c, ci) => {
       const n = 3 + Math.floor(rng() * 3);
       const dir = ci % 2 ? -1 : 1;
+      const topNear = sceneryProfile(c, collision);
       for (let i = 0; i < n; i++) {
-        this.birds.push({
+        const b = {
           c,
           dir,
           angle0: i * 0.28 + rng() * 0.15, // bunched into a loose flock
@@ -102,11 +165,13 @@ export class Birds {
           flapRate: 3 + rng() * 1.2,
           phase: rng() * TAU,
           glidePhase: ci * 1.7 + rng() * 0.6,
-        });
+          pos: { x: 0, y: 0, z: 0 }, // body centre, written by animate()
+        };
+        clearOfScenery(b, topNear);
+        this.birds.push(b);
       }
     });
     this.mesh = this._buildMesh();
-    this.animate(0);
   }
 
   _buildMesh() {
@@ -134,7 +199,7 @@ export class Birds {
     for (const b of this.birds) {
       // Position on a slightly breathing circle.
       const th = b.angle0 + b.dir * b.speed * clock;
-      const r = b.radius + 140 * Math.sin(clock * 0.23 + b.phase);
+      const r = b.radius + SWAY * Math.sin(clock * 0.23 + b.phase);
       const glide = smoothstep(0.1, 0.5, Math.sin(clock * 0.42 + b.glidePhase)); // 1 = gliding
       const fp = clock * b.flapRate * TAU + b.phase;
       const flap = 1 - glide;
@@ -142,8 +207,11 @@ export class Birds {
       const roll = BANK * b.dir; // bank into the turn: the wing on the circle's inside dips
       const pitch = 0.08 * glide; // nose slightly down while gliding
       F.x = b.c.x + Math.cos(th) * r;
-      F.y = b.alt + 90 * Math.sin(clock * 0.31 + b.phase) - 6 * flap * Math.sin(fp);
+      F.y = b.alt + BOB * Math.sin(clock * 0.31 + b.phase) - 6 * flap * Math.sin(fp);
       F.z = b.c.z + Math.sin(th) * r;
+      b.pos.x = F.x;
+      b.pos.y = F.y;
+      b.pos.z = F.z;
       F.cr = Math.cos(roll);
       F.sr = Math.sin(roll);
       F.cp = Math.cos(pitch);

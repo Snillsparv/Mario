@@ -6,15 +6,18 @@
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
 //
 // Everything animates on the simulation clock (ticks + alpha), so pausing the game freezes the
-// objects too. Seven draw calls in total: coins, sparkles, shadows, star, 1-up, butterflies,
-// birds. The per-tick and per-frame paths do not allocate (apart from event payloads).
+// objects too. Before the first update() (the title screen shows the level behind it),
+// animate() runs that clock from the caller's time instead, with ambient motion only (no
+// pickups), and play then carries on from there without a jump. Seven draw calls in total:
+// coins, sparkles, shadows, star, 1-up, butterflies, birds. The per-tick and per-frame paths do
+// not allocate (apart from event payloads).
 //
 // Events: 'coin' { value, pos, red, index? } (index = running red-coin count),
 // 'redCoinsComplete' { pos } when the last red coin is taken (the audio plays the star
 // jingle on it), 'starCollected' { pos }, 'oneUp' {}.
 
 import * as THREE from 'three';
-import { FRAME_DT } from '../core/constants.js';
+import { FRAME_DT, MAX_STEPS_PER_FRAME } from '../core/constants.js';
 import { makeRng } from '../core/math.js';
 import { BlobShadows, shadowSize } from './BlobShadows.js';
 import { CoinField } from './CoinField.js';
@@ -32,6 +35,9 @@ const TWINKLE_EVERY = 4; // ticks between the idle star's twinkles
 const ONE_UP_TWINKLE_EVERY = 9;
 const ONE_UP_BEHIND_CASTLE = 800; // default 1-up spot: this far behind the castle's back wall
 const _toCam = new THREE.Vector3();
+// Stand-in hero for the title backdrop's ambient ticks: out of reach of every pickup and far
+// from the butterflies.
+const NOBODY = { pos: { x: 1e9, y: -1e9, z: 1e9 } };
 
 // The hidden 1-up: layout.ONE_UP if the layout names one, else behind the castle.
 function oneUpSpot(layout) {
@@ -46,6 +52,8 @@ export class ObjectManager {
     this.player = player;
     this.collision = collision;
     this.tick = 0;
+    this.started = false; // first update() seen; until then animate() runs the backdrop
+    this._backdropStart = null; // caller time of the first backdrop frame
     this.rng = makeRng(0x0b1ec7);
     this._animTick = -1; // see animate()
     this._animAlpha = 0;
@@ -62,7 +70,7 @@ export class ObjectManager {
     this.starFloor = null; // floor under the star, refreshed every tick while it shows
     this.oneUp = this._makeOneUp(oneUpSpot(layout), groundAt);
     this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng });
-    this.birds = new Birds(layout.BIRD_CIRCLES ?? [], this.rng);
+    this.birds = new Birds(layout.BIRD_CIRCLES ?? [], { collision, rng: this.rng });
 
     this.group = new THREE.Group();
     this.group.name = 'objects';
@@ -70,6 +78,7 @@ export class ObjectManager {
       if (part) this.group.add(part.mesh);
     }
     scene.add(this.group);
+    this._draw(0, 1, null);
   }
 
   _makeOneUp(spot, groundAt) {
@@ -90,8 +99,13 @@ export class ObjectManager {
   }
 
   update(ctx = {}) {
+    this.started = true;
+    this._step(ctx.player ?? this.player);
+  }
+
+  // One 30 Hz tick: pickups by the hero, star state, butterfly AI.
+  _step(player) {
     this.tick++;
-    const player = ctx.player ?? this.player;
     const pos = player.pos;
 
     const hits = this.coins.collect(pos);
@@ -151,16 +165,32 @@ export class ObjectManager {
     this.events.emit('oneUp', {});
   }
 
-  // time (seconds) is not used: the objects follow the simulation clock so they pause with it.
+  // Once play has started, time (seconds) is not used: the objects follow the simulation clock
+  // so they pause with it.
   animate(time, alpha, camera) {
+    if (!this.started) alpha = this._backdrop(time);
     // While no tick runs (pause), the caller's alpha keeps cycling 0..1; holding the largest
     // alpha seen since the last tick freezes the objects instead of flickering. During play
     // alpha only grows between ticks, so this changes nothing.
     if (this.tick === this._animTick) alpha = Math.max(alpha, this._animAlpha);
     this._animTick = this.tick;
     this._animAlpha = alpha;
+    this._draw(Math.max(0, (this.tick - 1 + alpha) * FRAME_DT), alpha, camera);
+  }
 
-    const clock = Math.max(0, (this.tick - 1 + alpha) * FRAME_DT);
+  // Title backdrop: runs ambient ticks (butterflies wander, sparkles twinkle) to keep up with
+  // the caller's clock and returns the alpha into the latest one. A long stall (hidden tab)
+  // skips ahead instead of catching up.
+  _backdrop(time) {
+    this._backdropStart ??= time;
+    const due = (time - this._backdropStart) / FRAME_DT;
+    for (let n = 0; this.tick < Math.floor(due) && n < MAX_STEPS_PER_FRAME; n++) this._step(NOBODY);
+    if (this.tick < Math.floor(due)) this._backdropStart = time - this.tick * FRAME_DT;
+    return Math.min(1, Math.max(0, due - this.tick));
+  }
+
+  // Writes every object's pose for simulation time `clock` (seconds).
+  _draw(clock, alpha, camera) {
     this.coins.animate(clock);
     this.oneUp?.animate(clock);
     this.butterflies.animate(alpha);

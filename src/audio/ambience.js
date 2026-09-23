@@ -1,9 +1,11 @@
-// Outdoor ambience: a positional waterfall roar (continuous filtered noise), water lapping
-// at the nearest moat/pond edge, and birdsong from the trees (nearer trees sing more often).
+// Outdoor ambience, which carries the grounds on its own (there is no music in free roam):
+// a steady bed of air and rustling leaves drifting with slow gusts, a chorus of distant
+// birds all around, nearer birdsong from the trees (nearer trees sing more often), a
+// positional waterfall roar and water lapping at the nearest moat/pond edge.
 
 import { WATERFALL, WATER_LEVEL, MOAT, ISLAND, POND, TREES, groundHeight, sdRoundRect, sdCircle } from '../world/layout.js';
-import { clamp } from '../core/math.js';
-import { lfo, noise, tone } from './synth.js';
+import { clamp, TAU } from '../core/math.js';
+import { harmonicWave, lfo, noise, tone } from './synth.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -11,6 +13,18 @@ const PARAM_INTERVAL = 0.1; // seconds between waterfall level/pan updates
 const WATERFALL_RANGE = 9000; // silent beyond this distance
 const LAP_RANGE = 3500;
 const BIRD_RANGE = 6000;
+const FAR_BIRD_DIST = 1200; // distant chorus: horizontal offset from the listener...
+const FAR_BIRD_RISE = 400; // ...and height above it (inside full-volume range, so only pan)
+
+// Air/leaves bed layers: band-pass centre (Hz), Q, stereo pan and resting gain. Each
+// layer drifts on its own gust envelope, so the bed breathes instead of hissing flat.
+const BED_LAYERS = [
+  { freq: 520, q: 0.6, pan: 0, level: 0.03 }, // low air
+  { freq: 1700, q: 0.9, pan: -0.65, level: 0.018 }, // leaves, left
+  { freq: 2100, q: 0.9, pan: 0.65, level: 0.018 }, // leaves, right
+];
+const GUST_RANGE = [0.6, 1.45]; // gust level multipliers
+const GUST_SECONDS = [1.2, 3.5]; // time between new gust targets
 
 // Seamless pink-ish noise (Paul Kellet's filter) for the waterfall body.
 function pinkBuffer(ctx, seconds) {
@@ -56,28 +70,27 @@ function slosh(ctx, out, t) {
 
 const BIRD_GAIN = 0.22;
 
-// A few bird call shapes, randomly pitched. Returns the call's length in seconds.
-function birdCall(ctx, out, t) {
-  const base = rand(2800, 4200);
-  const gain = BIRD_GAIN * rand(0.7, 1);
+// A few bird call shapes around a base pitch, with an optional non-sine timbre. Returns the
+// call's length in seconds.
+function birdCall(ctx, out, t, base, gain, wave = 'sine') {
   switch (Math.floor(Math.random() * 4)) {
     case 0: {
       // tweet-tweet
       const n = 2 + Math.floor(Math.random() * 3);
       for (let i = 0; i < n; i++) {
-        tone(ctx, out, t + i * 0.13, { freq: base * 0.8, to: base * 1.25, glide: 0.05, dur: 0.08, hold: 0.03, gain });
+        tone(ctx, out, t + i * 0.13, { wave, freq: base * 0.8, to: base * 1.25, glide: 0.05, dur: 0.08, hold: 0.03, gain });
       }
       return n * 0.13 + 0.05;
     }
     case 1: {
       // trill
-      const o = tone(ctx, out, t, { freq: base, to: base * 0.85, dur: 0.4, gain: gain * 0.7, attack: 0.03 });
+      const o = tone(ctx, out, t, { wave, freq: base, to: base * 0.85, dur: 0.4, gain: gain * 0.7, attack: 0.03 });
       lfo(ctx, o.frequency, t, 0.4, { rate: 28, depth: base * 0.08 });
       return 0.45;
     }
     case 2: // two-note call
-      tone(ctx, out, t, { freq: base * 1.1, to: base * 0.95, dur: 0.12, hold: 0.05, gain: gain * 0.9 });
-      tone(ctx, out, t + 0.18, { freq: base * 1.35, to: base * 1.1, dur: 0.2, hold: 0.08, gain: gain * 0.8 });
+      tone(ctx, out, t, { wave, freq: base * 1.1, to: base * 0.95, dur: 0.12, hold: 0.05, gain: gain * 0.9 });
+      tone(ctx, out, t + 0.18, { wave, freq: base * 1.35, to: base * 1.1, dur: 0.2, hold: 0.08, gain: gain * 0.8 });
       return 0.42;
     default: {
       // a little song: quick notes hopping around the base pitch, each sliding into place
@@ -86,12 +99,26 @@ function birdCall(ctx, out, t) {
       for (let i = 0; i < 5; i++) {
         const f = base * steps[Math.floor(Math.random() * steps.length)];
         const d = rand(0.05, 0.1);
-        tone(ctx, out, t + dt, { freq: f * 1.08, to: f, glide: d * 0.6, dur: d, hold: d * 0.4, gain: gain * 0.8 });
+        tone(ctx, out, t + dt, { wave, freq: f * 1.08, to: f, glide: d * 0.6, dur: d, hold: d * 0.4, gain: gain * 0.8 });
         dt += d + 0.03;
       }
       return dt + 0.05;
     }
   }
+}
+
+// A bird in one of the trees: clear sine calls at full level.
+const treeBird = (ctx, out, t) => birdCall(ctx, out, t, rand(2800, 4200), BIRD_GAIN * rand(0.7, 1));
+
+// Timbres of the distant chorus, so the far birds do not all sound like one sine species:
+// pure, hollow (triangle), and two reedier harmonic mixes.
+const FAR_TIMBRES = ['sine', 'triangle', [1, 0.35], [1, 0.2, 0.12]];
+
+// A soft call from somewhere far off, over a wider pitch range.
+function farBird(ctx, out, t) {
+  const timbre = FAR_TIMBRES[Math.floor(Math.random() * FAR_TIMBRES.length)];
+  const wave = typeof timbre === 'string' ? timbre : harmonicWave(ctx, `bird${timbre}`, timbre);
+  return birdCall(ctx, out, t, rand(1700, 5200), BIRD_GAIN * rand(0.16, 0.32), wave);
 }
 
 // The same recipe started `delay` seconds later (for birds answering each other).
@@ -124,9 +151,34 @@ export class Ambience {
     this.paramTimer = 0;
     this.lapTimer = 0.5;
     this.birdTimer = rand(0.5, 1.5);
+    this.farBirdTimer = rand(0.1, 0.4);
+
+    // One long noise loop feeds everything (at different offsets), so no repeat is audible.
+    const buf = pinkBuffer(ctx, 6);
+    const loop = (dest, offset) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(dest);
+      src.start(0, offset);
+    };
+
+    // Air and leaves bed.
+    this.bed = BED_LAYERS.map((layer, i) => {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = layer.freq;
+      filter.Q.value = layer.q;
+      const gain = ctx.createGain();
+      gain.gain.value = layer.level;
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = layer.pan;
+      filter.connect(gain).connect(pan).connect(out);
+      loop(filter, 0.7 + i * 1.9);
+      return { ...layer, filter, gain, timer: 0 };
+    });
 
     // Waterfall: roar (low-passed pink noise, darker with distance) + near-field hiss.
-    const buf = pinkBuffer(ctx, 3);
     this.fallPan = ctx.createStereoPanner();
     this.fallPan.connect(out);
     this.fallGain = ctx.createGain();
@@ -143,13 +195,8 @@ export class Ambience {
     hissFilter.frequency.value = 3200;
     hissFilter.Q.value = 0.5;
     hissFilter.connect(this.hissGain);
-    for (const [dest, offset] of [[this.fallFilter, 0], [hissFilter, 1.5]]) {
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.loop = true;
-      src.connect(dest);
-      src.start(0, offset);
-    }
+    loop(this.fallFilter, 0);
+    loop(hissFilter, 3.3);
   }
 
   update(dt, listener) {
@@ -158,6 +205,7 @@ export class Ambience {
       this.paramTimer = PARAM_INTERVAL;
       this.updateWaterfall(listener);
     }
+    this.updateGusts(dt);
 
     this.lapTimer -= dt;
     if (this.lapTimer <= 0) {
@@ -174,9 +222,33 @@ export class Ambience {
       for (let i = 0; i < count; i++) {
         const tree = pickTree(listener);
         if (!tree) break;
-        const call = i ? delayed(birdCall, rand(0.15, 0.9)) : birdCall;
+        const call = i ? delayed(treeBird, rand(0.15, 0.9)) : treeBird;
         this.playAt(call, { x: tree.x, y: groundHeight(tree.x, tree.z) + 700, z: tree.z });
       }
+    }
+
+    // Distant chorus: a few soft calls a second from random directions.
+    this.farBirdTimer -= dt;
+    if (this.farBirdTimer <= 0) {
+      this.farBirdTimer = rand(0.2, 0.6);
+      const a = Math.random() * TAU;
+      const pos = { x: listener.x + Math.sin(a) * FAR_BIRD_DIST, y: listener.y + FAR_BIRD_RISE, z: listener.z + Math.cos(a) * FAR_BIRD_DIST };
+      this.playAt(farBird, pos);
+    }
+  }
+
+  // Each bed layer glides to a new random gust level now and then; the leaves also get
+  // brighter as they swell.
+  updateGusts(dt) {
+    const t = this.ctx.currentTime;
+    for (const layer of this.bed) {
+      layer.timer -= dt;
+      if (layer.timer > 0) continue;
+      layer.timer = rand(...GUST_SECONDS);
+      const gust = rand(...GUST_RANGE);
+      const glide = rand(0.4, 1);
+      layer.gain.gain.setTargetAtTime(layer.level * gust, t, glide);
+      layer.filter.frequency.setTargetAtTime(layer.freq * (0.8 + 0.25 * gust), t, glide);
     }
   }
 

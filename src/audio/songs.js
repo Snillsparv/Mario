@@ -10,10 +10,14 @@
 // Form: A (1-8) A' (9-16) B (17-24) A'' (25-32). A is a bouncy flute tune over
 // oom-pah bass and harp stabs; B turns lyrical with harp arpeggios and a horn
 // counter-line; A'' returns with a bell doubling and a climax at bar 28.
+// In game it is an arrival cue, not a loop: like the hub it recreates, the grounds have no
+// background music, so the tune plays its A section over the intro fly-in and ends on the
+// tonic downbeat of bar 8 (after the Gm7 C7 cadence), leaving the scene to the ambience.
+// The full loop is kept for the preview.
 const castleGrounds = {
   title: 'Meadow Parade',
-  // Playback level: kept low under free roam so birdsong and the waterfall carry the scene.
   level: 0.6,
+  finalBar: 8,
   key: 'F',
   bpm: 108,
   beatsPerBar: 4,
@@ -110,10 +114,12 @@ const castleGrounds = {
 };
 
 // "Lantern Waltz" - gentle title loop. Bb major, 3/4, 16 bars (~34 s loop).
-// Harp arpeggios and soft strings under a lullaby-like flute line.
+// Harp arpeggios and soft strings under a lullaby-like flute line. A menu track: it stops
+// when the game starts, whatever plays next.
 const title = {
   title: 'Lantern Waltz',
   level: 1,
+  menu: true,
   key: 'Bb',
   bpm: 84,
   beatsPerBar: 3,

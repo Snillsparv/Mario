@@ -1,5 +1,6 @@
 // Objects in the real level (built in node): draw order against the terrain decals and water,
-// butterflies kept out of the castle, and the hidden 1-up placed in the open.
+// butterflies kept out of the castle, birds clear of the towers, coins clear of the scenery,
+// and the hidden 1-up placed in the open.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -83,4 +84,29 @@ test('the hidden 1-up hovers in the open behind the castle and can be picked up'
   player.pos = { x: gem.x + 60, y: floor.y, z: gem.z };
   objects.update({ player });
   assert.equal(log.length, 1);
+});
+
+test('circling birds keep clear of the castle towers and roofs', () => {
+  const { objects } = makeObjects();
+  const { birds } = objects.birds;
+  let hits = 0;
+  let minGap = Infinity;
+  for (let t = 0; t < 600; t += 0.1) {
+    objects.birds.animate(t);
+    for (const { pos } of birds) {
+      if (collision.findWalls(pos.x, pos.y, pos.z, 0, 120).walls.length) hits++;
+      minGap = Math.min(minGap, pos.y - collision.findFloor(pos.x, 1e5, pos.z).y);
+    }
+  }
+  assert.equal(hits, 0, 'samples with a wall within 120');
+  assert.ok(minGap > 250, `lowest clearance over the scenery ${minGap.toFixed(0)}`);
+});
+
+test('every coin hangs clear of ceilings and walls', () => {
+  const { objects } = makeObjects();
+  for (const c of objects.coins.coins) {
+    const where = `coin at ${c.x}, ${c.y.toFixed(0)}, ${c.z}`;
+    assert.ok(collision.findCeil(c.x, c.y - 60, c.z, 0).y - c.y >= 55, `${where}: ceiling`);
+    assert.equal(collision.findWalls(c.x, c.y, c.z, 0, 45).walls.length, 0, `${where}: wall`);
+  }
 });

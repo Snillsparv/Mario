@@ -1,11 +1,17 @@
 // AudioEngine behaviour against a fake WebAudio implementation: muting keeps synthesis off,
 // a half-failed context setup leaves a clean silent engine, a track replaced right after it
-// started is cut instead of crossfaded, and terrain-less sounds use the last terrain.
+// started is cut instead of crossfaded, terrain-less sounds use the last terrain, names
+// inherited from Object.prototype are unknown, voice slots free on the audio clock, a cue
+// ends by itself, and music requested before audio existed waits for the unlocking press.
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
 import { AudioEngine } from '../src/audio/AudioEngine.js';
 import { SFX } from '../src/audio/sfx.js';
+import { SONGS } from '../src/audio/songs.js';
+import { compileSong } from '../src/audio/compile.js';
+import { Sequencer } from '../src/audio/Sequencer.js';
+import { INSTRUMENTS } from '../src/audio/instruments.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.
@@ -188,4 +194,139 @@ test('sounds without a terrain use the terrain last walked on', async () => {
     SFX.skid = skid;
   }
   assert.deepEqual(seen, ['grass', 'stone', 'wood', 'sand']);
+});
+
+test('names inherited from Object.prototype are unknown sounds and songs', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    for (const name of ['toString', 'constructor', 'hasOwnProperty', '__proto__', 'valueOf']) {
+      events.emit('sfx', { name });
+      audio.play(name);
+      audio.playMusic(name);
+    }
+    assert.equal(audio.active.length, 0, 'no voice allocated');
+    assert.equal(audio.track, null);
+    assert.equal(audio.wantMusic, null);
+    assert.equal(warn.mock.callCount(), 0, 'nothing logged');
+  } finally {
+    warn.mock.restore();
+  }
+});
+
+test('voice slots are freed on the audio clock, not by wall-clock timers', async () => {
+  const audio = new AudioEngine(new Events());
+  await audio.unlock();
+  let played = 0;
+  const recipe = () => {
+    played++;
+    return 1; // seconds
+  };
+  for (let i = 0; i < 40; i++) audio.voice(recipe, {}, audio.mix.sfx);
+  assert.equal(played, 32, 'capped');
+  mock.timers.tick(60000); // wall-clock time alone (e.g. a suspended context) frees nothing
+  audio.voice(recipe, {}, audio.mix.sfx);
+  assert.equal(played, 32);
+  audio.ctx.currentTime = 2; // past each voice's length + tail
+  audio.voice(recipe, {}, audio.mix.sfx);
+  assert.equal(played, 33);
+  assert.equal(audio.active.length, 1);
+});
+
+test('a cue plays once: the sequencer stops at its end and the engine frees the track', async () => {
+  const song = compileSong(SONGS.castle_grounds);
+  const scheduled = [];
+  const originals = { ...INSTRUMENTS };
+  for (const inst of Object.keys(INSTRUMENTS)) INSTRUMENTS[inst] = (ctx, out, t) => scheduled.push(t);
+  try {
+    const ctx = new FakeAudioContext();
+    const seq = new Sequencer(ctx, song, ctx.destination);
+    seq.start(0, { realtime: false, endBeat: song.endBeat });
+    seq.scheduleUntil(1000);
+    const spb = 60 / song.bpm;
+    assert.equal(scheduled.length, song.events.filter((e) => e.beat < song.endBeat).length);
+    assert.ok(Math.max(...scheduled) <= song.endBeat * spb);
+    assert.ok(seq.endTime > song.endBeat * spb && seq.endTime < song.endBeat * spb + 5, `fades by ${seq.endTime}`);
+  } finally {
+    Object.assign(INSTRUMENTS, originals);
+  }
+
+  const audio = new AudioEngine(new Events());
+  await audio.unlock();
+  audio.playMusic('castle_grounds');
+  const { seq } = audio.track;
+  audio.ctx.currentTime = seq.endTime - 0.1;
+  audio.update(1 / 60);
+  assert.equal(audio.track?.name, 'castle_grounds', 'still fading');
+  audio.ctx.currentTime = seq.endTime + 0.01;
+  audio.update(1 / 60);
+  assert.equal(audio.track, null);
+  assert.equal(audio.wantMusic, null);
+  audio.playMusic('castle_grounds'); // can be played again
+  assert.equal(audio.track?.name, 'castle_grounds');
+  audio.stopMusic();
+  mock.timers.tick(2000);
+});
+
+test('the menu track stops when the game starts', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  audio.playMusic('title');
+  assert.equal(audio.track.name, 'title');
+  events.emit('gameStart');
+  assert.equal(audio.track, null);
+  assert.equal(audio.wantMusic, null);
+  mock.timers.tick(2000);
+});
+
+// A window whose listeners can be fired, for the gesture hooks.
+function fakeWindow() {
+  const listeners = {};
+  globalThis.window.addEventListener = (type, fn) => (listeners[type] ??= []).push(fn);
+  globalThis.window.removeEventListener = (type, fn) => {
+    listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
+  };
+  return (type, e = {}) => [...(listeners[type] || [])].forEach((fn) => fn({ type, ...e }));
+}
+
+test('music requested before audio existed waits until the unlocking press is released', async () => {
+  const fire = fakeWindow();
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  audio.playMusic('title'); // the title screen, before any gesture
+  fire('keydown', { code: 'Enter' }); // Start, held down: creates the context
+  await audio.unlock();
+  mock.timers.tick(1500);
+  assert.equal(audio.track, null, 'nothing starts while the press is held');
+  fire('keyup', { code: 'Space' }); // another key does not count
+  mock.timers.tick(200);
+  assert.equal(audio.track, null);
+  // Released: the title resolves and the game starts before the pending title track.
+  fire('keyup', { code: 'Enter' });
+  events.emit('gameStart');
+  audio.playMusic('castle_grounds');
+  mock.timers.tick(1000);
+  assert.equal(audio.track.name, 'castle_grounds');
+  assert.equal(audio.track.gain.gain.calls.filter(([m]) => m === 'linearRampToValueAtTime').length, 0, 'no crossfade');
+  audio.stopMusic();
+  mock.timers.tick(2000);
+});
+
+test('with nothing newer requested, the pending track starts a moment after the release', async () => {
+  const fire = fakeWindow();
+  const audio = new AudioEngine(new Events());
+  audio.playMusic('title');
+  fire('pointerdown');
+  await audio.unlock();
+  mock.timers.tick(900);
+  fire('pointerup'); // a click: the title only starts its fade-out now
+  mock.timers.tick(500);
+  assert.equal(audio.track, null, 'the scene may still change');
+  mock.timers.tick(200);
+  assert.equal(audio.track?.name, 'title');
+  audio.stopMusic();
+  mock.timers.tick(2000);
 });

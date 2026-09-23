@@ -6,6 +6,7 @@
 //   walk=1                            the fake hero walks down the coin line in real time
 //   freeze=1                          stop the simulation after setup (repeatable screenshots)
 //   pause=1                           like the game's pause: no ticks, alpha keeps cycling
+//   title=1                           like the title screen: never update(), animate() only
 // Flat lawn with a round hill (for slope shadows), built into a small CollisionWorld.
 
 import { CollisionWorld } from '../../collision/CollisionWorld.js';
@@ -117,12 +118,14 @@ export async function setup({ THREE, scene, params, camera }) {
     tick();
   }
   player.pos = home;
-  for (let i = 0; i < num('ticks', 0); i++) tick();
+  const title = params.has('title');
+  const pause = params.has('pause');
+  const ticks0 = title ? 0 : Math.max(num('ticks', 0), pause ? 1 : 0);
+  for (let i = 0; i < ticks0; i++) tick();
 
   const view = VIEWS[params.get('view')] ?? VIEWS.close;
   const walk = params.has('walk');
   const freeze = params.has('freeze');
-  const pause = params.has('pause');
   let acc = 0;
   let last = null;
   let ticks = 0;
@@ -133,7 +136,7 @@ export async function setup({ THREE, scene, params, camera }) {
       if (last === null) last = t;
       if (!freeze) acc += Math.min(0.25, t - last);
       last = t;
-      while (acc >= FRAME_DT && !pause) {
+      while (acc >= FRAME_DT && !pause && !title) {
         acc -= FRAME_DT;
         if (walk) player.pos = { x: 0, y: 0, z: 1000 - (ticks % 150) * 12 };
         tick();

@@ -6,6 +6,9 @@
 // silent no-op, so the engine is safe in node and in tests. While muted no context is
 // created, and an existing one is suspended, so no synthesis runs at all.
 // Audio must never break gameplay: event handlers and voices swallow (and log once) errors.
+//
+// Music: a looping track plays until replaced; a cue (a song with finalBar) plays once and
+// frees the music slot when it has faded out. A menu track stops when the game starts.
 
 import { SONGS } from './songs.js';
 import { compileSong } from './compile.js';
@@ -19,16 +22,22 @@ import { clamp } from '../core/math.js';
 const MUSIC_FADE = 1.2; // crossfade seconds
 const YOUNG_TRACK = 1.5; // a track replaced before this age is cut quickly, not crossfaded
 const QUICK_CUT = 0.12;
-// The gesture that creates the context often also changes the track (the title click
-// starts the game), so the first track waits briefly for a newer playMusic() request.
+// The gesture that creates the context often also changes the track (the title's Start
+// starts the game, on press or on click release, then fades out), so a track requested
+// before then starts only this long after that press is released, giving the new scene's
+// playMusic() the chance to replace it.
 const FIRST_MUSIC_DELAY = 0.6;
 const MAX_VOICES = 32; // concurrent one-shots; extra ones are dropped
+const VOICE_TAIL = 0.5; // a one-shot's slot is held this long past its reported length
 const PITCH_JITTER = 0.03; // +-3% random pitch per sound
 const DEDUPE_SECONDS = 0.02; // the same sound requested twice at once plays once
 const FULL_VOLUME_DIST = 1400; // positional sounds are full volume within this range
 const SILENT_DIST = 9000;
 const PAUSE_DUCK = 0.35;
 const FANFARE_SECONDS = 2.8;
+
+// Only a table's own entries count: names like 'toString' or '__proto__' are unknown.
+const own = (table, name) => (typeof name === 'string' && Object.hasOwn(table, name) ? table[name] : null);
 
 const compiledSongs = new Map();
 function compiled(name) {
@@ -49,7 +58,8 @@ export class AudioEngine {
     this.warned = false;
     this.track = null; // { name, gain, seq, started }
     this.wantMusic = null; // latest requested track (also before the context exists)
-    this.voices = 0;
+    this.unlockPress = null; // key code or 'pointer' of the press that created the context, while held
+    this.active = []; // sounding one-shots: { end (context time), node }
     this.lastPlayed = new Map();
     this.terrain = 'grass'; // last terrain seen in footstep/land events
     this.duck = { pause: 1, fanfare: 1 };
@@ -118,16 +128,14 @@ export class AudioEngine {
       return false;
     }
     this.applyLevels();
-    setTimeout(() => {
-      if (this.wantMusic && !this.track) this.startMusic(this.wantMusic);
-    }, FIRST_MUSIC_DELAY * 1000);
+    if (!this.unlockPress) this.startPendingMusic();
     return true;
   }
 
   // Play a named sound effect. opts: { pos, volume, pitch, terrain, big, index }.
   // Unknown names are ignored. Sounds without a terrain use the last one walked on.
   play(name, opts = {}) {
-    const recipe = SFX[name];
+    const recipe = own(SFX, name);
     if (!recipe || !this.ctx) return;
     const now = this.ctx.currentTime;
     if (now - (this.lastPlayed.get(name) ?? -1) < DEDUPE_SECONDS) return;
@@ -136,9 +144,9 @@ export class AudioEngine {
   }
 
   playMusic(name) {
-    if (!SONGS[name]) return;
+    if (!own(SONGS, name)) return;
     this.wantMusic = name;
-    if (this.ctx && this.track?.name !== name) this.startMusic(name);
+    if (this.ctx && this.track?.name !== name) this.guard(() => this.startMusic(name));
   }
 
   stopMusic() {
@@ -157,25 +165,18 @@ export class AudioEngine {
 
   update(dt) {
     if (this.ctx?.state !== 'running' || this._muted) return;
-    try {
+    this.guard(() => {
+      this.releaseVoices();
+      if (this.track && this.ctx.currentTime >= this.track.seq.endTime) this.endTrack();
       this.ambience.update(dt, this.listener);
-    } catch (err) {
-      this.warnOnce(err);
-    }
+    });
   }
 
   // ---------------------------------------------------------------- internals
 
   subscribe(events) {
     // Every handler is fenced off: an audio failure must never reach the emitter.
-    const on = (name, fn) =>
-      events.on(name, (e = {}) => {
-        try {
-          fn(e);
-        } catch (err) {
-          this.warnOnce(err);
-        }
-      });
+    const on = (name, fn) => events.on(name, (e = {}) => this.guard(() => fn(e)));
     const speedVolume = (speed = 20) => 0.55 + 0.45 * clamp(speed / 30, 0, 1);
     on('sfx', (e) => this.play(e.name, e));
     on('footstep', (e) => {
@@ -204,6 +205,7 @@ export class AudioEngine {
     // gameStart normally follows a click on the title screen; with ?skipTitle it does not,
     // and then the first key/pointer press unlocks instead (no autoplay warning).
     on('gameStart', () => {
+      if (this.wantMusic && own(SONGS, this.wantMusic).menu) this.stopMusic();
       if (hasUserActivation()) this.unlock();
     });
   }
@@ -212,11 +214,21 @@ export class AudioEngine {
     // First user gesture unlocks audio, even if nobody calls unlock() explicitly. The
     // hooks stay until audio actually runs (e.g. while muted no context is made yet).
     const types = ['pointerdown', 'keydown', 'touchend'];
-    const onGesture = () =>
+    const pressId = (e) => (e.type.startsWith('key') ? e.code : 'pointer');
+    const onGesture = (e) => {
+      if (!this.ctx && e.type !== 'touchend') this.unlockPress = pressId(e);
       this.unlock().then((running) => {
         if (running) for (const type of types) window.removeEventListener(type, onGesture, true);
       });
+    };
     for (const type of types) window.addEventListener(type, onGesture, true);
+    const onRelease = (e) => {
+      if (!this.unlockPress || (e.type !== 'blur' && pressId(e) !== this.unlockPress)) return;
+      this.unlockPress = null;
+      this.startPendingMusic();
+    };
+    for (const type of ['keyup', 'pointerup', 'pointercancel']) window.addEventListener(type, onRelease, true);
+    window.addEventListener('blur', onRelease);
     // Background tabs throttle timers; suspend instead of letting the music stutter.
     document.addEventListener('visibilitychange', () => this.syncRunning());
   }
@@ -227,6 +239,15 @@ export class AudioEngine {
     const hidden = typeof document !== 'undefined' && document.hidden;
     try {
       (this._muted || hidden ? this.ctx.suspend() : this.ctx.resume()).catch(() => {});
+    } catch (err) {
+      this.warnOnce(err);
+    }
+  }
+
+  // Run fn, logging (once) instead of throwing if it fails.
+  guard(fn) {
+    try {
+      fn();
     } catch (err) {
       this.warnOnce(err);
     }
@@ -256,7 +277,9 @@ export class AudioEngine {
   // Run a one-shot recipe through its own gain + panner into a bus.
   voice(recipe, opts, bus) {
     const ctx = this.ctx;
-    if (ctx?.state !== 'running' || this._muted || this.voices >= MAX_VOICES) return;
+    if (ctx?.state !== 'running' || this._muted) return;
+    this.releaseVoices();
+    if (this.active.length >= MAX_VOICES) return;
     const { gain, pan } = this.spatial(opts.pos);
     const volume = (opts.volume ?? 1) * gain;
     if (volume < 0.01) return;
@@ -273,12 +296,27 @@ export class AudioEngine {
     } catch (err) {
       this.warnOnce(err);
     }
-    if (!panner) return;
-    this.voices++;
+    if (panner) this.active.push({ end: ctx.currentTime + dur + VOICE_TAIL, node: panner });
+  }
+
+  // Free the slots (and graph) of finished one-shots. Timed on the audio clock, so it
+  // stays right while the context is suspended or rendering faster than real time.
+  releaseVoices() {
+    const now = this.ctx.currentTime;
+    let n = 0;
+    for (const v of this.active) {
+      if (v.end > now) this.active[n++] = v;
+      else v.node.disconnect();
+    }
+    this.active.length = n;
+  }
+
+  // Start the track requested before the context existed, unless a newer scene has
+  // started or replaced it by then (see FIRST_MUSIC_DELAY).
+  startPendingMusic() {
     setTimeout(() => {
-      panner.disconnect();
-      this.voices--;
-    }, (dur + 0.5) * 1000);
+      if (this.ctx && !this.unlockPress && this.wantMusic && !this.track) this.guard(() => this.startMusic(this.wantMusic));
+    }, FIRST_MUSIC_DELAY * 1000);
   }
 
   // Crossfade from the current track, or cut it quickly if it has only just started
@@ -295,8 +333,16 @@ export class AudioEngine {
     gain.gain.setValueAtTime(crossfade ? 0 : song.level, now);
     if (crossfade) gain.gain.linearRampToValueAtTime(song.level, now + MUSIC_FADE);
     const seq = new Sequencer(ctx, song, gain);
-    seq.start(now + (old && !crossfade ? QUICK_CUT : 0.06));
+    seq.start(now + (old && !crossfade ? QUICK_CUT : 0.06), { endBeat: song.endBeat });
     this.track = { name, gain, seq, started: now };
+  }
+
+  // A cue has faded out: free the music slot (a later playMusic() of it plays it again).
+  endTrack() {
+    this.track.seq.stop();
+    this.track.gain.disconnect();
+    this.track = null;
+    this.wantMusic = null;
   }
 
   fadeOutTrack(track, seconds) {

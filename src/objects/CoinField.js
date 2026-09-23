@@ -14,6 +14,8 @@ export const PICKUP_RADIUS = 105;
 const PICKUP_BELOW = 40; // coin may be this far below the feet...
 const PICKUP_ABOVE = 200; // ...or this far above them
 const SPIN_RATE = 1.6; // turns per second
+const SPIN_PHASE = 0.5; // half-turn phase at clock 0: the middle frames, face-on
+const HEADROOM = 60; // coin centre to any ceiling above (bridge beams): the disc stays clear
 const SHADOW_SIZE = 64;
 
 const FRAME_UVS = [false, true].map((red) => Array.from({ length: COIN_FRAMES }, (_, k) => coinFrameUV(k, red)));
@@ -29,6 +31,9 @@ export class CoinField {
         const f = collision.findFloor(c.x, y, c.z);
         if (f.surface && f.y + COIN_HOVER > y) y = f.y + COIN_HOVER;
       }
+      // Hang below a ceiling (e.g. a beam under the bridge) rather than poke into it.
+      const ceil = collision.findCeil(c.x, y - HEADROOM, c.z, 0);
+      if (ceil.surface && ceil.y - y < HEADROOM) y = ceil.y - HEADROOM;
       return { x: c.x, y, z: c.z, red, value: red ? 2 : 1, alive: true };
     };
     this.coins = [...(layout.COINS ?? []).map((c) => place(c, false)), ...(layout.RED_COINS ?? []).map((c) => place(c, true))];
@@ -42,7 +47,6 @@ export class CoinField {
     this.hits = []; // reused by collect()
     this.batch = new SpriteBatch(Math.max(1, this.coins.length), { map: makeCoinAtlas(), alphaCut: 0.5 });
     this.mesh = this.batch.mesh;
-    this.animate(0);
   }
 
   // Marks and returns the coins touched by a hero standing at `pos` (feet). The returned array
@@ -71,7 +75,7 @@ export class CoinField {
 
   // All coins spin in step; a half turn cycles through every frame.
   animate(clock) {
-    const turn = clock * SPIN_RATE * 2;
+    const turn = clock * SPIN_RATE * 2 + SPIN_PHASE;
     const frame = Math.floor((turn - Math.floor(turn)) * COIN_FRAMES);
     const b = this.batch;
     b.clear();

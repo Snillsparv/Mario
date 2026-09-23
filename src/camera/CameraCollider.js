@@ -1,30 +1,29 @@
 // Keeps the follow camera out of walls, terrain and water, and keeps the hero in view.
 //
 // resolve() takes the unobstructed orbit position and returns where the camera may be:
-//  * Hard limit: the camera never tunnels through a wall or ceiling on its own path (backing
-//    into the castle, an orbit swinging through a wall). Along this tick's ray it may keep its
-//    distance if it gets there from last tick's position without crossing one (otherwise it
-//    comes back in front of the first surface seen from the look point), and may extend only
-//    up to the next surface beyond. This applies immediately. Floors are left to the height
-//    limit, which lifts the camera over terrain instead of dollying it in.
 //  * Line of sight: sampled by a fan of three rays (a centre ray plus one starting 75 units to
 //    either side, converging on the camera) from the look point, from the hero's chest while
 //    the look point lags far above it (falls), and from where the chest will be a few ticks
 //    from now (anticipation). Only a fully blocked fan counts, so posts, trunks and signs are
 //    ignored and simply pass in front of the hero, as props did in the original. A blocked view
 //    is answered, in order of preference, by
-//      1. lifting the orbit pitch (never steeper than LIFT_MAX_PITCH) when that clears it:
-//         parapets, fences, the moat rim, hill crests;
+//      1. a small pitch lift, when that clears it (a fence or parapet, the moat rim);
 //      2. dollying in on a critically damped spring, but never closer than
-//         max(450, 0.35 x distance); a wall on the way is crossed in one step (a cut);
-//      3. accepting the occlusion: `occluded` is set and the controller slides the orbit
-//         along the blocking wall while the hero moves.
+//         max(450, 0.35 x distance) to the hero;
+//      3. a larger lift (never steeper than LIFT_MAX_PITCH);
+//      4. accepting the occlusion: `occluded` is set and the controller slides the orbit
+//         along the blocking wall.
 //    Once pulled in or lifted, the camera holds until the view has been clear for a while,
 //    then eases back out.
-//  * Walls running alongside the view ray push the camera sideways (near-plane clearance);
-//    the height is kept ~150 above the floor, below ceilings and above the water unless the
-//    hero is submerged (acceleration- and speed-limited); finally the camera is kept out of
-//    the hero's head and body, or `insideHero` is set so the game can hide the model.
+//  * Reach: along the ray the camera may extend up to the first surface while in front of it,
+//    or up to the next one beyond while already past it. This applies immediately.
+//  * Path: the camera never tunnels. A move into a wall or ceiling stops in front of it and
+//    slides along it; floors are left to the height limit, which carries the camera over
+//    terrain edges.
+//  * Walls beside the camera push it sideways (near-plane clearance); the height is kept ~150
+//    above the floor, below ceilings and above the water unless the hero is submerged
+//    (acceleration- and speed-limited); in cramped spots the camera rises over the hero's head
+//    rather than entering it, and `insideHero` asks the game to hide the model if it cannot.
 
 import { NO_WATER, CEIL_NONE, FLOOR_LOWER_LIMIT } from '../core/constants.js';
 
@@ -42,6 +41,7 @@ const SOFT_MIN_FRACTION = 0.35; // ...or this fraction of the orbit distance
 const LIFT_MAX_PITCH = 42 * DEG; // a lift never tilts the view ray steeper than this
 const LIFT_CLEARANCE = 40; // a lifted sight line passes this far over the blocker's top
 const LIFT_ROUNDS = 3; // blockers stacked behind each other that one lift search may clear
+const LIFT_NUDGE = 1 * DEG;
 const SMALL_LIFT = 12 * DEG; // a lift up to this is preferred over dollying in
 const LIFT_RATE = 0.25; // lift easing: fraction of the gap per tick...
 const LIFT_MAX_SPEED = 3.5 * DEG; // ...never faster than this per tick...
@@ -52,9 +52,15 @@ const OMEGA_ANTICIPATE = 0.4; // ...when only the predicted view is blocked
 const MAX_PULL_SPEED = 120; // units/tick cap on the occlusion dolly
 const HOLD_TICKS = 10; // stay pulled in / lifted until the view has been clear this long
 const HOLD_EPS = 0.02;
-const RELEASE_RATE = 0.1;
+const RELEASE_RATE = 0.12; // easing back out: fraction of the gap per tick...
+const RELEASE_MAX_SPEED = 75; // ...at most this many units per tick...
+const RELEASE_ACCEL = 10; // ...reached with this acceleration (units/tick^2)
 const WALL_RADIUS = 60;
-const BODY_CLEARANCE = 180; // minimum distance from the hero's chest-to-head segment
+const SLIDE_SKIN = 25; // a camera sliding along a wall keeps this far off it
+const RESET_YAW_DEG = 30; // yaw steps a reset tries when the spot behind the hero is walled in
+const BODY_CLEARANCE = 180; // minimum distance from the hero's chest-to-head segment...
+const BODY_RAMP = 300; // ...reached by rising gradually from this horizontal distance in
+const BODY_MIN = 70; // closer than this to the segment the camera is inside the hero's body
 const FLOOR_QUERY_TOL = 100; // floors slightly above the camera still count (never overhangs)
 const CEIL_QUERY_TOL = 50;
 const PREDICT_FLOOR_TOL = 300; // a predicted point this far under a slope is lifted onto it
@@ -86,7 +92,8 @@ export class CameraCollider {
     this.adjustY = 0; // eased vertical correction and its speed
     this.adjustVel = 0;
     this.wasUnderwater = false;
-    this.last = null; // last resolved camera position
+    this.last = null; // last resolved camera position...
+    this.offRay = false; // ...and whether corrections moved it off its orbit ray
     this.hardRatio = 1; // limit that must not be crossed this tick (applied immediately)
     this.viewRatio = 1; // free fraction of the current line of sight to the hero (fan)
     this.blocker = null; // last surface that hid the hero or pulled the camera in
@@ -101,8 +108,8 @@ export class CameraCollider {
   }
 
   // target: look target; desired: unobstructed orbit position; hero: { x, y, z, velX, velY,
-  // velZ, submerged }; out receives the result.
-  resolve(target, desired, hero, out) {
+  // velZ, submerged }; out receives the result. `settled` is internal (see the reset lift).
+  resolve(target, desired, hero, out, settled = false) {
     const chest = { x: hero.x, y: hero.y + CHEST_HEIGHT, z: hero.z };
     const eye = this._eyePoint(target, chest);
     const cam = this._liftPoint(eye, desired, this.lift);
@@ -121,6 +128,7 @@ export class CameraCollider {
 
     // Sight lines to the unlifted orbit position (a lift is kept only while it is needed).
     // Without a lift the eye's centre ray is the one just cast.
+    const eyeRay = this._sightRay(eye, desired, this.lift === 0 ? centre.hit : undefined);
     const origins = [eye];
     if (eye.y - chest.y > CHEST_RAY_GAP) origins.push(chest);
     const predicted = this._predictedChest(hero);
@@ -128,13 +136,13 @@ export class CameraCollider {
     let tight = null;
     this.viewRatio = 1;
     for (const o of origins) {
-      const f = this._fan(o, desired, o === eye && this.lift === 0 ? centre.hit : undefined);
-      if (o === eye) this.hardRatio = centre.hit ? this._hardLimit(eye, dir, len, front, f.free < 1) : 1;
+      const f = this._fan(o, desired, o === eye ? eyeRay : undefined);
+      if (o === eye) this.hardRatio = centre.hit ? this._reachLimit(eye, dir, len, front, f.free < 1) : 1;
       if (o !== predicted) this.viewRatio = Math.min(this.viewRatio, f.free);
       if (f.free < (tight?.free ?? 1)) tight = f;
     }
 
-    // Remedies (see top): a small lift, else a dolly that stays far enough out, else any lift.
+    // Remedies (see top): a small lift, a dolly that stays far enough out, any lift, or none.
     let liftGoal = 0;
     let soft = 1;
     if (tight) {
@@ -142,15 +150,18 @@ export class CameraCollider {
       const dolly = Math.min(front, (tight.free * len - PAD) / len);
       const d = dolly * len;
       const spot = { x: eye.x + dir.x * d - chest.x, y: eye.y + dir.y * d - chest.y, z: eye.z + dir.z * d - chest.z };
-      const canDolly = Math.hypot(spot.x, spot.y, spot.z) >= Math.max(SOFT_MIN_DIST, SOFT_MIN_FRACTION * len);
+      const canDolly = Math.hypot(spot.x, spot.y, spot.z) >= softMin(len);
       liftGoal = this._clearingLift(eye, origins, desired, tight, canDolly ? SMALL_LIFT : LIFT_MAX_PITCH);
       if (!liftGoal && canDolly) soft = dolly;
     }
     this.liftGoal = liftGoal;
+    // Right after a reset the lift applies at once (the camera starts behind the low wall).
+    if (!this.last && !settled && liftGoal !== this.lift) {
+      this.lift = liftGoal;
+      return this.resolve(target, desired, hero, out, true);
+    }
     this._easeLift(liftGoal);
-    const before = this.ratio;
     this._ease(soft, this.viewRatio < 1 ? OMEGA_HIDDEN : OMEGA_ANTICIPATE, len);
-    if (centre.hit && this.ratio < before && before > front) this._hop(eye, dir, len, before, front);
     this.occluded = !!tight && !liftGoal && soft === 1;
     if (!tight && this.clearTicks > HOLD_TICKS) this.blocker = null;
     if (this.ratio > this.hardRatio) {
@@ -161,11 +172,51 @@ export class CameraCollider {
 
     const d = this.ratio * len;
     out.set(eye.x + dir.x * d, eye.y + dir.y * d, eye.z + dir.z * d);
+    // The sideways part of the move is checked at last tick's height (the height limit then
+    // settles y), so a camera underwater cannot slip into the island below its rim. A clear
+    // ray vouches for the path only if the camera was on its ray last tick.
+    const last = this.last;
+    const onRay = { x: out.x, y: out.y, z: out.z };
+    if (last && (centre.hit || this.offRay)) {
+      const flat = { x: out.x, y: last.y, z: out.z };
+      this._slideMove(last, flat);
+      out.x = flat.x;
+      out.z = flat.z;
+    }
     this._pushFromWalls(out);
     this._limitHeight(out, hero.submerged);
-    this._clearBody(out, hero, dir);
+    this._clearBody(out, hero);
+    this.offRay = Math.abs(out.x - onRay.x) + Math.abs(out.y - onRay.y) + Math.abs(out.z - onRay.z) > 1;
     this.last = { x: out.x, y: out.y, z: out.z };
     return out;
+  }
+
+  // The camera never tunnels: a move from `from` to `to` that would enter a wall or ceiling
+  // stops just in front of it and slides along it instead (round the island's corner, along
+  // the castle wall). Leaving a surface through its back is allowed, and floors are the
+  // height limit's job (it carries the camera over terrain edges). Updates `to` in place.
+  _slideMove(from, to) {
+    const hit = this._entering(from, to);
+    if (!hit) return;
+    const n = hit.normal;
+    const move = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+    const k = Math.max(0, hit.distance - SLIDE_SKIN / Math.max(0.2, -hit.dot)) / move;
+    const stop = { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, z: from.z + (to.z - from.z) * k };
+    // Rest of the move, minus its component into the surface.
+    const into = (to.x - stop.x) * n.x + (to.y - stop.y) * n.y + (to.z - stop.z) * n.z;
+    const slid = { x: to.x - n.x * into, y: to.y - n.y * into, z: to.z - n.z * into };
+    Object.assign(to, this._entering(stop, slid) ? stop : slid);
+  }
+
+  // First wall or ceiling the straight move from a to b enters through its front, or null.
+  _entering(a, b) {
+    const d = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const move = Math.hypot(d.x, d.y, d.z);
+    if (move < 1) return null;
+    const hit = this.collision.raycast(a, d, move, NO_FLOORS);
+    if (!hit) return null;
+    const dot = (d.x * hit.normal.x + d.y * hit.normal.y + d.z * hit.normal.z) / move;
+    return dot < 0 ? { ...hit, dot } : null;
   }
 
   // Ray origin: the look target, but never below the hero's chest (the target lags behind
@@ -206,7 +257,7 @@ export class CameraCollider {
     const room = Math.min(maxLift, LIFT_MAX_PITCH - pitch0);
     let lift = 0;
     for (let round = 0; round < LIFT_ROUNDS && room > 0; round++) {
-      lift = this._liftOver(eye, desired, blocked, lift);
+      lift = this._liftOver(eye, desired, blocked, lift, room);
       if (lift > room) return 0;
       const p = this._liftPoint(eye, desired, lift);
       blocked = null;
@@ -222,25 +273,28 @@ export class CameraCollider {
     return 0;
   }
 
-  // Lift (>= `lift`) at which the sight line `f` (from f.from toward the lifted camera) passes
-  // LIFT_CLEARANCE over the top of the surface it hit; Infinity if no lift can do that.
-  _liftOver(eye, desired, f, lift) {
+  // Smallest lift in [lift, room] at which the sight line `f` (from f.from toward the lifted
+  // camera) passes LIFT_CLEARANCE over the top of the surface it hit; Infinity if none does.
+  // Lifting only raises that line, so a bisection finds it.
+  _liftOver(eye, desired, f, lift, room) {
     const from = f.from;
     const top = f.surface.maxY + LIFT_CLEARANCE;
     const reach = Math.hypot(f.point.x - from.x, f.point.z - from.z);
-    const len = Math.hypot(desired.x - eye.x, desired.y - eye.y, desired.z - eye.z);
-    const pitch0 = Math.asin((desired.y - eye.y) / len);
-    if (reach < 1) return Infinity;
-    // The camera's horizontal reach shrinks as it rises, so refine the estimate twice.
-    for (let i = 0; i < 2; i++) {
-      const c = this._liftPoint(eye, desired, lift, true);
+    const clears = (l) => {
+      const c = this._liftPoint(eye, desired, l, true);
       const camReach = Math.hypot(c.x - from.x, c.z - from.z);
-      if (camReach <= reach) return Infinity;
-      const s = (from.y + ((top - from.y) * camReach) / reach - eye.y) / len;
-      if (s >= 1) return Infinity;
-      lift = Math.max(lift, Math.asin(s) - pitch0);
+      return camReach > reach && from.y + ((c.y - from.y) * reach) / camReach >= top;
+    };
+    if (reach < 1 || !clears(room)) return Infinity;
+    if (clears(lift)) return Math.min(room, lift + LIFT_NUDGE); // hit below its own top: nudge up
+    let lo = lift;
+    let hi = room;
+    for (let i = 0; i < 10; i++) {
+      const mid = (lo + hi) / 2;
+      if (clears(mid)) hi = mid;
+      else lo = mid;
     }
-    return lift;
+    return hi;
   }
 
   // Raises quickly (speed and acceleration limited), gives back slowly after a hold.
@@ -294,42 +348,28 @@ export class CameraCollider {
       this.clearTicks = 0;
       return;
     }
-    this.ratioVel = 0;
+    // Hold, then ease back out (speed and acceleration limited).
     this.clearTicks = soft - this.ratio < HOLD_EPS ? 0 : this.clearTicks + 1;
-    if (this.clearTicks > HOLD_TICKS) this.ratio += (soft - this.ratio) * RELEASE_RATE;
+    if (this.clearTicks <= HOLD_TICKS) {
+      this.ratioVel = 0;
+      return;
+    }
+    const want = Math.min((soft - this.ratio) * RELEASE_RATE, RELEASE_MAX_SPEED / len);
+    this.ratioVel = Math.min(want, Math.max(0, this.ratioVel) + RELEASE_ACCEL / len);
+    this.ratio += this.ratioVel;
   }
 
-  // Fraction of the ray the camera can reach without passing through a wall (see top). Right
-  // after a reset there is no path: only a wall that hides the hero (`wide`) limits it.
-  _hardLimit(eye, dir, len, view, wide) {
-    const last = this.last;
-    if (!last || this.ratio === null) return wide ? view : 1;
+  // How far along the ray the camera may extend: up to the first surface while in front of
+  // it, or up to the next one while it is already beyond it (behind an occluder it reached
+  // without tunnelling). Right after a reset there is no path: only a blocker that hides the
+  // hero (`wide`) pulls the camera in front of it.
+  _reachLimit(eye, dir, len, front, wide) {
+    if (!this.last || this.ratio === null) return wide ? front : 1;
     const r = Math.min(this.ratio, 1);
+    if (r <= front) return front;
     const p = { x: eye.x + dir.x * r * len, y: eye.y + dir.y * r * len, z: eye.z + dir.z * r * len };
-    // The path is checked to where the height limit will put the camera, at least on top of
-    // the ground (a ray point under the lawn is not a trip through the walls buried in it).
-    const floorY = this._floorBelow(p);
-    const my = (floorY > FLOOR_LOWER_LIMIT ? Math.max(p.y, floorY + HARD_CLEARANCE) : p.y) - last.y;
-    const mx = p.x - last.x;
-    const mz = p.z - last.z;
-    const move = Math.hypot(mx, my, mz);
-    if (move > 1 && this.collision.raycast(last, { x: mx, y: my, z: mz }, move, NO_FLOORS)) return view;
-    if (r <= view) return view; // in front of the first surface: may extend up to it
     const ahead = this.collision.raycast(p, dir, (1 - r) * len + PAD, NO_FLOORS);
     return ahead ? Math.max(0, r * len + ahead.distance - PAD) / len : 1;
-  }
-
-  // The dolly from `from` toward the eye would enter a wall or ceiling (the far side of a big
-  // occluder): cut to its near side instead of rendering from inside it. Only reached when
-  // that spot is at least the soft minimum distance out (see resolve).
-  _hop(eye, dir, len, from, front) {
-    const d = from * len;
-    const p = { x: eye.x + dir.x * d, y: eye.y + dir.y * d, z: eye.z + dir.z * d };
-    const step = (from - this.ratio) * len + PAD;
-    if (this.collision.raycast(p, { x: -dir.x, y: -dir.y, z: -dir.z }, step, NO_FLOORS)) {
-      this.ratio = Math.min(this.ratio, front);
-      this.ratioVel = 0;
-    }
   }
 
   // Line of sight from `from` to `to`: free fraction (1 = nothing in the way), and the surface
@@ -343,12 +383,12 @@ export class CameraCollider {
     return { free: hit.distance / len, surface: hit.surface, point: hit.point, from };
   }
 
-  // Line of sight sampled by a centre ray and one ray starting FAN_OFFSET to either side of
-  // the origin (all converging on `to`). The loosest counts: a blocker has to cover the whole
-  // fan (wider than ~150 units) to hide the hero. The side origins are cached on the origin
-  // object, which lives for one tick.
-  _fan(origin, to, centreHit) {
-    let best = this._sightRay(origin, to, centreHit);
+  // Line of sight sampled by a centre ray (`centre`: already cast) and one ray starting
+  // FAN_OFFSET to either side of the origin (all converging on `to`). The loosest counts: a
+  // blocker has to cover the whole fan (wider than ~150 units) to hide the hero. The side
+  // origins are cached on the origin object, which lives for one tick.
+  _fan(origin, to, centre = this._sightRay(origin, to)) {
+    let best = centre;
     if (best.free >= 1) return best;
     origin.sides ??= this._sideOrigins(origin, to);
     for (const side of origin.sides) {
@@ -433,45 +473,45 @@ export class CameraCollider {
     let y = rawY + this.adjustY;
 
     if (hasFloor) y = Math.max(y, floorY + HARD_CLEARANCE);
+    // Never poke through the surface: above it the camera stays above, below it below.
     if (hasWater && !submerged && !this.wasUnderwater) y = Math.max(y, water + WATER_HARD_MARGIN);
+    if (hasWater && submerged && this.wasUnderwater) y = Math.min(y, water - WATER_HARD_MARGIN);
     out.y = y;
     this.wasUnderwater = hasWater && y < water;
   }
 
-  // Last resort in cramped spots (a wall right behind the hero, a pier underwater): keep the
-  // camera BODY_CLEARANCE away from the hero's chest-to-head segment. It backs off along the
-  // orbit direction if that is free, else rises over the head; if neither is possible it
-  // flags insideHero so the model can be hidden.
-  _clearBody(out, hero, dir) {
-    this.insideHero = false;
-    const lo = hero.y + CHEST_HEIGHT;
-    const hi = hero.y + HEAD_TOP;
-    const dy = out.y - Math.min(Math.max(out.y, lo), hi);
-    let hx = out.x - hero.x;
-    let hz = out.z - hero.z;
-    const h = Math.hypot(hx, hz);
-    if (h * h + dy * dy >= BODY_CLEARANCE * BODY_CLEARANCE) return;
-    const col = this.collision;
-    if (h > 1) {
-      hx /= h;
-      hz /= h;
-    } else {
-      const dh = Math.hypot(dir.x, dir.z) || 1;
-      hx = dir.x / dh;
-      hz = dir.z / dh;
+  // Cramped spots (a wall right behind the hero, a pier underwater): the closer the camera is
+  // to the hero horizontally, the higher above it it must be, ramping smoothly from chest
+  // height BODY_RAMP away to BODY_CLEARANCE over the head straight above it (which keeps it
+  // BODY_CLEARANCE from the chest-to-head segment). Being continuous, this never jumps. If a
+  // ceiling stops the climb inside the body, insideHero asks the game to hide the model.
+  _clearBody(out, hero) {
+    const h = Math.hypot(out.x - hero.x, out.z - hero.z);
+    const k = Math.max(0, 1 - (h / BODY_RAMP) ** 2);
+    const minY = hero.y + CHEST_HEIGHT + (HEAD_TOP + BODY_CLEARANCE - CHEST_HEIGHT) * k;
+    if (out.y < minY) {
+      const ceilY = this.collision.findCeil(out.x, out.y, out.z, CEIL_QUERY_TOL).y;
+      out.y = Math.max(out.y, Math.min(minY, ceilY - CEIL_CLEARANCE));
     }
-    const back = Math.sqrt(BODY_CLEARANCE * BODY_CLEARANCE - dy * dy) - h;
-    if (!col.raycast(out, { x: hx, y: 0, z: hz }, back + PAD)) {
-      out.x += hx * back;
-      out.z += hz * back;
-      return;
+    const dy = out.y - Math.min(Math.max(out.y, hero.y + CHEST_HEIGHT), hero.y + HEAD_TOP);
+    this.insideHero = h * h + dy * dy < BODY_MIN * BODY_MIN;
+  }
+
+  // Orbit yaw nearest to `yaw` (in RESET_YAW_STEP steps) whose ray from `target` is clear for
+  // the full distance, or the one with the most room: where a reset places the camera when
+  // the spot behind the hero is walled in.
+  openYaw(target, yaw, pitch, dist) {
+    let best = { yaw, room: -1 };
+    for (let i = 0; i <= 180 / RESET_YAW_DEG; i++) {
+      for (const s of i === 0 || i * RESET_YAW_DEG === 180 ? [1] : [1, -1]) {
+        const y = yaw + s * i * RESET_YAW_DEG * DEG;
+        const cp = Math.cos(pitch);
+        const hit = this.collision.raycast(target, { x: Math.sin(y) * cp, y: Math.sin(pitch), z: Math.cos(y) * cp }, dist);
+        if (!hit) return y;
+        if (hit.distance > best.room) best = { yaw: y, room: hit.distance };
+      }
     }
-    const up = hi + Math.sqrt(BODY_CLEARANCE * BODY_CLEARANCE - h * h) - out.y;
-    if (up > 0 && !col.raycast(out, { x: 0, y: 1, z: 0 }, up + CEIL_CLEARANCE)) {
-      out.y += up;
-      return;
-    }
-    this.insideHero = true;
+    return best.yaw;
   }
 
   // True when rotating the orbit to `yaw` would put the camera hard against a wall.
@@ -481,6 +521,11 @@ export class CameraCollider {
     const hit = this.collision.raycast(target, dir, dist, WALLS_ONLY);
     return !!hit && hit.distance < minDist;
   }
+}
+
+// Occlusion alone never brings the camera closer than this to the hero.
+function softMin(len) {
+  return Math.max(SOFT_MIN_DIST, SOFT_MIN_FRACTION * len);
 }
 
 // The less blocked of two sight samples.

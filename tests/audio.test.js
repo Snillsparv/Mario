@@ -189,3 +189,21 @@ test('castle theme has distinct A and B sections', () => {
   // The A theme returns (bar 25 restates bar 1).
   assert.equal(flute[25], flute[1]);
 });
+
+test('a cue ends on the tonic: final bar is the tonic chord and the melody lands on its root', () => {
+  for (const [name, song] of Object.entries(SONGS)) {
+    if (!song.finalBar) continue;
+    const c = compileSong(song);
+    const downbeat = (song.finalBar - 1) * song.beatsPerBar;
+    assert.ok(c.endBeat > downbeat && c.endBeat < downbeat + 0.5, `${name} endBeat ${c.endBeat}`);
+    assert.ok(c.endBeat <= c.loopBeats, `${name} ends inside the song`);
+    const last = chordTimeline(song).find((s) => s.beat === downbeat);
+    assert.equal(last.chord.root, pitchClass(noteToMidi(`${song.key}4`)), `${name} final chord`);
+    const melody = c.events.find((e) => e.inst === 'flute' && e.beat === downbeat);
+    assert.ok(melody, `${name}: melody note on the final downbeat`);
+    assert.equal(pitchClass(melody.midi), last.chord.root, `${name}: melody ends on the tonic`);
+    // Nothing starts between the final downbeat and the end point (it would be cut off).
+    assert.ok(!c.events.some((e) => e.beat > downbeat && e.beat < c.endBeat));
+  }
+  assert.equal(SONGS.castle_grounds.finalBar, 8, 'castle music is an arrival cue');
+});

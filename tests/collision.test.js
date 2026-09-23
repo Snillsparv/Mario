@@ -62,3 +62,16 @@ test('raycast hits nearest surface', () => {
   assert.ok(Math.abs(hit.distance - 800) < 1e-6, `d=${hit.distance}`); // platform has no side faces -> wall at 800
   assert.ok(hit.normal.x < -0.99);
 });
+
+test('raycast crosses grid cells and respects maxDist', () => {
+  const w = new CollisionWorld();
+  // Floor far away diagonally: spans x,z in [2500, 3500].
+  w.addTriangles(quad([2500, 0, 3500], [3500, 0, 3500], [3500, 0, 2500], [2500, 0, 2500]));
+  w.finalize();
+  const hit = w.raycast({ x: 0, y: 3000, z: 0 }, { x: 1, y: -1, z: 1 }, 10000);
+  assert.ok(hit, 'hit through several cells');
+  assert.ok(Math.abs(hit.point.y) < 1e-6 && Math.abs(hit.point.x - 3000) < 1e-6);
+  assert.equal(w.raycast({ x: 0, y: 3000, z: 0 }, { x: 1, y: -1, z: 1 }, 1000), null);
+  // Straight down, and repeated rays still find the same surface (stamps reset per ray).
+  for (let i = 0; i < 3; i++) assert.equal(w.raycast({ x: 3000, y: 500, z: 3000 }, { x: 0, y: -1, z: 0 }, 1000).distance, 500);
+});

@@ -40,6 +40,7 @@ export class CollisionWorld {
     this.poles = [];
     this.waterFn = null;
     this.finalized = false;
+    this._rayStamp = 0;
   }
 
   // ---------------------------------------------------------------- building
@@ -250,6 +251,8 @@ export class CollisionWorld {
   }
 
   // Ray against all surfaces (for the camera). dir need not be normalized.
+  // Walks the XZ grid cells the ray crosses (every surface is bucketed into each cell its
+  // XZ extent overlaps, so this is exact) and stamps surfaces to test each only once.
   // Returns { point:{x,y,z}, normal, distance, surface } or null.
   raycast(origin, dir, maxDist, { floors = true, walls = true, ceilings = true } = {}) {
     const len = Math.hypot(dir.x, dir.y, dir.z);
@@ -257,49 +260,56 @@ export class CollisionWorld {
     const dx = dir.x / len;
     const dy = dir.y / len;
     const dz = dir.z / len;
-    const seen = new Set();
+    const ox = origin.x;
+    const oy = origin.y;
+    const oz = origin.z;
+    const stamp = (this._rayStamp = (this._rayStamp + 1) | 0 || 1);
+    const cs = this.cellSize;
     let best = null;
     let bestT = maxDist;
-    const cs = this.cellSize;
-    const steps = Math.ceil(maxDist / (cs * 0.5)) + 1;
-    const visitCell = (cx, cz) => {
-      const cell = this.cells.get(cx + ',' + cz);
-      if (!cell) return;
-      const lists = [];
-      if (floors) lists.push(cell.floor);
-      if (walls) lists.push(cell.wall);
-      if (ceilings) lists.push(cell.ceil);
-      for (const list of lists) {
-        for (const s of list) {
-          if (seen.has(s.id)) continue;
-          seen.add(s.id);
-          const t = rayTri(origin.x, origin.y, origin.z, dx, dy, dz, s);
-          if (t !== null && t >= 0 && t < bestT) {
-            bestT = t;
-            best = s;
-          }
+
+    const testList = (list) => {
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i];
+        if (s.rayStamp === stamp) continue;
+        s.rayStamp = stamp;
+        const t = rayTri(ox, oy, oz, dx, dy, dz, s);
+        if (t !== null && t >= 0 && t < bestT) {
+          bestT = t;
+          best = s;
         }
       }
     };
-    const visited = new Set();
-    for (let i = 0; i <= steps; i++) {
-      const t = Math.min(maxDist, (i * cs) / 2);
-      const px = origin.x + dx * t;
-      const pz = origin.z + dz * t;
-      const ccx = Math.floor(px / cs);
-      const ccz = Math.floor(pz / cs);
-      for (let ox = -1; ox <= 1; ox++) {
-        for (let oz = -1; oz <= 1; oz++) {
-          const key = ccx + ox + ',' + (ccz + oz);
-          if (visited.has(key)) continue;
-          visited.add(key);
-          visitCell(ccx + ox, ccz + oz);
-        }
+
+    let cx = Math.floor(ox / cs);
+    let cz = Math.floor(oz / cs);
+    const stepX = dx > 0 ? 1 : -1;
+    const stepZ = dz > 0 ? 1 : -1;
+    const tDeltaX = Math.abs(dx) > 1e-12 ? cs / Math.abs(dx) : Infinity;
+    const tDeltaZ = Math.abs(dz) > 1e-12 ? cs / Math.abs(dz) : Infinity;
+    let tMaxX = Math.abs(dx) > 1e-12 ? ((cx + (dx > 0 ? 1 : 0)) * cs - ox) / dx : Infinity;
+    let tMaxZ = Math.abs(dz) > 1e-12 ? ((cz + (dz > 0 ? 1 : 0)) * cs - oz) / dz : Infinity;
+    for (;;) {
+      const cell = this.cells.get(cx + ',' + cz);
+      if (cell) {
+        if (floors) testList(cell.floor);
+        if (walls) testList(cell.wall);
+        if (ceilings) testList(cell.ceil);
+      }
+      const tExit = Math.min(tMaxX, tMaxZ);
+      // Stop once the nearest hit lies inside the cells already visited.
+      if (tExit >= bestT) break;
+      if (tMaxX < tMaxZ) {
+        cx += stepX;
+        tMaxX += tDeltaX;
+      } else {
+        cz += stepZ;
+        tMaxZ += tDeltaZ;
       }
     }
     if (!best) return null;
     return {
-      point: { x: origin.x + dx * bestT, y: origin.y + dy * bestT, z: origin.z + dz * bestT },
+      point: { x: ox + dx * bestT, y: oy + dy * bestT, z: oz + dz * bestT },
       normal: best.normal,
       distance: bestT,
       surface: best,

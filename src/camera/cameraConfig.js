@@ -74,6 +74,7 @@ export const WALL_SLIDE_START = 0.75; // pull-in ratio below which the camera sl
 export const WALL_SLIDE_GAIN = 0.1;
 export const WALL_SLIDE_MAX = 3 * DEG; // per tick, reached when fully squeezed
 export const OCCLUDED_SLIDE = 0.6; // slide strength while a wall hides the hero (no pull-in)
+export const CRAMPED_RATIO = 0.25; // squeezed this far in, the camera slides even if the hero idles
 export const WALL_SLIDE_EASE = 0.25; // the slide rate eases toward its goal (no per-tick jerks)
 
 // First-person look (C-up from the closest zoom step, only while standing still on the ground).

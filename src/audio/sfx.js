@@ -39,10 +39,11 @@ function step(ctx, out, t, terrain, p, level) {
       tone(ctx, out, t, { freq: 190 * p, to: 120 * p, dur: 0.045, gain: 0.139 * level });
       return 0.06;
     case 'wood':
-      tone(ctx, out, t, { freq: 340 * p, to: 300 * p, dur: 0.1, gain: 0.294 * level });
-      tone(ctx, out, t, { wave: 'triangle', freq: 760 * p, dur: 0.05, gain: 0.086 * level });
-      noise(ctx, out, t, { freq: 900, q: 3, dur: 0.03, gain: 0.098 * level });
-      return 0.12;
+      // Hollow knock, kept short and about as loud as stone (the bridge is walked a lot).
+      tone(ctx, out, t, { freq: 340 * p, to: 300 * p, dur: 0.06, gain: 0.13 * level });
+      tone(ctx, out, t, { wave: 'triangle', freq: 760 * p, dur: 0.04, gain: 0.04 * level });
+      noise(ctx, out, t, { freq: 900, q: 3, dur: 0.03, gain: 0.06 * level });
+      return 0.08;
     case 'sand':
       for (const dt of [0, 0.013, 0.03]) noise(ctx, out, t + dt, { freq: 2800 * p, dur: 0.022, gain: 0.28 * level });
       noise(ctx, out, t, { filter: 'lowpass', freq: 500, dur: 0.05, gain: 0.175 * level });

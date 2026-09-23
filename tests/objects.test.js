@@ -1,5 +1,6 @@
 // ObjectManager logic in node (no canvas): coin pickups, red coins -> star, star and 1-up
-// pickups, butterflies fleeing, pause freeze, draw-call budget, placement on the real layout.
+// pickups, butterflies fleeing, pause freeze, title backdrop, draw-call budget, placement on
+// the real layout.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -8,11 +9,17 @@ import { CollisionWorld } from '../src/collision/CollisionWorld.js';
 import { Events } from '../src/core/events.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { COIN_HOVER, PICKUP_RADIUS } from '../src/objects/CoinField.js';
-import { coinFaceShade, COIN_FRAMES } from '../src/objects/textures.js';
+import { coinFaceShade, coinFrameUV, COIN_FRAMES } from '../src/objects/textures.js';
+import { CEIL_NONE } from '../src/core/constants.js';
 
-function flatWorld(y = 0, size = 4000) {
+// Square floor at height y, plus optionally a ceiling (facing down) over x, z in [-s, s].
+function flatWorld(y = 0, size = 4000, ceiling = null) {
   const w = new CollisionWorld();
   w.addTriangles([-size, y, size, size, y, size, size, y, -size, -size, y, size, size, y, -size, -size, y, -size]);
+  if (ceiling) {
+    const { y: cy, size: s } = ceiling;
+    w.addTriangles([-s, cy, s, s, cy, -s, s, cy, s, -s, cy, s, -s, cy, -s, s, cy, -s]);
+  }
   w.finalize();
   return w;
 }
@@ -44,13 +51,13 @@ function fakePlayer(x = 3000, y = 0, z = 3000) {
   };
 }
 
-function setup(layout = LAYOUT) {
+function setup(layout = LAYOUT, collision = flatWorld()) {
   const events = new Events();
   const log = [];
   for (const name of ['coin', 'redCoinsComplete', 'starCollected', 'oneUp', 'sfx']) events.on(name, (e) => log.push({ name, e }));
   const player = fakePlayer();
   const scene = new THREE.Scene();
-  const objects = new ObjectManager({ scene, collision: flatWorld(), events, layout, player });
+  const objects = new ObjectManager({ scene, collision, events, layout, player });
   const step = (n = 1) => {
     for (let i = 0; i < n; i++) {
       objects.update({ player, frame: i });
@@ -66,6 +73,12 @@ test('coins hover over the ground (or at their given y)', () => {
   assert.equal(a.y, COIN_HOVER);
   assert.equal(c.y, 500);
   assert.equal(objects.coins.coins.length, 3 + 8);
+});
+
+test('a coin under a low ceiling hangs clear of it', () => {
+  const layout = { ...LAYOUT, COINS: [{ x: 0, z: 0, y: 150 }, { x: 300, z: 0 }], RED_COINS: [] };
+  const { objects } = setup(layout, flatWorld(0, 4000, { y: 100, size: 1000 }));
+  assert.deepEqual(objects.coins.coins.map((c) => c.y), [40, 40]);
 });
 
 test('a coin is collected exactly once', () => {
@@ -224,6 +237,35 @@ test('objects freeze while paused (no ticks, alpha keeps cycling)', () => {
   assert.notDeepEqual(snap(), held);
 });
 
+test('the first frame shows face-on coins and every butterfly', () => {
+  const { objects } = setup();
+  assert.deepEqual([...objects.coins.batch.uv.slice(0, 4)], coinFrameUV(COIN_FRAMES / 2, false));
+  const wings = objects.butterflies.positions;
+  for (let i = 0; i < wings.length; i += 3) assert.ok(wings[i] !== 0 || wings[i + 2] !== 0, `wing vertex ${i / 3} written`);
+});
+
+test('the title backdrop animates without pickups, and play carries on from it', () => {
+  const { objects, player, step } = setup();
+  player.pos = { x: 0, y: 0, z: 0 }; // standing on a coin
+  const bird = objects.birds.birds[0].pos;
+  const fly = objects.butterflies.list[0].pos;
+  const start = { bird: { ...bird }, fly: { ...fly }, uv: objects.coins.batch.uv[0] };
+  let last = null;
+  for (let t = 20; t < 23; t += 1 / 60) {
+    objects.animate(t, 0.3, null); // the caller's alpha is ignored here
+    last = { ...bird };
+  }
+  assert.equal(player.coins, 0, 'no pickups behind the title');
+  assert.ok(Math.abs(objects.tick - 90) <= 1, `ambient ticks ${objects.tick}`);
+  assert.ok(Math.hypot(bird.x - start.bird.x, bird.z - start.bird.z) > 500, 'birds circle');
+  assert.ok(Math.hypot(fly.x - start.fly.x, fly.z - start.fly.z) > 10, 'butterflies wander');
+  assert.notEqual(objects.coins.batch.uv[0], start.uv, 'coins spin');
+  // The first game tick picks the coin up and the clock continues without a jump.
+  step();
+  assert.equal(player.coins, 1);
+  assert.ok(Math.hypot(bird.x - last.x, bird.y - last.y, bird.z - last.z) < 40, 'birds do not jump');
+});
+
 test('coin faces stay bright through the spin, symmetrically', () => {
   for (let k = 0; k < COIN_FRAMES; k++) {
     const phi = -Math.PI / 2 + ((k + 0.5) / COIN_FRAMES) * Math.PI;
@@ -262,6 +304,7 @@ test('the real layout places every coin above the canonical ground', () => {
   const collision = {
     findFloor: (x, y, z) => ({ y: realLayout.groundHeight(x, z), surface: { normal: { x: 0, y: 1, z: 0 } } }),
     findWalls: (x, y, z) => ({ x, z, walls: [] }),
+    findCeil: () => ({ y: CEIL_NONE, surface: null }),
     waterLevelAt: realLayout.waterLevelAt,
   };
   const objects = new ObjectManager({ scene: new THREE.Scene(), collision, events, layout: realLayout, player: fakePlayer() });

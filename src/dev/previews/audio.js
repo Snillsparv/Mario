@@ -4,6 +4,7 @@
 // at a few listener positions.
 // For automation (no speakers in CI): offline renders with analysis and pictures.
 //   __renderMusic(name, seconds = 20, fromBeat = 0)  -> analysis; draws waveform + spectrogram
+//   __renderCue(name, barsBefore = 3)               -> the in-game ending of a cue song
 //   __renderSfx(names?, opts?)                      -> { name: analysis } for one-shots
 //   __renderAmbience(spot, seconds = 30, music?)    -> analysis of the live ambience code
 //   __stress(names?)                                -> peak of many sfx at once over music
@@ -22,7 +23,7 @@ import { compileSong } from '../../audio/compile.js';
 import { createMixer } from '../../audio/mixer.js';
 import { Sequencer } from '../../audio/Sequencer.js';
 import { SFX } from '../../audio/sfx.js';
-import { WATERFALL, SPAWN, POND, LAWN_BASE } from '../../world/layout.js';
+import { WATERFALL, SPAWN, POND, LAWN_BASE, BRIDGE, ISLAND_TOP, EAST_HILL } from '../../world/layout.js';
 
 const SAMPLE_RATE = 44100;
 const INST_COLORS = {
@@ -59,13 +60,13 @@ async function renderOffline(seconds, schedule) {
 }
 
 // A song's sequencer on the music bus at its playback level, scheduled like the live
-// lookahead timer. Returns the per-step callback.
-function songPlayer(ctx, mix, t0, song, fromBeat = 0) {
+// lookahead timer (as a loop, or once up to endBeat). Returns the per-step callback.
+function songPlayer(ctx, mix, t0, song, fromBeat = 0, endBeat = null) {
   const level = ctx.createGain();
   level.gain.value = song.level;
   level.connect(mix.music);
   const seq = new Sequencer(ctx, song, level);
-  seq.start(t0, { fromBeat, realtime: false });
+  seq.start(t0, { fromBeat, realtime: false, endBeat });
   seq.scheduleUntil(STEP + 0.15);
   return (t) => seq.scheduleUntil(t + 0.15);
 }
@@ -95,7 +96,8 @@ function offlineEngine(ctx, mix) {
 const db = (x) => Math.round(20 * Math.log10(Math.max(x, 1e-9)) * 10) / 10;
 
 // Peak, RMS, clipping, largest sample-to-sample jump (clicks), RMS per window, and the
-// max / median / count above -60 dB of 50 ms short-term RMS.
+// max / median / count above -60 dB of 50 ms short-term RMS, plus the share of short-term
+// windows above -50 dB and the longest run below it (how continuous an ambience is).
 function analyze(buf, windowSec = 0.5, from = Math.floor(PRE_ROLL * buf.sampleRate), to = buf.length) {
   const L = buf.getChannelData(0);
   const R = buf.getChannelData(1);
@@ -138,8 +140,20 @@ function analyze(buf, windowSec = 0.5, from = Math.floor(PRE_ROLL * buf.sampleRa
     shortMaxDb: Math.max(...shortDb),
     shortMedianDb: [...shortDb].sort((a, b) => a - b)[Math.floor(shortDb.length / 2)],
     shortAbove60: shortDb.filter((v) => v > -60).length,
+    above50Pct: Math.round((100 * shortDb.filter((v) => v > -50).length) / shortDb.length),
+    longestGapSec: longestRun(shortDb, (v) => v <= -50) * 0.05,
     windowsDb,
   };
+}
+
+function longestRun(list, pred) {
+  let best = 0;
+  let run = 0;
+  for (const v of list) {
+    run = pred(v) ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------- drawing
@@ -288,10 +302,14 @@ function section(panel, title) {
   panel.appendChild(h);
 }
 
-// Camera positions for the ambience: behind the hero at the spawn point, at the pond, and
-// near the waterfall.
+// Camera positions for the ambience: across the lawn from the spawn point to the castle,
+// on the east hill, at the pond and near the waterfall.
 const SPOTS = {
   spawn: [{ x: SPAWN.x, y: LAWN_BASE + 400, z: SPAWN.z + 1100 }, Math.PI],
+  'mid lawn': [{ x: 0, y: LAWN_BASE + 400, z: 4000 }, Math.PI],
+  bridge: [{ x: BRIDGE.x, y: LAWN_BASE + 400, z: BRIDGE.southZ + 1200 }, Math.PI],
+  courtyard: [{ x: 0, y: ISLAND_TOP + 450, z: -500 }, Math.PI],
+  'east hill': [{ x: EAST_HILL.x, y: LAWN_BASE + EAST_HILL.height + 450, z: EAST_HILL.z + 1100 }, Math.PI],
   'pond edge': [{ x: POND.x + 2000, y: LAWN_BASE + 200, z: POND.z }, -Math.PI / 2],
   waterfall: [{ x: WATERFALL.x + 1500, y: 300, z: WATERFALL.z + 600 }, -Math.PI / 2],
 };
@@ -337,6 +355,22 @@ export async function setup({ scene, THREE, ui, params }) {
     const buf = await renderSong(name, seconds, fromBeat);
     drawRender(g, buf, `${name} from beat ${fromBeat}, ${seconds} s`);
     return publish({ status: 'done', renderMs: Math.round(performance.now() - t0), ...analyze(buf) });
+  };
+
+  // A cue song's in-game ending: the last bars before its finalBar, the ring and fade.
+  window.__renderCue = async (name = 'castle_grounds', barsBefore = 3) => {
+    publish({ status: 'running' });
+    const song = compileSong(SONGS[name]);
+    const spb = 60 / song.bpm;
+    const fromBeat = Math.max(0, Math.floor(song.endBeat) - barsBefore * song.beatsPerBar);
+    const endAt = (song.endBeat - fromBeat) * spb;
+    const buf = await renderOffline(endAt + 5, (ctx, mix, t0) => songPlayer(ctx, mix, t0, song, fromBeat, song.endBeat));
+    drawRender(g, buf, `${name}: cue ending (final downbeat at ${endAt.toFixed(2)} s)`);
+    const at = (s) => Math.floor((PRE_ROLL + s) * SAMPLE_RATE);
+    const { windowsDb, ...whole } = analyze(buf);
+    // Level of the half second right after the fade has finished (should be silence).
+    const after = analyze(buf, 0.5, at(endAt + 3.3), at(endAt + 3.8));
+    return publish({ status: 'done', endAt, ...whole, windowsDb, afterFadeDb: after.rmsDb });
   };
 
   window.__renderSfx = async (names = Object.keys(SFX), opts = {}) => {

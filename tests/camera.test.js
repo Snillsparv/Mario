@@ -408,6 +408,11 @@ function stepFall(hero, world, speed) {
   }
 }
 
+function headVisible(world, cam, hero) {
+  const d = { x: hero.pos.x - cam.pos.x, y: hero.pos.y + 120 - cam.pos.y, z: hero.pos.z - cam.pos.z };
+  return !world.raycast(cam.pos, d, Math.hypot(d.x, d.y, d.z));
+}
+
 function heroVisible(world, cam, hero) {
   const d = { x: hero.pos.x - cam.pos.x, y: hero.pos.y + 80 - cam.pos.y, z: hero.pos.z - cam.pos.z };
   return !world.raycast(cam.pos, d, Math.hypot(d.x, d.y, d.z));
@@ -513,4 +518,260 @@ test('diving under and surfacing ramps the camera through the water line', () =>
     prevY = cam.pos.y;
     prevStep = step;
   }
+});
+
+// ---------------------------------------------------------------- narrow / low blockers
+
+// Octagonal prism of outward-facing walls (a tree trunk or post collider).
+function prism(x, z, y0, y1, r) {
+  const out = [];
+  for (let i = 0; i < 8; i++) {
+    const a0 = (i / 8) * Math.PI * 2;
+    const a1 = ((i + 1) / 8) * Math.PI * 2;
+    const a = [x + Math.cos(a0) * r, z + Math.sin(a0) * r];
+    const b = [x + Math.cos(a1) * r, z + Math.sin(a1) * r];
+    out.push(...quad([b[0], y0, b[1]], [a[0], y0, a[1]], [a[0], y1, a[1]], [b[0], y1, b[1]]));
+  }
+  return out;
+}
+
+function flatWorld(...solids) {
+  const w = new CollisionWorld();
+  w.addTriangles(quad([-5000, 0, 5000], [5000, 0, 5000], [5000, 0, -5000], [-5000, 0, -5000]));
+  for (const s of solids) w.addTriangles(s);
+  w.finalize();
+  return w;
+}
+
+// Pitch of the view (camera looking down at its target), degrees.
+function viewPitch(cam) {
+  const d = cam.target.clone().sub(cam.pos);
+  return (Math.atan2(-d.y, Math.hypot(d.x, d.z)) * 180) / Math.PI;
+}
+
+// Tracks the worst ratio, per-tick step and view pitch over a run.
+function watch(cam) {
+  const w = { minRatio: 1, maxStep: 0, maxPitch: 0, prev: cam.pos.clone() };
+  w.sample = () => {
+    w.minRatio = Math.min(w.minRatio, cam.collider.ratio);
+    w.maxStep = Math.max(w.maxStep, cam.pos.distanceTo(w.prev));
+    w.maxPitch = Math.max(w.maxPitch, viewPitch(cam));
+    w.prev = cam.pos.clone();
+  };
+  return w;
+}
+
+test('a thin post passing between the hero and the camera does not pull the camera in', () => {
+  for (const gap of [100, 120]) {
+    const w = flatWorld(prism(0, gap, 0, 900, 45));
+    const { cam } = makeCam(w);
+    const hero = makeHero(-700, 0, 0, Math.PI); // faces -z: the camera trails at +z, beyond the post
+    cam.reset(hero);
+    const m = watch(cam);
+    for (let i = 0; i < 140; i++) {
+      hero.pos.x += 10;
+      hero.vel.x = 10;
+      hero.forwardVel = 10;
+      cam.update(ctrl(), hero);
+      m.sample();
+    }
+    assert.ok(m.minRatio >= 0.35, `gap ${gap}: ratio ${m.minRatio.toFixed(2)}`);
+    assert.ok(m.maxStep <= 130, `gap ${gap}: step ${m.maxStep.toFixed(0)}`);
+    assert.ok(m.maxPitch <= 45, `gap ${gap}: view pitch ${m.maxPitch.toFixed(0)}`);
+  }
+});
+
+test('grabbing a pole on the far side of its trunk: no collapse, the camera swings round', () => {
+  const w = flatWorld(prism(0, 0, 0, 900, 45));
+  const { cam } = makeCam(w);
+  // Hero on the north side of the trunk facing it (+z); the camera starts south, behind the trunk.
+  const hero = makeHero(0, 0, -75, Math.PI);
+  cam.reset(hero);
+  hero.faceYaw = 0;
+  hero.action = 'pole';
+  const m = watch(cam);
+  let seenAt = -1;
+  for (let i = 0; i < 90; i++) {
+    hero.pos.y = Math.min(400, i * 6); // climbing
+    hero.vel.y = 6;
+    hero.floor = { y: 0, surface: null };
+    cam.update(ctrl(), hero);
+    m.sample();
+    if (seenAt < 0 && heroVisible(w, cam, hero)) seenAt = i;
+  }
+  assert.ok(m.minRatio >= 0.35, `ratio ${m.minRatio.toFixed(2)}`);
+  assert.ok(m.maxStep <= 130, `step ${m.maxStep.toFixed(0)}`);
+  assert.ok(m.maxPitch <= 45, `view pitch ${m.maxPitch.toFixed(0)}`);
+  assert.ok(seenAt >= 0 && seenAt < 45, `hero came into view at tick ${seenAt}`);
+});
+
+test('a low wall between the hero and the camera tilts the view over it instead of dollying in', () => {
+  for (const [dist, height] of [[150, 200], [400, 300]]) {
+    // Long wall across the view (x -2000..2000) `dist` south of the hero, `height` tall.
+    const w = flatWorld(box(-2000, 2000, 0, height, dist, dist + 30));
+    const { cam } = makeCam(w);
+    const hero = makeHero(0, 0, 0, Math.PI / 2); // camera starts west, in the open
+    cam.reset(hero);
+    // Drag the orbit round to the south, behind the wall (over its top).
+    for (let i = 0; i < 30; i++) cam.update(ctrl({ mouseDX: -(Math.PI / 2) / 0.006 / 30 }), hero);
+    const m = watch(cam);
+    let visible = 0;
+    for (let i = 0; i < 60; i++) {
+      cam.update(ctrl(), hero);
+      m.sample();
+      if (i >= 30 && headVisible(w, cam, hero)) visible++;
+    }
+    assert.ok(Math.abs(angleDiff(cam.getYaw(), Math.PI)) < 5 * DEG, 'the camera is south of the hero');
+    assert.ok(m.minRatio >= 0.35, `wall ${height}@${dist}: ratio ${m.minRatio.toFixed(2)}`);
+    assert.ok(m.maxPitch <= 45, `wall ${height}@${dist}: view pitch ${m.maxPitch.toFixed(0)}`);
+    assert.ok(m.maxStep <= 130, `wall ${height}@${dist}: step ${m.maxStep.toFixed(0)}`);
+    assert.equal(visible, 30, `wall ${height}@${dist}: hero's head visible once settled`);
+    assert.ok(cam.collider.lift > 5 * DEG, `wall ${height}@${dist}: the view was tilted`);
+  }
+});
+
+test('reset turns to an open side when the spot behind the hero is walled in', () => {
+  const w = flatWorld(box(-2000, 2000, 0, 300, 150, 180));
+  const { cam } = makeCam(w);
+  const hero = makeHero(0, 0, 0, Math.PI); // "behind" is south, past the wall
+  cam.reset(hero);
+  assert.ok(headVisible(w, cam, hero), 'hero in view right away');
+  assert.ok(cam.collider.ratio > 0.9, `ratio ${cam.collider.ratio.toFixed(2)}`);
+});
+
+// ---------------------------------------------------------------- underwater cramped spots
+
+// Pool (floor -900, water -60) with a square pier x -5000..-4800, z -100..100.
+function pierWorld() {
+  const w = new CollisionWorld();
+  w.addTriangles(quad([-6000, -900, 4000], [-2000, -900, 4000], [-2000, -900, -4000], [-6000, -900, -4000]));
+  w.addTriangles(box(-5000, -4800, -900, 200, -100, 100));
+  w.setWaterLevelFn(() => -60);
+  w.finalize();
+  return w;
+}
+
+function insideBody(cam, hero) {
+  const h = Math.hypot(cam.pos.x - hero.pos.x, cam.pos.z - hero.pos.z);
+  const dy = cam.pos.y - hero.pos.y;
+  return h < 70 && dy > -20 && dy < 190;
+}
+
+test('a submerged hero backing onto a pier: camera stays out of its body and recovers once clear', () => {
+  const w = pierWorld();
+  const { cam } = makeCam(w);
+  // Hero faces east with the camera west of it, between the hero and the pier.
+  const hero = makeHero(-3000, -500, 0, Math.PI / 2);
+  hero.inWater = true;
+  cam.reset(hero);
+  let minRatio = 1;
+  for (let i = 0; i < 180; i++) {
+    // Drift backwards (west) until hugging the pier, then bob along its face.
+    hero.vel.x = hero.pos.x > -4740 ? -16 : 0;
+    hero.pos.x = Math.max(-4740, hero.pos.x - 16);
+    hero.vel.z = i > 110 ? 2 * Math.cos(i * 0.1) : 0;
+    hero.pos.z += hero.vel.z;
+    cam.update(ctrl(), hero);
+    minRatio = Math.min(minRatio, cam.collider.ratio);
+    assert.ok(!insideBody(cam, hero), `tick ${i}: camera inside the hero`);
+    assert.equal(cam.underwater, true, `tick ${i}: camera follows under water`);
+  }
+  assert.ok(minRatio < 0.75, `the pier pushed the camera in (${minRatio.toFixed(2)})`);
+  // Swim away from the pier: once the orbit ray is clear the distance comes back within ~1 s.
+  let clearAt = -1;
+  for (let i = 0; i < 120 && cam.collider.ratio < 0.9; i++) {
+    hero.pos.x += 16;
+    hero.vel.x = 16;
+    hero.vel.z = 0;
+    cam.update(ctrl(), hero);
+    assert.ok(!insideBody(cam, hero), `swim ${i}: camera inside the hero`);
+    if (clearAt < 0 && cam.collider.viewRatio === 1 && cam.collider.hardRatio === 1) clearAt = i;
+    if (clearAt >= 0) assert.ok(i - clearAt <= 35, `ratio ${cam.collider.ratio.toFixed(2)} ${i - clearAt} ticks after clearing`);
+  }
+  assert.ok(cam.collider.ratio >= 0.9, `recovered to ${cam.collider.ratio.toFixed(2)}`);
+});
+
+test('a hero bobbing at the submerge threshold does not pump the camera through the surface', () => {
+  const { cam } = makeCam();
+  const hero = makeHero(-4000, -130, 0, Math.PI); // pool: water -60
+  hero.inWater = true;
+  cam.reset(hero);
+  let lo = Infinity;
+  let hi = -Infinity;
+  let flips = 0;
+  let last = cam.underwater;
+  for (let i = 0; i < 200; i++) {
+    const y = -60 - 150 + 12 * Math.sin(i * 0.5);
+    hero.vel.y = y - hero.pos.y;
+    hero.pos.y = y;
+    cam.update(ctrl(), hero);
+    if (i >= 60) {
+      lo = Math.min(lo, cam.pos.y);
+      hi = Math.max(hi, cam.pos.y);
+      if (cam.underwater !== last) flips++;
+    }
+    last = cam.underwater;
+  }
+  assert.ok(hi - lo < 50, `camera height swings ${(hi - lo).toFixed(0)}`);
+  assert.equal(flips, 0, 'camera keeps to one side of the surface');
+});
+
+// ---------------------------------------------------------------- first person in the game loop
+
+test('first-person look holds the hero still in the game loop order (playerInput)', () => {
+  const { cam, world } = makeCam();
+  const hero = makeHero(-1000, 0, 0);
+  cam.reset(hero);
+  const withheld = [];
+  // main.js order: player.update (with cam.playerInput) then cam.update.
+  const tick = (c) => {
+    const pc = cam.playerInput(c);
+    withheld.push(pc.A.pressed || pc.stickX !== 0);
+    moveHero(hero, world, pc.stickX, pc.stickY, cam.getYaw());
+    cam.update(c, hero);
+  };
+  tick(ctrl({ CU: true }));
+  assert.equal(cam.firstPerson, true);
+  const p0 = { ...hero.pos };
+  const yaw0 = cam.getYaw();
+  for (let i = 0; i < 20; i++) {
+    tick(ctrl({ stickX: 1, stickY: 0.3 }));
+    assert.equal(cam.mode, 'first_person', `tick ${i}`);
+  }
+  assert.equal(Math.hypot(hero.pos.x - p0.x, hero.pos.z - p0.z), 0, 'the hero did not walk');
+  assert.ok(angleDiff(yaw0, cam.getYaw()) < -0.3, 'the stick turned the view');
+  tick(ctrl({ A: true }));
+  assert.equal(cam.firstPerson, false, 'A leaves first person');
+  assert.deepEqual(withheld, new Array(22).fill(false), 'the hero never saw the stick or A');
+  assert.strictEqual(cam.playerInput(ctrl({ A: true })).A.pressed, true, 'orbit modes pass input through');
+});
+
+test('entering and leaving first person never passes through the head', () => {
+  const { cam } = makeCam();
+  const hero = makeHero(-1000, 0, 0, 0.7);
+  cam.reset(hero);
+  const head = new THREE.Vector3(hero.pos.x, hero.pos.y + 120, hero.pos.z);
+  const check = (label) => {
+    const atEye = cam.firstPerson && !cam.blend;
+    assert.equal(cam.hideHero, atEye, `${label}: hideHero`);
+    if (atEye) return;
+    // Every rendered frame between the last two ticks stays clear of the head.
+    for (const a of [0, 0.25, 0.5, 0.75, 1]) {
+      cam.apply(a);
+      const d = cam.camera.position.distanceTo(head);
+      assert.ok(d > 110, `${label} alpha ${a}: ${d.toFixed(0)} from the head`);
+    }
+  };
+  cam.update(ctrl({ CU: true }), hero);
+  for (let i = 0; i < 20; i++) {
+    check(`enter ${i}`);
+    cam.update(ctrl({ stickX: i < 5 ? 0.5 : 0 }), hero);
+  }
+  assert.equal(cam.hideHero, true, 'model hidden at the eye');
+  cam.update(ctrl({ B: true }), hero);
+  for (let i = 0; i < 20; i++) {
+    check(`exit ${i}`);
+    cam.update(ctrl(), hero);
+  }
+  assert.equal(cam.firstPerson, false);
 });

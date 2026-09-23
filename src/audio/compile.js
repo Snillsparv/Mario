@@ -208,5 +208,18 @@ export function compileSong(song) {
     e.dur = end - e.beat;
   }
   events.sort((a, b) => a.beat - b.beat);
-  return { title: song.title, bpm: song.bpm, level: song.level ?? 1, beatsPerBar: bpb, loopBeats, events, timeline };
+  // A cue (finalBar) ends after the notes on its final bar's downbeat; offbeats, even
+  // swung ones, start later than this.
+  const endBeat = song.finalBar ? (song.finalBar - 1) * bpb + 0.25 : null;
+  return {
+    title: song.title,
+    bpm: song.bpm,
+    level: song.level ?? 1,
+    menu: !!song.menu,
+    beatsPerBar: bpb,
+    loopBeats,
+    endBeat,
+    events,
+    timeline,
+  };
 }

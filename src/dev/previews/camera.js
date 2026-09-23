@@ -1,10 +1,11 @@
 // Camera preview: a test room (flat ground, a tall wall, a back wall, a pillar, a thin plank,
-// a pool, a stand-in castle block, and a 25 deg ramp up to a plateau that ends in a sheer drop
-// into a water pit) plus a scripted fake hero that exercises the follow camera.
+// a thin post, a low wall, a pool with a pier, a stand-in castle block, and a 25 deg ramp up
+// to a plateau that ends in a sheer drop into a water pit) plus a scripted fake hero that
+// exercises the follow camera.
 //
 // URL params:
-//   s=<scenario>   circle | toward | jump | wall | pillar | swim | ledge | plank | buttons |
-//                  mouse | intro | title | play
+//   s=<scenario>   circle | toward | jump | wall | pillar | swim | ledge | plank | post |
+//                  lowwall | pier | fp | buttons | mouse | intro | title | play
 //   t=<seconds>    simulate up to that time and freeze
 //   strip=a,b,...  render the listed moments (seconds) as a grid plus a top-down trail map
 //   map=0          hide the live mini-map
@@ -24,6 +25,9 @@ const POOL = { x0: -4600, x1: -2400, z0: 1000, z1: 5000, floor: -900 };
 // East course: ramp (y 0 -> 700) from z1 to rampTop, plateau to z0, then a pit (water WATER_Y).
 const LEDGE = { x0: 4000, x1: 7000, z1: 7000, rampTop: 5500, z0: 3000, top: 700, pitZ: 500, pitFloor: -800 };
 const PLANK = { x0: 1800, x1: 1840, z0: 6700, z1: 7500, height: 1500 };
+const POST = { x: -6000, z: 3000, radius: 45, height: 900 }; // tree-trunk sized
+const LOW_WALL = { x0: -7400, x1: -5400, z0: 5200, z1: 5230, height: 200 }; // parapet
+const PIER = { x0: -4200, x1: -4000, z0: 4400, z1: 4600, top: 200 }; // in the pool
 const EXTENT = 8000;
 const MAP_LAYER = 1;
 
@@ -56,6 +60,20 @@ const SCENARIOS = {
   // The orbit sweeps back and forth across the yaw at which the view ray grazes the plank.
   plank: { start: [PLANK.x0 - 300, PLANK.z0 - 200, Math.PI + 0.21], segs: [{ ticks: 10 }, { ticks: 450, sweep: [-0.61, 150] }] },
   mouse: { start: [0, 3000, Math.PI], segs: [{ ticks: 10 }, { ticks: 40, mouse: [12, 0] }, { ticks: 20, mouse: [0, 10] }, { ticks: 20, mouse: [0, -14] }, { ticks: 30 }] },
+  // Walks past a trunk-sized post 120 in front of the camera: it passes in front, no pull-in.
+  post: { start: [POST.x - 700, POST.z - 120, Math.PI], segs: [{ ticks: 10 }, { ticks: 140, goto: [[POST.x + 700, POST.z - 120]] }] },
+  // Orbit dragged round behind a parapet right beside the hero: the view tilts over it.
+  lowwall: {
+    start: [-6400, LOW_WALL.z0 - 150, -Math.PI / 2],
+    segs: [{ ticks: 10 }, { ticks: 30, mouse: [(Math.PI / 2) / 0.006 / 30, 0] }, { ticks: 50 }, { ticks: 120, goto: [[-5700, LOW_WALL.z0 - 120]] }],
+  },
+  // Dives and swims a loop round the pier.
+  pier: {
+    start: [-3600, 3600, -Math.PI / 2],
+    segs: [{ ticks: 10 }, { ticks: 60, dive: 450, goto: [[-4100, 4250]] }, { ticks: 240, dive: 450, goto: [[-3850, 4500], [-4100, 4750], [-4350, 4500], [-4100, 4250], [-3850, 4500]] }],
+  },
+  // First-person look: the stick turns the view while the hero stands still, B leaves it.
+  fp: { start: [0, 3000, Math.PI], segs: [{ ticks: 10 }, { ticks: 30, press: { CU: true } }, { ticks: 40, stick: [0.7, 0.25] }, { ticks: 40, press: { B: true } }] },
   intro: { start: [layout.SPAWN.x, layout.SPAWN.z, layout.SPAWN.yaw], dropFrom: 1400, intro: true, segs: [{ ticks: 45, hold: true }, { ticks: 150 }] },
   title: { start: [layout.SPAWN.x, layout.SPAWN.z, layout.SPAWN.yaw], title: true, segs: [{ ticks: 3600 }] },
   play: { start: [0, 3000, Math.PI], segs: [] },
@@ -256,6 +274,8 @@ function buildRoom(THREE) {
     ...quad([P.x1, P.floor, P.z1], [P.x0, P.floor, P.z1], [P.x0, 0, P.z1], [P.x1, 0, P.z1]), // faces -z
   ];
   const walls = [
+    ...box(LOW_WALL.x0, LOW_WALL.x1, 0, LOW_WALL.height, LOW_WALL.z0, LOW_WALL.z1),
+    ...box(PIER.x0, PIER.x1, P.floor, PIER.top, PIER.z0, PIER.z1),
     ...box(2600, 2800, 0, 1400, 0, 6000), // tall side wall
     ...box(-1200, 1200, 0, 1400, 7400, 7600), // back wall
     ...box(C.x - C.halfWidth, C.x + C.halfWidth, 0, C.baseY + C.mainHeight, C.backZ, C.frontZ), // castle block
@@ -271,7 +291,9 @@ function buildRoom(THREE) {
 
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(160, 160, 1600, 8), stone);
   pillar.position.set(-600, 800, 2000);
-  parts.push(pillar);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(POST.radius, POST.radius, POST.height, 8), new THREE.MeshLambertMaterial({ color: 0x7a5a3a }));
+  post.position.set(POST.x, POST.height / 2, POST.z);
+  parts.push(pillar, post);
   const roof = new THREE.Mesh(new THREE.ConeGeometry(900, 1400, 8), new THREE.MeshLambertMaterial({ color: 0xb03a2e }));
   roof.position.set(C.x, C.baseY + 3600 + 700, C.backZ + 1500);
   parts.push(roof);
@@ -359,8 +381,10 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     } else {
       const s = input ? { c: input.poll(), jump: 0 } : scriptAt(scn, tick);
       if (input && s.c.A.pressed) s.jump = 52;
-      // The game is expected to hold the hero still while the camera is in first-person look.
-      hero.step(cam.firstPerson ? { ...s, c: neutralController(), jump: 0 } : s, cam.getYaw());
+      // Like main.js: the hero gets the controller the camera leaves it (first-person look
+      // keeps the stick and buttons), and a scripted route pauses meanwhile.
+      const c = cam.playerInput(s.c);
+      hero.step(cam.firstPerson ? { c } : { ...s, c }, cam.getYaw());
       cam.update(s.c, hero);
     }
     tick++;
@@ -373,7 +397,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     const c = hero.pos;
     heroMesh.group.position.set(p.x + (c.x - p.x) * alpha, p.y + (c.y - p.y) * alpha, p.z + (c.z - p.z) * alpha);
     heroMesh.group.rotation.y = hero.faceYaw;
-    heroMesh.group.visible = !cam.firstPerson;
+    heroMesh.group.visible = !cam.hideHero;
     heroMesh.shadow.position.set(heroMesh.group.position.x, hero.floor.y + 2, heroMesh.group.position.z);
   }
 
@@ -417,6 +441,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     `dist=${cam.pos.distanceTo(cam.target).toFixed(0)} yaw=${((cam.getYaw() * 180) / Math.PI).toFixed(1)} ` +
     `camY=${cam.pos.y.toFixed(0)} underwater=${cam.underwater} hero=${hero.action}\n` +
     `ratio=${(cam.collider.ratio ?? 1).toFixed(2)} view=${cam.collider.viewRatio.toFixed(2)} ` +
+    `lift=${((cam.collider.lift * 180) / Math.PI).toFixed(0)}${cam.collider.occluded ? ' occluded' : ''} ` +
     `sfx: ${sfxLog.slice(-4).join(' ')}`;
 
   const W = renderer.domElement.width;
@@ -441,7 +466,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
         yaw: hero.faceYaw,
         shadowY: heroMesh.shadow.position.y,
         underwater: cam.underwater,
-        fp: cam.firstPerson,
+        hidden: cam.hideHero,
         text: describe(),
       });
     }
@@ -472,7 +497,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
           camera.quaternion.copy(s.quat);
           heroMesh.group.position.copy(s.hero);
           heroMesh.group.rotation.y = s.yaw;
-          heroMesh.group.visible = !s.fp;
+          heroMesh.group.visible = !s.hidden;
           heroMesh.shadow.position.set(s.hero.x, s.shadowY, s.hero.z);
           cam.underwater = s.underwater;
           renderView((i % cols) * cw, H - (Math.floor(i / cols) + 1) * ch, cw - 2, ch - 2);

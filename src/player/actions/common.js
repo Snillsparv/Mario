@@ -4,6 +4,7 @@
 import { PLAYER_HEIGHT } from '../../core/constants.js';
 import * as T from '../physics/tuning.js';
 import { isSlippery, isSteep } from '../physics/slopes.js';
+import { gaitStride } from '../model/strides.js';
 
 // Single, double or triple jump depending on what was just landed from. A double jump
 // needs no speed (hopping in place works); the triple needs a running start.
@@ -126,7 +127,8 @@ export function walkAnim(p) {
   return v < T.TIPTOE_SPEED ? 'tiptoe' : v < T.RUN_SPEED ? 'walk' : 'run';
 }
 
-// Advances the locomotion cycle proportionally to distance travelled.
+// Advances the locomotion cycle proportionally to distance travelled. Uses the model's gait
+// stride so footstep events land on the rendered heel strikes.
 export function advanceCycle(p, anim, speed = Math.abs(p.forwardVel)) {
-  p.cyclePhase += speed / T.STRIDE[anim];
+  p.cyclePhase += speed / (gaitStride(anim, speed) || T.STRIDE[anim]);
 }
