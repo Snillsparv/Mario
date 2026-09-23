@@ -1,0 +1,312 @@
+// Airborne actions: the jump family, falls, dives and kicks, ground pound, wall kicks and
+// bonks, knockback and the intro drop. Most share airTick() configured per action.
+
+import { clamp, wrapAngle } from '../../core/math.js';
+import * as T from '../physics/tuning.js';
+import { airStep, STEP_LANDED } from '../physics/step.js';
+import { applyGravity, setForwardVel, updateAirControl } from '../physics/movement.js';
+import { facingWall, landFromAir, poleInReach, tryLedgeGrab, tryPoleGrab } from './common.js';
+
+// Leaves the ground with the given vertical and forward speed.
+function takeOff(p, vy, fv) {
+  p.vel.y = vy;
+  p.grounded = false;
+  setForwardVel(p, fv);
+}
+
+// Knockback-style motion: velocity follows forward speed only, no stick influence.
+function keepMomentum(p) {
+  p.vel.x = p.forwardVel * Math.sin(p.faceYaw);
+  p.vel.z = p.forwardVel * Math.cos(p.faceYaw);
+}
+
+function canWallKick(p) {
+  return p.wall && p.tick - p.wallTouchTick <= T.WALL_KICK_WINDOW;
+}
+
+// A head-on wall contact too slow to bonk: the forward speed is spent against the wall (so
+// steering can't build it up while pressed there) and the hero slides down it.
+function stopAgainstWall(p, wall) {
+  p.forwardVel = 0;
+  const into = -(p.vel.x * wall.hn.x + p.vel.z * wall.hn.z);
+  if (into > 0) {
+    p.vel.x += wall.hn.x * into;
+    p.vel.z += wall.hn.z * into;
+  }
+}
+
+/*
+ * One air tick. Options:
+ *   anim (static), land (landFromAir opts), maxSpeed, gravity, terminal (fall speed limit),
+ *   controlHeight (A release cuts rise), control (stick steering, default true),
+ *   kick (B = dive / jump kick), pound (Z), ledge / pole (grabs), wallHit (action entered on
+ *   a head-on wall hit at speed), wallKick (A may still wall kick shortly after touching a
+ *   wall), pitch(p) (body pitch).
+ */
+function airTick(p, c, o) {
+  if (o.pound && c.Z.pressed) return p.setAction('ground_pound');
+  if (o.kick && c.B.pressed) return p.setAction(p.forwardVel >= T.AIR_DIVE_MIN_SPEED ? 'dive' : 'jump_kick');
+  if (o.wallKick && c.A.pressed && canWallKick(p)) return p.setAction('wallkick');
+  if (o.control === false) keepMomentum(p);
+  else updateAirControl(p, o.maxSpeed);
+
+  const r = airStep(p);
+  if (r.result === STEP_LANDED) return landFromAir(p, o.land);
+  if (o.ledge && r.wall && tryLedgeGrab(p, r.wall)) return false;
+  // A trunk in reach is grabbed; its collider walls never bonk (they are slid around).
+  const trunk = poleInReach(p);
+  if (o.pole && trunk && tryPoleGrab(p, trunk)) return false;
+  const w = r.wall;
+  if (w && !w.pole && facingWall(p, w, T.WALL_HEAD_ON_COS)) {
+    if (o.wallHit && !trunk && p.forwardVel >= T.WALL_KICK_MIN_SPEED) {
+      p.wall = w;
+      p.setAction(o.wallHit);
+      return false;
+    }
+    stopAgainstWall(p, w);
+  }
+  applyGravity(p, o.controlHeight, o.gravity, o.terminal);
+  o.pitch?.(p);
+  return false;
+}
+
+// Builds an airborne action from an enter() and airTick options.
+function airAction(enter, opts) {
+  return {
+    group: 'airborne',
+    anim: opts.anim,
+    enter,
+    update: (p, c) => airTick(p, c, opts),
+  };
+}
+
+// The options most jumps share.
+const JUMPY = { kick: true, pound: true, ledge: true, pole: true, wallHit: 'air_hit_wall' };
+
+const jump = airAction(
+  (p) => {
+    takeOff(p, T.JUMP_VY + p.forwardVel * T.JUMP_FV_SCALE, p.forwardVel * T.JUMP_KEEP_FV);
+    p.sfx('jump');
+  },
+  { ...JUMPY, anim: 'jump', controlHeight: true, land: { chain: 'single' } },
+);
+
+const doubleJump = airAction(
+  (p) => {
+    takeOff(p, T.DOUBLE_JUMP_VY + p.forwardVel * T.JUMP_FV_SCALE, p.forwardVel * T.JUMP_KEEP_FV);
+    p.sfx('double_jump');
+  },
+  { ...JUMPY, anim: 'double_jump', controlHeight: true, land: { chain: 'double' } },
+);
+
+const tripleJump = airAction(
+  (p) => {
+    takeOff(p, T.TRIPLE_JUMP_VY, p.forwardVel * T.JUMP_KEEP_FV);
+    p.sfx('triple_jump');
+  },
+  { ...JUMPY, anim: 'triple_jump', land: { ticks: T.FLIP_LAND_TICKS } },
+);
+
+const backflip = airAction(
+  (p) => {
+    takeOff(p, T.FLIP_VY, T.BACKFLIP_FV);
+    p.sfx('backflip');
+  },
+  { ...JUMPY, kick: false, anim: 'backflip', land: { ticks: T.FLIP_LAND_TICKS } },
+);
+
+// arg.yaw: the facing to leave with (default: the reverse of the current facing).
+const sideflip = airAction(
+  (p, arg) => {
+    p.faceYaw = arg?.yaw ?? wrapAngle(p.faceYaw + Math.PI);
+    takeOff(p, T.FLIP_VY, T.SIDEFLIP_FV);
+    p.sfx('sideflip');
+  },
+  { ...JUMPY, anim: 'sideflip', land: { chain: 'single', ticks: T.FLIP_LAND_TICKS } },
+);
+
+const longJump = airAction(
+  (p) => {
+    takeOff(p, T.LONG_JUMP_VY, Math.min(p.forwardVel * T.LONG_JUMP_SCALE, T.MAX_FORWARD_VEL));
+    p.sfx('long_jump');
+  },
+  {
+    anim: 'long_jump',
+    maxSpeed: T.MAX_FORWARD_VEL,
+    gravity: T.LONG_JUMP_GRAVITY,
+    terminal: T.LONG_JUMP_TERMINAL_VY,
+    ledge: true,
+    pole: true,
+    wallHit: 'air_hit_wall',
+    land: {},
+  },
+);
+
+const freefall = airAction(null, { ...JUMPY, anim: 'fall', land: { chain: 'single' } });
+
+const dive = airAction(
+  (p, arg) => {
+    if (arg?.fromGround) takeOff(p, T.GROUND_DIVE_VY, p.forwardVel);
+    setForwardVel(p, Math.min(p.forwardVel + T.DIVE_BOOST, T.MAX_FORWARD_VEL));
+    p.sfx('dive');
+  },
+  {
+    anim: 'dive',
+    maxSpeed: T.MAX_FORWARD_VEL,
+    wallHit: 'bonk',
+    land: { next: 'belly_slide' },
+    pitch: (p) => {
+      p.pitch = clamp(Math.atan2(-p.vel.y, Math.max(p.forwardVel, 10)), -0.5, 1.2);
+    },
+  },
+);
+
+const jumpKick = airAction(
+  (p) => {
+    p.sfx('kick');
+  },
+  { anim: 'jump_kick', ledge: true, wallHit: 'air_hit_wall', land: {} },
+);
+
+// A somersault back onto the feet out of a belly slide (shown with the front-flip anim).
+const forwardRollout = airAction(
+  (p) => {
+    takeOff(p, T.ROLLOUT_VY, p.forwardVel);
+    p.sfx('jump');
+  },
+  { anim: 'triple_jump', pound: true, ledge: true, land: {} },
+);
+
+const waterJump = airAction(
+  (p) => {
+    takeOff(p, T.WATER_JUMP_VY, Math.max(p.forwardVel, 8));
+    p.sfx('water_exit');
+    p.emit('splash', { pos: { ...p.pos }, big: false });
+  },
+  { ...JUMPY, anim: 'water_jump', land: { chain: 'single' } },
+);
+
+// Kicking off a trunk: the same leap as a wall kick, facing away from the trunk.
+const poleJump = airAction(
+  (p) => {
+    p.faceYaw = wrapAngle(p.faceYaw + Math.PI);
+    p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
+    takeOff(p, T.FLIP_VY, Math.max(p.forwardVel, T.WALL_KICK_FV));
+    p.sfx('jump');
+  },
+  { ...JUMPY, pole: false, anim: 'pole_jump', controlHeight: true, land: { chain: 'single' } },
+);
+
+// Mirrors the facing off the wall and leaps; a faster incoming speed is kept.
+const wallkick = airAction(
+  (p) => {
+    const wallYaw = Math.atan2(p.wall.hn.x, p.wall.hn.z);
+    p.faceYaw = wrapAngle(2 * wallYaw - p.faceYaw + Math.PI);
+    takeOff(p, T.FLIP_VY, Math.max(p.forwardVel, T.WALL_KICK_FV));
+    p.wallTouchTick = -Infinity;
+    p.setAnim('wallkick', true);
+    p.sfx('wallkick');
+  },
+  { ...JUMPY, anim: 'wallkick', controlHeight: true, land: { chain: 'single' } },
+);
+
+// Touching a wall head-on at speed: braced against it (the wall kick's first pose) for a
+// moment; A = wall kick, otherwise a bonk (a hard one at high speed).
+const airHitWall = {
+  group: 'airborne',
+  anim: 'wallkick',
+  enter(p) {
+    p.wallTouchTick = p.tick;
+    p.vel.x = 0;
+    p.vel.z = 0;
+  },
+  update(p, c) {
+    if (c.A.pressed) return p.setAction('wallkick');
+    if (p.actionTimer >= 2) return p.setAction(p.forwardVel >= T.HARD_BONK_SPEED ? 'bonk' : 'soft_bonk');
+    p.holdAnimStart();
+    return false;
+  },
+};
+
+// Knocked slightly off the wall; falls without control (a late A still wall kicks).
+const softBonk = airAction(
+  (p) => {
+    p.forwardVel = -8;
+    p.vel.y = Math.min(p.vel.y, 0);
+    p.sfx('bonk');
+  },
+  { anim: 'bonk', control: false, wallKick: true, land: { ticks: T.FLIP_LAND_TICKS } },
+);
+
+// Diving (or crashing fast) into a wall: bounce back hard.
+const bonk = airAction(
+  (p) => {
+    p.forwardVel = -12;
+    p.vel.y = Math.min(p.vel.y, 0);
+    p.sfx('bonk');
+  },
+  { anim: 'bonk', control: false, land: { ticks: T.HARD_LAND_TICKS } },
+);
+
+// Damage knockback (arg.yaw faces the damage source, the hero flies backward).
+const hurt = airAction(
+  (p, arg) => {
+    if (arg && arg.yaw !== undefined) p.faceYaw = arg.yaw;
+    takeOff(p, T.KNOCKBACK_VY, T.KNOCKBACK_FV);
+  },
+  { anim: 'hurt', control: false, land: { next: 'hurt_ground' } },
+);
+
+// Intro drop from the sky; input is ignored until landed.
+const spawn = airAction(
+  (p) => {
+    takeOff(p, 0, 0);
+  },
+  { anim: 'spawn', control: false, land: { next: 'spawn_land', safe: true } },
+);
+
+// Z in the air: spin in place, then plummet. Never takes fall damage.
+const groundPound = {
+  group: 'airborne',
+  anim: 'ground_pound_spin',
+  enter(p) {
+    setForwardVel(p, 0);
+    p.vel.y = 0;
+    p.sfx('ground_pound');
+  },
+  update(p) {
+    const spinning = p.actionTimer < T.POUND_SPIN_TICKS;
+    p.setAnim(spinning ? 'ground_pound_spin' : 'ground_pound_fall');
+    if (spinning) p.vel.y = Math.max(0, T.POUND_HOP_VY - T.POUND_HOP_DECAY * p.actionTimer); // wind-up hop
+    const r = airStep(p);
+    if (r.result === STEP_LANDED) {
+      p.sfx('ground_pound_land');
+      return landFromAir(p, { pound: true, next: 'ground_pound_land' });
+    }
+    if (spinning) p.vel.y = p.actionTimer === T.POUND_SPIN_TICKS - 1 ? T.POUND_START_VY : 0;
+    else p.vel.y = Math.max(p.vel.y - T.GRAVITY, T.TERMINAL_VY);
+    return false;
+  },
+};
+
+export const AIRBORNE_ACTIONS = {
+  jump,
+  double_jump: doubleJump,
+  triple_jump: tripleJump,
+  backflip,
+  sideflip,
+  long_jump: longJump,
+  freefall,
+  dive,
+  jump_kick: jumpKick,
+  forward_rollout: forwardRollout,
+  water_jump: waterJump,
+  pole_jump: poleJump,
+  wallkick,
+  air_hit_wall: airHitWall,
+  soft_bonk: softBonk,
+  bonk,
+  hurt,
+  spawn,
+  ground_pound: groundPound,
+};
