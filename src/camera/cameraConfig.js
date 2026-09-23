@@ -4,21 +4,21 @@
 const DEG = Math.PI / 180;
 
 export const FOV = 45;
-export const LOOK_HEIGHT = 120; // the camera looks at this point above the hero's feet
+export const LOOK_HEIGHT = 150; // the camera looks at this point above the hero's feet
 
 // Orbit modes. 'lakitu' is the default trailing camera, 'hero' the tighter R-button camera.
 // dist/pitch are per zoom step (index 0 = close, 1 = far).
 export const ORBIT_MODES = {
   lakitu: {
     dist: [1250, 1800],
-    pitch: [17 * DEG, 21 * DEG],
+    pitch: [8 * DEG, 12 * DEG],
     swingGain: 0.02, // fraction of the angle to "behind the hero" closed per tick at full run
     swingMax: 0.8 * DEG, // cap on that swing per tick
     faceCamera: [100 * DEG, 155 * DEG], // swing fades out as the hero turns to face the camera
   },
   hero: {
     dist: [800, 1250],
-    pitch: [13 * DEG, 18 * DEG],
+    pitch: [7 * DEG, 11 * DEG],
     swingGain: 0.08,
     swingMax: 3 * DEG,
     faceCamera: [150 * DEG, 175 * DEG],
