@@ -1,0 +1,21 @@
+{
+  "name": "castle-grounds",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An N64-style 3D platformer castle-grounds level, built from scratch with three.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "shot": "node tools/shot.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1",
+    "vite": "^8.3.0"
+  }
+}
