@@ -1,14 +1,57 @@
-// PLACEHOLDER — replaced by the castle implementation.
+// Castle + drawbridge world part (see docs/ARCHITECTURE.md, "World parts").
+//
+// An original fairy-tale castle on the moated island: cream ashlar walls, grey stone trims,
+// deep red conical roofs, a tall central keep with a waving banner, and a wooden drawbridge.
+// Geometry is generated per material into a handful of merged meshes (unlit worldMaterial,
+// lighting baked into vertex colours), plus one animated flag mesh. Colliders are simplified
+// convex solids tagged 'stone' (castle, abutments) and 'wood' (bridge deck, rails, trestles).
+
 import * as THREE from 'three';
+import { worldMaterial, bakeLighting } from '../render/materials.js';
+import { GeoBuilder, SolidBuilder } from './castle/geom.js';
+import { buildCastleBody } from './castle/building.js';
+import { buildBridge } from './castle/bridge.js';
+import { buildFlags } from './castle/flags.js';
+import { flagTexture, roofTexture, roseTexture, stoneTexture, wallTexture, woodTexture } from './castle/textures.js';
+
+// World units per texture repeat (32 px tiles -> ~9-12 units per texel, as on the N64).
+const REPEAT = { wall: 384, trim: 320, roof: 320, wood: 288, glass: 1 };
+
+// Baked lighting per material; the stained glass glows at full brightness.
+const LIGHT = {
+  wall: { ambient: 0.62, diffuse: 0.5, maxBright: 1.08 },
+  trim: { ambient: 0.6, diffuse: 0.5, maxBright: 1.05 },
+  roof: { ambient: 0.58, diffuse: 0.58, maxBright: 1.1 },
+  wood: { ambient: 0.6, diffuse: 0.5, maxBright: 1.05 },
+  glass: { ambient: 1, diffuse: 0 },
+};
+
+const TEXTURES = { wall: wallTexture, trim: stoneTexture, roof: roofTexture, wood: woodTexture, glass: roseTexture };
 
 export function buildCastle(layout) {
-  const C = layout.CASTLE;
-  const w = C.halfWidth * 2;
-  const d = C.frontZ - C.backZ;
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, C.mainHeight, d), new THREE.MeshLambertMaterial({ color: 0xe8dcb0 }));
-  mesh.position.set(C.x, C.baseY + C.mainHeight / 2, (C.frontZ + C.backZ) / 2);
+  const kit = { solids: new SolidBuilder(), flags: [] };
+  for (const name of Object.keys(REPEAT)) kit[name] = new GeoBuilder(REPEAT[name]);
+
+  buildCastleBody(kit, layout.CASTLE);
+  buildBridge(kit, layout);
+
   const group = new THREE.Group();
-  group.add(mesh);
-  group.add(new THREE.HemisphereLight(0xffffff, 0x445522, 1.5));
-  return { object3D: group, colliders: [{ object3D: mesh, terrain: 'stone' }] };
+  group.name = 'castle';
+  for (const name of Object.keys(REPEAT)) {
+    const geo = kit[name].toGeometry();
+    bakeLighting(geo, LIGHT[name]);
+    const mesh = new THREE.Mesh(geo, worldMaterial({ map: TEXTURES[name]() }));
+    mesh.name = `castle-${name}`;
+    group.add(mesh);
+  }
+  const flags = buildFlags(kit.flags, worldMaterial({ map: flagTexture(), side: THREE.DoubleSide }));
+  group.add(flags.mesh);
+
+  return {
+    object3D: group,
+    colliders: kit.solids.colliders(),
+    update(time) {
+      flags.update(time);
+    },
+  };
 }

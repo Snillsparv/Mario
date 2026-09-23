@@ -1,0 +1,129 @@
+// Small WebAudio building blocks shared by the instruments and sound effects. Every helper
+// takes the context, a destination node and a start time, schedules everything up front
+// and lets the nodes stop themselves, so the same code runs live and in an
+// OfflineAudioContext.
+
+const noiseCache = new WeakMap();
+
+// 2 s of white noise, cached per context.
+function noiseBuffer(ctx) {
+  let buf = noiseCache.get(ctx);
+  if (!buf) {
+    buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noiseCache.set(ctx, buf);
+  }
+  return buf;
+}
+
+// Looping noise source starting at a random offset (so repeats never sound identical).
+export function noiseSource(ctx, t, dur) {
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(ctx);
+  src.loop = true;
+  src.start(t, Math.random() * 1.9);
+  src.stop(t + dur);
+  return src;
+}
+
+// Gain node that is silent until automated. (A fresh GainNode is 1 until its first
+// automation event, which can leak a full-level sample when a source starts mid-sample.)
+export function silentGain(ctx) {
+  const g = ctx.createGain();
+  g.gain.value = 0;
+  return g;
+}
+
+// Gain node shaped as attack -> optional hold -> exponential decay to silence at t + dur.
+export function envelope(ctx, out, t, { peak, dur, attack = 0.004, hold = 0 }) {
+  const g = silentGain(ctx);
+  const top = Math.max(peak, 1e-4);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(top, t + attack);
+  if (hold > 0) g.gain.setValueAtTime(top, t + attack + hold);
+  g.gain.exponentialRampToValueAtTime(1e-4, t + Math.max(dur, attack + hold + 0.005));
+  g.connect(out);
+  return g;
+}
+
+// Automate a frequency param: a constant, a start/end sweep over `glide` seconds, or a
+// list of [secondsFromStart, hz] points joined by exponential ramps.
+function sweep(param, t, freq, to, glide) {
+  if (Array.isArray(freq)) {
+    param.setValueAtTime(freq[0][1], t + freq[0][0]);
+    for (const [dt, hz] of freq.slice(1)) param.exponentialRampToValueAtTime(hz, t + dt);
+  } else {
+    param.setValueAtTime(freq, t);
+    if (to) param.exponentialRampToValueAtTime(to, t + glide);
+  }
+}
+
+// Oscillator with a pitch sweep and a percussive envelope. `wave` is an OscillatorType or a
+// PeriodicWave. Returns the oscillator so callers can modulate it further.
+export function tone(ctx, out, t, o) {
+  const { wave = 'sine', freq, to, dur, gain, attack, hold, glide = dur, detune = 0 } = o;
+  const osc = ctx.createOscillator();
+  if (typeof wave === 'string') osc.type = wave;
+  else osc.setPeriodicWave(wave);
+  osc.detune.value = detune;
+  sweep(osc.frequency, t, freq, to, glide);
+  osc.connect(envelope(ctx, out, t, { peak: gain, dur, attack, hold }));
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+  return osc;
+}
+
+// Filtered noise burst with an optional filter sweep.
+export function noise(ctx, out, t, o) {
+  const { filter = 'bandpass', freq, to, q = 1, dur, gain, attack, hold, glide = dur } = o;
+  const f = ctx.createBiquadFilter();
+  f.type = filter;
+  f.Q.value = q;
+  sweep(f.frequency, t, freq, to, glide);
+  noiseSource(ctx, t, dur + 0.02).connect(f);
+  f.connect(envelope(ctx, out, t, { peak: gain, dur, attack, hold }));
+  return f;
+}
+
+// Periodic modulation of an AudioParam (vibrato, tremolo, wobble). depth is in the
+// param's units; `fadeIn` delays the modulation onset like a player's natural vibrato.
+export function lfo(ctx, param, t, dur, { rate, depth, fadeIn = 0, wave = 'sine' }) {
+  const osc = ctx.createOscillator();
+  osc.type = wave;
+  osc.frequency.value = rate;
+  const g = silentGain(ctx);
+  g.gain.setValueAtTime(fadeIn ? 0 : depth, t);
+  if (fadeIn) g.gain.linearRampToValueAtTime(depth, t + fadeIn);
+  osc.connect(g).connect(param);
+  osc.start(t);
+  osc.stop(t + dur);
+}
+
+// Struck-metal bell/chime: inharmonic partials [ratio, relative gain, relative decay].
+const BELL_PARTIALS = [
+  [1, 1, 1],
+  [2.76, 0.32, 0.4],
+  [5.4, 0.1, 0.18],
+];
+export function bell(ctx, out, t, { freq, dur, gain, partials = BELL_PARTIALS }) {
+  for (const [ratio, g, d] of partials) {
+    // Partials near Nyquist would alias (and are inaudible anyway).
+    if (freq * ratio > ctx.sampleRate * 0.4) continue;
+    tone(ctx, out, t, { freq: freq * ratio, dur: dur * d, gain: gain * g, attack: 0.002 });
+  }
+}
+
+const waveCache = new WeakMap();
+
+// PeriodicWave from harmonic amplitudes [h1, h2, ...], cached per context and key.
+export function harmonicWave(ctx, key, amps) {
+  let map = waveCache.get(ctx);
+  if (!map) waveCache.set(ctx, (map = new Map()));
+  if (!map.has(key)) {
+    const real = new Float32Array(amps.length + 1);
+    const imag = new Float32Array([0, ...amps]);
+    map.set(key, ctx.createPeriodicWave(real, imag));
+  }
+  return map.get(key);
+}

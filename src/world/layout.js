@@ -25,10 +25,10 @@ import { clamp, smoothstep } from '../core/math.js';
 
 // ---------------------------------------------------------------- heights
 
-export const WATER_LEVEL = -420; // moat + pond surface
+export const WATER_LEVEL = -100; // moat + pond surface (200 below the lawn rim, so it shows)
 export const MOAT_FLOOR = -1100; // moat/pond bottom (deep enough to swim)
 export const LAWN_BASE = 100; // lawn height at the moat edge / bridge
-export const ISLAND_TOP = 160; // castle island plateau (flat)
+export const ISLAND_TOP = 160; // castle island plateau (castle base, courtyard, rim)
 export const CLIFF_TOP = 2600; // top of the perimeter cliffs (not reachable)
 
 // ---------------------------------------------------------------- regions
@@ -44,6 +44,7 @@ export const MOAT = { minX: -4300, maxX: 4300, minZ: -9000, maxZ: 1150, radius: 
 
 // Pond on the west side, fed by the waterfall, connected to the west arm of the moat.
 export const POND = { x: -5900, z: -1900, radius: 1800 };
+const POND_DIP = 150; // how far the lawn sinks toward the pond edge (lawnHeight)
 
 // Waterfall pours from the west perimeter cliff top into the pond.
 export const WATERFALL = { x: -7600, z: -1900, width: 900, topY: CLIFF_TOP - 300, faceNormalX: 1 };
@@ -75,6 +76,10 @@ export const CASTLE = {
   mainHeight: 1900, // height of the main body walls above baseY
   keepTopY: ISLAND_TOP + 5200, // tip of the central tower roof / flag
 };
+
+// Paved flagstone courtyard on the island between the bridge landing and the castle door
+// (terrain paints it; it tucks slightly under the facade so no grass shows at the wall base).
+export const COURTYARD = { minX: -900, maxX: 900, minZ: CASTLE.frontZ - 80, maxZ: ISLAND.maxZ + 200, radius: 160 };
 
 // Dirt/stone walking path from spawn to the bridge, and a loop around the front lawn.
 export const PATHS = [
@@ -230,15 +235,27 @@ export function pathMask(x, z) {
 }
 
 // Which region a point belongs to:
-//   'cliff'  outside the perimeter (the cliff-top plateau)
-//   'water'  moat or pond (height = MOAT_FLOOR, water surface WATER_LEVEL)
-//   'island' castle island plateau (height = ISLAND_TOP)
+//   'cliff'  outside the perimeter (the cliff-top plateau, height = cliffHeight)
+//   'water'  moat or pond, inside sdWater (floor = waterFloorHeight: MOAT_FLOOR, rising along
+//            the pond's banks; water surface WATER_LEVEL)
+//   'island' castle island plateau (height = islandHeight: ISLAND_TOP at its edges)
 //   'lawn'   everything else (height = lawnHeight)
 export function regionAt(x, z) {
   if (sdRoundRect(x, z, PERIMETER) > 0) return 'cliff';
   if (sdRoundRect(x, z, ISLAND) <= 0) return 'island';
-  if (sdRoundRect(x, z, MOAT) <= 0 || sdCircle(x, z, POND) <= 0) return 'water';
+  if (sdWater(x, z) <= 0) return 'water';
   return 'lawn';
+}
+
+// Outline of the water (moat + pond, negative inside). The two shapes are blended with a
+// small fillet where the pond crosses the moat's west wall, so the lawn between them never
+// narrows to a knife-edge tip that a grid-based mesh could not follow.
+const WATER_FILLET = 300;
+export function sdWater(x, z) {
+  const a = sdRoundRect(x, z, MOAT);
+  const b = sdCircle(x, z, POND);
+  const h = clamp(0.5 + (0.5 * (b - a)) / WATER_FILLET, 0, 1);
+  return b + (a - b) * h - WATER_FILLET * h * (1 - h);
 }
 
 // Smooth lawn surface height (ignores region; valid anywhere).
@@ -251,13 +268,95 @@ export function lawnHeight(x, z) {
   h += 28 * Math.sin(x * 0.0011 + 0.7) * Math.cos(z * 0.0009 - 0.4);
   h += 16 * Math.sin(x * 0.0023 - z * 0.0017 + 1.3);
   // Keep the moat edge and bridge approach level.
-  const nearMoat = Math.min(sdRoundRect(x, z, MOAT), sdCircle(x, z, POND));
-  const flatten = 1 - smoothstep(150, 900, nearMoat);
+  const nearWater = sdWater(x, z);
+  const flatten = 1 - smoothstep(150, 1200, nearWater);
   h = h + (LAWN_BASE - h) * flatten;
-  // Hills.
-  h += hill(x, z, EAST_HILL);
-  h += hill(x, z, WEST_MOUND);
+  // Dip toward the pond so its banks can slope gently down into the water.
+  h -= POND_DIP * (1 - smoothstep(0, 1000, sdCircle(x, z, POND)));
+  // Hills, faded out toward the water so the moat rim stays level at LAWN_BASE. The fade is
+  // wide enough to keep the east hill's moat-side flank walkable (< 34 degrees), which moves
+  // its summit ~700 east of EAST_HILL's centre.
+  h += (hill(x, z, EAST_HILL) + hill(x, z, WEST_MOUND)) * smoothstep(0, 2400, nearWater);
   return h;
+}
+
+// Floor of the 'water' region. The moat (and the pond next to the waterfall and the moat
+// mouth) is a flat bed at MOAT_FLOOR behind vertical walls; elsewhere the pond has a natural
+// bank: the lawn keeps sloping down (~22 degrees) past the waterline, so a swimmer can walk
+// out, then curves down to the deep bed. The profile has a continuous slope so a 100-unit
+// terrain mesh follows it closely.
+export function waterFloorHeight(x, z) {
+  const bank = smoothstep(200, 1100, -sdRoundRect(x, z, PERIMETER)) * smoothstep(0, 900, sdRoundRect(x, z, MOAT));
+  if (bank <= 0) return MOAT_FLOOR;
+  const shelf = Math.max(MOAT_FLOOR, lawnHeight(x, z) - pondDrop(-sdCircle(x, z, POND)));
+  return MOAT_FLOOR + (shelf - MOAT_FLOOR) * bank;
+}
+
+// Depth of the pond bank below the lawn at distance d inside the pond edge: a 0.4 slope
+// (~22 degrees) from the lawn edge (50 above the water) down to ~130 units below the
+// waterline (a sandy beach and wading shelf), then the slope ramps linearly up to POND_STEEP
+// and back down to 0, landing tangentially on the bed at MOAT_FLOOR.
+const BEACH = 450; // end of the constant-slope shelf
+const RAMP_UP = 450;
+const RAMP_DOWN = 650;
+const POND_DROP = LAWN_BASE - POND_DIP - MOAT_FLOOR;
+const POND_STEEP = (POND_DROP - 0.4 * BEACH - 0.2 * RAMP_UP) / ((RAMP_UP + RAMP_DOWN) / 2);
+function pondDrop(d) {
+  if (d <= 0) return 0;
+  if (d <= BEACH) return 0.4 * d;
+  if (d <= BEACH + RAMP_UP) {
+    const t = d - BEACH;
+    return 0.4 * BEACH + 0.4 * t + ((POND_STEEP - 0.4) * t * t) / (2 * RAMP_UP);
+  }
+  const t = Math.min(d - BEACH - RAMP_UP, RAMP_DOWN);
+  return 0.4 * BEACH + ((0.4 + POND_STEEP) * RAMP_UP) / 2 + POND_STEEP * t - (POND_STEEP * t * t) / (2 * RAMP_DOWN);
+}
+
+// Cliff-top plateau: CLIFF_TOP near the rim, rolling up into distant hills farther out. The
+// rim itself swells by 0..300 in long, irregular waves (fading out over the first 800 units
+// behind it) so the skyline undulates; it stays level around the waterfall's spillway.
+export function cliffHeight(x, z) {
+  const sd = sdRoundRect(x, z, PERIMETER);
+  let h = CLIFF_TOP;
+  const crest = (1 - smoothstep(0, 800, sd)) * smoothstep(700, 1500, Math.hypot(x - WATERFALL.x, z - WATERFALL.z));
+  if (crest > 0) {
+    const wave = 0.5 + 0.3 * Math.sin(x * 0.0009 + z * 0.0005 + 0.8) + 0.2 * Math.sin(x * 0.0021 - z * 0.0016 + 2.3);
+    h += 300 * crest * wave;
+  }
+  const ramp = smoothstep(2000, 6000, sd);
+  if (ramp <= 0) return h;
+  const roll =
+    0.62 + 0.3 * Math.sin(x * 0.00061 + 1.1) * Math.cos(z * 0.00053 - 0.3) + 0.18 * Math.sin((x + 2 * z) * 0.0011);
+  return h + ramp * 1500 * roll;
+}
+
+// Castle island top: ISLAND_TOP along its retaining walls, around the castle and on the
+// courtyard; the open lawns beside and behind the castle swell gently (up to ~+100 toward
+// the rear cliff) so they aren't a dead-flat sheet.
+const CASTLE_BOX = { minX: CASTLE.x - CASTLE.halfWidth, maxX: CASTLE.x + CASTLE.halfWidth, minZ: CASTLE.backZ, maxZ: CASTLE.frontZ, radius: 0 };
+export function islandHeight(x, z) {
+  const free =
+    smoothstep(300, 1000, -sdRoundRect(x, z, ISLAND)) *
+    smoothstep(300, 900, sdRoundRect(x, z, CASTLE_BOX)) *
+    smoothstep(0, 500, sdRoundRect(x, z, COURTYARD));
+  if (free <= 0) return ISLAND_TOP;
+  const swell = 75 * smoothstep(CASTLE.backZ, PERIMETER.minZ, z) + 30 * Math.sin(x * 0.0017 + 0.4) * Math.cos(z * 0.0013 + 1.1);
+  return ISLAND_TOP + free * swell;
+}
+
+// Height of a region's surface at (x, z); valid slightly past the region's edge so meshes can
+// evaluate both sides of a boundary (the terrain builds vertical walls between them).
+export function regionHeight(region, x, z) {
+  switch (region) {
+    case 'cliff':
+      return cliffHeight(x, z);
+    case 'island':
+      return islandHeight(x, z);
+    case 'water':
+      return waterFloorHeight(x, z);
+    default:
+      return lawnHeight(x, z);
+  }
 }
 
 function hill(x, z, H) {
@@ -268,21 +367,13 @@ function hill(x, z, H) {
 
 // Canonical ground height at (x, z) for placing things.
 export function groundHeight(x, z) {
-  switch (regionAt(x, z)) {
-    case 'cliff':
-      return CLIFF_TOP;
-    case 'island':
-      return ISLAND_TOP;
-    case 'water':
-      return MOAT_FLOOR;
-    default:
-      return lawnHeight(x, z);
-  }
+  return regionHeight(regionAt(x, z), x, z);
 }
 
-// Water surface height at (x, z), or NO_WATER.
+// Water surface height at (x, z), or NO_WATER (also on the pond's dry beach, which belongs
+// to the 'water' region but lies above the surface).
 export function waterLevelAt(x, z) {
-  return regionAt(x, z) === 'water' ? WATER_LEVEL : NO_WATER;
+  return regionAt(x, z) === 'water' && waterFloorHeight(x, z) < WATER_LEVEL ? WATER_LEVEL : NO_WATER;
 }
 
 // Sun used for baked vertex lighting and the character's directional light.
