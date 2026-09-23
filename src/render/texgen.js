@@ -4,6 +4,9 @@
 import * as THREE from 'three';
 import { makeRng } from '../core/math.js';
 
+// True when a 2D canvas is available (false in node unit tests).
+export const HAS_CANVAS = typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined';
+
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
   const c = document.createElement('canvas');
@@ -13,8 +16,10 @@ function makeCanvas(w, h) {
 }
 
 // draw(ctx, w, h) paints the texture. Returns a THREE.CanvasTexture configured for
-// repeating, bilinear, mipmapped sampling in sRGB.
+// repeating, bilinear, mipmapped sampling in sRGB. Without a canvas (node tests) it returns
+// an empty texture so geometry/collision code can still run.
 export function canvasTexture(w, h, draw, { repeat = true, nearest = false, mipmaps = true } = {}) {
+  if (!HAS_CANVAS) return new THREE.Texture();
   const canvas = makeCanvas(w, h);
   const ctx = canvas.getContext('2d');
   draw(ctx, w, h);
