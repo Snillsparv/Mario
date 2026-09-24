@@ -125,13 +125,19 @@ function pushOutOfWalls(col, from, x, y, z, offsetY, radius) {
 }
 
 // Tree trunks are solid cylinders: keeps the body POLE_BODY away from their surface. Returns
-// a wall-like contact ({ hn, pole: true }, hn pointing away from the trunk) or null.
-function pushOutOfPoles(collision, pos) {
+// a wall-like contact ({ hn, pole: true }, hn pointing away from the trunk) or null. A body
+// right on the trunk's axis (dropping straight down from the handstand on its tip) is pushed
+// out behind him (`yaw`: his facing).
+function pushOutOfPoles(collision, pos, yaw) {
   const pole = collision.findPole(pos.x, pos.y + 60, pos.z, POLE_BODY);
   if (!pole) return null;
-  const dx = pos.x - pole.x;
-  const dz = pos.z - pole.z;
-  const d = Math.hypot(dx, dz) || 1e-6;
+  let dx = pos.x - pole.x;
+  let dz = pos.z - pole.z;
+  if (dx * dx + dz * dz < 1e-6) {
+    dx = -Math.sin(yaw);
+    dz = -Math.cos(yaw);
+  }
+  const d = Math.hypot(dx, dz);
   const want = pole.radius + POLE_BODY;
   pos.x = pole.x + (dx / d) * want;
   pos.z = pole.z + (dz / d) * want;
@@ -149,7 +155,7 @@ function resolveHorizontal(p, x, y, z, offsetA, radiusA, offsetB, radiusB) {
   probe.x = b.x;
   probe.y = y;
   probe.z = b.z;
-  return pushOutOfPoles(col, probe) ?? lastWall(b, lastWall(a, null));
+  return pushOutOfPoles(col, probe, p.faceYaw) ?? lastWall(b, lastWall(a, null));
 }
 
 // Room between the floor at height y and the ceiling over it.

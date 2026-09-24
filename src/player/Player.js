@@ -11,7 +11,8 @@ import { UP } from './physics/slopes.js';
 import { ACTIONS, enterWater } from './actions/index.js';
 
 // Actions during which water entry is not checked (they position the hero themselves).
-const NO_WATER_CHECK = new Set(['death', 'ledge_hang', 'ledge_climb', 'pole', 'spawn']);
+const NO_WATER_CHECK = new Set(['death', 'ledge_hang', 'ledge_climb', 'pole', 'pole_top', 'spawn']);
+const ON_TREE = new Set(['pole', 'pole_top']);
 const FOOTSTEP_ANIMS = new Set(['tiptoe', 'walk', 'run', 'crawl']);
 const MAX_CHAINED_ACTIONS = 8;
 
@@ -88,9 +89,11 @@ export class Player {
     this.waterLevel = NO_WATER;
     this.inWater = false;
     this.peakY = 0;
+    this.fallCeiling = Infinity; // falls count from no higher than this (a tree's foot, see afterTick)
     this.wall = null;
     this.wallTouchTick = -Infinity;
     this.jumpChain = { kind: null, landedAt: -Infinity };
+    this.comboJump = null; // a fast jump's take-off { fv, y }: Z soon after long-jumps (airborne.js)
     this.grabCooldownUntil = 0;
     this.letGoPole = null; // trunk let go of with Z: not grabbed again before landing
     this.walkOff = null; // walked off a ledge: where the air steps drift him clear of it (step.js)
@@ -188,8 +191,12 @@ export class Player {
       group === 'submerged' ||
       (this.action === 'death' && this.waterLevel !== NO_WATER && this.pos.y < this.waterLevel - T.WATER_ENTER_DEPTH);
     if (this.action !== 'punch') this.punchStep = 0;
+    // Fall height for fall damage: from the highest point since leaving the ground, but a fall
+    // that starts on a tree counts from its foot (FALL_DAMAGE notes in tuning.js).
+    if (ON_TREE.has(this.action)) this.fallCeiling = this.pole.y0;
+    else if (this.grounded || this.inWater || group === 'automatic') this.fallCeiling = Infinity;
     if (this.grounded || this.inWater || group === 'automatic') this.peakY = this.pos.y;
-    else this.peakY = Math.max(this.peakY, this.pos.y);
+    else this.peakY = Math.min(this.fallCeiling, Math.max(this.peakY, this.pos.y));
     if ((this.grounded || this.inWater) && this.action !== 'pole') this.letGoPole = null;
     if (group !== 'airborne') this.walkOff = null;
     this.updateBreath();
@@ -225,7 +232,8 @@ export class Player {
     if (!this.grounded || !FOOTSTEP_ANIMS.has(this.anim)) return;
     if (Math.floor(this.cyclePhase * 2) === Math.floor(this.prevCyclePhase * 2)) return;
     const terrain = this.pos.y < this.waterLevel ? 'water' : this.floor.surface?.terrain ?? 'grass';
-    this.emit('footstep', { terrain, pos: { ...this.pos }, speed: Math.abs(this.forwardVel) });
+    // speed: the hero's speed this tick (tiptoe steps ~2-8, a full run 32); gait: the anim.
+    this.emit('footstep', { terrain, pos: { ...this.pos }, speed: Math.abs(this.forwardVel), gait: this.anim });
   }
 
   // Falling out of the level or standing on a 'death' floor costs a life.
@@ -285,6 +293,7 @@ export class Player {
     this.faceYaw = this.prevFaceYaw = yaw;
     this.pitch = this.roll = this.prevPitch = this.prevRoll = 0;
     this.peakY = y;
+    this.fallCeiling = Infinity;
     this.floor = this.collision.findFloor(x, y + 10, z);
     this.grounded = !!this.floor.surface && y - this.floor.y < 1;
     this.waterLevel = this.collision.waterLevelAt(x, z);
@@ -341,16 +350,24 @@ export class Player {
   }
 
   // Damage with knockback away from fromPos, then INVINCIBLE_TICKS of invulnerability.
-  takeDamage(wedges = 1, fromPos = null) {
+  // opts.fire: burnt (touching fire) instead: on land a hot-foot hop (action / anim 'burn',
+  // sfx 'burn'), running in the air away from fromPos (or on along the facing when fromPos is
+  // right under him or not given). In water the usual knockback.
+  takeDamage(wedges = 1, fromPos = null, opts = null) {
     if (this.tick < this.invincibleUntil || this.action === 'death' || this.action === 'spawn') return false;
     this.invincibleUntil = this.tick + T.INVINCIBLE_TICKS;
     this.loseHealth(wedges);
     if (this.action === 'death') return true;
-    const yaw = fromPos ? Math.atan2(fromPos.x - this.pos.x, fromPos.z - this.pos.z) : this.faceYaw;
+    const dx = fromPos ? fromPos.x - this.pos.x : 0;
+    const dz = fromPos ? fromPos.z - this.pos.z : 0;
+    const yaw = fromPos ? Math.atan2(dx, dz) : this.faceYaw;
     if (this.inWater) {
       this.faceYaw = yaw;
       this.forwardVel = -12;
       this.setAction('swim_idle');
+    } else if (opts?.fire) {
+      const away = dx * dx + dz * dz > 1 ? yaw + Math.PI : this.faceYaw;
+      this.setAction('burn', { yaw: away });
     } else {
       this.setAction('hurt', { yaw });
     }

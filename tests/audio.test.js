@@ -9,7 +9,7 @@ import { SONGS } from '../src/audio/songs.js';
 import { compileSong, chordTimeline } from '../src/audio/compile.js';
 import { INSTRUMENTS, CHANNELS } from '../src/audio/instruments.js';
 import { SFX } from '../src/audio/sfx.js';
-import { noteToMidi, parseBar, parseChord, parseChordBar, majorScale, pitchClass } from '../src/audio/theory.js';
+import { noteToMidi, parseBar, parseChord, parseChordBar, majorScale, modeScale, pitchClass } from '../src/audio/theory.js';
 
 const RANGES = {
   flute: [60, 96],
@@ -19,6 +19,10 @@ const RANGES = {
   harp: [48, 91],
   bass: [28, 62],
   timpani: [38, 57],
+  darkpad: [48, 84],
+  pulse: [28, 62],
+  glass: [60, 96],
+  clang: [40, 62],
 };
 
 test('engine is a silent no-op without an AudioContext', async () => {
@@ -46,6 +50,13 @@ test('engine is a silent no-op without an AudioContext', async () => {
     ['pause', {}],
     ['unpause', {}],
     ['gameStart', {}],
+    ['darkMode', { on: true }],
+    ['lightning', { strength: 1 }],
+    ['kaijuRoar', { pos: { x: 0, y: 3000, z: -2300 } }],
+    ['sfx', { name: 'fireball_explode', pos: { x: 0, y: 0, z: 0 } }],
+    ['aiRaceButton', { on: true }],
+    ['hurt', { fire: true }],
+    ['darkMode', { on: false }],
   ]) {
     events.emit(name, data);
   }
@@ -57,7 +68,8 @@ test('every standard sfx name has a recipe', () => {
   const names = `jump double_jump triple_jump backflip sideflip long_jump wallkick dive ground_pound
     ground_pound_land punch kick land land_hard skid bonk hurt ledge_grab climb swim splash
     water_exit coin red_coin star_appear star_get one_up pause menu_select camera_move camera_buzz
-    footstep life_lost unpause punch1 punch2 jump_kick dialog_open text_blip dialog_next dialog_close`;
+    footstep life_lost unpause punch1 punch2 jump_kick dialog_open text_blip dialog_next dialog_close
+    button_press alarm kaiju_roar fireball_charge fireball_launch fireball_explode burn fire_crackle steam thunder`;
   for (const n of names.split(/\s+/)) assert.equal(typeof SFX[n], 'function', n);
 });
 
@@ -81,6 +93,8 @@ test('theory helpers', () => {
   assert.deepEqual(parseChord('Dm7').pcs, [2, 5, 9, 0]);
   assert.equal(parseChord('C/E').bass, 4);
   assert.deepEqual(majorScale('F'), [5, 7, 9, 10, 0, 2, 4]);
+  assert.deepEqual(modeScale('D', 'minor'), [2, 4, 5, 7, 9, 10, 0]);
+  assert.deepEqual(modeScale('F'), majorScale('F'));
   assert.deepEqual(parseChordBar('Cm7:2 F:1', 3).map((s) => s.dur), [2, 1]);
   assert.deepEqual(parseChordBar('Gm7 C7', 4).map((s) => s.beat), [0, 2]);
   assert.equal(parseBar('A5:1 r:.5 C6!:1/2 G5:2').length, 4);
@@ -132,15 +146,16 @@ for (const [name, song] of Object.entries(SONGS)) {
 
   test(`${name}: harmony is diatonic and clash-free`, () => {
     const c = compileSong(song);
-    const scale = majorScale(song.key);
+    const scale = modeScale(song.key, song.mode);
     const timeline = chordTimeline(song);
     const chordAt = (beat) => timeline.findLast((s) => s.beat <= beat + 0.2).chord;
-    const melody = c.events.filter((e) => e.inst === 'flute');
+    const melody = c.events.filter((e) => e.inst === c.lead);
+    assert.ok(melody.length > 0, `lead ${c.lead} plays`);
     // Every note is in the key, or a tone of the chord sounding under it (a borrowed chord
     // such as the minor iv).
     for (const e of c.events.filter((ev) => ev.midi !== null && ev.inst !== 'timpani')) {
       const pc = pitchClass(e.midi);
-      assert.ok(scale.includes(pc) || chordAt(e.beat).pcs.includes(pc), `${e.inst} ${e.midi} at ${e.beat} not in ${song.key} major or ${chordAt(e.beat).symbol}`);
+      assert.ok(scale.includes(pc) || chordAt(e.beat).pcs.includes(pc), `${e.inst} ${e.midi} at ${e.beat} not in ${song.key} ${song.mode ?? 'major'} or ${chordAt(e.beat).symbol}`);
     }
     // Held melody notes may be chord tones or tensions, but never a semitone above a
     // chord tone (the harsh "avoid note" clash).
@@ -150,7 +165,7 @@ for (const [name, song] of Object.entries(SONGS)) {
       for (const t of chord.pcs) assert.notEqual(pc, (t + 1) % 12, `melody ${e.midi} clashes with ${chord.symbol} at beat ${e.beat}`);
     }
     // Pad and harp only play chord tones (major 7th chords may add their 9th).
-    for (const e of c.events.filter((ev) => ev.inst === 'strings' || ev.inst === 'harp')) {
+    for (const e of c.events.filter((ev) => ev.inst === c.roles.pad || ev.inst === c.roles.comp)) {
       const chord = chordAt(e.beat);
       const allowed = chord.symbol.endsWith('maj7') ? [...chord.pcs, (chord.root + 2) % 12] : chord.pcs;
       assert.ok(allowed.includes(pitchClass(e.midi)), `${e.inst} ${e.midi} not in ${chord.symbol}`);
@@ -172,20 +187,21 @@ for (const [name, song] of Object.entries(SONGS)) {
       }
       return [...byBeat.values()].map((v) => v.sort((a, b) => a - b));
     };
-    const pads = chordsOf('strings');
+    const pads = chordsOf(c.roles.pad);
+    assert.ok(pads.length > 0, 'the pad plays');
     pads.forEach((v, i) => {
       const prev = pads[(i + pads.length - 1) % pads.length]; // chord 0 follows the last one
       v.forEach((m, k) => assert.ok(Math.abs(m - prev[k]) <= 5, `pad leap into chord ${i}`));
     });
     // Neither the pad nor the harp stabs (simultaneous 3-note chords) stack semitones.
-    for (const v of [...pads, ...chordsOf('harp').filter((h) => h.length === 3)]) {
+    for (const v of [...pads, ...chordsOf(c.roles.comp).filter((h) => h.length === 3)]) {
       for (let k = 1; k < v.length; k++) assert.ok(v[k] - v[k - 1] > 1, `semitone cluster ${v}`);
     }
   });
 
   test(`${name}: melody has rhythmic variety`, () => {
     const c = compileSong(song);
-    const durations = new Set(c.events.filter((e) => e.inst === 'flute').map((e) => e.dur.toFixed(2)));
+    const durations = new Set(c.events.filter((e) => e.inst === c.lead).map((e) => e.dur.toFixed(2)));
     assert.ok(durations.size >= 4, `melody rhythms: ${[...durations]}`);
   });
 }
@@ -215,4 +231,29 @@ test('a cue ends on the tonic: final bar is the tonic chord and the melody lands
     assert.ok(!c.events.some((e) => e.beat > downbeat && e.beat < c.endBeat));
   }
   assert.equal(SONGS.castle_grounds.finalBar, 8, 'castle music is an arrival cue');
+});
+
+test('the AI RACE track: a slow D minor loop of synth pad, low pulse and metal, fading in', () => {
+  const song = SONGS.dark;
+  const c = compileSong(song);
+  const seconds = (c.loopBeats * 60) / c.bpm;
+  assert.ok(seconds >= 60 && seconds <= 90, `loop ${seconds}s`);
+  assert.ok(c.bpm <= 90, 'slow');
+  assert.equal(song.mode, 'minor');
+  assert.ok(!song.finalBar && !song.menu && !song.jingle, 'a plain loop');
+  assert.ok(c.fadeIn >= 2 && c.fadeIn <= 4, 'fades in with the 3 s picture crossfade');
+  assert.ok(c.level <= 0.8, 'moderate level');
+  const insts = new Set(c.events.map((e) => e.inst));
+  for (const i of ['darkpad', 'pulse', 'clang', 'thump', 'tick', 'glass']) assert.ok(insts.has(i), i);
+  // Tonic minor at the top, and a dominant at the end that turns back into it.
+  const tl = chordTimeline(song);
+  assert.equal(tl[0].chord.symbol, 'Dm');
+  assert.equal(tl.at(-1).chord.root, pitchClass(noteToMidi('A4')));
+  // The bass pulses in 8ths on every beat of the loop, low (roots from A1).
+  const pulses = c.events.filter((e) => e.inst === 'pulse');
+  assert.equal(pulses.length, c.loopBeats * 2);
+  assert.ok(Math.min(...pulses.map((e) => e.midi)) <= 38);
+  // Nothing rings on past the loop end by more than a moment (the seam is seamless: the
+  // next pass takes over on the downbeat).
+  for (const e of c.events) assert.ok(e.beat + e.dur <= c.loopBeats + 1e-9, `${e.inst} at ${e.beat}`);
 });

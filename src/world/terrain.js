@@ -16,6 +16,11 @@
 //
 // Collision uses the same walls and floors, except that flat-enough stretches of ground are
 // merged into large blocks (floorBlocks.js) to keep camera raycasts cheap.
+//
+// AI RACE mode: setDarkness(t) crossfades every ground material to its storm grade
+// (DARK_GRADES, darkGrade.js: dead olive grass, wet dark mud paths, charcoal rock) and the
+// water to near-black with an oily sheen; addScorch / clearScorches draw burn marks
+// (scorch.js). Uniforms only: no geometry is rebuilt.
 
 import * as THREE from 'three';
 import { smoothstep } from '../core/math.js';
@@ -27,6 +32,8 @@ import { floorBlocks } from './terrain/floorBlocks.js';
 import { applyUnderwater, circleParam, grassTint, groundTint, roundRectParam } from './terrain/shading.js';
 import * as tex from './terrainTextures.js';
 import { buildWater } from './water.js';
+import { DarkGrade } from './terrain/darkGrade.js';
+import { buildScorches } from './terrain/scorch.js';
 
 const STEP = 100; // fine grid cell size
 const FAR = 13000; // half-size of the cliff-top plateau
@@ -39,6 +46,18 @@ const SLIVER = 15; // collision triangles narrower than this get the ground's ta
 
 // World size of one texture tile.
 const TILE = { grass: 640, path: 448, flagstone: 520, sand: 400 };
+
+// AI RACE mode grade per mesh (see darkGrade.js): colour kept (sat), then tint * brightness.
+// Tuned together with the renderer's own storm fog and grade (render/post/storm.js), which
+// darken the frame further: on their own these read a little light.
+export const DARK_GRADES = {
+  grass: { sat: 0.22, mul: [0.42, 0.41, 0.26] }, // dead grey-green / olive
+  paths: { sat: 0.5, mul: [0.24, 0.18, 0.145] }, // wet dark mud
+  courtyard: { sat: 0.1, mul: [0.22, 0.22, 0.245] }, // dark slate flagstones
+  bed: { sat: 0.2, mul: [0.16, 0.17, 0.13] },
+  cliffs: { sat: 0.06, mul: [0.17, 0.17, 0.19] }, // charcoal
+  masonry: { sat: 0.08, mul: [0.18, 0.18, 0.2] },
+};
 
 // Fields used to split the grid (<= 0 is inside), in clip order.
 const F = { PERIMETER: 0, ISLAND: 1, WATER: 2, COURTYARD: 3, SHORE: 4 };
@@ -384,10 +403,11 @@ export function buildTerrain(layout) {
   // Meshes, one per material.
   const group = new THREE.Group();
   group.name = 'terrain';
+  const grade = new DarkGrade();
   const addMesh = (name, buffer, map) => {
     const geo = buffer.toGeometry();
     bakeLighting(geo);
-    const mesh = new THREE.Mesh(geo, worldMaterial({ map }));
+    const mesh = new THREE.Mesh(geo, grade.patch(worldMaterial({ map }), DARK_GRADES[name]));
     mesh.name = name;
     group.add(mesh);
   };
@@ -396,10 +416,12 @@ export function buildTerrain(layout) {
   addMesh('bed', buffers.sand, tex.sandTexture());
   addMesh('cliffs', buffers.rock, tex.rockTexture());
   addMesh('masonry', buffers.masonry, tex.masonryTexture());
-  addPathOverlay(group, pathOverlay);
+  addPathOverlay(group, pathOverlay, grade);
 
-  const water = buildWater(L);
+  const water = buildWater(L, grade);
   group.add(water.object3D);
+  const scorches = buildScorches(L);
+  group.add(scorches.mesh);
 
   return {
     object3D: group,
@@ -410,6 +432,20 @@ export function buildTerrain(layout) {
     ],
     update(time) {
       water.update(time);
+      grade.tick(time);
+      scorches.update(time);
+    },
+    // AI RACE mode crossfade: 0 = sunny grounds .. 1 = storm.
+    setDarkness(t) {
+      const k = Math.min(1, Math.max(0, t));
+      grade.set(k * k * (3 - 2 * k));
+      water.setDarkness(k);
+    },
+    addScorch(x, z, radius) {
+      scorches.add(x, z, radius);
+    },
+    clearScorches() {
+      scorches.clear();
     },
   };
 }
@@ -509,7 +545,7 @@ function rgbOf(c) {
 // (units) to win over them; a slope bias (factor) would grow with the pixel size at grazing
 // angles (several world units at the N64 mode's 240 lines) and let the dirt show through
 // opaque things lying just above the ground, such as the bridge deck's lawn end.
-function addPathOverlay(group, buffer) {
+function addPathOverlay(group, buffer, grade) {
   const geo = buffer.toGeometry();
   const rgba = geo.attributes.color;
   const alpha = Array.from({ length: rgba.count }, (_, i) => rgba.getW(i));
@@ -518,7 +554,7 @@ function addPathOverlay(group, buffer) {
   const out = new Float32Array(rgb.count * 4);
   for (let i = 0; i < rgb.count; i++) out.set([rgb.getX(i), rgb.getY(i), rgb.getZ(i), alpha[i]], i * 4);
   geo.setAttribute('color', new THREE.BufferAttribute(out, 4));
-  const mat = worldMaterial({ map: tex.pathTexture(), transparent: true, depthWrite: false });
+  const mat = grade.patch(worldMaterial({ map: tex.pathTexture(), transparent: true, depthWrite: false }), DARK_GRADES.paths);
   mat.polygonOffset = true;
   mat.polygonOffsetFactor = 0;
   mat.polygonOffsetUnits = -4;

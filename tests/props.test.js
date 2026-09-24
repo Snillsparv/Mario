@@ -87,32 +87,43 @@ const groupLeaves = (() => {
   });
 })();
 
-test('every tree is a climbable pole as thick as its trunk, topping out just under the canopy', () => {
+test('every tree is a climbable pole as thick as its trunk, running up through the leaves to the crown', () => {
   assert.equal(part.poles.length, L.TREES.length);
+  assert.equal(part.trees.length, L.TREES.length);
   TREES.forEach((t, i) => {
     const p = part.poles.find((q) => q.x === t.x && q.z === t.z);
     assert.ok(p, `pole at tree ${t.x},${t.z}`);
     assert.ok(Math.abs(p.y0 - L.groundHeight(t.x, t.z)) < 1, 'pole starts on the ground');
     assert.equal(p.radius, POLE_RADIUS);
     const len = p.y1 - p.y0;
-    // A real climb even after a running jump grabs it at ~200 (review: ~7 units were left).
-    assert.ok(len > 460 && len < 640, `tree ${i}: pole length ${len.toFixed(0)}`);
-    // The pole is as thick as the bark where his hands go (between the foot's flare and the top).
-    for (let h = 80; h < len; h += 40) {
+    // A long climb: past the canopy's underside (~450..550 up) and on through the leaves.
+    assert.ok(len > 800 && len < 1150, `tree ${i}: pole length ${len.toFixed(0)}`);
+    // The pole is as thick as the bark where his hands go (between the foot's flare and the
+    // top of the visible trunk, inside the canopy).
+    for (let h = 80; h < t.trunkTop - t.ground; h += 40) {
       const r = trunkRadius(h, t.scale);
       assert.ok(Math.abs(r - POLE_RADIUS) < 5, `tree ${i}: trunk radius ${r.toFixed(1)} at ${h}`);
     }
-    // At the top of the climb (feet 160 below the pole top, 70 out from the axis) the leaves
-    // start around his hat (~165 above his feet), all round the trunk.
-    const feet = p.y1 - 160;
+    // The pole tops out on the crown: the leaves' top right over the trunk (where his hands
+    // go for a handstand on top), within a unit.
+    const top = firstHit([t.x, p.y1 + 3000, t.z], [t.x, p.y0, t.z]);
+    assert.ok(top && groupOf(top) === groupIndex(`tree:${i}`), `tree ${i}: no canopy over the trunk`);
+    assert.ok(Math.abs(top.point.y - p.y1) <= 1, `tree ${i}: crown at ${top.point.y.toFixed(1)}, pole top ${p.y1}`);
+    // ... and that is the top of the canopy near the trunk: no leaves stand much higher
+    // around where he climbs out (70 out from the axis).
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
-      const at = { x: t.x + Math.cos(a) * 70, z: t.z + Math.sin(a) * 70 };
-      const hit = firstHit([at.x, feet + 60, at.z], [at.x, feet + 2000, at.z]);
-      assert.ok(hit && groupOf(hit) === groupIndex(`tree:${i}`), `tree ${i} dir ${k}: no canopy overhead`);
-      const above = hit.point.y - (feet + 165);
-      assert.ok(above > -60 && above < 90, `tree ${i} dir ${k}: canopy ${above.toFixed(0)} above his hat`);
+      const hit = firstHit([t.x + Math.cos(a) * 70, p.y1 + 3000, t.z + Math.sin(a) * 70], [t.x + Math.cos(a) * 70, p.y0, t.z + Math.sin(a) * 70]);
+      assert.ok(hit && hit.point.y < p.y1 + 40, `tree ${i} dir ${k}: leaves ${(hit?.point.y - p.y1).toFixed(0)} over the crown`);
     }
+    // Exported for the objects (fires): trunk and canopy sphere.
+    const e = part.trees[i];
+    assert.equal(e.x, t.x);
+    assert.equal(e.z, t.z);
+    assert.equal(e.groundY, t.ground);
+    assert.ok(e.trunkTop > t.base && e.trunkTop < p.y1);
+    assert.ok(Math.hypot(e.canopy.x - t.x, e.canopy.z - t.z) < 50);
+    assert.ok(e.canopy.y > t.base && e.canopy.y < p.y1 && e.canopy.radius > 250 && e.canopy.radius < 450);
   });
 });
 
@@ -495,6 +506,43 @@ test('a canopy or bush hides the hero exactly when its leaves cover him: then it
   assert.ok(missed.length <= hiddenCases * 0.02, `hidden but solid: ${missed.join('; ')}`);
   assert.ok(false_.length <= clearCases * 0.01, `clear but faded: ${false_.join('; ')}`);
   assert.ok(grazing <= clearCases * 0.02, `${grazing} of ${clearCases} clear cases thinned`);
+});
+
+// Climbing: the pole runs up through the leaves to the crown. While he climbs inside the
+// canopy (and at the top of the climb, hat at the crown) the trailing camera's view of him
+// passes through the leaves from any side and pitch, so the canopy must thin out around him;
+// once he is up on top (a handstand on the crown) a camera above him sees him over it.
+test('a hero climbing up through a canopy stays in view, all the way up to the crown', () => {
+  const bad = [];
+  let cases = 0;
+  TREES.forEach((t, i) => {
+    const pole = part.poles[i];
+    const name = `tree:${i}`;
+    for (const feet of [t.base - 60, (t.base + pole.y1 - 160) / 2, pole.y1 - 160]) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + 0.3;
+        const dx = Math.sin(a);
+        const dz = Math.cos(a);
+        // He holds the trunk 70 out on the camera's side.
+        const hero = [t.x + dx * 70, feet, t.z + dz * 70];
+        for (const pitch of [ORBIT_MODES.follow.pitch[0], 0.45]) {
+          const d = 1250;
+          const cam = [hero[0] + dx * d, feet + LOOK_HEIGHT + d * Math.tan(pitch), hero[2] + dz * d];
+          const f = foliageFades(cam, [hero[0], feet + LOOK_HEIGHT, hero[2]], hero)(name);
+          cases++;
+          if (f > OCCLUDER_ALPHA + 0.01) bad.push(`tree ${i} feet +${(feet - t.ground).toFixed(0)} dir ${k} pitch ${pitch.toFixed(2)}: fade ${f.toFixed(2)}`);
+        }
+      }
+    }
+    // Up on the crown (standing or on his hands there), seen from the trailing camera above:
+    // the canopy below him stays solid.
+    const top = [t.x, pole.y1, t.z];
+    const cam = [t.x, pole.y1 + LOOK_HEIGHT + 1250 * Math.tan(0.3), t.z + 1250];
+    const f = foliageFades(cam, [t.x, pole.y1 + LOOK_HEIGHT, t.z], top)(name);
+    if (f !== 1) bad.push(`tree ${i} on top: fade ${f}`);
+  });
+  assert.ok(cases > 800, `${cases} cases`);
+  assert.deepEqual(bad, []);
 });
 
 test('the fade also works from the props\' own estimate of where the hero is', () => {

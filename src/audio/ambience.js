@@ -2,6 +2,8 @@
 // a steady bed of air and rustling leaves drifting with slow gusts, a chorus of distant
 // birds all around, nearer birdsong from the trees (nearer trees sing more often), a
 // positional waterfall roar and water lapping at the nearest moat/pond edge.
+// In AI RACE mode (setDark) the pastoral part, the leaves bed and the birds, fades away
+// (the storm beds in storm.js take over); the water keeps sounding.
 
 import { WATERFALL, WATER_LEVEL, MOAT, ISLAND, POND, TREES, groundHeight, sdRoundRect, sdCircle } from '../world/layout.js';
 import { clamp, TAU } from '../core/math.js';
@@ -142,12 +144,15 @@ function pickTree(listener) {
 }
 
 export class Ambience {
-  // playAt(recipe, pos) plays a one-shot recipe spatialized on the ambience bus;
+  // playAt(recipe, pos, volume?) plays a one-shot recipe spatialized on the ambience bus;
   // spatial(pos) -> { gain, pan } as seen from the current listener.
   constructor(ctx, out, { playAt, spatial }) {
     this.ctx = ctx;
     this.playAt = playAt;
     this.spatial = spatial;
+    this.dark = false;
+    this.birds = 1; // bird call level, eased toward 0 while dark
+    this.birdFade = 3; // seconds for a full bird fade
     this.paramTimer = 0;
     this.lapTimer = 0.5;
     this.birdTimer = rand(0.5, 1.5);
@@ -163,7 +168,10 @@ export class Ambience {
       src.start(0, offset);
     };
 
-    // Air and leaves bed.
+    // Air and leaves bed, behind its own fader for dark mode.
+    this.pastoral = ctx.createGain();
+    this.pastoral.gain.value = 1;
+    this.pastoral.connect(out);
     this.bed = BED_LAYERS.map((layer, i) => {
       const filter = ctx.createBiquadFilter();
       filter.type = 'bandpass';
@@ -173,7 +181,7 @@ export class Ambience {
       gain.gain.value = layer.level;
       const pan = ctx.createStereoPanner();
       pan.pan.value = layer.pan;
-      filter.connect(gain).connect(pan).connect(out);
+      filter.connect(gain).connect(pan).connect(this.pastoral);
       loop(filter, 0.7 + i * 1.9);
       return { ...layer, filter, gain, timer: 0 };
     });
@@ -199,7 +207,19 @@ export class Ambience {
     loop(hissFilter, 3.3);
   }
 
+  // Fade the pastoral bed and the birds out (dark) or back in over `fade` seconds.
+  setDark(on, fade = 3) {
+    this.dark = !!on;
+    this.birdFade = Math.max(fade, 0.01);
+    const t = this.ctx.currentTime;
+    const g = this.pastoral.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(this.dark ? 0 : 1, t + this.birdFade);
+  }
+
   update(dt, listener) {
+    this.birds = clamp(this.birds + (this.dark ? -dt : dt) / this.birdFade, 0, 1);
     this.paramTimer -= dt;
     if (this.paramTimer <= 0) {
       this.paramTimer = PARAM_INTERVAL;
@@ -214,6 +234,8 @@ export class Ambience {
       if (Math.hypot(listener.x - pos.x, listener.y - pos.y, listener.z - pos.z) < LAP_RANGE) this.playAt(slosh, pos);
     }
 
+    // Birds fall silent while dark (calls get quieter through the fade, then stop).
+    if (this.birds < 0.02) return;
     this.birdTimer -= dt;
     if (this.birdTimer <= 0) {
       this.birdTimer = rand(0.8, 3);
@@ -223,7 +245,7 @@ export class Ambience {
         const tree = pickTree(listener);
         if (!tree) break;
         const call = i ? delayed(treeBird, rand(0.15, 0.9)) : treeBird;
-        this.playAt(call, { x: tree.x, y: groundHeight(tree.x, tree.z) + 700, z: tree.z });
+        this.playAt(call, { x: tree.x, y: groundHeight(tree.x, tree.z) + 700, z: tree.z }, this.birds);
       }
     }
 
@@ -233,7 +255,7 @@ export class Ambience {
       this.farBirdTimer = rand(0.2, 0.6);
       const a = Math.random() * TAU;
       const pos = { x: listener.x + Math.sin(a) * FAR_BIRD_DIST, y: listener.y + FAR_BIRD_RISE, z: listener.z + Math.cos(a) * FAR_BIRD_DIST };
-      this.playAt(farBird, pos);
+      this.playAt(farBird, pos, this.birds);
     }
   }
 

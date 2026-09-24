@@ -1,10 +1,13 @@
 // Turns song data (songs.js) into a flat, sorted list of note events for the sequencer:
 //   { beat, dur, inst, midi, vel }   (beat/dur in beats from the loop start; midi null = unpitched)
 // Hand-written parts are parsed from bar strings; the accompaniment is generated from the
-// chord chart per section style: voice-led string pad, patterned bass, harp stabs or
-// arpeggios, and percussion.
+// chord chart per section style: voice-led pad, patterned bass, harp stabs or arpeggios,
+// and percussion. A song may swap the accompaniment's instruments (roles: { pad, bass,
+// comp }; default strings, bass, harp), name its lead instrument (lead, default flute), be
+// in a minor mode (mode: 'minor'), move its bass register (bassLow) and ask to be faded in
+// (fadeIn seconds).
 
-import { parseBar, parseChordBar, majorScale, notesInRange, pitchClass } from './theory.js';
+import { parseBar, parseChordBar, modeScale, notesInRange, pitchClass } from './theory.js';
 
 const PAD_RANGE = [52, 77]; // E3..F5
 const STAB_RANGE = [60, 77]; // C4..F5
@@ -12,9 +15,10 @@ const ARP_LOW = 57; // arpeggios start at the lowest chord tone >= A3
 const BASS_LOW = 38; // bass roots live in D2..C#3
 const ROLL_STEP = 1 / 6; // timpani roll stroke spacing in beats
 
-// Bass patterns by chord-segment length: [beatOffset, duration, degree], where degree is
-// 'R' bass note, '5' the chord's fifth (below when it fits), '8' octave, 'A' a diatonic
-// approach note into the next chord's bass.
+// Bass patterns by chord-segment length: [beatOffset, duration, degree, velocity?], where
+// degree is 'R' bass note, '5' the chord's fifth (below when it fits), '8' octave, 'A' a
+// diatonic approach note into the next chord's bass. Velocity defaults to an accented
+// downbeat (0.9) and 0.7 elsewhere.
 const BASS_PATTERNS = {
   bounce: {
     4: [[0, 0.8, 'R'], [1, 0.45, '5'], [2, 0.8, '8'], [3, 0.45, '5'], [3.5, 0.45, 'A']],
@@ -35,6 +39,11 @@ const BASS_PATTERNS = {
     2: [[0, 1.8, 'R']],
     1: [[0, 0.9, 'R']],
   },
+  // Throbbing 8ths on the root, leaning on beats 1 and 3, lifting an octave on beat 4.
+  pulse: {
+    4: [[0, 0.42, 'R', 0.95], [0.5, 0.3, 'R', 0.5], [1, 0.42, 'R', 0.7], [1.5, 0.3, 'R', 0.5], [2, 0.42, 'R', 0.85], [2.5, 0.3, 'R', 0.5], [3, 0.42, '8', 0.7], [3.5, 0.3, 'R', 0.6]],
+    2: [[0, 0.42, 'R', 0.95], [0.5, 0.3, 'R', 0.5], [1, 0.42, 'R', 0.7], [1.5, 0.3, 'R', 0.5]],
+  },
 };
 
 // Percussion on an 8th-note grid: 'x' hit, 'X' accent, '.' rest. Patterns are cycled to
@@ -42,9 +51,12 @@ const BASS_PATTERNS = {
 const DRUM_PATTERNS = {
   march: { kick: 'x...x...', shaker: 'xXxXxXxX' },
   soft: { kick: 'x.......', shaker: '.x.x.x.x' },
+  // Dark track: a slow clock ticking over heavy, lurching thumps.
+  industrial: { thump: 'X..x....', tick: 'x.x.x.xX' },
+  sparse: { thump: 'X.......', tick: 'x...x...' },
   none: {},
 };
-const DRUM_VEL = { kick: [0.75, 0.9], shaker: [0.3, 0.55] };
+const DRUM_VEL = { kick: [0.75, 0.9], shaker: [0.3, 0.55], thump: [0.7, 0.95], tick: [0.3, 0.5] };
 
 // Arpeggio index patterns over ascending chord tones, by segment length in 8ths.
 const ARP_PATTERNS = { 8: [0, 1, 2, 3, 4, 3, 2, 1], 6: [0, 1, 2, 3, 2, 1], 4: [0, 1, 2, 3], 2: [0, 2] };
@@ -93,8 +105,8 @@ function arpTones(chord) {
   return tones.filter((m, i) => tones[i + 1] !== m + 1);
 }
 
-// Bass note for a pc in the root register.
-const bassNote = (pc) => BASS_LOW + ((pc - (BASS_LOW % 12) + 12) % 12);
+// Bass note for a pc in the root register (the octave from `low` up).
+const bassNote = (pc, low = BASS_LOW) => low + ((pc - (low % 12) + 12) % 12);
 
 // Diatonic step toward `target` from the side `from` is on.
 function approachNote(from, target, scale) {
@@ -105,20 +117,20 @@ function approachNote(from, target, scale) {
   return target;
 }
 
-function bassEvents(style, seg, next, scale) {
+function bassEvents(style, seg, next, scale, { inst, low }) {
   const pattern = BASS_PATTERNS[style]?.[seg.dur];
   if (!pattern) throw new Error(`no '${style}' bass pattern for ${seg.dur}-beat chords`);
-  const root = bassNote(seg.chord.bass);
+  const root = bassNote(seg.chord.bass, low);
   const fifthPc = seg.chord.pcs[2];
   const fifthUp = root + ((fifthPc - pitchClass(root) + 12) % 12);
   const fifth = fifthUp - 12 >= 33 ? fifthUp - 12 : fifthUp;
-  const nextRoot = next ? bassNote(next.chord.bass) : root;
-  return pattern.map(([off, dur, degree]) => {
+  const nextRoot = next ? bassNote(next.chord.bass, low) : root;
+  return pattern.map(([off, dur, degree, vel]) => {
     let midi = root;
     if (degree === '5') midi = fifth;
     else if (degree === '8') midi = root + 12;
     else if (degree === 'A') midi = nextRoot === root ? fifth : approachNote(root, nextRoot, scale);
-    return { beat: seg.beat + off, dur, inst: 'bass', midi, vel: off === 0 ? 0.9 : 0.7 };
+    return { beat: seg.beat + off, dur, inst, midi, vel: vel ?? (off === 0 ? 0.9 : 0.7) };
   });
 }
 
@@ -177,10 +189,15 @@ export function chordTimeline(song) {
   );
 }
 
+// Instruments that play the generated accompaniment, by role.
+const DEFAULT_ROLES = { pad: 'strings', bass: 'bass', comp: 'harp' };
+
 export function compileSong(song) {
   const bpb = song.beatsPerBar;
   const loopBeats = song.chords.length * bpb;
-  const scale = majorScale(song.key);
+  const scale = modeScale(song.key, song.mode);
+  const roles = { ...DEFAULT_ROLES, ...song.roles };
+  const bass = { inst: roles.bass, low: song.bassLow ?? BASS_LOW };
   const timeline = chordTimeline(song);
   const sectionOf = (bar) => song.sections.find((s) => bar >= s.from && bar <= s.to);
   const events = writtenEvents(song);
@@ -190,17 +207,17 @@ export function compileSong(song) {
   timeline.forEach((seg, i) => {
     const sec = sectionOf(seg.bar);
     const next = timeline[(i + 1) % timeline.length];
-    for (const midi of pads[i]) events.push({ beat: seg.beat, dur: seg.dur, inst: 'strings', midi, vel: sec.pad });
-    events.push(...bassEvents(sec.bass, seg, next, scale));
+    for (const midi of pads[i]) events.push({ beat: seg.beat, dur: seg.dur, inst: roles.pad, midi, vel: sec.pad });
+    events.push(...bassEvents(sec.bass, seg, next, scale, bass));
     if (sec.comp === 'stabs') {
       // Off-beat chords on beats 2 and 4 (odd beats; bars are 4 beats long).
       for (let b = Math.ceil(seg.beat); b < seg.beat + seg.dur; b++) {
-        if (b % 2 === 1) for (const midi of stabs[i]) events.push({ beat: b, dur: 0.4, inst: 'harp', midi, vel: 0.42 });
+        if (b % 2 === 1) for (const midi of stabs[i]) events.push({ beat: b, dur: 0.4, inst: roles.comp, midi, vel: 0.42 });
       }
     } else if (sec.comp === 'arp') {
       const tones = arpTones(seg.chord);
       ARP_PATTERNS[seg.dur * 2].forEach((idx, k) => {
-        events.push({ beat: seg.beat + k / 2, dur: 0.5, inst: 'harp', midi: tones[idx], vel: k % 2 ? 0.28 : 0.36 });
+        events.push({ beat: seg.beat + k / 2, dur: 0.5, inst: roles.comp, midi: tones[idx], vel: k % 2 ? 0.28 : 0.36 });
       });
     }
   });
@@ -223,6 +240,9 @@ export function compileSong(song) {
     level: song.level ?? 1,
     menu: !!song.menu,
     jingle: !!song.jingle,
+    fadeIn: song.fadeIn ?? 0,
+    roles,
+    lead: song.lead ?? 'flute',
     beatsPerBar: bpb,
     loopBeats,
     endBeat,

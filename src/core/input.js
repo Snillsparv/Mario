@@ -51,18 +51,22 @@ const KEY_ENTRIES = Object.entries(KEYMAP);
 
 const DEADZONE = 0.18;
 
-// Keyboard stick ease-in. A digital key would slam the virtual stick to full at once (the
-// hero would dig in at a sprint from the first tick); instead a direction key pressed from
-// rest pushes the stick from KEY_RAMP_START to full over KEY_RAMP_TICKS polls on an ease-in
-// curve, like easing an analog stick forward. Only the magnitude ramps: the direction always
-// follows the keys at once (turning never lags), releasing every key drops the stick to
-// neutral at once, and keys pressed again within KEY_RAMP_GRACE polls (switching W to S for a
-// turnaround, say) carry on from where the ramp was. Gamepad sticks keep their analog value.
+// Keyboard stick ease-in. A digital key would slam the virtual stick to full at once;
+// instead a direction key pressed from rest pushes the stick from KEY_RAMP_START to full over
+// KEY_RAMP_TICKS polls on an ease-in curve, like easing an analog stick forward. The ramp is
+// short (round 3: the start felt "hard"): the hero's own start curve (walkAccel in
+// player/physics/movement.js) does the tiptoe -> walk -> run easing, and the ramp stays just
+// above that curve, so it never holds the speed back; it only keeps the first polls a light
+// push (the gait shows a tiptoe), as a thumb easing a real stick would. Only the magnitude
+// ramps: the direction always follows the keys at once (turning never lags), releasing every
+// key drops the stick to neutral at once, and keys pressed again within KEY_RAMP_GRACE polls
+// (switching W to S for a turnaround, say) carry on from where the ramp was. Gamepad sticks
+// keep their analog value.
 // The snapshot also carries rawStickMag, the keys' full push (the stick is eased in along the
 // same direction): the hero uses it for stick thresholds that must not wait for the ramp
 // (jumping out of / diving under the water with S / W + jump) and once he already moves
 // faster than the eased stick asks for (see Player.readInput).
-export const KEY_RAMP_TICKS = 11; // ~0.37 s at 30 polls per second
+export const KEY_RAMP_TICKS = 7; // ~0.23 s at 30 polls per second (was 11)
 export const KEY_RAMP_START = 0.3; // first poll: already moves and turns the hero
 export const KEY_RAMP_GRACE = 4; // polls without a direction key before the ramp restarts
 
@@ -179,7 +183,8 @@ export class Input {
     }
     if (this.keyIdlePolls > KEY_RAMP_GRACE) this.keyRamp = 0;
     this.keyIdlePolls = 0;
-    this.keyRamp = Math.min(1, this.keyRamp + 1 / KEY_RAMP_TICKS);
+    // (Rounded so that KEY_RAMP_TICKS float steps land exactly on 1.)
+    this.keyRamp = Math.min(1, Math.round((this.keyRamp + 1 / KEY_RAMP_TICKS) * 1e9) / 1e9);
     return KEY_RAMP_START + (1 - KEY_RAMP_START) * this.keyRamp * this.keyRamp;
   }
 

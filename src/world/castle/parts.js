@@ -39,6 +39,7 @@ export function roundTower(kit, t) {
   const eave = top - 26;
   const tipY = top + roofH;
   const a0 = faceCentred(sides); // windows sit on faces centred at yaw 0, 45, 90...
+  kit.towers?.push({ x, z, r, sides, base, top, plinth, bands, windows: t.windows ?? [] });
 
   trim.color(TINT.stone);
   if (plinth) trim.lathe(x, z, [[r + 30, base, 0.7], [r + 30, base + 120], [r, base + 150]], sides, { a0 });
@@ -112,10 +113,14 @@ export function archWindow(kit, frame, width, height, { border = 24, depth = 20,
   kit.trim.color(TINT.stone);
   kit.trim.moulding(frame, inner, outer, depth, { w0, revealShade: 0.45 });
   kit.trim.solid(localBoxPolys(frame, -hw - border - 10, hw + border + 10, -24, 0, w0, depth + 10), { shade: 0.95 });
-  // Recess: dark pane, a touch lighter at the top like a faint reflection of the sky.
+  // Recess: dark pane, a touch lighter at the top like a faint reflection of the sky. It
+  // glows in AI RACE mode, brightest low down (a light somewhere inside).
   kit.trim.color(TINT.pane);
   const shade = inner.map(([, v]) => 0.8 + 0.5 * (v / height));
+  const sill = frame.at(0, 0, 0)[1];
+  kit.trim.glow = (x, y) => 1 - 0.4 * Math.min(1, Math.max(0, (y - sill) / height));
   kit.trim.panel(frame, inner, 2, { shade });
+  kit.trim.glow = 0;
 }
 
 // Round window (oculus) with a stone ring; the pane is dark unless `glass` is true, in which
@@ -131,7 +136,9 @@ export function roundWindow(kit, frame, cy, r, { border = 40, depth = 34, glass 
     kit.glass.panel(frame, inner, 3, { uvs });
   } else {
     kit.trim.color(TINT.pane);
+    kit.trim.glow = 1;
     kit.trim.panel(frame, inner, 3);
+    kit.trim.glow = 0;
   }
 }
 

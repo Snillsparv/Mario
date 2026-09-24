@@ -11,13 +11,19 @@
 // frees the music slot when it has faded out. Only looping tracks are queued until the
 // context exists; a cue asked for without audio is dropped. A menu track stops when the
 // game starts, and the game-over jingle plays over the GAME OVER card.
+//
+// AI RACE mode ('darkMode' { on }): over DARK_FADE seconds the birds and the pastoral bed
+// fade out and the storm (rain, wind, drone; storm.js) fades in, the dark track takes the
+// music slot, and an alarm stings once; switching off (or a game over) crossfades back.
+// 'lightning' { strength } schedules thunder a moment later (sooner for a close strike).
 
 import { SONGS } from './songs.js';
 import { compileSong } from './compile.js';
 import { createMixer, LEVELS } from './mixer.js';
 import { Sequencer } from './Sequencer.js';
-import { SFX } from './sfx.js';
+import { SFX, SFX_INFO, footstepLevel, landLevel } from './sfx.js';
 import { Ambience } from './ambience.js';
+import { Storm } from './storm.js';
 import { SPAWN, LAWN_BASE } from '../world/layout.js';
 import { clamp } from '../core/math.js';
 import { GAME_OVER_SECONDS } from '../core/constants.js';
@@ -40,6 +46,10 @@ const SILENT_DIST = 9000;
 const PAUSE_DUCK = 0.35;
 const FANFARE_SECONDS = 2.8;
 const GAME_OVER_AMB_DUCK = 0.3; // the frozen world's ambience drops back under the jingle
+const DARK_FADE = 3; // AI RACE mode crossfade, as long as the picture's
+// Sounds that mark Pip leaving the ground: a landing's weight follows the air time since.
+const TAKEOFFS = new Set(['jump', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'long_jump', 'wallkick', 'water_exit']);
+const NO_INFO = {};
 
 // Only a table's own entries count: names like 'toString' or '__proto__' are unknown.
 const own = (table, name) => (typeof name === 'string' && Object.hasOwn(table, name) ? table[name] : null);
@@ -59,6 +69,9 @@ export class AudioEngine {
     this.ctx = null;
     this.mix = null;
     this.ambience = null;
+    this.storm = null;
+    this.dark = false; // AI RACE mode (kept while there is no context, applied when one is made)
+    this.groundedAt = -Infinity; // context time Pip was last known on the ground
     this.failed = false; // context setup failed once; stay silent from then on
     this.warned = false;
     this.track = null; // { name, gain, seq, started }
@@ -121,12 +134,9 @@ export class AudioEngine {
       ctx = new AC({ latencyHint: 'interactive' });
       const mix = createMixer(ctx);
       mix.master.gain.value = 1;
-      const ambience = new Ambience(ctx, mix.amb, {
-        playAt: (recipe, pos) => this.voice(recipe, { pos }, mix.amb),
-        spatial: (pos) => this.spatial(pos),
-      });
-      Object.assign(this, { ctx, mix, ambience });
+      this.attach(ctx, mix);
     } catch (err) {
+      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null });
       this.failed = true;
       this.warnOnce(err);
       Promise.resolve()
@@ -134,21 +144,79 @@ export class AudioEngine {
         .catch(() => {});
       return false;
     }
-    this.applyLevels();
     if (!this.unlockPress) this.startPendingMusic();
     return true;
   }
 
-  // Play a named sound effect. opts: { pos, volume, pitch, terrain, big, index }.
+  // Build the ambience and storm on a context and its mixer (also used by the offline
+  // renders in the preview), in the current dark/sunny state.
+  attach(ctx, mix) {
+    const ambience = new Ambience(ctx, mix.amb, {
+      playAt: (recipe, pos, volume) => this.voice(recipe, { pos, volume }, mix.amb),
+      spatial: (pos) => this.spatial(pos),
+    });
+    const storm = new Storm(ctx, mix.amb);
+    Object.assign(this, { ctx, mix, ambience, storm });
+    if (this.dark) {
+      ambience.setDark(true, 0);
+      ambience.birds = 0;
+      storm.set(true, 1);
+    }
+    this.applyLevels();
+  }
+
+  // Play a named sound effect. opts: { pos, volume, pitch, terrain, big, index, ... }.
   // Unknown names are ignored. Sounds without a terrain use the last one walked on.
+  // SFX_INFO may space a sound's plays out (gap), cap how many sound at once (max) and
+  // let it carry farther (range). Returns whether it played.
   play(name, opts = {}) {
     let recipe = own(SFX, name);
-    if (!recipe || !this.ctx) return;
+    if (!recipe || !this.ctx) return false;
     const now = this.ctx.currentTime;
-    if (now - (this.lastPlayed.get(name) ?? -1) < DEDUPE_SECONDS) return;
-    this.lastPlayed.set(name, now);
+    const info = own(SFX_INFO, name) ?? NO_INFO;
+    if (now - (this.lastPlayed.get(name) ?? -Infinity) < Math.max(DEDUPE_SECONDS, info.gap ?? 0)) return false;
+    if (info.max && this.countActive(name) >= info.max) return false;
     if (name === 'punch') recipe = SFX[this.comboJab(now)];
-    this.voice(recipe, opts.terrain ? opts : { ...opts, terrain: this.terrain }, this.mix.sfx);
+    const o = { ...opts, terrain: opts.terrain || this.terrain, range: info.range ?? 1 };
+    if (!this.voice(recipe, o, this.mix.sfx, name)) return false;
+    this.lastPlayed.set(name, now);
+    return true;
+  }
+
+  // AI RACE mode on/off: the storm replaces the pastoral ambience and the dark track takes
+  // the music slot, both over DARK_FADE (the picture's crossfade); an alarm stings as it
+  // starts. Off fades the dark track out (nothing replaces it: the grounds have no music)
+  // and the birds back in.
+  setDark(on) {
+    on = !!on;
+    if (on === this.dark) return;
+    this.dark = on;
+    if (on) {
+      this.play('alarm');
+      this.playMusic('dark');
+    } else if (this.wantMusic === 'dark') this.stopMusic(DARK_FADE);
+    this.ambience?.setDark(on, DARK_FADE);
+    this.storm?.set(on, DARK_FADE);
+  }
+
+  // Thunder for a lightning flash of `strength` (0..1): a close, strong strike is heard
+  // after ~0.3 s with a crack, a weak (far) one up to 2.5 s later as a low roll only.
+  thunder(strength = 0.7) {
+    if (!this.ctx) return;
+    const s = clamp(Number.isFinite(strength) ? strength : 0.7, 0, 1);
+    if (this.countActive('thunder') >= SFX_INFO.thunder.max) return;
+    const delay = clamp(0.3 + (1 - s) * 1.7 + Math.random() * 0.5, 0.3, 2.5);
+    const pan = (Math.random() * 2 - 1) * 0.4;
+    this.voice(SFX.thunder, { strength: s, delay, pan, volume: 0.55 + 0.45 * s }, this.mix.amb, 'thunder');
+  }
+
+  // One-shots of this name still sounding.
+  countActive(tag) {
+    if (!this.ctx) return 0;
+    this.releaseVoices();
+    let n = 0;
+    for (const v of this.active) if (v.tag === tag) n++;
+    return n;
   }
 
   // The ground combo may send both of its jabs as a plain 'punch': one that closely follows
@@ -176,9 +244,9 @@ export class AudioEngine {
     if (this.ctx && this.track?.name !== name) this.guard(() => this.startMusic(name));
   }
 
-  stopMusic() {
+  stopMusic(fade = 0.8) {
     this.wantMusic = null;
-    if (this.track) this.fadeOutTrack(this.track, 0.8);
+    if (this.track) this.fadeOutTrack(this.track, fade);
     this.track = null;
   }
 
@@ -196,6 +264,7 @@ export class AudioEngine {
       this.releaseVoices();
       if (this.track && this.ctx.currentTime >= this.track.seq.endTime) this.endTrack();
       this.ambience.update(dt, this.listener);
+      this.storm.update(dt);
     });
   }
 
@@ -204,18 +273,30 @@ export class AudioEngine {
   subscribe(events) {
     // Every handler is fenced off: an audio failure must never reach the emitter.
     const on = (name, fn) => events.on(name, (e = {}) => this.guard(() => fn(e)));
-    const speedVolume = (speed = 20) => 0.55 + 0.45 * clamp(speed / 30, 0, 1);
-    on('sfx', (e) => this.play(e.name, e));
+    const now = () => this.ctx?.currentTime ?? 0;
+    on('sfx', (e) => {
+      if (TAKEOFFS.has(e.name)) this.groundedAt = now();
+      this.play(e.name, e);
+    });
+    // Footsteps: tiptoe soft, walk clearly under a run (level and brightness by speed).
     on('footstep', (e) => {
       if (e.terrain) this.terrain = e.terrain;
-      this.play('footstep', { ...e, volume: speedVolume(e.speed) });
+      this.groundedAt = now();
+      this.play('footstep', { ...e, ...footstepLevel(e.speed) });
     });
+    // Landings weigh what the fall did: a hop or a step down lands softly (air time since
+    // the last takeoff or step, or the event's `fall` height when given); hard ones in full.
     on('land', (e) => {
       if (e.terrain) this.terrain = e.terrain;
-      this.play(e.hard ? 'land_hard' : 'land', e);
+      const level = e.hard ? {} : landLevel(now() - this.groundedAt, e.fall);
+      this.groundedAt = now();
+      this.play(e.hard ? 'land_hard' : 'land', { ...e, ...level });
     });
     on('splash', (e) => this.play('splash', e));
-    on('hurt', (e) => this.play('hurt', e));
+    on('hurt', (e) => {
+      this.play('hurt', e);
+      if (e.fire) this.play('burn', e);
+    });
     on('coin', (e) => this.play(e.red ? 'red_coin' : 'coin', e));
     on('redCoinsComplete', () => this.play('star_appear'));
     on('starCollected', () => this.starFanfare());
@@ -234,6 +315,7 @@ export class AudioEngine {
     on('gameStart', () => {
       if (this.wantMusic && own(SONGS, this.wantMusic).menu) this.stopMusic();
       this.clearDucks(); // a new game is never paused, fanfaring or over
+      this.setDark(false); // nor stormy (main resets it after a game over; this is a backstop)
       if (hasUserActivation()) this.unlock();
     });
     // GAME OVER card: a short original jingle cuts in on the music slot (and through any
@@ -241,12 +323,22 @@ export class AudioEngine {
     // crossfades in from the jingle's last chord, and the ambience returns.
     // Without a context (muted, or audio never unlocked) nothing is queued: the jingle is a
     // cue, which playMusic() drops rather than let it turn up later.
+    // In AI RACE mode the jingle cuts the dark track; the storm plays on (ducked) under the
+    // card over the frozen dark world and crossfades back to the sunny ambience after it.
     on('gameOver', () => {
       this.clearDucks();
       this.playMusic('game_over');
       this.setDuck('gameOver', GAME_OVER_AMB_DUCK);
-      this.gameOverTimer = setTimeout(() => this.setDuck('gameOver', 1), GAME_OVER_SECONDS * 1000);
+      this.gameOverTimer = setTimeout(() => {
+        this.setDuck('gameOver', 1);
+        this.guard(() => this.setDark(false));
+      }, GAME_OVER_SECONDS * 1000);
     });
+    // AI RACE mode and its storm (emitted by main, objects and effects).
+    on('darkMode', (e) => this.setDark(e.on));
+    on('lightning', (e) => this.thunder(e.strength));
+    on('kaijuRoar', (e) => this.play('kaiju_roar', e));
+    on('aiRaceButton', (e) => this.play('button_press', e)); // deduped with an sfx of it
   }
 
   installBrowserHooks() {
@@ -298,44 +390,51 @@ export class AudioEngine {
     console.warn('audio disabled after an error:', err);
   }
 
-  // Stereo pan and distance attenuation of a world position for the current listener.
-  spatial(pos) {
-    if (!pos) return { gain: 1, pan: 0 };
+  // Stereo pan, distance attenuation and distance of a world position for the current
+  // listener; `range` stretches the attenuation distances (huge sounds carry farther).
+  spatial(pos, range = 1) {
+    if (!pos) return { gain: 1, pan: 0, dist: 0 };
     const L = this.listener;
     const dx = pos.x - L.x;
     const dz = pos.z - L.z;
     const dist = Math.hypot(dx, pos.y - L.y, dz);
     const horiz = Math.hypot(dx, dz);
-    const gain = clamp(1 - (dist - FULL_VOLUME_DIST) / (SILENT_DIST - FULL_VOLUME_DIST), 0, 1) ** 2;
-    if (horiz < 1) return { gain, pan: 0 };
+    const full = FULL_VOLUME_DIST * range;
+    const gain = clamp(1 - (dist - full) / (SILENT_DIST * range - full), 0, 1) ** 2;
+    if (horiz < 1) return { gain, pan: 0, dist };
     // Listener's right vector for yaw (forward = (sin yaw, cos yaw)) is (-cos yaw, sin yaw).
     const side = (-dx * Math.cos(L.yaw) + dz * Math.sin(L.yaw)) / horiz;
-    return { gain, pan: side * 0.8 * clamp(horiz / 600, 0, 1) };
+    return { gain, pan: side * 0.8 * clamp(horiz / 600, 0, 1), dist };
   }
 
-  // Run a one-shot recipe through its own gain + panner into a bus.
-  voice(recipe, opts, bus) {
+  // Run a one-shot recipe through its own gain + panner into a bus. opts: pos (and range),
+  // volume, pitch, pan (overrides the position's), delay (seconds, on the audio clock), plus
+  // whatever the recipe reads; the recipe also gets `dist` from the listener. `tag` names
+  // the voice for countActive(). Returns whether it played.
+  voice(recipe, opts, bus, tag = null) {
     const ctx = this.ctx;
-    if (ctx?.state !== 'running' || this._muted) return;
+    if (ctx?.state !== 'running' || this._muted) return false;
     this.releaseVoices();
-    if (this.active.length >= MAX_VOICES) return;
-    const { gain, pan } = this.spatial(opts.pos);
+    if (this.active.length >= MAX_VOICES) return false;
+    const { gain, pan, dist } = this.spatial(opts.pos, opts.range);
     const volume = (opts.volume ?? 1) * gain;
-    if (volume < 0.01) return;
+    if (volume < 0.01) return false;
     const p = (opts.pitch ?? 1) * (1 + (Math.random() * 2 - 1) * PITCH_JITTER);
+    const delay = Math.max(0, opts.delay ?? 0);
     let panner = null;
     let dur = 1;
     try {
       const out = ctx.createGain();
       out.gain.value = volume;
       panner = ctx.createStereoPanner();
-      panner.pan.value = pan;
+      panner.pan.value = opts.pan ?? pan;
       out.connect(panner).connect(bus);
-      dur = recipe(ctx, out, ctx.currentTime + 0.005, { ...opts, p });
+      dur = recipe(ctx, out, ctx.currentTime + 0.005 + delay, { ...opts, p, dist });
     } catch (err) {
       this.warnOnce(err);
     }
-    if (panner) this.active.push({ end: ctx.currentTime + dur + VOICE_TAIL, node: panner });
+    if (panner) this.active.push({ end: ctx.currentTime + delay + dur + VOICE_TAIL, node: panner, tag });
+    return !!panner;
   }
 
   // Free the slots (and graph) of finished one-shots. Timed on the audio clock, so it
@@ -367,11 +466,13 @@ export class AudioEngine {
     const old = this.track;
     const song = compiled(name);
     const crossfade = !!old && !song.jingle && now - old.started >= YOUNG_TRACK;
-    if (old) this.fadeOutTrack(old, crossfade ? MUSIC_FADE : QUICK_CUT);
+    // A song with its own fadeIn (the dark track) always fades in over it.
+    const fadeIn = song.fadeIn || (crossfade ? MUSIC_FADE : 0);
+    if (old) this.fadeOutTrack(old, crossfade ? Math.max(MUSIC_FADE, fadeIn) : QUICK_CUT);
     const gain = ctx.createGain();
     gain.connect(this.mix.music);
-    gain.gain.setValueAtTime(crossfade ? 0 : song.level, now);
-    if (crossfade) gain.gain.linearRampToValueAtTime(song.level, now + MUSIC_FADE);
+    gain.gain.setValueAtTime(fadeIn ? 0 : song.level, now);
+    if (fadeIn) gain.gain.linearRampToValueAtTime(song.level, now + fadeIn);
     const seq = new Sequencer(ctx, song, gain);
     seq.start(now + (old && !crossfade ? QUICK_CUT : 0.06), { endBeat: song.endBeat });
     this.track = { name, gain, seq, started: now };

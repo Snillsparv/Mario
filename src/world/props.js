@@ -4,7 +4,13 @@
 // Everything of one material is merged into one static mesh, so the whole part costs 8 draw
 // calls: leaves (canopies + bushes), bark (trunks), flowers, wood, rock, shadows, waterfall
 // sheets and waterfall splash. Colliders are raw triangle lists (trunks/fences/signs = wood,
-// rocks = stone, bushes = grass); every tree trunk is also a climbable pole.
+// rocks = stone, bushes = grass); every tree is also a climbable pole, from the ground up
+// through its leaves to the crown, and `trees` lists the trunks and canopies (for fires).
+//
+// AI RACE mode (setDarkness(t)): every material crossfades to its storm grade (DARK_GRADES,
+// terrain/darkGrade.js): withered dark brown-green canopies that also shrink and go ragged
+// (foliageFade.js wither), near-black bark, dead grey wilting flowers, dark fences, signs and
+// rocks, murky waterfall. Uniforms only (the flowers' few quads are resized).
 
 import * as THREE from 'three';
 import { worldMaterial } from '../render/materials.js';
@@ -14,7 +20,20 @@ import { buildTrees } from './props/trees.js';
 import { buildFences } from './props/fences.js';
 import { buildDecor } from './props/decor.js';
 import { buildWaterfall } from './props/waterfall.js';
+import { DarkGrade } from './terrain/darkGrade.js';
 import { LEAF_TILE, barkTexture, leafTexture, rockTexture, shadowTexture, woodTexture } from './props/textures.js';
+
+// AI RACE mode grades per mesh (see terrain/darkGrade.js). Linear colours. Tuned together with
+// the renderer's storm fog and grade (render/post/storm.js), which darken the frame further.
+export const DARK_GRADES = {
+  leaves: { sat: 0.08, mul: [0.34, 0.27, 0.17] }, // withered, dark brown-green
+  bark: { sat: 0.15, mul: [0.1, 0.09, 0.09] }, // near-black
+  flowers: { sat: 0, mul: [0.34, 0.33, 0.32] }, // dead grey
+  wood: { sat: 0.25, mul: [0.26, 0.22, 0.2] },
+  rocks: { sat: 0.08, mul: [0.21, 0.21, 0.23] },
+  waterfall: { sat: 0.25, mul: [0.2, 0.26, 0.24] },
+  waterfallSplash: { sat: 0.1, mul: [0.42, 0.44, 0.46] },
+};
 
 export function buildProps(layout) {
   // Shared builders the sub-modules add to.
@@ -29,7 +48,7 @@ export function buildProps(layout) {
     shadow: (x, z, radius, strength) => addShadow(kit.shadows, layout, x, z, radius, strength),
   };
 
-  const poles = buildTrees(layout, kit);
+  const { poles, trees } = buildTrees(layout, kit);
   buildFences(layout, kit);
   const decor = buildDecor(layout, kit);
   const waterfall = buildWaterfall(layout, kit);
@@ -53,6 +72,8 @@ export function buildProps(layout) {
     waterfall.sheets,
     waterfall.splash,
   );
+  const grade = new DarkGrade();
+  for (const mesh of group.children) if (DARK_GRADES[mesh.name]) grade.patch(mesh.material, DARK_GRADES[mesh.name]);
 
   return {
     object3D: group,
@@ -61,10 +82,19 @@ export function buildProps(layout) {
       terrain,
     })),
     poles,
+    trees,
     update(time, camera) {
       kit.fade.update(camera, locateHero, time);
       decor.update(camera);
       waterfall.update(time, camera);
+    },
+    // AI RACE mode crossfade: 0 = sunny grounds .. 1 = storm.
+    setDarkness(t) {
+      const k = Math.min(1, Math.max(0, t));
+      const e = k * k * (3 - 2 * k);
+      grade.set(e);
+      kit.fade.wither(e);
+      decor.wilt(e);
     },
   };
 }

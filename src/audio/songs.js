@@ -201,4 +201,87 @@ const gameOver = {
   ],
 };
 
-export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver };
+// "Signal Lost" - AI RACE mode loop. D minor, 4/4, 76 bpm, 24 bars (~76 s loop).
+// Slow and cold: a breathing synth pad over a throbbing low bass, a ticking clock, heavy
+// thumps and struck steel. A (1-8): pad, pulse and steel with a few glassy pings; B (9-16):
+// the glass lead enters as the harmony leans from the tonic onto the Phrygian flat two
+// (Eb) and back; C (17-24): the lead climbs over the fuller kit, and the Asus4 - A half
+// cadence (the steel hammering four times) turns the loop back into D minor. The engine
+// plays it itself while the storm mode is on, fading it in with the picture (fadeIn).
+const dark = {
+  title: 'Signal Lost',
+  level: 0.6,
+  fadeIn: 3,
+  key: 'D',
+  mode: 'minor',
+  bpm: 76,
+  beatsPerBar: 4,
+  swing: 0,
+  roles: { pad: 'darkpad', bass: 'pulse' },
+  lead: 'glass',
+  bassLow: 33, // roots from A1 up: a low throb
+  chords: [
+    // A
+    'Dm', 'Dm', 'Bb', 'Bb', 'Gm', 'Gm', 'Eb', 'A',
+    // B
+    'Dm', 'Eb', 'Dm', 'Eb', 'Bb', 'Gm', 'Asus4', 'A',
+    // C
+    'Gm', 'Eb', 'Bb', 'A', 'Dm', 'Eb', 'Asus4', 'A',
+  ],
+  sections: [
+    { from: 1, to: 8, pad: 0.8, bass: 'pulse', comp: 'none', drums: 'sparse' },
+    { from: 9, to: 16, pad: 0.85, bass: 'pulse', comp: 'none', drums: 'industrial' },
+    { from: 17, to: 24, pad: 1, bass: 'pulse', comp: 'none', drums: 'industrial' },
+  ],
+  parts: [
+    {
+      inst: 'glass',
+      vel: 0.8,
+      bars: {
+        4: 'r:2 F5:2',
+        6: 'r:2 D5:1 Bb4:1',
+        8: 'r:2 C#5:2',
+        9: 'A4:3 F4:1',
+        10: 'G4:4',
+        11: 'A4:2 D5:1.5 C5:.5',
+        12: 'Bb4:4',
+        13: 'D5:3 F5:1',
+        14: 'E5:1.5 D5:.5 Bb4:2',
+        15: 'A4:4',
+        16: 'C#5:2 E5:2',
+        17: 'D5:2 Bb4:1 G4:1',
+        18: 'G4:3 Bb4:1',
+        19: 'F5:2 D5:1.5 F5:.5',
+        20: 'E5:4',
+        21: 'F5:1 E5:.5 D5:.5 A4:2',
+        22: 'G5:2 Eb5:2',
+        23: 'D5:3 E5:1',
+        24: 'C#5:4',
+      },
+    },
+    {
+      // Struck steel on the phrase downbeats, hammering into the turnarounds.
+      inst: 'clang',
+      vel: 0.8,
+      bars: {
+        1: 'D3:4',
+        5: 'G2:4',
+        7: 'r:2 Bb2:2',
+        8: 'A2:4',
+        9: 'D3:4',
+        11: 'D3:2 D3:2',
+        13: 'Bb2:4',
+        15: 'r:2 A2:2',
+        16: 'A2:2 A2:1 A2:1',
+        17: 'G2:4',
+        19: 'Bb2:4',
+        20: 'A2:2 A2:2',
+        21: 'D3:4',
+        23: 'r:2 A2:2',
+        24: 'A2:1 A2:1 A2:1 A2:1',
+      },
+    },
+  ],
+};
+
+export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver, dark };

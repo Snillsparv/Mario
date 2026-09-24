@@ -219,7 +219,12 @@ export function buildDecor(layout, kit) {
     }
   }
   const flowers = new BillboardBatch('flowers', sprites, worldMaterial({ map: flowerAtlas(), alphaTest: 0.5 }));
-  return { flowers: flowers.mesh, update: (camera) => flowers.update(camera) };
+  return {
+    flowers: flowers.mesh,
+    update: (camera) => flowers.update(camera),
+    // AI RACE mode: the flowers wilt (shorter, narrower; their colour is graded in props.js).
+    wilt: (t) => flowers.setHeightScale(1 - 0.45 * t),
+  };
 }
 
 // A round bush: a big low leaf blob with three smaller ones around it, sunk into the ground,

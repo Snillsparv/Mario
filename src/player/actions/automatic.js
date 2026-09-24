@@ -1,5 +1,6 @@
-// Automatic actions that take over positioning: ledge hang / climb, holding a pole,
-// death and the star celebration (star_fall drops an airborne hero first).
+// Automatic actions that take over positioning: ledge hang / climb, holding a pole, the
+// handstand on a pole's tip, death and the star celebration (star_fall drops an airborne
+// hero first).
 
 import { angleDiff, approach, clamp, lerp, smoothstep, wrapAngle } from '../../core/math.js';
 import * as T from '../physics/tuning.js';
@@ -67,37 +68,34 @@ const ledgeClimb = {
 };
 
 // Holding a tree trunk / pole (arg: the pole). Stick up climbs, down slides, sideways orbits.
+// Climbing on at the top of the climb (hands at the tip) goes up into the handstand on it.
 const pole = {
   group: 'automatic',
   anim: 'pole_hold',
   enter(p, target) {
     p.pole = target;
     p.poleLetGo = 0;
-    p.faceYaw = Math.atan2(target.x - p.pos.x, target.z - p.pos.z);
+    // Back down from the handstand the hero is on the pole's axis: he keeps his facing.
+    const fromTip = p.prevAction === 'pole_top';
+    if (!fromTip) p.faceYaw = Math.atan2(target.x - p.pos.x, target.z - p.pos.z);
     p.poleY = clamp(p.pos.y, target.y0, poleTop(target));
     stop(p);
     placeOnPole(p);
-    p.sfx('climb');
+    if (fromTip) snapRender(p);
+    else p.sfx('climb');
   },
   update(p, c) {
     if (p.poleLetGo > 0) return letGoOfPole(p);
     if (p.actionTimer >= 2) {
       if (c.A.pressed) return p.setAction('pole_jump');
-      if (c.Z.pressed) {
-        // Lets go: eases off the trunk while starting to drop, then falls (the same Z press
-        // never also starts a ground pound). The fall stays within reach of this trunk, so it
-        // can't be grabbed again until he lands or drifts out of its reach (letGoPole).
-        p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
-        p.letGoPole = p.pole;
-        p.poleLetGo = 1;
-        return letGoOfPole(p);
-      }
+      if (c.Z.pressed) return letGo(p);
     }
     let anim = 'pole_hold';
     const top = poleTop(p.pole);
     // The stick as pushed (no keyboard ease-in: that only softens starting to run).
     const sy = p.rawStickY;
-    if (sy > 0.2 && p.poleY < top) {
+    if (sy > 0.2 && p.poleY >= top && p.actionTimer >= 2) return p.setAction('pole_top');
+    if (sy > 0.2) {
       p.poleY = Math.min(top, p.poleY + T.POLE_CLIMB_SPEED * sy);
       p.cyclePhase += sy * 0.08;
       anim = 'pole_climb';
@@ -112,8 +110,68 @@ const pole = {
   },
 };
 
+// The top of the climb: the feet HANG_DEPTH below the tip, so the hands reach it.
 function poleTop(target) {
   return Math.max(target.y0, target.y1 - T.HANG_DEPTH);
+}
+
+// No interpolation from the previous tick's placement: entering or leaving the handstand
+// moves pos between the feet (holding the trunk) and the hands (on the tip).
+function snapRender(p) {
+  p.prevPos.x = p.pos.x;
+  p.prevPos.y = p.pos.y;
+  p.prevPos.z = p.pos.z;
+}
+
+// Lets go (Z): eases off the trunk while starting to drop, then falls (the same Z press never
+// also starts a ground pound). The fall stays within reach of this trunk, so it can't be
+// grabbed again until he lands or drifts out of its reach (letGoPole).
+function letGo(p) {
+  p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
+  p.letGoPole = p.pole;
+  p.poleLetGo = 1;
+  return letGoOfPole(p);
+}
+
+// The handstand on a pole's tip (a tree's crown), reached by climbing on at the top of the
+// climb. RenderState during it (anim 'pole_handstand'): pos = the pole tip { pole.x, pole.y1,
+// pole.z }, where his hands are (the model draws him upside down above it, facing yaw);
+// animTime 0 is the moment he arrives from the top of the climb (hands at the tip, body still
+// hanging below them) and he swings up into the balanced handstand over POLE_TOP_SETTLE_TICKS.
+// A: a big flip jump off it (pole_top_jump, toward the stick when held, else the facing).
+// Stick pulled down (POLE_TOP_DOWN_STICK, once settled): back onto the trunk at the top of
+// the climb (action 'pole'). Z: lets go from there, as on the trunk.
+const poleTopAction = {
+  group: 'automatic',
+  anim: 'pole_handstand',
+  enter(p) {
+    stop(p);
+    placeOnTip(p);
+    snapRender(p);
+    p.grounded = false;
+    p.sfx('climb');
+  },
+  update(p, c) {
+    placeOnTip(p);
+    if (p.actionTimer >= 2) {
+      if (c.A.pressed) return p.setAction('pole_top_jump');
+      if (c.Z.pressed) {
+        p.setAction('pole', p.pole);
+        return letGo(p);
+      }
+    }
+    if (p.actionTimer >= T.POLE_TOP_SETTLE_TICKS && p.rawStickY <= T.POLE_TOP_DOWN_STICK) return p.setAction('pole', p.pole);
+    return false;
+  },
+};
+
+function placeOnTip(p) {
+  const pole = p.pole;
+  p.pos.x = pole.x;
+  p.pos.y = pole.y1;
+  p.pos.z = pole.z;
+  p.vel.x = p.vel.y = p.vel.z = 0;
+  p.floor = p.collision.findFloor(pole.x, pole.y1 + 10, pole.z);
 }
 
 function standAtPoleFoot(p) {
@@ -227,6 +285,7 @@ export const AUTOMATIC_ACTIONS = {
   ledge_hang: ledgeHang,
   ledge_climb: ledgeClimb,
   pole,
+  pole_top: poleTopAction,
   death,
   star_fall: starFall,
   star_dance: starDance,

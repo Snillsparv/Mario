@@ -1,18 +1,29 @@
 // Interactive objects of the castle grounds: yellow and red coins, the red-coin star, a hidden
-// 1-up gem, butterflies and circling birds, plus their sparkles and blob shadows.
+// 1-up gem, butterflies and circling birds, plus their sparkles and blob shadows; and for AI RACE
+// mode the "AI RACE" floor button, the robot beast on the castle roof and its fireballs.
 //
-//   new ObjectManager({ scene, collision, events, layout, player })
-//   update({ player })             30 Hz: pickups, star state, butterfly AI
+//   new ObjectManager({ scene, collision, events, layout, player, fx?, level? })
+//   update({ player })             30 Hz: pickups, star state, butterfly AI, button, beast, fireballs
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
-//   reset()                        new game: every pickup back, star hidden, star count taken back
+//   reset()                        new game: every pickup back, star hidden, star count taken back,
+//                                  no beast, fireballs or fire zones, button up, mode off
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
+//   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
+//
+// AI RACE mode (docs/ARCHITECTURE.md): a ground pound landing on the button (layout.AI_BUTTON,
+// AiButton.js) emits 'sfx' button_press and 'aiRaceButton' { on: !current }; main answers with
+// 'darkMode' { on }, which raises (or sinks) the beast (layout.KAIJU, RobotBeast.js). The beast
+// spits fireballs (Fireballs.js) that explode through `fx`, scorch the ground and set trees alight
+// through `level`, and hurt the hero (blast, direct hit, fire zones). Lightning ('lightning'
+// { strength }) flashes the beast's plates.
 //
 // Everything animates on the simulation clock (ticks + alpha), so pausing the game freezes the
 // objects too. Before the first update() (the title screen shows the level behind it), and
 // again after reset() until the next update(), animate() runs that clock from the caller's
 // time instead (ambient()): ambient motion only (no pickups), and play then carries on from
 // there without a jump. Seven draw calls in total: coins, sparkles, shadows, star, 1-up,
-// butterflies, birds.
+// butterflies, birds; plus the button (base, cap) and, only while AI RACE mode shows them, the
+// beast (nine rig parts), fireball cores, their ground markers and the fire sprites.
 //
 // Allocation: once JIT-compiled, the per-frame path allocates nothing, and the per-tick path
 // only event payloads plus the small result objects of its few collision queries (see
@@ -36,6 +47,10 @@ import { OneUp } from './OneUp.js';
 import { Butterflies } from './Butterflies.js';
 import { Birds } from './Birds.js';
 import { makeStarEnvMap } from './textures.js';
+import { AiButton } from './AiButton.js';
+import { RobotBeast } from './RobotBeast.js';
+import { Fireballs } from './Fireballs.js';
+import { FireSprites } from './FireSprites.js';
 
 const STAR_SHADOW = 150;
 const STAR_GLOW = 360;
@@ -56,7 +71,7 @@ function oneUpSpot(layout) {
 }
 
 export class ObjectManager {
-  constructor({ scene, collision, events, layout, player }) {
+  constructor({ scene, collision, events, layout, player, fx = null, level = null }) {
     this.events = events;
     this.player = player;
     this.collision = collision;
@@ -83,13 +98,64 @@ export class ObjectManager {
     this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng, waterTop: layout.WATER_LEVEL });
     this.birds = new Birds(layout.BIRD_CIRCLES ?? [], { collision, rng: this.rng });
 
+    // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
+    // ambient objects' motion does not depend on the mode).
+    this.modeOn = false; // AI RACE mode as last switched ('darkMode' events, or our own button)
+    this.darkT = 0;
+    this.button = layout.AI_BUTTON ? new AiButton({ spot: layout.AI_BUTTON, collision, groundAt }) : null;
+    if (layout.KAIJU) {
+      const rng = makeRng(0xa1ace);
+      this.fire = new FireSprites(rng);
+      this.fireballs = new Fireballs({ collision, events, fx, level, layout, fire: this.fire, rng });
+      const balls = this.fireballs;
+      this.beast = new RobotBeast({
+        anchor: layout.KAIJU,
+        collision,
+        events,
+        fire: this.fire,
+        rng,
+        launch: (x, y, z, vx, vy, vz) => balls.launch(x, y, z, vx, vy, vz),
+      });
+    } else {
+      this.fire = this.fireballs = this.beast = null;
+    }
+    events.on?.('darkMode', (e) => this._setMode(!!e?.on));
+    events.on?.('lightning', (e) => this.beast?.flash(e?.strength ?? 1));
+
     this.group = new THREE.Group();
     this.group.name = 'objects';
-    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles]) {
+    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.beast, this.fireballs, this.fire]) {
       if (part) this.group.add(part.mesh);
     }
     scene.add(this.group);
     this._draw(0, 1, null);
+  }
+
+  // AI RACE mode switched (main's 'darkMode' event): the beast rises or sinks.
+  _setMode(on) {
+    this.modeOn = on;
+    this.beast?.setMode(on);
+  }
+
+  // The button was pounded: ask main to toggle the mode.
+  _pressButton() {
+    const on = !this.modeOn;
+    this.modeOn = on;
+    const b = this.button;
+    this.events.emit('sfx', { name: 'button_press', pos: { x: b.x, y: b.capTop0, z: b.z } });
+    this.events.emit('aiRaceButton', { on });
+  }
+
+  // AI RACE crossfade (main calls it every tick while it changes): butterflies and birds keep
+  // away from the storm, and the button glows. Reaching full darkness without a 'darkMode'
+  // event (a preview, a test) still brings the beast.
+  setDarkness(t) {
+    this.darkT = t;
+    this.button?.setDarkness(t);
+    const calm = t < 0.5;
+    this.butterflies.mesh.visible = calm;
+    this.birds.mesh.visible = calm;
+    if (t >= 0.999 && !this.modeOn) this._setMode(true);
   }
 
   _makeOneUp(spot, groundAt) {
@@ -127,6 +193,12 @@ export class ObjectManager {
       if (f) this.shadows.place(this.oneUpShadow, gem.pos.x, f.y, gem.pos.z, f.normal, f.size);
     }
     this.sparkles.clear();
+    // AI RACE mode ends with the game: no beast, fireballs or fires, the button up.
+    this.modeOn = false;
+    this.button?.reset();
+    this.beast?.reset();
+    this.fireballs?.clear();
+    this.setDarkness(0);
     this.started = false;
     this._backdropStart = null;
   }
@@ -160,6 +232,11 @@ export class ObjectManager {
     this._updateStar(player);
     this._updateOneUp(player);
     this.butterflies.update(this.tick, pos);
+    if (this.button !== null && this.button.update(player)) this._pressButton();
+    if (this.beast !== null) {
+      this.beast.update(player, this.tick);
+      this.fireballs.update(player, this.tick);
+    }
   }
 
   _spawnStar() {
@@ -257,5 +334,11 @@ export class ObjectManager {
       this.sparkles.setGlow(r.x + _toCam.x, r.y + _toCam.y, r.z + _toCam.z, STAR_GLOW * r.scale, 0.55);
     }
     this.sparkles.animate(clock);
+    if (this.button !== null) this.button.animate(alpha, clock);
+    if (this.beast !== null) {
+      this.beast.animate(alpha, clock, camera);
+      this.fireballs.animate(alpha, clock);
+      this.fire.animate(clock);
+    }
   }
 }

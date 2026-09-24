@@ -8,6 +8,8 @@
 //   &overlay=1                        a 4:3-aware test overlay aligned with alignOverlay()
 //   &scene=test                       skip the level, use the fallback test scene
 //   &props=0                          hide the test props (spheres, boxes, gradient panel)
+//   &dark=0.7                         AI RACE storm: fog, actor lights and grade at darkness 0.7
+//   &flash=1                          hold a lightning flash (strength 1) at its peak
 // Camera overrides (&cam=x,y,z&look=x,y,z) from the harness work as usual.
 // The preview never reads or writes the game's saved display settings (storage: null), so
 // URL flags cannot leak into the game on the same origin.
@@ -45,6 +47,13 @@ export async function setup(ctx) {
   if (!level) view.scene.add(fallbackScene());
   if (params.get('props') !== '0') view.scene.add(testProps(level ? layout.groundHeight : () => 0));
 
+  if (params.has('dark')) {
+    const t = Number(params.get('dark'));
+    level?.setDarkness?.(t);
+    view.setDarkness(t);
+  }
+  const flash = params.has('flash') ? Number(params.get('flash')) || 1 : 0;
+
   window.__view = view;
   return {
     camera: params.has('under') ? VIEWS.underwater : VIEWS.spawn,
@@ -55,6 +64,7 @@ export async function setup(ctx) {
       // Follow the harness camera (it applies the URL/preset camera to ctx.camera).
       view.camera.position.copy(ctx.camera.position);
       view.camera.quaternion.copy(ctx.camera.quaternion);
+      if (flash) view.flash(flash);
       view.render();
     },
   };

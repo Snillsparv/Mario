@@ -5,9 +5,11 @@
 // canopy and trunk is a fade group (foliageFade.js).
 //
 // Each tree also gets a solid trunk collider (an octagonal prism, walls only, up to the
-// canopy) and a climbable pole as thick as the visible trunk, whose top leaves the climbing
-// hero's hat just under the canopy. The canopy sits high enough (about three times his
-// height) that a trunk grabbed from a running jump still leaves a real climb.
+// canopy) and a climbable pole as thick as the visible trunk that runs on up through the
+// leaves to the crown: the top of the canopy right over the trunk (measured on the built
+// leaves), so the hero climbs up through the canopy and out on top (a handstand on the
+// crown, like the classics). The canopy sits high enough (about three times his height)
+// that a trunk grabbed from a running jump still leaves a real climb below the leaves.
 
 import { makeRng, smoothstep } from '../../core/math.js';
 import { SUN_DIR } from '../layout.js';
@@ -22,9 +24,6 @@ const CANOPY_Y = 740;
 const CANOPY_R = 262;
 const CANOPY_RY = 222;
 const TRUNK_SIDES = 7;
-// Pole top above the (lowest possible) canopy underside next to the trunk: at the top of the
-// climb (feet HANG_DEPTH = 160 below the pole top) his hat just reaches the leaves.
-export const POLE_INTO_CANOPY = 40;
 // Horizontal reach around the trunk axis where the climbing hero is (70 out) and his hat.
 const CLIMB_REACH = 120;
 
@@ -36,7 +35,7 @@ export function trunkRadius(h, scale = 1) {
 }
 
 // Deterministic shape of every tree: { x, z, ground, scale, tint, blobs, centre, radii,
-// bottom, top, base (canopy underside over the trunk), trunkTop, pole }.
+// bottom, top, base (canopy underside over the trunk), reach, trunkTop }.
 export function treeShapes(layout) {
   return layout.TREES.map((t, i) => {
     const rng = makeRng(4242 + i * 7919);
@@ -103,19 +102,22 @@ export function treeShapes(layout) {
       base,
       reach,
       trunkTop: base + 0.6 * (centre.y - base), // the trunk runs up into the canopy
-      pole: { x: t.x, z: t.z, y0: ground, y1: Math.round(base + POLE_INTO_CANOPY), radius: POLE_RADIUS },
     };
   });
 }
 
 // kit: shared builders from props.js ({ leaves, bark, fade, colliders, shadow }). Returns
-// the climbable poles.
+// { poles: the climbable poles (ground to crown), trees: [{ x, z, groundY, trunkTop, crown,
+// canopy: { x, y, z, radius } }] } (the canopy as a sphere round its leaves, e.g. for fires).
 export function buildTrees(layout, kit) {
-  return treeShapes(layout).map((tree, i) => {
+  const poles = [];
+  const trees = [];
+  treeShapes(layout).forEach((tree, i) => {
     const { x, z, ground, scale } = tree;
     kit.bark.fadeGroup = kit.fade.addTrunk({ x, z, y0: ground - 50, y1: tree.trunkTop, r: trunkRadius(100, scale) }, `trunk:${i}`);
     addTrunk(kit.bark, layout, tree, i);
     kit.leaves.fadeGroup = kit.fade.addCanopy(fadeBlobs(tree.blobs), `tree:${i}`);
+    const first = kit.leaves.pos.length;
     addCanopy(kit.leaves, tree.blobs, {
       centre: { x: tree.centre.x, y: (tree.top + tree.bottom) / 2, z: tree.centre.z },
       radii: tree.radii,
@@ -125,8 +127,43 @@ export function buildTrees(layout, kit) {
     });
     prismWalls(kit.colliders.wood, x, z, ground - 100, tree.base, TRUNK_RADIUS);
     kit.shadow(x, z, 0.95 * tree.reach, 0.9);
-    return tree.pole;
+    const crown = Math.round(topOfLeaves(kit.leaves.pos, first, x, z) ?? tree.top);
+    poles.push({ x, z, y0: ground, y1: crown, radius: POLE_RADIUS });
+    const mid = (tree.top + tree.bottom) / 2;
+    trees.push({
+      x,
+      z,
+      groundY: ground,
+      trunkTop: tree.trunkTop,
+      crown,
+      canopy: { x: tree.centre.x, y: mid, z: tree.centre.z, radius: Math.max(tree.reach, (tree.top - tree.bottom) / 2) },
+    });
   });
+  return { poles, trees };
+}
+
+// Height of the highest leaf triangle over (x, z) among the builder positions `pos` from
+// float index `first` on (9 per triangle), or null when none covers that point.
+export function topOfLeaves(pos, first, x, z) {
+  let top = null;
+  for (let k = first; k + 8 < pos.length; k += 9) {
+    const ax = pos[k] - x;
+    const az = pos[k + 2] - z;
+    const bx = pos[k + 3] - x;
+    const bz = pos[k + 5] - z;
+    const cx = pos[k + 6] - x;
+    const cz = pos[k + 8] - z;
+    // Barycentric weights of the origin in the triangle's XZ projection.
+    const d = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
+    if (Math.abs(d) < 1e-9) continue;
+    const wb = ((0 - ax) * (cz - az) - (cx - ax) * (0 - az)) / d;
+    const wc = ((bx - ax) * (0 - az) - (0 - ax) * (bz - az)) / d;
+    const wa = 1 - wb - wc;
+    if (wa < 0 || wb < 0 || wc < 0) continue;
+    const y = wa * pos[k + 1] + wb * pos[k + 4] + wc * pos[k + 7];
+    if (top === null || y > top) top = y;
+  }
+  return top;
 }
 
 // Tapered trunk: rings of TRUNK_SIDES corners from below the lowest ground around its foot

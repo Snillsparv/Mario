@@ -9,13 +9,14 @@ import { Player } from '../Player.js';
 const BUTTONS = ['A', 'B', 'Z', 'R', 'START', 'CU', 'CD', 'CL', 'CR'];
 const PLAYER_EVENTS = ['sfx', 'land', 'footstep', 'splash', 'hurt', 'lifeLost', 'signRead'];
 
-// The documented AnimName values (docs/ARCHITECTURE.md), for contract checks.
+// The documented AnimName values (docs/ARCHITECTURE.md), for contract checks. Round 3 adds
+// pole_handstand (the handstand on a pole's tip, pos = the tip) and burn (the hot-foot hop).
 export const ANIM_NAMES = new Set(
   `idle sleep walk run tiptoe skid turnaround push crouch crawl crouch_slide jump fall land double_jump
   triple_jump backflip sideflip long_jump dive belly_slide butt_slide ground_pound_spin ground_pound_fall
   ground_pound_land wallkick bonk hurt fall_damage ledge_hang ledge_climb pole_hold pole_climb pole_jump
-  punch1 punch2 kick jump_kick swim_idle swim_stroke swim_flutter water_surface water_jump star_dance
-  spawn death`.split(/\s+/),
+  pole_handstand punch1 punch2 kick jump_kick swim_idle swim_stroke swim_flutter water_surface water_jump
+  star_dance spawn death burn`.split(/\s+/),
 );
 const UP = [0, 1, 0];
 const DOWN = [0, -1, 0];

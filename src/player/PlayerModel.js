@@ -4,9 +4,10 @@
 //   const model = new PlayerModel();  scene.add(model.object3D);
 //   model.update(renderState, dtSeconds);   // every render frame
 //
-// object3D sits at the feet (rs.pos) and is yawed to rs.yaw (front faces +Z). Everything
-// else (poses, flips, squash, attack swells, physical pitch/roll, blinking, invincibility
-// flicker, the shadow) is handled inside. No lights are added: the renderer's sun + ambient
+// object3D sits at the feet (rs.pos) and is yawed to rs.yaw (front faces +Z); during
+// pole_handstand rs.pos is the pole tip under his hands. Everything else (poses, flips,
+// squash, attack swells, physical pitch/roll, blinking, invincibility flicker, the shadow,
+// the hot-foot smoke) is handled inside. No lights are added: the renderer's sun + ambient
 // shade Pip.
 
 import * as THREE from 'three';
@@ -16,6 +17,7 @@ import { buildRig, applyPose } from './model/rig.js';
 import { Animator } from './model/animator.js';
 import { ScarfTails } from './model/scarf.js';
 import { BlobShadow } from './model/shadow.js';
+import { SeatSmoke } from './model/smoke.js';
 import { createFaceTextures, FACES } from './model/faceTexture.js';
 import { COLORS } from './model/palette.js';
 import { physicsStride } from './model/physicsLink.js';
@@ -45,6 +47,8 @@ export class PlayerModel {
     this.scarf = new ScarfTails(this.rig.torso, this.rig.scarfAnchors, this.rig.material);
     this.shadow = new BlobShadow();
     this.object3D.add(this.shadow.mesh);
+    this.smoke = new SeatSmoke(); // hot-foot puffs ('burn')
+    this.object3D.add(this.smoke.mesh);
 
     this.rs = {
       pos: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, roll: 0, action: '', anim: 'idle', animTime: 0, cyclePhase: 0,
@@ -78,6 +82,7 @@ export class PlayerModel {
     this.scarf.update(dt, this.bodyVel, o, this.animator.time);
     o.matrixWorld.decompose(this.worldPos, this.worldQuat, this.worldScale); // matrices are current
     this.shadow.update(rs, this.worldQuat);
+    this.smoke.update(dt, rs, this.rig.hips, o);
 
     // Invincibility: the body flickers at a fixed rate whatever the display refresh; the
     // shadow stays. Not while dying (see NO_FLICKER_ANIMS).

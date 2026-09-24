@@ -1,7 +1,7 @@
 // Airborne actions: the jump family, falls, dives and kicks, ground pound, wall kicks and
 // bonks, knockback and the intro drop. Most share airTick() configured per action.
 
-import { clamp, wrapAngle } from '../../core/math.js';
+import { approachAngle, clamp, wrapAngle } from '../../core/math.js';
 import * as T from '../physics/tuning.js';
 import { airStep, STEP_LANDED } from '../physics/step.js';
 import { applyGravity, setForwardVel, updateAirControl } from '../physics/movement.js';
@@ -51,13 +51,19 @@ function slideAlongWall(p, wall) {
  * One air tick. Options:
  *   anim (static), land (landFromAir opts), maxSpeed, gravity, terminal (fall speed limit),
  *   controlHeight (A release cuts rise), control (stick steering, default true),
- *   kick (B = dive / jump kick), pound (Z), ledge / pole (grabs), wallHit (action entered on
- *   a head-on wall hit at speed), wallSlide (head-on walls are slid along at a capped speed
- *   instead: never a bonk), coastRising (while rising, a stick held back doesn't brake),
- *   wallKick (A may still wall kick shortly after touching a wall), pitch(p) (body pitch).
+ *   kick (B = dive / jump kick), pound (Z; never on the tick the action began, so a Z pressed
+ *   with the take-off's A is no ground pound), lateLongJump (Z within LONG_JUMP_COMBO_TICKS of
+ *   a fast take-off long-jumps instead, see rememberTakeOff), ledge / pole (grabs), wallHit
+ *   (action entered on a head-on wall hit at speed), wallSlide (head-on walls are slid along
+ *   at a capped speed instead: never a bonk), coastRising (while rising, a stick held back
+ *   doesn't brake), wallKick (A may still wall kick shortly after touching a wall), pitch(p)
+ *   (body pitch).
  */
 function airTick(p, c, o) {
-  if (o.pound && c.Z.pressed) return p.setAction('ground_pound');
+  if (o.lateLongJump && c.Z.pressed && p.comboJump && p.actionTimer <= T.LONG_JUMP_COMBO_TICKS) {
+    return p.setAction('long_jump', p.comboJump);
+  }
+  if (o.pound && c.Z.pressed && p.actionTimer > 0) return p.setAction('ground_pound');
   if (o.kick && c.B.pressed) return p.setAction(p.forwardVel >= T.AIR_DIVE_MIN_SPEED ? 'dive' : 'jump_kick');
   if (o.wallKick && c.A.pressed && canWallKick(p)) return p.setAction('wallkick');
   if (o.control === false) keepMomentum(p);
@@ -67,7 +73,7 @@ function airTick(p, c, o) {
   if (r.result === STEP_LANDED) return landFromAir(p, o.land);
   if (o.ledge && r.wall && tryLedgeGrab(p, r.wall)) return false;
   // A trunk in reach is grabbed; its collider walls never bonk (they are slid around).
-  const trunk = poleInReach(p);
+  const trunk = poleInReach(p, r.wall);
   if (trunk !== p.letGoPole) p.letGoPole = null; // out of its reach: grabbable again
   if (o.pole && trunk && tryPoleGrab(p, trunk)) return false;
   const w = r.wall;
@@ -99,20 +105,29 @@ function airAction(enter, opts) {
 // The options most jumps share.
 const JUMPY = { kick: true, pound: true, ledge: true, pole: true, wallHit: 'air_hit_wall' };
 
+// A jump taking off from a run at LONG_JUMP_COMBO_SPEED or more remembers its take-off
+// ({ fv, y }): a Z press in its first LONG_JUMP_COMBO_TICKS turns it into a long jump (A then
+// Z, the keyboard's either-order long jump; see long_jump).
+function rememberTakeOff(p) {
+  p.comboJump = p.forwardVel >= T.LONG_JUMP_COMBO_SPEED ? { fv: p.forwardVel, y: p.pos.y } : null;
+}
+
 const jump = airAction(
   (p) => {
+    rememberTakeOff(p);
     takeOff(p, T.JUMP_VY + p.forwardVel * T.JUMP_FV_SCALE, p.forwardVel * T.JUMP_KEEP_FV);
     p.sfx('jump');
   },
-  { ...JUMPY, anim: 'jump', controlHeight: true, land: { chain: 'single' } },
+  { ...JUMPY, lateLongJump: true, anim: 'jump', controlHeight: true, land: { chain: 'single' } },
 );
 
 const doubleJump = airAction(
   (p) => {
+    rememberTakeOff(p);
     takeOff(p, T.DOUBLE_JUMP_VY + p.forwardVel * T.JUMP_FV_SCALE, p.forwardVel * T.JUMP_KEEP_FV);
     p.sfx('double_jump');
   },
-  { ...JUMPY, anim: 'double_jump', controlHeight: true, land: { chain: 'double' } },
+  { ...JUMPY, lateLongJump: true, anim: 'double_jump', controlHeight: true, land: { chain: 'double' } },
 );
 
 const tripleJump = airAction(
@@ -141,9 +156,24 @@ const sideflip = airAction(
   { ...JUMPY, anim: 'sideflip', land: { chain: 'single', ticks: T.FLIP_LAND_TICKS } },
 );
 
+// Height a long jump rises above its take-off (vy, vy - g, ... while positive: ~240).
+const LONG_JUMP_RISE = (T.LONG_JUMP_VY * T.LONG_JUMP_VY) / (2 * T.LONG_JUMP_GRAVITY) + T.LONG_JUMP_VY / 2;
+
+// arg (optional): the take-off ({ fv, y }) of the jump this long jump replaces, when Z came
+// a few ticks after A (see rememberTakeOff). It carries on from where the jump is (no snap):
+// the forward speed the take-off would have given, and a rise that tops out at the usual
+// long-jump height above the take-off.
 const longJump = airAction(
-  (p) => {
-    takeOff(p, T.LONG_JUMP_VY, Math.min(p.forwardVel * T.LONG_JUMP_SCALE, T.MAX_FORWARD_VEL));
+  (p, late) => {
+    if (late) {
+      const rise = Math.max(0, LONG_JUMP_RISE - (p.pos.y - late.y));
+      const g = T.LONG_JUMP_GRAVITY;
+      p.vel.y = Math.sqrt((g * g) / 4 + 2 * g * rise) - g / 2;
+      setForwardVel(p, Math.min(late.fv * T.LONG_JUMP_SCALE, T.MAX_FORWARD_VEL));
+    } else {
+      takeOff(p, T.LONG_JUMP_VY, Math.min(p.forwardVel * T.LONG_JUMP_SCALE, T.MAX_FORWARD_VEL));
+    }
+    p.comboJump = null;
     p.sfx('long_jump');
   },
   {
@@ -216,6 +246,21 @@ const poleJump = airAction(
   { ...JUMPY, pole: false, anim: 'pole_jump', controlHeight: true, land: { chain: 'single' } },
 );
 
+// Springing off the handstand on a pole's tip (pole_top): a big, high flip toward the stick
+// when it is held (else along the facing) with a little forward speed; steered like a jump.
+// The trunk is not grabbed again until he is out of its reach, and the fall counts from the
+// tree's foot (Player.afterTick), so jumping off a tree top never hurts on level ground.
+const poleTopJump = airAction(
+  (p) => {
+    if (p.stickHeld) p.faceYaw = p.intendedYaw;
+    p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
+    p.letGoPole = p.pole;
+    takeOff(p, T.POLE_TOP_JUMP_VY, T.POLE_TOP_JUMP_FV);
+    p.sfx('triple_jump');
+  },
+  { ...JUMPY, anim: 'triple_jump', land: { ticks: T.FLIP_LAND_TICKS } },
+);
+
 // Mirrors the facing off the wall and leaps; a faster incoming speed is kept.
 const wallkick = airAction(
   (p) => {
@@ -276,6 +321,24 @@ const hurt = airAction(
   { anim: 'hurt', control: false, land: { next: 'hurt_ground' } },
 );
 
+// Burnt by fire (takeDamage with { fire: true }; arg.yaw: the way out of the fire): a hot-foot
+// hop straight up, running in the air, turning toward the stick a little (BURN_TURN_RATE) and
+// steered like a jump up to BURN_MAX_SPEED; no moves until he lands, normally.
+const BURN = { anim: 'burn', maxSpeed: T.BURN_MAX_SPEED, land: {} };
+const burn = {
+  group: 'airborne',
+  anim: 'burn',
+  enter(p, arg) {
+    if (arg && arg.yaw !== undefined) p.faceYaw = wrapAngle(arg.yaw);
+    takeOff(p, T.BURN_VY, T.BURN_FV);
+    p.sfx('burn');
+  },
+  update(p, c) {
+    if (p.stickHeld) p.faceYaw = approachAngle(p.faceYaw, p.intendedYaw, T.BURN_TURN_RATE);
+    return airTick(p, c, BURN);
+  },
+};
+
 // Intro drop from the sky; input is ignored until landed.
 const spawn = airAction(
   (p) => {
@@ -321,11 +384,13 @@ export const AIRBORNE_ACTIONS = {
   forward_rollout: forwardRollout,
   water_jump: waterJump,
   pole_jump: poleJump,
+  pole_top_jump: poleTopJump,
   wallkick,
   air_hit_wall: airHitWall,
   soft_bonk: softBonk,
   bonk,
   hurt,
+  burn,
   spawn,
   ground_pound: groundPound,
 };

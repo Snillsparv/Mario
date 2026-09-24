@@ -79,7 +79,11 @@ export class ScarfTails {
     const speed = wind.length();
     wind.multiplyScalar(-WIND_SCALE).applyQuaternion(tmpQ);
     dir.set(0, -1, 0).applyQuaternion(tmpQ).add(wind).normalize();
-    const baseAx = Math.atan2(-dir.z, -dir.y);
+    // Pitch of the hanging direction back from torso-down. Upside down (a handstand, mid
+    // flip) it is past PI: kept on that side (-> MAX_PITCH) rather than wrapping round to the
+    // negative angles that the clamp would fold onto MIN_PITCH, up the back.
+    let baseAx = Math.atan2(-dir.z, -dir.y);
+    if (baseAx < -Math.PI / 2) baseAx += 2 * Math.PI;
     const baseAz = Math.asin(clamp(dir.x, -1, 1));
     const flutter = Math.min(0.45, 0.04 + speed / 2200);
 

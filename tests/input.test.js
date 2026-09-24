@@ -1,5 +1,6 @@
 // core/input keyboard stick ease-in (round-2 feedback: starting to run felt too intense on a
-// keyboard, whose digital keys slammed the stick to full at once).
+// keyboard, whose digital keys slammed the stick to full at once; round 3: the start still
+// felt "hard", too long before the run: the ramp is shorter and the start curve brisker).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { Input, KEY_RAMP_GRACE, KEY_RAMP_START, KEY_RAMP_TICKS } from '../src/core/input.js';
@@ -17,7 +18,7 @@ function keyboard() {
 const polls = (input, n) => Array.from({ length: n }, () => input.poll());
 
 describe('keyboard stick ease-in', () => {
-  test('a direction key from rest eases the stick in over ~0.37 s', () => {
+  test('a direction key from rest eases the stick in over ~0.23 s', () => {
     const { input, down } = keyboard();
     input.poll();
     down('KeyW');
@@ -28,7 +29,8 @@ describe('keyboard stick ease-in', () => {
       assert.ok(mags[i] > mags[i - 1], `rising at ${i}`);
       if (i >= 2) assert.ok(mags[i] - mags[i - 1] > mags[i - 1] - mags[i - 2] - 1e-12, `ease-in at ${i}`);
     }
-    assert.ok(mags[4] < 0.5, `still gentle after 5 polls: ${mags[4]}`);
+    assert.ok(mags[2] < 0.5, `still light after 3 polls: ${mags[2]}`);
+    assert.ok(KEY_RAMP_TICKS <= 8, 'full push within ~0.25 s');
     assert.equal(mags[KEY_RAMP_TICKS - 1], 1);
     assert.equal(mags[KEY_RAMP_TICKS + 2], 1);
   });
@@ -36,7 +38,7 @@ describe('keyboard stick ease-in', () => {
   test('turning while keys are held is immediate and keeps the magnitude', () => {
     const { input, down, up } = keyboard();
     down('KeyW');
-    polls(input, 6);
+    polls(input, 3);
     const before = input.poll();
     up('KeyW');
     down('KeyD');
@@ -84,7 +86,9 @@ describe('keyboard stick ease-in', () => {
     assert.equal(input.poll().stickMag, 1);
   });
 
-  test('from the keyboard the hero tiptoes, walks, then runs up to full speed', () => {
+  // Round 3: the run shows by ~0.37 s and full speed comes by ~1.3 s (was ~0.63 s / ~1.6 s),
+  // after a few ticks of tiptoe; the ramp never holds the start curve back.
+  test('from the keyboard the hero tiptoes briefly, walks, then runs by ~0.37 s and reaches 32 by ~1.3 s', () => {
     const b = new CourseBuilder();
     b.ground(30000);
     const p = new Player({ collision: b.build(), events: null, spawn: { x: 0, y: 0, z: 0, yaw: 0 }, signs: [] });
@@ -92,16 +96,26 @@ describe('keyboard stick ease-in', () => {
     p.update(input.poll(), 0);
     down('KeyW');
     const anims = [];
+    const first = {};
     let t32 = -1;
+    let prev = 0;
     for (let i = 1; i <= 70; i++) {
-      p.update(input.poll(), 0);
+      const c = input.poll();
+      p.update(c, 0);
       if (anims[anims.length - 1] !== p.anim) anims.push(p.anim);
+      first[p.anim] ??= i;
       if (i === 1) assert.equal(p.action, 'walking', 'moves on the first tick');
-      if (i === 9) assert.ok(p.pos.z < 70, `covered ${p.pos.z} in 0.3 s`);
+      if (i === 1) assert.ok(p.forwardVel < 3.5, `a light first step: ${p.forwardVel}`);
+      if (i <= 12) assert.ok(c.stickMag * c.stickMag * 32 >= p.forwardVel, `tick ${i}: the eased stick never caps the start curve`);
+      // Smooth: the speed gains at most 2 per tick and never jumps from one tick to the next.
+      if (i > 1) assert.ok(p.forwardVel - prev <= 2 && p.forwardVel >= prev, `tick ${i}: ${prev} -> ${p.forwardVel}`);
+      prev = p.forwardVel;
       if (t32 < 0 && p.forwardVel >= 32) t32 = i;
     }
     assert.deepEqual(anims, ['tiptoe', 'walk', 'run']);
-    assert.ok(t32 >= 45 && t32 <= 60, `32 after ${t32} ticks`);
+    assert.ok(first.walk >= 4 && first.walk <= 6, `tiptoes for ${first.walk - 1} ticks`);
+    assert.ok(first.run >= 10 && first.run <= 12, `runs from tick ${first.run}`);
+    assert.ok(t32 >= 36 && t32 <= 40, `32 after ${t32} ticks`);
   });
 });
 

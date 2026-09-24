@@ -16,7 +16,7 @@ const INK = '#3a2210';
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
-// Which eyes and mouth each expression uses.
+// Which eyes and mouth (and brows, default 'plain') each expression uses.
 const EXPRESSIONS = {
   open: ['open', 'smile'],
   half: ['half', 'smile'],
@@ -26,6 +26,7 @@ const EXPRESSIONS = {
   shout: ['open', 'open'],
   hurt: ['hurt', 'o'],
   dizzy: ['dizzy', 'wavy'],
+  panic: ['wide', 'yell', 'worried'],
 };
 export const FACES = Object.keys(EXPRESSIONS);
 
@@ -113,7 +114,38 @@ function eyeDizzy(ctx, cx) {
   line(ctx, 1.4);
 }
 
-const EYES = { open: eyeOpen, half: eyeHalf, closed: eyeClosed, happy: eyeHappy, hurt: eyeHurt, dizzy: eyeDizzy };
+// Wide with alarm: bigger whites, tiny pupils.
+function eyeWide(ctx, cx, dir) {
+  ctx.beginPath();
+  ctx.ellipse(cx, EYE_Y - 0.5, 7.2, 11, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  line(ctx, 1.3);
+  ctx.beginPath();
+  ctx.ellipse(cx - dir * 0.8, EYE_Y + 0.5, 2.2, 2.9, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#140a04';
+  ctx.fill();
+}
+
+const EYES = {
+  open: eyeOpen, half: eyeHalf, closed: eyeClosed, happy: eyeHappy, hurt: eyeHurt, dizzy: eyeDizzy, wide: eyeWide,
+};
+
+// dir: +1 for the brow on the viewer's right.
+const BROWS = {
+  plain(ctx, cx, dir) {
+    ctx.beginPath();
+    ctx.ellipse(cx, 50, 5, 3, dir * 0.15, Math.PI * 1.15, Math.PI * 1.85);
+    line(ctx, 1.8, hex(COLORS.hair));
+  },
+  // Inner ends raised in alarm.
+  worried(ctx, cx, dir) {
+    ctx.beginPath();
+    ctx.moveTo(cx - dir * 5, 46.5);
+    ctx.quadraticCurveTo(cx, 46.5, cx + dir * 5, 49.5);
+    line(ctx, 1.9, hex(COLORS.hair));
+  },
+};
 
 const MOUTH_Y = 84;
 const MOUTHS = {
@@ -143,6 +175,18 @@ const MOUTHS = {
     ctx.fill();
     line(ctx, 1.1);
   },
+  // A big yelling oval with the tongue showing.
+  yell(ctx) {
+    ctx.beginPath();
+    ctx.ellipse(FRONT, MOUTH_Y + 3, 5.6, 6.2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#7a1f1a';
+    ctx.fill();
+    line(ctx, 1.2);
+    ctx.beginPath();
+    ctx.ellipse(FRONT, MOUTH_Y + 7, 3.4, 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8716a';
+    ctx.fill();
+  },
   snore(ctx) {
     ctx.beginPath();
     ctx.ellipse(FRONT, MOUTH_Y, 1.8, 2.2, 0, 0, Math.PI * 2);
@@ -158,7 +202,7 @@ const MOUTHS = {
 };
 
 function paintFace(ctx, name) {
-  const [eyes, mouth] = EXPRESSIONS[name];
+  const [eyes, mouth, brows = 'plain'] = EXPRESSIONS[name];
   ctx.scale(SCALE, SCALE);
   ctx.fillStyle = hex(COLORS.skin);
   ctx.fillRect(0, 0, W, H);
@@ -172,11 +216,7 @@ function paintFace(ctx, name) {
     ctx.fillRect(cx - 8, 68, 16, 16);
   }
   // Eyebrows, just under the hat brim.
-  for (const s of [-1, 1]) {
-    ctx.beginPath();
-    ctx.ellipse(FRONT + s * (EYE_DX + 1), 50, 5, 3, s * 0.15, Math.PI * 1.15, Math.PI * 1.85);
-    line(ctx, 1.8, hex(COLORS.hair));
-  }
+  for (const s of [-1, 1]) BROWS[brows](ctx, FRONT + s * (EYE_DX + 1), s);
   // dir: +1 for the eye on the viewer's right, so irises look slightly toward the nose.
   for (const s of [-1, 1]) EYES[eyes](ctx, FRONT + s * EYE_DX, s);
   MOUTHS[mouth](ctx);

@@ -22,10 +22,10 @@ function hopBeside(build, { ticks = 60, after = {} } = {}) {
 }
 
 describe('walking and air control use the project model', () => {
-  test('rest to 30 takes 1.3-1.6 s at full stick, then holds 32', () => {
+  test('rest to 30 takes ~1 s at full stick, then holds 32', () => {
     const s = sim(flat);
     const t = s.until(90, { stickY: 1 }, (p) => p.forwardVel >= 30);
-    assert.ok(t >= 39 && t <= 48, `${t} ticks`);
+    assert.ok(t >= 28 && t <= 34, `${t} ticks`);
     s.run(30, { stickY: 1 });
     assert.equal(s.p.forwardVel, 32);
   });
@@ -440,26 +440,32 @@ describe('long jump descent', () => {
 });
 
 describe('starting to walk', () => {
-  // Round-2 feedback: starting to run felt too intense. From rest the hero now sets off with a
-  // small nudge and eases in (tiptoe -> walk -> run), reaching the unchanged top speed in ~1.6 s.
-  test('eases in from rest: small first step, tiptoe -> walk -> run, 32 after ~1.6 s', () => {
+  // Round-2 feedback: starting to run felt too intense. From rest the hero sets off with a small
+  // nudge and eases in (tiptoe -> walk -> run). Round 3: it still felt "hard", too long before
+  // the run: the start is an S-curve now (gentle for a few ticks of tiptoe, a brisk walk, then
+  // the unchanged running curve), the run showing by ~0.37 s and 32 reached by ~1.3 s.
+  test('eases in from rest: small first step, brief tiptoe, walk, run by ~0.37 s, 32 by ~1.3 s', () => {
     const s = sim(flat);
     const anims = [];
+    const first = {};
     let t32 = -1;
     s.run(90, { stickY: 1 }, (p, i) => {
       if (anims[anims.length - 1] !== p.anim) anims.push(p.anim);
+      first[p.anim] ??= i + 1;
       if (i === 0) assert.ok(p.forwardVel >= 2 && p.forwardVel < 3.5, `first tick ${p.forwardVel}`);
-      if (i === 4) assert.ok(p.cyclePhase > 0.3, `legs only at ${p.cyclePhase} after 5 ticks`);
-      if (i === 8) assert.ok(p.pos.z > 35 && p.pos.z < 70, `covered ${p.pos.z} in 0.3 s (was 111 before the ease-in)`);
-      if (i === 17) assert.ok(p.forwardVel > 14 && p.forwardVel < 18, `speed ${p.forwardVel} after 0.6 s`);
+      if (i === 2) assert.ok(p.forwardVel < 6, `still tiptoeing at ${p.forwardVel} after 3 ticks`);
+      if (i === 8) assert.ok(p.pos.z > 50 && p.pos.z < 90, `covered ${p.pos.z} in 0.3 s (111 at full speed at once, 58 in round 2)`);
+      if (i === 10) assert.ok(p.forwardVel > 16 && p.forwardVel < 19, `speed ${p.forwardVel} after 0.37 s`);
       if (t32 < 0 && p.forwardVel >= 32) t32 = i + 1;
     });
     assert.deepEqual(anims, ['tiptoe', 'walk', 'run']);
-    assert.ok(t32 >= 45 && t32 <= 55, `32 after ${t32} ticks`);
+    assert.ok(first.walk >= 3 && first.walk <= 6, `walks from tick ${first.walk}`);
+    assert.ok(first.run >= 10 && first.run <= 12, `runs from tick ${first.run}`);
+    assert.ok(t32 >= 36 && t32 <= 40, `32 after ${t32} ticks`);
     assert.equal(s.p.forwardVel, 32);
   });
 
-  test('the acceleration is gentle near a standstill and unchanged once running', () => {
+  test('the acceleration is gentle near a standstill, never jumps, and is unchanged once running', () => {
     const s = sim(flat);
     let prev = 0;
     const accel = [];
@@ -467,9 +473,14 @@ describe('starting to walk', () => {
       accel.push({ v: prev, a: p.forwardVel - prev });
       prev = p.forwardVel;
     });
-    for (const { v, a } of accel.slice(1)) {
-      if (v < 6) assert.ok(a > 0.6 && a < 0.85, `accel ${a} at ${v}`);
-      if (v >= 14 && v < 31) assert.ok(Math.abs(a - (47.3 - v) / 43) < 1e-9, `running accel ${a} at ${v}`);
+    const rising = accel.slice(1).filter(({ v }) => v < 31);
+    for (const { v, a } of rising) {
+      if (v < 3) assert.ok(a > 0.6 && a < 1, `gentle accel ${a} at ${v}`);
+      if (v >= 24) assert.ok(Math.abs(a - (47.3 - v) / 43) < 1e-9, `running accel ${a} at ${v}`);
+      assert.ok(a <= 1.8 + 1e-9, `accel ${a} at ${v}`);
+    }
+    for (let i = 1; i < rising.length; i++) {
+      assert.ok(Math.abs(rising[i].a - rising[i - 1].a) < 0.25, `accel jumps ${rising[i - 1].a} -> ${rising[i].a} at ${rising[i].v}`);
     }
   });
 

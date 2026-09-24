@@ -24,6 +24,15 @@ const PHASE_LOCK_RATE = 0.4;
 // The authored deflations are slower, so they pass unchanged.
 const SWELL_DEFLATE_RATE = 8;
 
+// Carried switches (an anim's `carryFrom` lists the anims it carries over from): the Player
+// moves rs.pos to a new anchor when the anim changes (e.g. from the climbing spot to the pole
+// tip for pole_handstand), interpolated over that tick. For the first CARRY_TIME of the new
+// anim every move of rs.pos is taken out of the blend's starting pose (so the body stays put
+// on screen) and added up in ctx.entryX/Y/Z: where the old anchor is in the new body frame,
+// for poses that travel from there. Moves longer than MAX_CARRY are teleports: not carried.
+const CARRY_TIME = 0.07;
+const MAX_CARRY = 400;
+
 const release = (shown, target, step) => Math.max(target, shown - step);
 
 export class Animator {
@@ -40,7 +49,12 @@ export class Animator {
     this.gaitPhase = 0;
     this.externalLook = false; // the Player drives headYaw during this anim
     this.swell = { handL: 0, handR: 0, footL: 0, footR: 0 }; // shown attack swells
-    this.ctx = { t: 0, ph: 0, stride: 0, spd: 0, vy: 0, time: 0, bank: 0, headYaw: 0, externalLook: false };
+    this.carrying = false;
+    this.lastPos = { x: 0, y: 0, z: 0 };
+    this.ctx = {
+      t: 0, ph: 0, stride: 0, spd: 0, vy: 0, time: 0, bank: 0, headYaw: 0, externalLook: false,
+      entryX: 0, entryY: 0, entryZ: 0,
+    };
   }
 
   // rs must be sanitized (finite numbers); dt in seconds; bank = lean into turns (radians).
@@ -50,20 +64,29 @@ export class Animator {
     const name = rs.action === 'air_hit_wall' ? 'wall_brace' : resolveAnim(rs.anim);
     const def = ANIMS[name];
     const restarted = rs.animTime < this.lastAnimTime - 0.05;
+    const c = this.ctx;
     if (name !== this.anim || restarted) {
       copyPose(this.from, this.pose);
       wrapFlips(this.from);
       this.blendTime = 0;
-      this.blendDur = this.anim === null ? 0 : (def.blend ?? DEFAULT_BLEND);
+      // A slow-to-leave anim (blendOut) stretches the blend into whatever follows it.
+      const prev = this.anim === null ? null : ANIMS[this.anim];
+      this.blendDur = prev ? Math.max(def.blend ?? DEFAULT_BLEND, prev.blendOut ?? 0) : 0;
+      this.carrying = !!prev && name !== this.anim && !!def.carryFrom?.includes(this.anim);
+      c.entryX = c.entryY = c.entryZ = 0;
       this.anim = name;
       this.externalLook = false;
     }
+    if (this.carrying && rs.animTime <= CARRY_TIME) this.carry(rs);
+    else this.carrying = false;
+    this.lastPos.x = rs.pos.x;
+    this.lastPos.y = rs.pos.y;
+    this.lastPos.z = rs.pos.z;
     this.lastAnimTime = rs.animTime;
     this.time += dt;
     this.blendTime += dt;
     if (Math.abs(rs.headYaw) > 0.01) this.externalLook = true;
 
-    const c = this.ctx;
     const spd = Math.abs(rs.forwardVel);
     c.stride = gaitStride(name, spd);
     c.ph = c.stride ? this.advanceGait(rs.cyclePhase, name, c.stride, dt) : rs.cyclePhase;
@@ -82,6 +105,29 @@ export class Animator {
     else blendPose(this.pose, this.from, this.target, k * k * (3 - 2 * k));
     this.releaseSwell(this.pose, dt);
     return this.pose;
+  }
+
+  // Takes this frame's move of rs.pos out of the blend's starting pose and adds it to the
+  // entry offset (both in the body frame: yaw undone).
+  carry(rs) {
+    const dx = this.lastPos.x - rs.pos.x;
+    const dy = this.lastPos.y - rs.pos.y;
+    const dz = this.lastPos.z - rs.pos.z;
+    if (dx * dx + dy * dy + dz * dz > MAX_CARRY * MAX_CARRY) {
+      this.carrying = false;
+      return;
+    }
+    const cos = Math.cos(rs.yaw);
+    const sin = Math.sin(rs.yaw);
+    const bx = cos * dx - sin * dz;
+    const bz = sin * dx + cos * dz;
+    const c = this.ctx;
+    c.entryX += bx;
+    c.entryY += dy;
+    c.entryZ += bz;
+    this.from.rootX += bx;
+    this.from.rootY += dy;
+    this.from.rootZ += bz;
   }
 
   releaseSwell(p, dt) {

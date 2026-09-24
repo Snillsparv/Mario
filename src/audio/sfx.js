@@ -3,9 +3,34 @@
 // (the engine adds a little random variation) plus event data: terrain, big, index.
 
 import { mtof } from './theory.js';
-import { bell, lfo, noise, silentGain, tone } from './synth.js';
+import { bell, envelope, harmonicWave, lfo, noise, noiseSource, overdrive, silentGain, sweep, tone } from './synth.js';
+import { clamp } from '../core/math.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
+
+// Footstep level and timbre by ground speed (units/tick), anchored on the gaits: tiptoe
+// below 8 (a soft pad), walk below 18 (clearly quieter and duller than a run), a full run
+// at 32 at full level; linear in between. `bright` (0..1) takes the click and the sheen off
+// the gentler steps, so starting to walk eases in instead of hitting hard.
+const STEP_SPEEDS = [0, 8, 18, 32];
+const STEP_VOLUME = [0.16, 0.38, 0.62, 1];
+const STEP_BRIGHT = [0.25, 0.4, 0.6, 1];
+export function footstepLevel(speed = 20) {
+  const v = clamp(Number.isFinite(speed) ? speed : 20, 0, STEP_SPEEDS.at(-1));
+  let i = 1;
+  while (v > STEP_SPEEDS[i]) i++;
+  const k = (v - STEP_SPEEDS[i - 1]) / (STEP_SPEEDS[i] - STEP_SPEEDS[i - 1]);
+  const at = (list) => list[i - 1] + (list[i] - list[i - 1]) * k;
+  return { volume: at(STEP_VOLUME), bright: at(STEP_BRIGHT) };
+}
+
+// Landing level from how long Pip was in the air (seconds since he last touched the ground,
+// Infinity if unknown) or, when the event carries it, the height fallen: a tiny hop (~0.25 s)
+// or a step down lands softly and duller, a full jump (~0.7 s) or a real fall as before.
+export function landLevel(air = Infinity, fall = null) {
+  const s = Number.isFinite(fall) ? clamp((fall - 40) / 360, 0, 1) : clamp((air - 0.2) / 0.45, 0, 1);
+  return { volume: 0.5 + 0.5 * s, bright: 0.4 + 0.6 * s };
+}
 
 // Cloth / air whoosh: band-passed noise swept up (or along a point list).
 function whoosh(ctx, out, t, { from, to, dur, gain, freq }) {
@@ -25,10 +50,10 @@ function boing(ctx, out, t, { from, to, dur, gain, rate = 32 }) {
 
 // Body impact: a pitch-dropping sine, a muffled noise hit and a short bright contact click
 // on top (the crisp edge that keeps it from sounding like mush).
-function thud(ctx, out, t, { freq = 150, to = 60, dur = 0.12, gain = 0.4 }) {
+function thud(ctx, out, t, { freq = 150, to = 60, dur = 0.12, gain = 0.4, click = 1 }) {
   tone(ctx, out, t, { freq, to, glide: dur * 0.45, dur, gain, attack: 0.002 });
   noise(ctx, out, t, { filter: 'lowpass', freq: 1400, dur: dur * 0.4, gain: gain * 0.4, attack: 0.001 });
-  noise(ctx, out, t, { filter: 'highpass', freq: 3200, dur: 0.014, gain: gain * 0.16, attack: 0.001 });
+  noise(ctx, out, t, { filter: 'highpass', freq: 3200, dur: 0.014, gain: gain * 0.16 * click, attack: 0.001 });
 }
 
 // Cartoon hit 'thwack': a bright wide-band crack, a pitched body that drops fast (the
@@ -64,31 +89,37 @@ function plip(ctx, out, t, freq, gain) {
 
 // Short foot contact texture per terrain; also layered into landings. Every surface opens
 // with a fast (1-2 ms) attack and a short bright edge so steps read crisply, not as mush.
-function step(ctx, out, t, terrain, p, level) {
+// `b` (brightness, 0..1) softens a gentle step: a quieter edge, lower sheen, rounder onset.
+function step(ctx, out, t, terrain, p, level, b = 1) {
+  const edge = level * (0.3 + 0.7 * b); // the bright contact clicks
+  const sheen = 0.8 + 0.2 * b; // band centres
+  const brush = level * (0.7 + 0.3 * b); // the mid-band body
+  const atk = 0.001 + 0.003 * (1 - b);
   switch (terrain) {
     case 'stone':
-      noise(ctx, out, t, { filter: 'highpass', freq: 3500, dur: 0.018, gain: 0.19 * level, attack: 0.001 });
-      tone(ctx, out, t, { freq: 1900 * p, dur: 0.022, gain: 0.06 * level, attack: 0.001 });
+      noise(ctx, out, t, { filter: 'highpass', freq: 3500, dur: 0.018, gain: 0.19 * edge, attack: atk });
+      tone(ctx, out, t, { freq: 1900 * p * sheen, dur: 0.022, gain: 0.06 * edge, attack: atk });
       tone(ctx, out, t, { freq: 200 * p, to: 120 * p, dur: 0.045, gain: 0.145 * level, attack: 0.002 });
       return 0.06;
     case 'wood':
       // Hollow knock, kept short and about as loud as stone (the bridge is walked a lot).
-      noise(ctx, out, t, { filter: 'highpass', freq: 3000, dur: 0.01, gain: 0.07 * level, attack: 0.001 });
+      noise(ctx, out, t, { filter: 'highpass', freq: 3000, dur: 0.01, gain: 0.07 * edge, attack: atk });
       tone(ctx, out, t, { freq: 340 * p, to: 300 * p, dur: 0.055, gain: 0.13 * level, attack: 0.002 });
-      tone(ctx, out, t, { wave: 'triangle', freq: 780 * p, dur: 0.035, gain: 0.045 * level, attack: 0.001 });
-      noise(ctx, out, t, { freq: 900, q: 3, dur: 0.03, gain: 0.06 * level, attack: 0.002 });
+      tone(ctx, out, t, { wave: 'triangle', freq: 780 * p * sheen, dur: 0.035, gain: 0.045 * edge, attack: atk });
+      noise(ctx, out, t, { freq: 900, q: 3, dur: 0.03, gain: 0.06 * brush, attack: 0.002 });
       return 0.08;
     case 'sand':
-      for (const dt of [0, 0.013, 0.03]) noise(ctx, out, t + dt, { freq: 3000 * p, dur: 0.022, gain: 0.33 * level, attack: 0.001 });
+      // (the grains keep their crisp onset: a rounder one would blur them together)
+      for (const dt of [0, 0.013, 0.03]) noise(ctx, out, t + dt, { freq: 3000 * p * sheen, dur: 0.022, gain: 0.33 * brush, attack: 0.001 });
       noise(ctx, out, t, { filter: 'lowpass', freq: 550, dur: 0.05, gain: 0.175 * level, attack: 0.002 });
       return 0.07;
     case 'water':
-      noise(ctx, out, t, { freq: 1500, to: 700, dur: 0.14, gain: 0.42 * level, attack: 0.01 });
-      plip(ctx, out, t + 0.03, 900 * p, 0.14 * level);
+      noise(ctx, out, t, { freq: 1500 * sheen, to: 700, dur: 0.14, gain: 0.42 * brush, attack: 0.01 });
+      plip(ctx, out, t + 0.03, 900 * p, 0.14 * edge);
       return 0.16;
     default: // grass: a crisp blade snap over a soft brush and a light low thump
-      noise(ctx, out, t, { filter: 'highpass', freq: 4500, dur: 0.012, gain: 0.13 * level, attack: 0.001 });
-      noise(ctx, out, t, { freq: 1800 * p, q: 1, dur: 0.045, gain: 0.42 * level, attack: 0.002 });
+      noise(ctx, out, t, { filter: 'highpass', freq: 4500, dur: 0.012, gain: 0.13 * edge, attack: atk });
+      noise(ctx, out, t, { freq: 1800 * p * sheen, q: 1, dur: 0.045, gain: 0.42 * brush, attack: 0.002 });
       noise(ctx, out, t, { filter: 'lowpass', freq: 520, dur: 0.045, gain: 0.23 * level, attack: 0.002 });
       return 0.07;
   }
@@ -121,6 +152,61 @@ function brass(ctx, out, t, midi, dur, gain) {
 function chime(ctx, out, t, freq, dur, gain) {
   bell(ctx, out, t, { freq, dur, gain });
   tone(ctx, out, t, { wave: 'square', freq, dur: dur * 0.25, gain: gain * 0.12 });
+}
+
+// ---- AI RACE mode helpers (storm, fire and the robot beast)
+
+// Clanging steel: stiff-bar-like inharmonic partials [ratio, relative gain, relative decay].
+const METAL = [
+  [1, 1, 1],
+  [2.41, 0.6, 0.7],
+  [3.87, 0.4, 0.45],
+  [5.93, 0.22, 0.3],
+];
+
+// A scatter of tiny crackles (burning wood, flying debris): band-passed noise ticks over
+// `span` seconds, bunched toward the start when `front` > 1.
+function crackles(ctx, out, t, { count, span, gain, lo = 1200, hi = 4500, front = 1 }) {
+  for (let i = 0; i < count; i++) {
+    const dt = span * Math.random() ** front;
+    noise(ctx, out, t + dt, { freq: rand(lo, hi), q: 1.5, dur: rand(0.004, 0.014), gain: gain * rand(0.35, 1), attack: 0.0006 });
+  }
+}
+
+// Band-passed noise chopped by a sawtooth: a ratcheting, grinding or sputtering texture.
+function grind(ctx, out, t, { freq, q, dur, gain, rate, attack = 0.01 }) {
+  const chop = ctx.createGain();
+  chop.gain.value = 0.5;
+  chop.connect(envelope(ctx, out, t, { peak: gain, dur, attack }));
+  lfo(ctx, chop.gain, t, dur, { rate, depth: 0.5, wave: 'sawtooth' });
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.Q.value = q;
+  sweep(f.frequency, t, freq);
+  noiseSource(ctx, t, dur + 0.02).connect(f);
+  f.connect(chop);
+  return f;
+}
+
+// One klaxon pulse: two sawtooths a semitone apart (a grating, beating cluster) through a
+// resonant low-pass, scooping up into pitch; `fall` bends the end of the pulse down.
+function klaxon(ctx, out, t, f, dur, gain, fall = 1) {
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 3;
+  sweep(lp.frequency, t, [[0, f * 2.5], [0.05, f * 6], [dur, f * 4 * fall]]);
+  lp.connect(envelope(ctx, out, t, { peak: gain, dur, attack: 0.02, hold: dur - 0.08 }));
+  for (const [ratio, detune] of [[1, -6], [1.0595, 5]]) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.detune.value = detune;
+    const fr = f * ratio;
+    sweep(o.frequency, t, [[0, fr * 0.84], [0.05, fr], [dur - 0.07, fr], [dur, fr * fall]]);
+    o.connect(lp);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+  tone(ctx, out, t, { freq: f / 2, dur, gain: gain * 0.5, attack: 0.02, hold: dur - 0.08 });
 }
 
 // F major scale from F5 up an octave: red coins 1..8 climb it.
@@ -196,16 +282,19 @@ export const SFX = {
   // The plain name, for callers that do not tell the jabs apart: the engine plays it as
   // punch1 or, right after a first jab, as punch2 (see AudioEngine.comboJab).
   punch: (ctx, out, t, { p }) => hit(ctx, out, t, p, HITS.punch1),
-  land(ctx, out, t, { p, terrain }) {
-    thud(ctx, out, t, { freq: 150 * p, to: 70 * p, dur: 0.1, gain: 0.45 });
-    return Math.max(0.12, step(ctx, out, t, terrain, p, 1.2));
+  // An ordinary landing: a thump under the ground's texture. The engine passes a lower
+  // volume and brightness for hops and small drops (landLevel): less click, a duller step.
+  land(ctx, out, t, { p, terrain, bright = 1 }) {
+    thud(ctx, out, t, { freq: 150 * p, to: 70 * p, dur: 0.1, gain: 0.45, click: 0.35 + 0.65 * bright });
+    return Math.max(0.12, step(ctx, out, t, terrain, p, 1.2 * (0.85 + 0.15 * bright), 0.3 + 0.7 * bright));
   },
   land_hard(ctx, out, t, { p, terrain }) {
     thud(ctx, out, t, { freq: 130 * p, to: 45 * p, dur: 0.22, gain: 0.47 });
     return Math.max(0.24, step(ctx, out, t, terrain, p * 0.9, 1.4));
   },
-  footstep(ctx, out, t, { p, terrain }) {
-    return step(ctx, out, t, terrain, p, 1);
+  // bright: from footstepLevel (the engine passes it with the matching volume).
+  footstep(ctx, out, t, { p, terrain, bright = 1 }) {
+    return step(ctx, out, t, terrain, p * (0.94 + 0.06 * bright), 1, bright);
   },
   skid(ctx, out, t, { p, terrain }) {
     const sandy = terrain === 'sand' || terrain === 'grass';
@@ -360,4 +449,210 @@ export const SFX = {
     tone(ctx, out, t + 0.05, { freq: 300 * p, to: 260 * p, dur: 0.06, gain: 0.1, attack: 0.002 });
     return 0.14;
   },
+
+  // ---- AI RACE mode (all original synthesis, no recordings or imitations)
+
+  // The floor button: a heavy clunk (sinking low body, dull knock, latch click and a clank
+  // of steel), then a geared servo spinning up and settling, and a locking chunk.
+  button_press(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 115 * p, to: 46 * p, glide: 0.12, dur: 0.32, gain: 0.44, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 900, dur: 0.08, gain: 0.3, attack: 0.001 });
+    noise(ctx, out, t, { filter: 'highpass', freq: 3200, dur: 0.014, gain: 0.16, attack: 0.001 });
+    bell(ctx, out, t + 0.005, { freq: 230 * p, dur: 0.4, gain: 0.09, partials: METAL });
+    const servo = tone(ctx, out, t + 0.12, {
+      wave: harmonicWave(ctx, 'servo', [1, 0.5, 0.35, 0.2, 0.12]),
+      freq: [[0, 240 * p], [0.32, 640 * p], [0.55, 560 * p]],
+      dur: 0.58,
+      gain: 0.08,
+      attack: 0.06,
+      hold: 0.3,
+    });
+    lfo(ctx, servo.detune, t + 0.12, 0.58, { rate: 47, depth: 18 });
+    tone(ctx, out, t + 0.72, { freq: 190 * p, to: 95 * p, glide: 0.05, dur: 0.09, gain: 0.2, attack: 0.002 });
+    noise(ctx, out, t + 0.72, { filter: 'highpass', freq: 2800, dur: 0.012, gain: 0.1, attack: 0.001 });
+    return 0.85;
+  },
+
+  // Alarm sting as the storm mode switches on: two grating klaxon pulses, then a lower one
+  // that sinks away.
+  alarm(ctx, out, t, { p }) {
+    klaxon(ctx, out, t, 440 * p, 0.26, 0.15);
+    klaxon(ctx, out, t + 0.34, 440 * p, 0.26, 0.15);
+    klaxon(ctx, out, t + 0.68, 293.7 * p, 0.55, 0.16, 0.72);
+    return 1.3;
+  },
+
+  // The robot beast's roar (~2.3 s): a driven growl of detuned saws and a sine, frequency-
+  // modulated at an inharmonic ratio and trembling ~26 times a second, through a resonant
+  // low-pass that opens and closes; steel grinding in its throat, a jaw servo, and a hiss of
+  // venting steam as it dies away.
+  kaiju_roar(ctx, out, t, { p }) {
+    const dur = 2.2;
+    const env = silentGain(ctx);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.3, t + 0.28);
+    env.gain.linearRampToValueAtTime(0.24, t + 1.3);
+    env.gain.linearRampToValueAtTime(0, t + dur);
+    env.connect(out);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 4;
+    sweep(lp.frequency, t, [[0, 350], [0.3, 2600], [1.1, 1500], [dur, 260]]);
+    lp.connect(env);
+    const tremble = ctx.createGain();
+    tremble.gain.value = 0.6;
+    tremble.connect(overdrive(ctx, lp, 5));
+    lfo(ctx, tremble.gain, t, dur, { rate: 26, depth: 0.35 });
+    const pitch = [[0, 46 * p], [0.3, 76 * p], [0.8, 70 * p], [1.4, 62 * p], [dur, 36 * p]];
+    const mod = ctx.createOscillator();
+    sweep(mod.frequency, t, pitch.map(([dt, f]) => [dt, f * 1.47]));
+    const depth = silentGain(ctx);
+    depth.gain.setValueAtTime(10, t);
+    depth.gain.linearRampToValueAtTime(55, t + 0.4);
+    depth.gain.linearRampToValueAtTime(25, t + dur);
+    mod.connect(depth);
+    for (const [wave, detune, level] of [['sawtooth', -14, 0.5], ['sawtooth', 11, 0.5], ['sine', 0, 0.6]]) {
+      const osc = ctx.createOscillator();
+      osc.type = wave;
+      osc.detune.value = detune;
+      sweep(osc.frequency, t, pitch);
+      depth.connect(osc.frequency);
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(tremble);
+      osc.start(t);
+      osc.stop(t + dur + 0.05);
+    }
+    mod.start(t);
+    mod.stop(t + dur + 0.05);
+    bell(ctx, out, t, { freq: 170 * p, dur: 0.5, gain: 0.07, partials: METAL });
+    const gr = grind(ctx, out, t + 0.2, { freq: 2600, q: 8, dur: 1.5, gain: 0.12, rate: 38, attack: 0.25 });
+    lfo(ctx, gr.frequency, t + 0.2, 1.5, { rate: 11, depth: 900 });
+    tone(ctx, out, t, { wave: 'triangle', freq: [[0, 420 * p], [0.45, 1250 * p], [1.6, 1100 * p], [2.1, 500 * p]], dur: 2.1, gain: 0.025, attack: 0.2 });
+    noise(ctx, out, t + 1.45, { filter: 'highpass', freq: 2800, to: 5200, dur: 0.85, gain: 0.16, attack: 0.06 });
+    noise(ctx, out, t + 1.45, { freq: 1400, to: 900, q: 0.7, dur: 0.7, gain: 0.08, attack: 0.05 });
+    return 2.3;
+  },
+
+  // The beast drawing breath for a fireball: a roaring whoosh that rises over ~0.8 s.
+  fireball_charge(ctx, out, t, { p }) {
+    const roar = noise(ctx, out, t, { freq: [[0, 180], [0.8, 1700]], q: 0.9, dur: 0.85, gain: 0.34, attack: 0.72 });
+    lfo(ctx, roar.frequency, t, 0.85, { rate: 13, depth: 160 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 140], [0.8, 520]], dur: 0.85, gain: 0.3, attack: 0.65, kind: 'brown' });
+    const rise = tone(ctx, out, t, { wave: 'triangle', freq: 75 * p, to: 210 * p, dur: 0.85, gain: 0.14, attack: 0.7 });
+    lfo(ctx, rise.frequency, t, 0.85, { rate: 9, depth: 6 });
+    crackles(ctx, out, t + 0.35, { count: 7, span: 0.5, gain: 0.07 });
+    return 0.9;
+  },
+
+  // The fireball leaving the jaws: a push-off thump, a big fiery whoosh and a fluttering
+  // flame roar trailing sparks.
+  fireball_launch(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 130 * p, to: 48 * p, glide: 0.22, dur: 0.32, gain: 0.34, attack: 0.003 });
+    noise(ctx, out, t, { freq: [[0, 500], [0.1, 2600], [0.95, 320]], q: 0.8, dur: 0.95, gain: 0.42, attack: 0.04 });
+    const flame = noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 1400], [1, 260]], dur: 1, gain: 0.3, attack: 0.015 });
+    lfo(ctx, flame.frequency, t, 1, { rate: 17, depth: 150 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 380, dur: 0.8, gain: 0.3, attack: 0.02, kind: 'brown' });
+    crackles(ctx, out, t + 0.03, { count: 10, span: 0.7, gain: 0.08, front: 1.6 });
+    return 1.05;
+  },
+
+  // A fireball's impact: a deep boom and a blast of low noise, a sharp crack, and debris
+  // crackling down for a second and a half. Positional; farther blasts (opts.dist, from the
+  // engine) lose their top end as well as level.
+  fireball_explode(ctx, out, t, { p, dist = 0 }) {
+    const near = clamp(1 - (dist - 1200) / 9000, 0.25, 1);
+    tone(ctx, out, t, { freq: 90 * p, to: 30, glide: 0.5, dur: 1.1, gain: 0.46, attack: 0.003 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 400 + 1800 * near], [1, 90]], dur: 1.3, gain: 0.5, attack: 0.003, kind: 'brown' });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 500 + 3000 * near, to: 300, dur: 0.35, gain: 0.3 * near, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2200, dur: 0.05, gain: 0.22 * near, attack: 0.001 });
+    crackles(ctx, out, t + 0.08, { count: 18, span: 1.5, gain: 0.11 * near, lo: 900 + 800 * near, hi: 2500 + 2500 * near, front: 1.8 });
+    noise(ctx, out, t + 0.25, { filter: 'lowpass', freq: 900, dur: 0.6, gain: 0.07, attack: 0.1 });
+    return 1.7;
+  },
+
+  // Pip touching fire: a sputtering sizzle, a puff, and a short synth squeak (a quick flip
+  // up and a wobbling fall; an instrument sound, no voice in it).
+  burn(ctx, out, t, { p }) {
+    const sizzle = noise(ctx, out, t, { filter: 'highpass', freq: 3200, to: 5200, dur: 0.7, gain: 0.2, attack: 0.012 });
+    lfo(ctx, sizzle.frequency, t, 0.7, { rate: 31, depth: 1200 });
+    grind(ctx, out, t, { freq: 2400, q: 2.5, dur: 0.55, gain: 0.14, rate: 43 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 700, dur: 0.18, gain: 0.18, attack: 0.003 });
+    const squeak = harmonicWave(ctx, 'squeak', [1, 0.15, 0.3, 0.05, 0.1]);
+    const eek = tone(ctx, out, t + 0.02, { wave: squeak, freq: [[0, 740 * p], [0.045, 1560 * p], [0.24, 980 * p]], dur: 0.26, gain: 0.11, attack: 0.004 });
+    lfo(ctx, eek.frequency, t + 0.02, 0.26, { rate: 26, depth: 45 });
+    tone(ctx, out, t + 0.02, { wave: 'triangle', freq: [[0, 1480 * p], [0.045, 3120 * p], [0.24, 1960 * p]], dur: 0.2, gain: 0.04, attack: 0.004 });
+    return 0.75;
+  },
+
+  // A short crackle of burning wood (repeated near fires; the engine rate-limits it).
+  fire_crackle(ctx, out, t, { p }) {
+    crackles(ctx, out, t, { count: 5 + Math.floor(Math.random() * 5), span: 0.28, gain: 0.34, lo: 1000, hi: 4200 });
+    if (Math.random() < 0.5) tone(ctx, out, t + rand(0, 0.2), { freq: rand(500, 800) * p, to: 180, glide: 0.02, dur: 0.025, gain: 0.12, attack: 0.001 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 480, dur: 0.34, gain: 0.16, attack: 0.1 });
+    return 0.36;
+  },
+
+  // A fireball quenched in water: a first sharp sizzle, a long rising hiss and bubbles.
+  steam(ctx, out, t, { p }) {
+    noise(ctx, out, t, { freq: 4200, q: 2, dur: 0.08, gain: 0.14, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2400, to: 4800, dur: 1.1, gain: 0.26, attack: 0.012 });
+    const body = noise(ctx, out, t, { freq: [[0, 700], [0.9, 1900]], q: 0.8, dur: 0.9, gain: 0.18, attack: 0.02 });
+    lfo(ctx, body.frequency, t, 0.9, { rate: 19, depth: 180 });
+    for (let i = 0; i < 5; i++) plip(ctx, out, t + rand(0.05, 0.6), rand(500, 1100) * p, 0.05);
+    return 1.15;
+  },
+
+  // Thunder after lightning (the engine delays it by distance): a deep roll of low-passed
+  // rumble whose level swells and fades a few times over 2-4 s (longer and louder the
+  // stronger the strike), a slower sub layer under it, and for a close strike a sharp crack
+  // and a crackling tear first.
+  thunder(ctx, out, t, { strength = 0.7 }) {
+    const s = clamp(strength, 0, 1);
+    const dur = 2 + 2 * s;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.8;
+    sweep(lp.frequency, t, [[0, 220 + 380 * s], [dur, 80]]);
+    const roll = silentGain(ctx);
+    const peak = 0.3 + 0.35 * s;
+    const front = 0.12 + 0.25 * (1 - s); // a far strike's roll builds more slowly
+    roll.gain.setValueAtTime(0, t);
+    roll.gain.linearRampToValueAtTime(peak * rand(0.7, 1), t + front);
+    // Swells alternate between loud and low, so the roll rumbles rather than just decays.
+    let loud = false;
+    for (let at = front + rand(0.15, 0.4); at < dur * 0.85; at += rand(0.2, 0.6)) {
+      loud = !loud;
+      roll.gain.linearRampToValueAtTime(peak * (1 - at / dur) * (loud ? rand(0.75, 1.1) : rand(0.15, 0.4)), t + at);
+    }
+    roll.gain.linearRampToValueAtTime(0, t + dur);
+    noiseSource(ctx, t, dur + 0.05, 'brown').connect(lp);
+    lp.connect(roll).connect(out);
+    noise(ctx, out, t, { filter: 'lowpass', freq: 70, dur: dur * 0.8, gain: 0.12 + 0.18 * s, attack: 0.3, kind: 'brown' });
+    if (s > 0.55) {
+      const c = (s - 0.55) / 0.45;
+      noise(ctx, out, t, { filter: 'highpass', freq: 1800, dur: 0.07, gain: 0.08 + 0.24 * c, attack: 0.001 });
+      crackles(ctx, out, t, { count: 10, span: 0.3, gain: 0.05 + 0.12 * c, lo: 900, hi: 3500, front: 1.5 });
+      tone(ctx, out, t, { freq: 160, to: 45, glide: 0.2, dur: 0.35, gain: 0.05 + 0.25 * c, attack: 0.002 });
+    }
+    return dur + 0.05;
+  },
+};
+
+// Playback rules for some sounds, read by the engine:
+//   range: distance multiplier for positional attenuation (huge sounds carry farther)
+//   gap:   minimum seconds between two plays of the name (sounds that may be requested in
+//          bursts, or by two modules for the same moment)
+//   max:   at most this many sounding at once
+export const SFX_INFO = {
+  kaiju_roar: { range: 3, gap: 0.5, max: 2 },
+  fireball_charge: { range: 3, gap: 0.2, max: 2 },
+  fireball_launch: { range: 3, gap: 0.1, max: 3 },
+  fireball_explode: { range: 1.8, max: 4 },
+  fire_crackle: { gap: 0.12, max: 3 },
+  steam: { gap: 0.1, max: 3 },
+  burn: { gap: 0.3 },
+  button_press: { gap: 0.3 },
+  alarm: { gap: 1.2 },
+  thunder: { max: 2 },
 };

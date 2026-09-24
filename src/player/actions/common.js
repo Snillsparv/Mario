@@ -8,8 +8,14 @@ import { isSlippery, isSteep } from '../physics/slopes.js';
 import { gaitStride } from '../model/strides.js';
 
 // Single, double or triple jump depending on what was just landed from. A double jump
-// needs no speed (hopping in place works); the triple needs a running start.
+// needs no speed (hopping in place works); the triple needs a running start. Z pressed on the
+// same tick as A: a long jump when running (LONG_JUMP_COMBO_SPEED), a backflip when standing
+// (as if crouched first), else the jump just ignores it (never a ground pound on take-off).
 export function jumpFromGround(p) {
+  if (p.input.Z.pressed) {
+    if (p.forwardVel >= T.LONG_JUMP_COMBO_SPEED) return p.setAction('long_jump');
+    if (p.action === 'idle') return p.setAction('backflip');
+  }
   const chain = p.tick - p.jumpChain.landedAt <= T.JUMP_CHAIN_WINDOW ? p.jumpChain.kind : null;
   if (chain === 'double' && p.forwardVel >= T.TRIPLE_JUMP_MIN_SPEED) return p.setAction('triple_jump');
   if (chain === 'single') return p.setAction('double_jump');
@@ -133,9 +139,13 @@ function standSpot(p, hn, y) {
   return null;
 }
 
-// The climbable pole within the airborne hero's grabbing reach, or null.
-export function poleInReach(p) {
-  return p.collision.findPole(p.pos.x, p.pos.y + 60, p.pos.z, T.POLE_GRAB_REACH);
+// The climbable pole within the airborne hero's grabbing reach, or null. A hero touching a
+// wall (`wall`: this tick's contact) reaches a little further (POLE_WALL_REACH): a trunk's
+// own collider can hold the body out past the usual reach (a fast run into its prism's
+// corner), and that contact must still grab the trunk, never bonk off it.
+export function poleInReach(p, wall = null) {
+  const reach = wall && !wall.pole ? T.POLE_WALL_REACH : T.POLE_GRAB_REACH;
+  return p.collision.findPole(p.pos.x, p.pos.y + 60, p.pos.z, reach);
 }
 
 // Grabs `pole` (one in reach) unless grabs are on cooldown or it is the trunk just let go of

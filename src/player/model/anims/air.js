@@ -5,7 +5,7 @@
 import { createPose, resetPose, blendPose } from '../pose.js';
 import {
   PI, TAU, clamp, smoothstep, unit, easeOut, easeOutBack, hump, arm, arms, leg, legs, tuck, legTo, reachArm,
-  swellHand, swellFoot, strikeSwell, STRIKE_SWELL,
+  hipsPointAt, swellHand, swellFoot, strikeSwell, STRIKE_SWELL,
 } from '../kit.js';
 import { HAND_R } from '../dims.js';
 import { WALL_DIST } from '../physicsLink.js';
@@ -300,6 +300,39 @@ function waterJump(p, c) {
   p.face = 'happy';
 }
 
+// Hot foot: touched fire and launched straight up. A stiff, stretched jolt with the arms
+// flung up, then both mittens clutch the smouldering seat of his trousers, the body pitches
+// forward and the legs run frantically on thin air (BURN_STRIDES a second) while he yells
+// with his head thrown back and shaking. Runs until the Player lands him.
+const BURN_STRIDES = 3.2;
+const SEAT = { x: 9, y: -3, z: -27 }; // mitten centres on the seat, in the pelvis frame
+const seat = { x: 0, y: 0, z: 0 };
+function burn(p, c) {
+  const jolt = 1 - smoothstep(0.03, 0.16, c.t);
+  const k = smoothstep(0.06, 0.22, c.t);
+  const w = c.t * BURN_STRIDES * TAU;
+  p.squash = 0.16 * jolt;
+  p.rootY = 3 * Math.sin(2 * w) * k; // bobs twice a stride
+  p.flipPitch = 0.38 * k;
+  p.flipRoll = 0.06 * Math.sin(w + 0.6) * k; // rocks with the stride
+  p.hipsPitch = 0.15 * k; // seat stuck out behind...
+  p.spinePitch = -0.35 * k; // ...chest back up over it, so the short arms reach the seat
+  p.headPitch = -0.35 * k - 0.25 * jolt;
+  p.headRoll = 0.14 * Math.sin(c.t * 25) * k;
+  p.headYaw = 0.12 * Math.sin(c.t * 17) * k;
+  for (let i = 0; i < 2; i++) {
+    // A cartoon wheel: the knee comes up high in front, the leg kicks out straight behind.
+    const a = w + i * PI;
+    leg(p, i ? 'R' : 'L', k * (0.55 + 1.0 * Math.sin(a)), 0.1 + k * (1.05 + 0.95 * Math.cos(a)), 0.2 + 0.35 * k * Math.sin(a), 0.08);
+  }
+  arms(p, 0.25, 0.4 + 1.5 * jolt, 0.3);
+  for (const s of ['L', 'R']) {
+    hipsPointAt(p, s === 'L' ? SEAT.x : -SEAT.x, SEAT.y, SEAT.z, seat);
+    reachArm(p, s, seat.x, seat.y, seat.z, k, 0.55);
+  }
+  p.face = jolt > 0.5 ? 'hurt' : 'panic';
+}
+
 // Flip anims start instantly (tiny blend) so the rotation is never delayed.
 export const AIR_ANIMS = {
   jump: { pose: jump, blend: 0.06 },
@@ -321,4 +354,5 @@ export const AIR_ANIMS = {
   jump_kick: { pose: jumpKick, blend: 0.05 },
   pole_jump: { pose: poleJump },
   water_jump: { pose: waterJump },
+  burn: { pose: burn, blend: 0.04 },
 };

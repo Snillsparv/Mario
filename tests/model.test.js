@@ -210,11 +210,13 @@ test('anim changes blend instead of snapping', () => {
 
 test('triangle budget stays N64-sized', () => {
   const model = new PlayerModel();
+  const count = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
   let tris = 0;
   model.object3D.traverse((o) => {
-    if (!o.isMesh || o === model.shadow.mesh) return;
-    const g = o.geometry;
-    tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    if (!o.isMesh || o === model.shadow.mesh || o === model.smoke.mesh) return;
+    tris += count(o.geometry);
   });
   assert.ok(tris >= 1500 && tris <= 3000, `triangles: ${tris}`);
+  // The hot-foot smoke is one small instanced puff on top of that.
+  assert.ok(count(model.smoke.mesh.geometry) <= 100, 'smoke puff');
 });

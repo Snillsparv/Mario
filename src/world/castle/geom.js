@@ -215,6 +215,10 @@ export class GeoBuilder {
     this.tint = [1, 1, 1];
     // Optional hand-painted shading: (x, y, z) -> multiplier, applied per vertex.
     this.shade = null;
+    // Glow (0..1) of subsequent faces in AI RACE mode (lit windows), the 'darkGlow'
+    // attribute: a number, or (x, y, z) -> number per vertex.
+    this.glow = 0;
+    this.glows = [];
   }
 
   // Sets the vertex tint for subsequent faces (sRGB hex, converted to linear).
@@ -242,6 +246,7 @@ export class GeoBuilder {
     this.nrm.push(n[0], n[1], n[2]);
     this.uv.push(uv[0], uv[1]);
     this.col.push(this.tint[0] * k, this.tint[1] * k, this.tint[2] * k);
+    this.glows.push(typeof this.glow === 'function' ? this.glow(p[0], p[1], p[2]) : this.glow);
   }
 
   // One triangle. facing: intended outward direction (re-winds to match).
@@ -399,6 +404,7 @@ export class GeoBuilder {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    g.setAttribute('darkGlow', new THREE.Float32BufferAttribute(this.glows, 1));
     g.computeBoundingSphere();
     return g;
   }

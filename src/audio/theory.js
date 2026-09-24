@@ -79,12 +79,22 @@ export function parseChordBar(str, beatsPerBar) {
   });
 }
 
-const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
+const MODE_STEPS = {
+  major: [0, 2, 4, 5, 7, 9, 11],
+  minor: [0, 2, 3, 5, 7, 8, 10], // natural minor
+};
 
 // Pitch classes of the major scale on a tonic name, e.g. 'F' -> [5, 7, 9, 10, 0, 2, 4].
 export function majorScale(tonic) {
+  return modeScale(tonic, 'major');
+}
+
+// Pitch classes of a song's scale: 'major' (default) or natural 'minor' on the tonic.
+export function modeScale(tonic, mode = 'major') {
   const t = pcOf(tonic);
-  return MAJOR_STEPS.map((s) => (t + s) % 12);
+  const steps = MODE_STEPS[mode];
+  if (!steps) throw new Error(`unknown mode '${mode}'`);
+  return steps.map((s) => (t + s) % 12);
 }
 
 // All MIDI notes in [lo, hi] whose pitch class is in pcs (ascending).

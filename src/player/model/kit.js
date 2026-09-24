@@ -175,16 +175,41 @@ export function plantFeet(p, zL, zR, groundY = 0) {
   plantLeg(p, 'R', zR, groundY);
 }
 
+// Body space -> shoulder frame of side s (into `chain`).
+function bodyToShoulder(p, s) {
+  return bodyToHips(p)
+    .multiply(tmpM.makeTranslation(0, SPINE_Y, 0))
+    .multiply(rotation(p.spinePitch, p.spineYaw, p.spineRoll, 'XYZ'))
+    .multiply(tmpM.makeTranslation(s === 'L' ? SHOULDER_X : -SHOULDER_X, SHOULDER_Y, 0));
+}
+
+// Body-space position of the point (x, y, z) of the pelvis frame (the hips joint: y = 0 at
+// HIP_Y, the seat is behind and below) for pose p, written into `out` ({x, y, z}).
+export function hipsPointAt(p, x, y, z, out) {
+  const e = bodyToHips(p).elements;
+  out.x = e[0] * x + e[4] * y + e[8] * z + e[12];
+  out.y = e[1] * x + e[5] * y + e[9] * z + e[13];
+  out.z = e[2] * x + e[6] * y + e[10] * z + e[14];
+  return out;
+}
+
+// Where the shoulder joint of side s is in body space for pose p (written into `out`, a
+// THREE.Vector3 or any {x, y, z}). Lets a pose place the body relative to its hands.
+export function shoulderAt(p, s, out) {
+  const e = bodyToShoulder(p, s).elements;
+  out.x = e[12];
+  out.y = e[13];
+  out.z = e[14];
+  return out;
+}
+
 // Two-bone arm IK: bends the elbow and aims the shoulder so the mitten centre lands on
 // (x, y, z), blended over the current arm pose by weight w. `elbowOut` (0..1) swings the
 // elbow from pointing down-and-back to pointing out sideways. Out-of-reach targets get a
 // straight arm pointing at them.
 export function reachArm(p, s, x, y, z, w = 1, elbowOut = 0.3) {
   if (w <= 0) return;
-  const frame = bodyToHips(p)
-    .multiply(tmpM.makeTranslation(0, SPINE_Y, 0))
-    .multiply(rotation(p.spinePitch, p.spineYaw, p.spineRoll, 'XYZ'))
-    .multiply(tmpM.makeTranslation(s === 'L' ? SHOULDER_X : -SHOULDER_X, SHOULDER_Y, 0));
+  const frame = bodyToShoulder(p, s);
   // Solve as a left arm (+X = outward); the rig mirrors the right one.
   const t = target.set(x, y, z).applyMatrix4(frame.invert());
   if (s === 'R') t.x = -t.x;

@@ -9,6 +9,12 @@
 //   Underwater: when the camera is below the water surface the fog switches to a short
 //     blue-green one and the sky dome is tinted toward it (surface heights from
 //     layout.waterLevelAt unless setWaterLevelFn overrides it).
+//   Storm (AI RACE mode, post/storm.js): setDarkness(t) crossfades the fog (above and under
+//     water) and the actor lights to the storm's, and grades the picture (desaturated, darker,
+//     cold teal, deep shadows); flash(strength) brightens the whole frame for a lightning
+//     strike. N64 mode grades in its post pass; native mode draws through a full-size target
+//     and post/GradePass.js only while the grade or a flash is visible. At t = 0 nothing
+//     changes and nothing extra is drawn.
 //
 // World geometry is unlit (baked vertex colours). The sun and hemisphere lights below only
 // shade dynamic actors (hero, coins, star) that use Lambert/Phong materials.
@@ -21,6 +27,9 @@ import { fitViewport, internalResolution, overlayStyle, PILLARBOX_ASPECT } from 
 import { loadSettings, saveSettings } from './post/settings.js';
 import { UnderwaterFog, isBelowWater } from './post/underwater.js';
 import { DebugOverlay } from './post/DebugOverlay.js';
+import { GradePass } from './post/GradePass.js';
+import { STORM_FOG, STORM_UNDERWATER_FOG, STORM_LIGHTS, flashEnvelope, stormFogRange } from './post/storm.js';
+import { UNDERWATER_FOG } from './post/underwater.js';
 
 // The fog and the clear colour are the sky's horizon colour, so distant terrain melts
 // into the bottom of the sky dome.
@@ -83,6 +92,7 @@ export class N64Renderer {
     this.pass = new N64Pass();
     this.underwater = new UnderwaterFog(this.scene);
     this.compileObject = (object) => this.renderer.compile(object, this.camera, this.scene);
+    this.initStorm();
     this.debug = new DebugOverlay();
     this.waterLevelFn = waterLevelAt;
     this.viewport = { x: 0, y: 0, width: 1, height: 1 }; // CSS px inside the container
@@ -106,6 +116,124 @@ export class N64Renderer {
       this.resizeObserver = new ResizeObserver(this.onResize);
       this.resizeObserver.observe(container);
     }
+  }
+
+  // Storm state (AI RACE mode): darkness t, the lightning flash, the native grade pass.
+  initStorm() {
+    this.darkness = 0;
+    this.flashStrength = 0; // strength of the current flash (0 = none)
+    this.flashStart = 0; // performance clock (s) of its first frame
+    this.flashPending = false; // flash() was called: it starts on the next frame drawn
+    this.flashLevel = 0; // brightness drawn in the last frame
+    this.gradePass = new GradePass();
+    this.gradeWarm = ''; // native: '' | 'pending' | 'ready' (programs for the grade target)
+    this.drawSize = new THREE.Vector2();
+    this.warmList = new Map(); // object -> Set of variants compiled (see prewarm)
+    this.day = {
+      fog: new THREE.Color(FOG_COLOR),
+      water: new THREE.Color(UNDERWATER_FOG.color),
+      sun: this.sun.color.clone(),
+      sunIntensity: this.sun.intensity,
+      sky: this.ambient.color.clone(),
+      ground: this.ambient.groundColor.clone(),
+      ambientIntensity: this.ambient.intensity,
+    };
+    this.storm = {
+      fog: new THREE.Color(STORM_FOG.color),
+      water: new THREE.Color(STORM_UNDERWATER_FOG.color),
+      sun: new THREE.Color(STORM_LIGHTS.sunColor),
+      sky: new THREE.Color(STORM_LIGHTS.skyColor),
+      ground: new THREE.Color(STORM_LIGHTS.groundColor),
+    };
+    this.fogScratch = { color: new THREE.Color(), range: {} };
+    // Effects (src/fx/Effects.js) find the renderer through the scene to flash it and to
+    // size their streaks in pixels. Not enumerable: scene.toJSON()/clone() never see it.
+    Object.defineProperty(this.scene.userData, 'view', { value: this, enumerable: false, configurable: true });
+  }
+
+  // AI RACE mode crossfade: 0 = the sunny grounds (untouched) .. 1 = full storm.
+  setDarkness(t) {
+    const k = Math.min(1, Math.max(0, Number(t) || 0));
+    if (k === this.darkness) return;
+    this.darkness = k;
+    const { day, storm, fogScratch } = this;
+    const range = stormFogRange(k, { near: FOG_NEAR, far: FOG_FAR }, UNDERWATER_FOG, fogScratch.range);
+    const c = fogScratch.color;
+    this.underwater.setSurfaceFog(c.lerpColors(day.fog, storm.fog, k), range.near, range.far);
+    this.underwater.setWaterFog(c.lerpColors(day.water, storm.water, k), range.uwNear, range.uwFar);
+    this.sun.color.lerpColors(day.sun, storm.sun, k);
+    this.sun.intensity = day.sunIntensity + (STORM_LIGHTS.sunIntensity - day.sunIntensity) * k;
+    this.ambient.color.lerpColors(day.sky, storm.sky, k);
+    this.ambient.groundColor.lerpColors(day.ground, storm.ground, k);
+    this.ambient.intensity = day.ambientIntensity + (STORM_LIGHTS.ambientIntensity - day.ambientIntensity) * k;
+  }
+
+  // Lightning: brightens the whole frame (white-blue, a double flicker, ~0.4 s). The flash
+  // starts on the next frame drawn, so its brightest frame is always shown. A stronger strike
+  // replaces a weaker one in progress.
+  flash(strength = 1) {
+    const s = Math.min(1.5, Math.max(0, Number(strength) || 0));
+    if (s <= 0) return;
+    if (this.flashLevel > s) return;
+    this.flashStrength = s;
+    this.flashPending = true;
+  }
+
+  // Compile `object`'s programs for every render setup this renderer draws with (N64 target,
+  // canvas, native grade target) the first time each is used, instead of on the object's first
+  // visible frame (effects meshes stay hidden until rain or fire starts).
+  prewarm(object) {
+    if (!this.warmList.has(object)) this.warmList.set(object, new Set());
+  }
+
+  warmObjects(variant) {
+    for (const [object, done] of this.warmList) {
+      if (done.has(variant)) continue;
+      done.add(variant);
+      this.renderer.compile(object, this.camera, this.scene);
+    }
+  }
+
+  // Current flash brightness at performance-clock time `now` (seconds).
+  updateFlash(now) {
+    if (!this.flashStrength) return (this.flashLevel = 0);
+    if (this.flashPending) {
+      this.flashPending = false;
+      this.flashStart = now;
+    }
+    const age = now - this.flashStart;
+    this.flashLevel = this.flashStrength * flashEnvelope(age);
+    if (age > 0.5) this.flashStrength = 0;
+    return this.flashLevel;
+  }
+
+  // Native mode with the grade: are the scene's programs for the grade target compiled?
+  // The first time, they are compiled in the background (compileAsync, where the browser
+  // compiles in parallel) while frames keep drawing ungraded, so switching the storm on in
+  // native mode does not stall; without parallel compiling they are compiled right here.
+  nativeGradeReady(target) {
+    if (this.gradeWarm === 'ready') return true;
+    if (this.gradeWarm === 'pending') return false;
+    const { renderer } = this;
+    const done = () => {
+      this.gradeWarm = 'ready';
+    };
+    const parallel = renderer.extensions.has('KHR_parallel_shader_compile');
+    this.gradeWarm = 'pending';
+    renderer.setRenderTarget(target);
+    try {
+      this.warmObjects('grade');
+      if (parallel) renderer.compileAsync(this.scene, this.camera).then(done, done);
+      else {
+        renderer.compile(this.scene, this.camera);
+        done();
+      }
+    } catch {
+      done();
+    } finally {
+      renderer.setRenderTarget(null);
+    }
+    return this.gradeWarm === 'ready';
   }
 
   addLights() {
@@ -222,17 +350,37 @@ export class N64Renderer {
     const { renderer, scene, camera } = this;
     this.underwater.update(isBelowWater(camera.position, this.waterLevelFn));
 
+    const flash = this.updateFlash(performance.now() / 1000);
+    const graded = this.darkness > 0 || flash > 0;
+
     renderer.info.reset();
     if (this.n64) {
       renderer.setRenderTarget(this.target);
       this.underwater.warm(this.compileObject, 'n64'); // programs depend on the bound target
+      this.warmObjects('n64');
       renderer.render(scene, camera);
       renderer.setRenderTarget(null);
+      this.pass.setGrade(this.darkness, flash);
       this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
-    } else {
-      this.underwater.warm(this.compileObject, 'native');
-      renderer.render(scene, camera);
+      return;
     }
+    if (graded) {
+      renderer.getDrawingBufferSize(this.drawSize);
+      const target = this.gradePass.targetFor(this.drawSize.x, this.drawSize.y);
+      if (this.nativeGradeReady(target)) {
+        renderer.setRenderTarget(target);
+        this.underwater.warm(this.compileObject, 'grade');
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(null);
+        this.gradePass.render(renderer, target.texture, this.darkness, flash);
+        return;
+      }
+    } else if (this.gradePass.target && this.darkness === 0) {
+      this.gradePass.release(); // the storm is over: free the full-size target
+    }
+    this.underwater.warm(this.compileObject, 'native');
+    this.warmObjects('native');
+    renderer.render(scene, camera);
   }
 
   // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater'.
@@ -240,7 +388,7 @@ export class N64Renderer {
     const size = this.n64
       ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
       : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
-    return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '');
+    return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '');
   }
 
   dispose() {
@@ -251,6 +399,8 @@ export class N64Renderer {
     this.debug.dispose();
     this.underwater.dispose();
     this.pass.dispose();
+    this.gradePass.dispose();
+    this.warmList.clear();
     this.target.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

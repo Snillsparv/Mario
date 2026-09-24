@@ -4,8 +4,11 @@
 // The poses lift the body into place and put the mittens on the lip / bark with arm IK.
 
 import {
-  TAU, clamp, smoothstep, unit, arms, leg, legs, stand, plantLeg, plantFeet, keyframes, reachArm,
+  PI, TAU, clamp, smoothstep, unit, easeInOut, easeOut, hump, arms, leg, legs, stand, plantLeg, plantFeet, keyframes,
+  reachArm, shoulderAt,
 } from '../kit.js';
+import { createPose, resetPose, blendPose } from '../pose.js';
+import { FOREARM, HAND_OFFSET, UPPER_ARM } from '../dims.js';
 import {
   HANG_DEPTH, WALL_DIST, LEDGE_CLIMB_TIME, POLE_GAP, POLE_CLIMB_PER_CYCLE, climbProgress,
 } from '../physicsLink.js';
@@ -175,9 +178,115 @@ function poleClimb(p, c) {
   p.face = 'shout';
 }
 
+// ---- pole-top handstand --------------------------------------------------------------------
+// rs.pos is the pole tip: both mittens rest side by side on it, arms straight, and Pip
+// stands on them upside down with his chest to the front (+Z) and legs up (a little apart,
+// knees soft), swaying gently as he balances about his hands. His arms are short for his
+// big head, so the chin is tucked: the head and hat sit forward of the tip, above it, and
+// the scarf tails hang free down the back of the neck. He gets there with a quick
+// cartwheel up from wherever the previous anim had him (ctx.entry*, carried by the
+// animator from pole_hold / pole_climb).
+
+const TIP_HAND_X = 7.5; // mitten centres either side of the tip...
+const TIP_HAND_Y = 7.5; // ...and above it: the mittens rest on the tip
+const ARM_REACH = UPPER_ARM + FOREARM + HAND_OFFSET - 0.2; // shoulder -> mitten, arm straight
+const FLIP_TIME = 0.32;
+const HS_LEAN = -0.35; // body tipped back over the hands (legs behind), against the head's weight
+
+const sL = { x: 0, y: 0, z: 0 };
+const sR = { x: 0, y: 0, z: 0 };
+
+// The balancing sway (radians): a slow wander from two incommensurate sines per axis.
+const swayRoll = (t) => 0.075 * Math.sin(t * 2.1) + 0.03 * Math.sin(t * 3.7 + 1);
+const swayPitch = (t) => 0.05 * Math.sin(t * 1.6 + 0.5) + 0.02 * Math.sin(t * 4.3);
+
+// The inverted body before it is placed on the hands. w (0..1) fades the sway in.
+function handstandBody(p, t, w) {
+  const r = swayRoll(t) * w;
+  const f = swayPitch(t) * w;
+  const V = globalThis.__hs ?? {};
+  p.flipRoll = PI + r;
+  p.flipPitch = (V.lean ?? HS_LEAN) + f;
+  p.spinePitch = V.spine ?? -0.05;
+  p.hipsPitch = V.hips ?? 0;
+  p.headPitch = V.head ?? 1.0;
+  // Legs catch the balance: they part toward the side the body tips away from, and the
+  // knees give a little as it tips.
+  const soft = 0.22 + 0.5 * Math.abs(f) + 0.3 * Math.abs(r);
+  const arch = V.arch ?? 0.15;
+  const point = V.point ?? 1.0;
+  leg(p, 'L', arch - 0.04 - 1.2 * f, soft + 0.08 * Math.sin(t * 2.9), point, 0.16 - 1.4 * r);
+  leg(p, 'R', arch - 1.2 * f, soft + 0.08 * Math.sin(t * 2.9 + 2), point, 0.16 + 1.4 * r);
+  arms(p, 2.9, 0.3, 0.05);
+  p.face = 'open';
+}
+
+// Moves the body so both shoulders are within a straight arm of the mittens on the tip,
+// the arms leaning with the body (the sway pivots about the hands), then puts the mittens
+// there. w (0..1) blends the hands in over the current arm pose. Returns the left mitten's
+// x on the tip (each mitten goes on its own shoulder's side: upside down, left is -X).
+function standOnHands(p, w = 1) {
+  shoulderAt(p, 'L', sL);
+  shoulderAt(p, 'R', sR);
+  const hx = sL.x >= sR.x ? TIP_HAND_X : -TIP_HAND_X;
+  const half = Math.hypot(sL.x - sR.x, sL.y - sR.y, sL.z - sR.z) / 2;
+  const up = Math.sqrt(ARM_REACH * ARM_REACH - (half - TIP_HAND_X) ** 2);
+  // Head direction of the inverted body = the arms' direction (hands below the shoulders).
+  const r = p.flipRoll - PI;
+  const f = p.flipPitch - (globalThis.__hs?.lean ?? HS_LEAN) + (globalThis.__hs?.armLean ?? 0);
+  const dx = -Math.sin(r) * up;
+  const dy = Math.cos(r) * Math.cos(f) * up;
+  const dz = Math.cos(r) * Math.sin(f) * up;
+  p.rootX += dx - (sL.x + sR.x) / 2;
+  p.rootY += TIP_HAND_Y + dy - (sL.y + sR.y) / 2;
+  p.rootZ += dz - (sL.z + sR.z) / 2;
+  // A tipped body puts one shoulder further from its mitten: lower it into reach.
+  shoulderAt(p, 'L', sL);
+  shoulderAt(p, 'R', sR);
+  const far = Math.max(
+    Math.hypot(sL.x - hx, sL.y - TIP_HAND_Y, sL.z),
+    Math.hypot(sR.x + hx, sR.y - TIP_HAND_Y, sR.z),
+  );
+  if (far > ARM_REACH) p.rootY -= far - ARM_REACH;
+  reachArm(p, 'L', hx, TIP_HAND_Y, 0, w, 1);
+  reachArm(p, 'R', -hx, TIP_HAND_Y, 0, w, 1);
+  return hx;
+}
+
+const hugPose = createPose();
+function poleHandstand(p, c) {
+  const u = unit(c.t / FLIP_TIME);
+  const settle = smoothstep(FLIP_TIME, FLIP_TIME + 0.6, c.t);
+  handstandBody(p, c.t, settle);
+  const hx = standOnHands(p);
+  if (u >= 1) return;
+  // The cartwheel up: from hugging the trunk where the previous anim left him (the entry
+  // offset), up over the tip, tucking the knees as he rolls, and onto the hands.
+  poleHold(resetPose(hugPose), c);
+  hugPose.rootX += c.entryX;
+  hugPose.rootY += c.entryY;
+  hugPose.rootZ += c.entryZ;
+  const e = easeInOut(u);
+  const roll = p.flipRoll;
+  blendPose(p, hugPose, p, e);
+  p.flipRoll = roll * easeInOut(unit((u - 0.15) / 0.85));
+  p.rootY += 40 * hump(u);
+  const tuck = hump(unit((u - 0.1) / 0.8));
+  p.legLSwing += 1.1 * tuck;
+  p.legRSwing += 1.1 * tuck;
+  p.kneeL += 1.3 * tuck;
+  p.kneeR += 1.3 * tuck;
+  reachArm(p, 'L', hx, TIP_HAND_Y, 0, smoothstep(0.1, 0.55, u), 1);
+  reachArm(p, 'R', -hx, TIP_HAND_Y, 0, smoothstep(0.1, 0.55, u), 1);
+  p.face = 'shout';
+}
+
 export const CLIMB_ANIMS = {
   ledge_hang: { pose: hang, blend: 0.08 },
   ledge_climb: { pose: ledgeClimb, blend: 0.05 },
-  pole_hold: { pose: poleHold },
-  pole_climb: { pose: poleClimb },
+  // Back down from the handstand (rs.pos drops from the tip to the climbing spot): carried.
+  pole_hold: { pose: poleHold, carryFrom: ['pole_handstand'] },
+  pole_climb: { pose: poleClimb, carryFrom: ['pole_handstand'] },
+  // Slow to leave: turning upright again (into a jump or back onto the trunk) takes a beat.
+  pole_handstand: { pose: poleHandstand, blend: 0.06, blendOut: 0.28, carryFrom: ['pole_hold', 'pole_climb'] },
 };

@@ -61,7 +61,7 @@ export const DEMOS = {
   },
   ledge: {
     spawn: [1300, 0, 0, HALF_PI],
-    script: [{ n: 35, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'ledge_hang', stickY: 1, A: 1 }, { until: 'idle', stickY: 1 }, { n: 20, stickY: 1 }],
+    script: [{ n: 28, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'ledge_hang', stickY: 1, A: 1 }, { until: 'idle', stickY: 1 }, { n: 20, stickY: 1 }],
   },
   dive: {
     spawn: [-5000, 0, -4000, 0],
@@ -100,6 +100,25 @@ export const DEMOS = {
   pole: {
     spawn: [2000, 0, -2500, 0],
     script: [{ n: 32, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'pole', stickY: 1, A: 1 }, { n: 40, stickY: 1 }, { n: 1 }, { n: 1, A: 1 }, { until: 'grounded' }, { n: 10 }],
+  },
+  // Climbs the pole all the way up into the handstand on its tip, then flips off it (A).
+  handstand: {
+    spawn: [2000, 0, -2500, 0],
+    script: [
+      { n: 32, stickY: 1 },
+      { n: 1, stickY: 1, A: 1 },
+      { until: 'pole', stickY: 1, A: 1 },
+      { until: 'pole_top', stickY: 1 },
+      { n: 20 },
+      { n: 1, A: 1 },
+      { until: 'grounded' },
+      { n: 10 },
+    ],
+  },
+  // Running, Z and A pressed on the same tick: the keyboard's long jump (either order works).
+  longjump2: {
+    spawn: [-5000, 0, -4000, 0],
+    script: [{ n: 30, stickY: 1 }, { n: 1, stickY: 1, Z: 1, A: 1 }, { until: 'grounded', stickY: 1 }, { n: 10 }],
   },
   steep: {
     spawn: [600, 0, 700, 0],

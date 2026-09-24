@@ -4,12 +4,14 @@
 //      would hold it: 5 bits per channel with a 4x4 ordered dither;
 //   2. a soft horizontal filter blends each pixel with its neighbours (the video
 //      interface's smoothing, which also hides most of the dither);
-//   3. the result is bilinearly upscaled to the output.
+//   3. the result is bilinearly upscaled to the output;
+//   4. the AI RACE storm grade and lightning flash (post/storm.js), skipped at 0.
 // Steps 1-2 must happen per source pixel, so the shader does its own bilinear filtering
 // from 2 rows x 4 columns of texelFetch()es instead of relying on the sampler.
 
 import * as THREE from 'three';
 import { bayerMatrix } from './screen.js';
+import { GRADE_GLSL } from './storm.js';
 
 // Look parameters (tuned by eye against the preview screenshots).
 export const N64_LOOK = Object.freeze({
@@ -35,6 +37,7 @@ const fragmentShader = /* glsl */ `
   uniform float levels;
   uniform float viBlur;
   varying vec2 vUv;
+  ${GRADE_GLSL}
 
   const float BAYER[16] = float[16](${BAYER});
 
@@ -70,12 +73,13 @@ const fragmentShader = /* glsl */ `
     vec2 f = st - base;
     ivec2 p = ivec2(base);
     vec3 color = mix(scanline(p, f.x), scanline(p + ivec2(0, 1), f.x), f.y);
+    color = stormGrade(color);
     gl_FragColor = vec4(color, 1.0); // already sRGB: written to the canvas as is
   }
 `;
 
 // Fullscreen triangle in clip space (covers the viewport with a single primitive).
-function fullscreenTriangle() {
+export function fullscreenTriangle() {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
@@ -90,6 +94,8 @@ export class N64Pass {
         srcSize: { value: new THREE.Vector2(1, 1) },
         levels: { value: levels },
         viBlur: { value: viBlur },
+        uStorm: { value: 0 },
+        uFlash: { value: 0 },
       },
       vertexShader,
       fragmentShader,
@@ -101,6 +107,13 @@ export class N64Pass {
     this.scene = new THREE.Scene();
     this.scene.add(this.quad);
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); // unused by the shader
+  }
+
+  // Storm grade strength (darkness t) and lightning flash brightness, both 0 = off.
+  setGrade(storm, flash) {
+    const u = this.material.uniforms;
+    u.uStorm.value = storm;
+    u.uFlash.value = flash;
   }
 
   // Draw `texture` (width x height) to the current render target (the canvas).

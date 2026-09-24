@@ -287,8 +287,9 @@ test('one body material and about a mesh per bone', () => {
   const meshes = [];
   model.object3D.traverse((o) => o.isMesh && meshes.push(o));
   const materials = new Set(meshes.map((m) => m.material));
-  assert.ok(meshes.length <= 23, `${meshes.length} meshes`); // 15 bones, 6 scarf links, face, shadow
-  assert.equal(materials.size, 3, 'body + face + shadow');
+  assert.ok(meshes.length <= 24, `${meshes.length} meshes`); // 15 bones, 6 scarf links, face, shadow, smoke
+  assert.equal(materials.size, 4, 'body + face + shadow + smoke');
+  assert.ok(model.smoke.mesh.isInstancedMesh, 'the smoke puffs are one draw call');
 });
 
 // Frontmost point of the painted skull (the face) in body space.

@@ -35,10 +35,22 @@ export class BillboardBatch {
     this.mesh.name = name;
     this.rx = NaN;
     this.rz = NaN;
+    this.heightScale = 1;
     this.orient(1, 0);
     // One bounding sphere valid for every orientation: centres grown by the widest sprite.
     geo.computeBoundingSphere();
     geo.boundingSphere.radius += Math.max(0, ...sprites.map((s) => Math.max(s.w, s.h)));
+  }
+
+  // Scales every sprite's height (and a little of its width), e.g. flowers wilting; the
+  // quads are rebuilt at once.
+  setHeightScale(k) {
+    if (k === this.heightScale) return;
+    this.heightScale = k;
+    const rx = this.rx;
+    const rz = this.rz;
+    this.rx = NaN;
+    this.orient(Number.isNaN(rx) ? 1 : rx, Number.isNaN(rz) ? 0 : rz);
   }
 
   // Quads span the horizontal unit vector (rx, 0, rz), the camera's right direction.
@@ -48,11 +60,13 @@ export class BillboardBatch {
     this.rz = rz;
     const p = this.positions;
     const sprites = this.sprites;
+    const kh = this.heightScale;
+    const kw = 0.5 + 0.5 * kh;
     for (let i = 0, o = 0; i < sprites.length; i++, o += 12) {
       const s = sprites[i];
-      const hx = (rx * s.w) / 2;
-      const hz = (rz * s.w) / 2;
-      const top = s.y + s.h;
+      const hx = (rx * s.w * kw) / 2;
+      const hz = (rz * s.w * kw) / 2;
+      const top = s.y + s.h * kh;
       p[o] = s.x - hx;
       p[o + 1] = s.y;
       p[o + 2] = s.z - hz;

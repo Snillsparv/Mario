@@ -4,10 +4,12 @@
 // single effect cannot reach full scale on its own; the combo hits and the jumps are built
 // the way their design says (swish before impact, one step per combo hit, springy rise);
 // text_blip, which plays every few characters, is a single cheap oscillator with a varying
-// pitch. Measured levels (offline renders) are in src/dev/previews/audio.js.
+// pitch; footsteps and landings get softer (quieter and duller) the gentler they are; the AI
+// RACE sounds exist, fit the level budget and are shaped as designed (thunder by strength).
+// Measured levels (offline renders) are in src/dev/previews/audio.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SFX } from '../src/audio/sfx.js';
+import { SFX, SFX_INFO, footstepLevel, landLevel } from '../src/audio/sfx.js';
 import { LEVELS } from '../src/audio/mixer.js';
 
 class Param {
@@ -80,6 +82,10 @@ class RecordingContext {
     return new Node(this, 'noise', ['playbackRate']);
   }
 
+  createWaveShaper() {
+    return new Node(this, 'shaper');
+  }
+
   createBuffer(channels, length) {
     const data = Array.from({ length: channels }, () => new Float32Array(length));
     return { length, getChannelData: (c) => data[c] };
@@ -122,9 +128,11 @@ function run(name, opts = {}) {
   const ctx = new RecordingContext();
   const out = ctx.createGain();
   const dur = SFX[name](ctx, out, T0, { ...OPTS, ...opts });
-  // Voices: envelope gains (fed by a source chain, feeding audio nodes, not a parameter).
+  // Voices: envelope gains (automated, fed by a source chain, feeding audio nodes, not a
+  // parameter). Static gains in a chain (mix levels, tremolo) scale by at most 1 and are
+  // not voices of their own.
   const voices = ctx.nodes
-    .filter((n) => n.kind === 'gain' && n !== out && n.ins.length && n.outs.every((d) => d instanceof Node))
+    .filter((n) => n.kind === 'gain' && n !== out && n.ins.length && n.gain.events.length && n.outs.every((d) => d instanceof Node))
     .map((g) => {
       const ramps = g.gain.events.filter(([m]) => m === 'linearRampToValueAtTime');
       const peak = Math.max(0, ...ramps.map(([, v]) => v));
@@ -147,16 +155,19 @@ const firstFreq = (osc) => osc.frequency.events[0][1];
 const GAMEPLAY_HITS = ['punch', 'punch1', 'punch2', 'kick', 'jump_kick'];
 const JUMPS = ['jump', 'double_jump', 'triple_jump'];
 const DIALOG = ['dialog_open', 'text_blip', 'dialog_next', 'dialog_close'];
+const AI_RACE = ['button_press', 'alarm', 'kaiju_roar', 'fireball_charge', 'fireball_launch', 'fireball_explode', 'burn', 'fire_crackle', 'steam', 'thunder'];
+const LONG = { thunder: 4.1 }; // the rolling thunder may run past the usual 3 s
 
-test('the combo, flying-kick and sign-dialog sounds exist', () => {
-  for (const n of [...GAMEPLAY_HITS, ...DIALOG]) assert.equal(typeof SFX[n], 'function', n);
+test('the combo, flying-kick, sign-dialog and AI RACE sounds exist', () => {
+  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE]) assert.equal(typeof SFX[n], 'function', n);
+  for (const n of Object.keys(SFX_INFO)) assert.equal(typeof SFX[n], 'function', `SFX_INFO names a real sound: ${n}`);
 });
 
 test('every recipe schedules cleanly and reports a sane length', () => {
   for (const name of Object.keys(SFX)) {
     for (const terrain of ['grass', 'stone', 'wood', 'sand', 'water']) {
       const { dur, ctx, voices } = run(name, { terrain });
-      assert.ok(Number.isFinite(dur) && dur > 0 && dur <= 3, `${name} length ${dur}`);
+      assert.ok(Number.isFinite(dur) && dur > 0 && dur <= (LONG[name] ?? 3), `${name} length ${dur}`);
       assert.ok(voices.length > 0, `${name} makes a sound`);
       // Every source stops, and nothing starts before the requested time.
       for (const n of ctx.nodes.filter((x) => x.kind === 'osc' || x.kind === 'noise')) {
@@ -254,4 +265,84 @@ test('dialog open and close are mirror images: the pop bends up to open, down to
   const close = pop('dialog_close');
   assert.ok(open.at(-1)[1] > open[0][1]);
   assert.ok(close.at(-1)[1] < close[0][1]);
+});
+
+test('footsteps: level and brightness rise with speed; tiptoe soft, walk well under a run', () => {
+  let prev = { volume: 0, bright: 0 };
+  for (let speed = 0; speed <= 40; speed += 1) {
+    const l = footstepLevel(speed);
+    assert.ok(l.volume >= prev.volume && l.bright >= prev.bright, `monotonic at ${speed}`);
+    assert.ok(l.volume > 0 && l.volume <= 1 && l.bright > 0 && l.bright <= 1);
+    prev = l;
+  }
+  const full = footstepLevel(32).volume;
+  assert.equal(full, 1, 'a full run plays as before');
+  assert.ok(footstepLevel(6).volume <= 0.35 * full, 'tiptoe very soft (-9 dB and more)');
+  assert.ok(footstepLevel(12).volume <= 0.5 * full, 'walking clearly quieter (-6 dB and more)');
+  assert.ok(footstepLevel(17).volume < 0.62 * full, 'even a brisk walk');
+  assert.ok(footstepLevel(12).bright < 0.6 && footstepLevel(6).bright < 0.4, 'and duller');
+  assert.deepEqual(footstepLevel(undefined), footstepLevel(20), 'no speed: a jog');
+  // Softer steps are also duller: the bright contact click drops more than the body.
+  for (const terrain of ['grass', 'stone', 'wood', 'sand', 'water']) {
+    const hi = run('footstep', { terrain, bright: 1 });
+    const lo = run('footstep', { terrain, bright: footstepLevel(10).bright });
+    assert.ok(lo.budget < hi.budget, `${terrain}: gentler step, smaller budget`);
+  }
+  const edge = (b) => {
+    const { voices } = run('footstep', { terrain: 'grass', bright: b });
+    return voices.find((v) => v.noise && v.src.type === 'highpass').peak;
+  };
+  assert.ok(edge(0.3) < edge(1) * 0.6, 'the click of a soft step is much quieter');
+});
+
+test('landings: a hop lands softly, a big fall in full; the land thump is gentler than a hard one', () => {
+  const air = [0, 0.1, 0.25, 0.4, 0.6, 0.8, 1.5, Infinity].map((a) => landLevel(a));
+  for (let i = 1; i < air.length; i++) assert.ok(air[i].volume >= air[i - 1].volume && air[i].bright >= air[i - 1].bright);
+  assert.ok(landLevel(0.25).volume <= 0.6, 'a tiny hop');
+  assert.equal(landLevel(0.7).volume, 1, 'a full jump lands as before');
+  assert.equal(landLevel(Infinity).volume, 1, 'unknown air time: full');
+  assert.equal(landLevel(0.1, 800).volume, 1, 'a given fall height wins over air time');
+  assert.ok(landLevel(5, 60).volume < 0.6);
+  const soft = run('land', { bright: landLevel(0.3).bright }).budget;
+  const full = run('land').budget;
+  assert.ok(soft < full, 'soft landing budget');
+  assert.ok(full < run('land_hard').budget, 'hard landing is the heaviest');
+});
+
+test('AI RACE sounds: sane budgets and lengths, shaped as designed', () => {
+  const budget = Object.fromEntries(AI_RACE.map((n) => [n, run(n).budget]));
+  for (const [n, b] of Object.entries(budget)) assert.ok(b > 0.05 && b * LEVELS.sfx < 0.95, `${n} budget ${b.toFixed(2)}`);
+  // The repeated crackle sits well under the one-off blasts.
+  assert.ok(budget.fire_crackle < budget.fireball_explode * 0.5);
+  // Lengths: a ~2 s roar, a ~0.8 s charge, a short crackle, an alarm of three pulses.
+  const len = (n) => run(n).dur;
+  assert.ok(len('kaiju_roar') >= 1.8 && len('kaiju_roar') <= 2.6);
+  assert.ok(len('fireball_charge') >= 0.7 && len('fireball_charge') <= 1);
+  assert.ok(len('fire_crackle') <= 0.5);
+  const alarm = run('alarm');
+  const pulses = new Set(alarm.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sawtooth').map((n) => n.startAt));
+  assert.ok(pulses.size >= 2 && pulses.size <= 3, `alarm pulses ${pulses.size}`);
+  // The roar is driven (waveshaper) and frequency-modulated.
+  const roar = run('kaiju_roar');
+  assert.ok(roar.count('shaper') >= 1, 'distortion');
+  assert.ok(roar.ctx.nodes.some((n) => n.kind === 'gain' && n.outs.some((d) => d instanceof Param)), 'FM / modulation');
+  // A far explosion is duller (less top end) than a near one.
+  const top = (dist) => Math.max(...run('fireball_explode', { dist }).ctx.nodes.filter((n) => n.kind === 'filter' && n.type === 'lowpass').map((n) => n.frequency.events[0][1]));
+  assert.ok(top(8000) < top(500));
+  // Crackles vary from one to the next.
+  const counts = new Set(Array.from({ length: 12 }, () => run('fire_crackle').count('noise')));
+  assert.ok(counts.size > 1);
+});
+
+test('thunder: stronger strikes roll longer and louder, and only strong ones crack', () => {
+  const weak = run('thunder', { strength: 0.2 });
+  const strong = run('thunder', { strength: 1 });
+  assert.ok(weak.dur >= 2 && weak.dur < strong.dur && strong.dur <= 4.1, `lengths ${weak.dur} ${strong.dur}`);
+  assert.ok(strong.budget > weak.budget);
+  const crack = (r) => r.voices.some((v) => v.noise && v.src.type === 'highpass');
+  assert.ok(crack(strong) && !crack(weak));
+  // The roll's level moves (several swells), rather than one decay.
+  const roll = strong.voices.find((v) => v.src.type === 'lowpass' && v.src.ins[0]?.kind === 'noise' && v.src.frequency.events.length === 2);
+  const ramps = roll.src.outs[0].gain.events.filter(([m]) => m === 'linearRampToValueAtTime');
+  assert.ok(ramps.length >= 4, `roll swells ${ramps.length}`);
 });

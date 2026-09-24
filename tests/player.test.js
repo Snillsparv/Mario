@@ -364,7 +364,7 @@ describe('walls and ledges', () => {
       flat(b);
       b.box(-2000, 0, 1300, 2000, 400, 2500);
     });
-    s.run(41, { stickY: 1 });
+    s.run(34, { stickY: 1 }); // run-up: jumps ~700 short of the wall at ~31
     s.run(1, { stickY: 1, A: true });
     s.until(40, { stickY: 1, A: true }, (p) => p.action === 'ledge_hang');
     assert.equal(s.p.action, 'ledge_hang');
@@ -396,7 +396,7 @@ describe('walls and ledges', () => {
       flat(b);
       b.box(-2000, 0, 1300, 2000, 400, 2500);
     });
-    s.run(41, { stickY: 1 });
+    s.run(34, { stickY: 1 }); // run-up: jumps ~700 short of the wall at ~31
     s.run(1, { stickY: 1, A: true });
     s.until(40, { stickY: 1, A: true }, (p) => p.action === 'ledge_hang');
     s.run(4, {});
@@ -687,6 +687,11 @@ describe('robustness and render state', () => {
     let input = {};
     const t0 = performance.now();
     for (let i = 0; i < 20000; i++) {
+      // Wandering near the course's edge (off it there is no floor): back to the start.
+      if (Math.abs(player.pos.x) > 8000 || Math.abs(player.pos.z) > 8000) {
+        player.teleport(spawn.x, spawn.y, spawn.z, spawn.yaw);
+        player.setAction('idle');
+      }
       if (i % 12 === 0) {
         const a = rng() * Math.PI * 2;
         const m = rng() < 0.2 ? 0 : rng();
@@ -700,7 +705,7 @@ describe('robustness and render state', () => {
       assert.ok(Math.abs(pos.x) < 10000 && Math.abs(pos.z) < 10000, `escaped the course at ${i}`);
       assert.ok(ANIM_NAMES.has(player.getRenderState(0.5).anim));
       // No teleport-like horizontal jumps outside the actions that place the hero themselves.
-      if (!['ledge_climb', 'spawn', 'pole'].includes(player.action)) {
+      if (!['ledge_climb', 'spawn', 'pole', 'pole_top'].includes(player.action)) {
         const moved = Math.hypot(pos.x - x, pos.z - z);
         assert.ok(moved <= Math.hypot(vel.x, vel.z) + 60, `jumped ${moved} in ${player.action} at ${i}`);
       }

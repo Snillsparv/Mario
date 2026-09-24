@@ -105,6 +105,43 @@ export class UnderwaterFog {
     return true;
   }
 
+  // The fog used above water (and the colour background with it): applied now while dry,
+  // or kept for surfacing while submerged. `color` is a THREE.Color.
+  setSurfaceFog(color, near, far) {
+    const { fog, background } = this.scene;
+    if (this.active) {
+      const s = this.saved;
+      s.fogColor?.copy(color);
+      if (s.fogColor) {
+        s.near = near;
+        s.far = far;
+      }
+      s.background?.copy(color);
+      return;
+    }
+    if (fog) {
+      fog.color.copy(color);
+      fog.near = near;
+      fog.far = far;
+    }
+    if (background?.isColor) background.copy(color);
+  }
+
+  // The underwater fog itself (e.g. darker in the storm); applied at once while submerged.
+  setWaterFog(color, near, far) {
+    this.color.copy(color);
+    this.near = near;
+    this.far = far;
+    if (!this.active) return;
+    const { fog, background } = this.scene;
+    if (fog) {
+      fog.color.copy(color);
+      fog.near = near;
+      fog.far = far;
+    }
+    if (background?.isColor) background.copy(color);
+  }
+
   // Switch to/from the underwater fog. Returns true when the state changed.
   update(submerged) {
     if (submerged === this.active) return false;

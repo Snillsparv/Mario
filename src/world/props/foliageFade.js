@@ -20,6 +20,12 @@
 // materials; each vertex carries its group in the 'fadeGroup' attribute (MeshBuilder
 // { fadeGroups: true }). The per-frame work is one short allocation-free loop.
 //
+// AI RACE mode: wither(t) squeezes every canopy toward its middle (more across than up) and
+// opens ragged holes in the leaves (world-space noise, tri-planar leaf material only), so the
+// trees and bushes look thin and dead; trunks stay as they are.
+// The canopy centres live in a second small uniform array ('propCentre'); w is how much a
+// group withers (canopies 1, bushes WITHER_BUSH, trunks 0).
+//
 // The leaf material is also mapped tri-planar (patch(material, { triplanar })): the leaf
 // texture is projected along the world axes and the three projections blended by the
 // surface normal, so the leaves run on seamlessly across faces and from one blob into the
@@ -56,6 +62,10 @@ const SAMPLES = HERO_HEIGHTS.length + 2;
 const BLOB_EDGE = [1.07, 0.9];
 // Fraction of the hero's sample points hidden where the fade starts / is full.
 const HIDDEN = [0.08, 0.3];
+// Withering (AI RACE mode) at full wither: canopy squeeze toward its middle across and up, and
+// the share of the leaves' noise below which holes open; bushes wither by WITHER_BUSH of that.
+export const WITHER = { across: 0.2, up: 0.07, holes: 0.46 };
+const WITHER_BUSH = 0.6;
 
 const fwd = new THREE.Vector3();
 
@@ -65,6 +75,12 @@ export class FoliageFade {
     this.hero = { x: 0, y: 0, z: 0 };
     this.uniform = null;
     this.time = undefined; // game time of the last update
+    this.witherUniform = { value: 0 };
+  }
+
+  // AI RACE mode: 0 = full canopies .. 1 = withered.
+  wither(t) {
+    this.witherUniform.value = t;
   }
 
   // A canopy or bush made of upright ellipsoid blobs [{ x, y, z, rh, ry }] (horizontal and
@@ -108,16 +124,31 @@ export class FoliageFade {
       this.uniform = { value: this.fades };
     }
     const uniform = this.uniform;
+    if (!this.centreUniform) {
+      this.centreUniform = {
+        value: this.groups.map((g) =>
+          g.kind === 'canopy' ? new THREE.Vector4(g.x, g.y, g.z, g.name.startsWith('bush') ? WITHER_BUSH : 1) : new THREE.Vector4(0, 0, 0, 0),
+        ),
+      };
+    }
+    const centres = this.centreUniform;
+    const wither = this.witherUniform;
+    const groups = this.groups.length;
     const tile = triplanar > 0 ? (1 / triplanar).toFixed(8) : null;
+    const f = (v) => v.toFixed(3);
     material.onBeforeCompile = (shader) => {
       shader.uniforms.propFade = uniform;
+      shader.uniforms.propCentre = centres;
+      shader.uniforms.propWither = wither;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
           `#include <common>
 attribute float fadeGroup;
 uniform vec4 propFade[${vec4s}];
-varying float vPropFade;${tile ? '\nvarying vec3 vLeafPos;\nvarying vec3 vLeafNormal;' : ''}`,
+uniform vec4 propCentre[${groups}];
+uniform float propWither;
+varying float vPropFade;${tile ? '\nvarying vec3 vLeafPos;\nvarying vec3 vLeafNormal;\nvarying float vWither;' : ''}`,
         )
         .replace(
           '#include <begin_vertex>',
@@ -126,11 +157,21 @@ varying float vPropFade;${tile ? '\nvarying vec3 vLeafPos;\nvarying vec3 vLeafNo
   int g = int(fadeGroup + 0.5);
   vec4 f4 = propFade[g / 4];
   int c = g - (g / 4) * 4;
-  vPropFade = c == 0 ? f4.x : c == 1 ? f4.y : c == 2 ? f4.z : f4.w;${
+  vPropFade = c == 0 ? f4.x : c == 1 ? f4.y : c == 2 ? f4.z : f4.w;
+  vec4 wc = propCentre[g];
+  float wk = propWither * wc.w;
+  if (wk > 0.0) {
+    // One affine squeeze per canopy (more across than up): faces buried inside another blob
+    // stay buried (an uneven shrink would open them up as torn shards).
+    float across = 1.0 - wk * ${f(WITHER.across)};
+    float up = 1.0 - wk * ${f(WITHER.up)};
+    transformed = wc.xyz + (transformed - wc.xyz) * vec3(across, up, across);
+  }${
     tile
       ? `
   vLeafPos = (modelMatrix * vec4(transformed, 1.0)).xyz * ${tile};
-  vLeafNormal = mat3(modelMatrix) * normal;`
+  vLeafNormal = mat3(modelMatrix) * normal;
+  vWither = wk;`
       : ''
   }
 }`,
@@ -139,7 +180,24 @@ varying float vPropFade;${tile ? '\nvarying vec3 vLeafPos;\nvarying vec3 vLeafNo
         .replace(
           '#include <common>',
           `#include <common>
-varying float vPropFade;${tile ? '\nvarying vec3 vLeafPos;\nvarying vec3 vLeafNormal;' : ''}
+varying float vPropFade;${
+    tile
+      ? `
+varying vec3 vLeafPos;
+varying vec3 vLeafNormal;
+varying float vWither;
+float witherHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float witherNoise(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(witherHash(i), witherHash(i + vec3(1.0, 0.0, 0.0)), f.x), mix(witherHash(i + vec3(0.0, 1.0, 0.0)), witherHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+    mix(mix(witherHash(i + vec3(0.0, 0.0, 1.0)), witherHash(i + vec3(1.0, 0.0, 1.0)), f.x), mix(witherHash(i + vec3(0.0, 1.0, 1.0)), witherHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+    f.z);
+}`
+      : ''
+  }
 const float BAYER4[16] = float[16](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1., 9., 15., 7., 13., 5.);`,
         )
         .replace(
@@ -148,7 +206,13 @@ const float BAYER4[16] = float[16](0., 8., 2., 10., 12., 4., 14., 6., 3., 11., 1
 if (vPropFade < 0.999) {
   ivec2 q = ivec2(mod(floor(gl_FragCoord.xy), 4.0));
   if (vPropFade * 16.0 <= BAYER4[q.y * 4 + q.x] + 0.5) discard;
-}`,
+}${
+    tile
+      ? `
+// Withered: ragged holes through the leaves (clump-sized world-space noise).
+if (vWither > 0.0 && 0.65 * witherNoise(vLeafPos * ${(triplanar / 55).toFixed(3)}) + 0.35 * witherNoise(vLeafPos * ${(triplanar / 22).toFixed(3)}) < vWither * ${WITHER.holes.toFixed(3)}) discard;`
+      : ''
+  }`,
         );
       if (tile) {
         // Side projections keep v up the world's y (the leaf clumps are lit from above).
@@ -167,7 +231,7 @@ if (vPropFade < 0.999) {
         );
       }
     };
-    material.customProgramCacheKey = () => `props-foliage-fade-${vec4s}${tile ? '-tri' + tile : ''}`;
+    material.customProgramCacheKey = () => `props-foliage-fade-${vec4s}-${groups}${tile ? '-tri' + tile : ''}`;
     material.userData.foliageFade = this;
     return material;
   }

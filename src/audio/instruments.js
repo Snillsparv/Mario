@@ -139,7 +139,114 @@ function shaker(ctx, out, t, dur, midi, vel) {
   noise(ctx, out, t, { filter: 'highpass', freq: 5500, q: 0.7, dur: 0.075, gain: 0.13 * vel, attack: 0.014 });
 }
 
-export const INSTRUMENTS = { flute, strings, horn, bass, harp, glock, timpani, kick, shaker };
+// ---- Dark track ("Signal Lost", AI RACE mode): cold synths and metal.
+
+// Dark synth pad: detuned saws (one an octave down) through a resonant low-pass whose
+// cutoff breathes slowly, swelling in over a second and dying away slowly.
+function darkpad(ctx, out, t, dur, midi, vel) {
+  const f = mtof(midi);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 300 + f * 1.1;
+  lp.Q.value = 2;
+  const g = silentGain(ctx);
+  const peak = 0.07 * vel;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + Math.min(1.2, dur * 0.5));
+  g.gain.setTargetAtTime(0, t + dur, 0.5);
+  lp.connect(g).connect(out);
+  const end = t + dur + 2.5;
+  lfo(ctx, lp.frequency, t, end - t, { rate: 0.18, depth: 220 });
+  for (const [ratio, detune] of [[1, -9], [1, 8], [0.5, 0]]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = f * ratio;
+    osc.detune.value = detune;
+    osc.connect(lp);
+    osc.start(t);
+    osc.stop(end);
+  }
+}
+
+// Pulsing low synth bass: a saw and a slightly flat square through a resonant low-pass that
+// snaps shut on every note, a throb rather than a pluck (harder notes open it wider).
+function pulse(ctx, out, t, dur, midi, vel) {
+  const f = mtof(midi);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 6;
+  lp.frequency.setValueAtTime(Math.min(f * 10 * vel, 3000), t);
+  lp.frequency.exponentialRampToValueAtTime(f * 1.6, t + 0.16);
+  lp.connect(envelope(ctx, out, t, { peak: 0.36 * vel, dur: dur + 0.1, attack: 0.006 }));
+  for (const [type, level, detune] of [['sawtooth', 1, 0], ['square', 0.4, -8]]) {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = f;
+    osc.detune.value = detune;
+    const g = ctx.createGain();
+    g.gain.value = level;
+    osc.connect(g).connect(lp);
+    osc.start(t);
+    osc.stop(t + dur + 0.15);
+  }
+}
+
+// Eerie glassy lead: a sine with a faint, slowly beating octave and a high inharmonic
+// ring, a soft swell, and a vibrato creeping in on long notes.
+function glass(ctx, out, t, dur, midi, vel) {
+  const f = mtof(midi);
+  const peak = 0.16 * vel;
+  const release = t + Math.max(dur - 0.05, 0.1);
+  const g = silentGain(ctx);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.12);
+  g.gain.setTargetAtTime(peak * 0.75, t + 0.12, 0.6);
+  g.gain.setTargetAtTime(0, release, 0.18);
+  g.connect(out);
+  const oscs = [[1, 1], [2.004, 0.25], [3.01, 0.08]].map(([ratio, level]) => {
+    const osc = ctx.createOscillator();
+    osc.frequency.value = f * ratio;
+    const lg = ctx.createGain();
+    lg.gain.value = level;
+    osc.connect(lg).connect(g);
+    osc.start(t);
+    osc.stop(release + 1);
+    return osc;
+  });
+  if (dur > 0.6) lfo(ctx, oscs.map((o) => o.detune), t, release + 1 - t, { rate: 4.6, depth: 14, fadeIn: 0.7 });
+}
+
+// Struck steel (a girder, a hanging plate): inharmonic partials over the pitch, a noise
+// strike and a band of metallic shimmer ringing on.
+const CLANG = [
+  [1, 0.5, 1],
+  [1.73, 0.38, 0.75],
+  [2.61, 0.3, 0.55],
+  [3.49, 0.2, 0.4],
+  [4.83, 0.14, 0.3],
+  [6.12, 0.09, 0.2],
+];
+function clang(ctx, out, t, dur, midi, vel) {
+  const f = mtof(midi);
+  bell(ctx, out, t, { freq: f, dur: 2.4, gain: 0.22 * vel, partials: CLANG });
+  noise(ctx, out, t, { filter: 'highpass', freq: 1800, dur: 0.05, gain: 0.18 * vel, attack: 0.001 });
+  noise(ctx, out, t, { freq: f * 5.3, q: 6, dur: 1.2, gain: 0.08 * vel, attack: 0.01 });
+}
+
+// Industrial kick: a deep falling thud, a muffled knock and a metallic snap on top.
+function thump(ctx, out, t, dur, midi, vel) {
+  tone(ctx, out, t, { freq: 95, to: 36, glide: 0.1, dur: 0.5, gain: 0.6 * vel, attack: 0.002 });
+  noise(ctx, out, t, { filter: 'lowpass', freq: 320, dur: 0.07, gain: 0.3 * vel, attack: 0.001 });
+  noise(ctx, out, t, { freq: 2600, q: 3, dur: 0.025, gain: 0.08 * vel, attack: 0.001 });
+}
+
+// A dry metal tick, like a clock's escapement.
+function tick(ctx, out, t, dur, midi, vel) {
+  noise(ctx, out, t, { filter: 'highpass', freq: 6500, dur: 0.035, gain: 0.14 * vel, attack: 0.001 });
+  tone(ctx, out, t, { wave: 'square', freq: 3900, dur: 0.02, gain: 0.025 * vel, attack: 0.001 });
+}
+
+export const INSTRUMENTS = { flute, strings, horn, bass, harp, glock, timpani, kick, shaker, darkpad, pulse, glass, clang, thump, tick };
 
 // Mix per instrument: level and stereo position, like an orchestra seen from the front.
 export const CHANNELS = {
@@ -152,4 +259,10 @@ export const CHANNELS = {
   timpani: { gain: 0.8, pan: 0.1 },
   kick: { gain: 0.7, pan: 0 },
   shaker: { gain: 1, pan: 0.4 },
+  darkpad: { gain: 0.9, pan: 0 },
+  pulse: { gain: 0.85, pan: 0 },
+  glass: { gain: 0.8, pan: 0.15 },
+  clang: { gain: 0.7, pan: -0.3 },
+  thump: { gain: 0.8, pan: 0 },
+  tick: { gain: 0.7, pan: 0.35 },
 };

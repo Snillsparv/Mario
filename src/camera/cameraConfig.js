@@ -61,7 +61,7 @@ export const MOVING_SPEED = 2; // below this the hero counts as standing still
 export const AIR_SWING_SCALE = 0.35; // the camera barely swings while the hero is airborne
 // While the hero holds a pole the orbit swings round to its back (so the trunk it hugs is not
 // between them), even though it barely moves and faces the camera.
-export const POLE_ACTION = 'pole';
+export const POLE_ACTION = /^pole(_top)?$/; // on the trunk, or in the handstand on its top
 export const POLE_SWING_GAIN = 0.04;
 export const POLE_SWING_MAX = 2 * DEG;
 export const ZOOM_RATE = 0.2; // distance/pitch easing toward the current zoom step
@@ -99,7 +99,7 @@ export const FALL_MAX_LAG = 400;
 export const FOCUS_CATCHUP = 0.25;
 // Actions where the hero is off the floor but "standing" (poles, ledges): follow fully.
 // Whole names only: 'pole_jump' is airborne.
-export const ANCHORED_ACTION = /^(pole|ledge_hang|ledge_climb)$/;
+export const ANCHORED_ACTION = /^(pole|pole_top|ledge_hang|ledge_climb)$/;
 export const FOCUS_SNAP_DIST = 2500; // teleports snap instead of easing
 
 // When walls squeeze the camera toward the hero it tilts down and slides along the wall.

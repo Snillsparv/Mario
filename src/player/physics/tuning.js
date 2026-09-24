@@ -25,14 +25,19 @@ export const JUMP_CUT_FACTOR = 0.25;
 // Ground
 export const MAX_TARGET_SPEED = 32; // intendedMag = stickMag^2 * 32
 export const MAX_FORWARD_VEL = 48;
-// Starting from rest eases in: the first tick moves at the stick's speed up to
-// WALK_START_SPEED, then the speed gains START_ACCEL per tick near a standstill, blending
-// (smoothstep) into the running curve by START_BLEND_SPEED. The running curve eases toward
-// the stick's target (+1.1 - fv / 43 per tick: an exponential curve with this asymptote and
-// time constant), clamped at the target. Rest -> 32 takes ~1.7 s (tiptoe -> walk -> run).
+// Starting from rest eases in (an S-curve): the first tick moves at the stick's speed up to
+// WALK_START_SPEED, then the speed gains START_ACCEL per tick near a standstill (a few ticks
+// of tiptoe), rising (smoothstep) to START_PEAK_ACCEL by START_PEAK_SPEED (a brisk walk),
+// which blends (smoothstep) into the running curve by START_BLEND_SPEED. The running curve
+// eases toward the stick's target (+1.1 - fv / 43 per tick: an exponential curve with this
+// asymptote and time constant), clamped at the target. Full stick from rest: tiptoe for ~4
+// ticks, the run shows from tick ~11 (0.37 s), 32 at tick ~38 (1.27 s). (Round 3: was the
+// run at tick ~19 and 32 at ~49, which felt "hard" to get going.)
 export const WALK_START_SPEED = 2;
 export const START_ACCEL = 0.7;
-export const START_BLEND_SPEED = 14;
+export const START_PEAK_ACCEL = 1.8;
+export const START_PEAK_SPEED = 10;
+export const START_BLEND_SPEED = 24;
 export const START_UPHILL_BLEND = 0.5; // uphill pull (u/tick^2) at which starts use the running curve
 export const PIVOT_START_SPEED = 8; // the pivot after a turnaround skid runs off at once
 export const RUN_ACCEL_LIMIT = 47.3;
@@ -79,6 +84,11 @@ export const SIDEFLIP_FV = 8;
 export const LONG_JUMP_VY = 30;
 export const LONG_JUMP_SCALE = 1.5;
 export const LONG_JUMP_WINDOW = 30; // ticks into a crouch slide where A long-jumps
+// Long jump from a keyboard (round 3): running at LONG_JUMP_COMBO_SPEED or more, Z and A
+// pressed on the same tick, or A then Z within LONG_JUMP_COMBO_TICKS (the jump that A started
+// turns into the long jump), also long-jump. (Z then A was already one: the crouch slide.)
+export const LONG_JUMP_COMBO_SPEED = 16;
+export const LONG_JUMP_COMBO_TICKS = 4;
 export const WALL_KICK_FV = 24; // minimum; a faster incoming speed is kept
 export const HARD_BONK_SPEED = 38; // un-kicked wall contacts this fast knock the hero back hard
 export const WALL_KICK_MIN_SPEED = 16;
@@ -106,6 +116,9 @@ export const HARD_FALL_DAMAGE = 3;
 export const BIG_FALL_HEIGHT = 3000;
 export const BIG_FALL_DAMAGE = 4;
 export const FALL_DAMAGE_MIN_VY = 55;
+// A fall that starts on a tree (climbing it, the handstand on its tip, jumping, dropping or
+// being knocked off it) counts from the tree's foot (pole.y0): a tree's height never hurts,
+// only a landing below its foot does.
 
 // Ledges and poles
 // A ledge is grabbed when its top passes through arm's reach (this far above the feet)
@@ -121,11 +134,22 @@ export const POLE_BODY = 40; // hero keeps this far from a pole's surface on the
 // Airborne hero within this of a pole's surface grabs it; covers trunk colliders around the
 // pole that hold the body further out (e.g. an octagonal prism: up to ~60 past the pole).
 export const POLE_GRAB_REACH = 65;
+// ...and while touching a wall, within this: a trunk's collider can hold a fast hero out
+// past POLE_GRAB_REACH (running into a prism's corner), and that contact still grabs.
+export const POLE_WALL_REACH = 85;
 export const POLE_HOLD_DIST = 30; // distance from the pole surface while holding
 export const POLE_FOOT_BLEND = 80; // near the floor the hold eases out to where he'll stand
 export const POLE_LET_GO_TICKS = 4; // Z: eases off the trunk over this many ticks, then falls
 export const POLE_CLIMB_SPEED = 7;
 export const POLE_SLIDE_SPEED = 16;
+// Climbing on past the top of the climb (hands at the pole's tip, feet HANG_DEPTH below it)
+// swings the hero up into a handstand on the tip (action 'pole_top', anim 'pole_handstand').
+// A springs off in a big flip; the stick pulled down (after POLE_TOP_SETTLE_TICKS, the swing
+// up) climbs back onto the trunk; Z lets go.
+export const POLE_TOP_SETTLE_TICKS = 8;
+export const POLE_TOP_DOWN_STICK = -0.5; // raw stick Y at or below this climbs back down
+export const POLE_TOP_JUMP_VY = 66;
+export const POLE_TOP_JUMP_FV = 14; // toward the stick when held, else the facing
 
 // Water
 export const WATER_ENTER_DEPTH = 100; // feet this far under the surface -> swimming
@@ -154,6 +178,13 @@ export const MAX_HEALTH = 8;
 export const INVINCIBLE_TICKS = 60;
 export const KNOCKBACK_FV = -16;
 export const KNOCKBACK_VY = 24;
+// Fire damage (takeDamage(n, from, { fire: true })): a hot-foot hop straight up, running in
+// the air away from the fire, steerable a little (turn rate, stick speed range up to
+// BURN_MAX_SPEED), then an ordinary landing.
+export const BURN_VY = 50;
+export const BURN_FV = 12;
+export const BURN_MAX_SPEED = 20;
+export const BURN_TURN_RATE = 5 * DEG; // per tick
 export const DEATH_TICKS = 60;
 export const OUT_OF_BOUNDS_Y = -3000;
 export const INTRO_DROP = 1600;

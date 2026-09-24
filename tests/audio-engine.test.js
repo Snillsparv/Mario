@@ -5,6 +5,9 @@
 // ends by itself, a looping track requested before audio existed waits for the unlocking
 // press while a cue asked for without audio (no context yet, or muted) is dropped instead
 // of starting later, and game over plays a jingle over the card with the ambience ducked.
+// AI RACE mode: darkMode swaps the birds and pastoral bed for the storm and fades the dark
+// track in (and back, also after a game over), lightning thunders after a delay, footsteps
+// and landings scale with speed and air time, and bursty sounds are rate-limited.
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
@@ -472,4 +475,235 @@ test('a looping track asked for before audio exists still starts once audio does
   assert.equal(audio.track?.name, 'title');
   audio.stopMusic();
   mock.timers.tick(2000);
+});
+
+// Replace some recipes with recorders of (volume, start delay, opts); returns the log and
+// a restore function.
+function recordSfx(names, dur = 0.3) {
+  const saved = Object.fromEntries(names.map((n) => [n, SFX[n]]));
+  const log = Object.fromEntries(names.map((n) => [n, []]));
+  for (const n of names) {
+    SFX[n] = (ctx, out, t, o) => {
+      log[n].push({ volume: out.gain.value, delay: t - ctx.currentTime, o });
+      return dur;
+    };
+  }
+  return { log, restore: () => Object.assign(SFX, saved) };
+}
+
+// Advance the fake audio clock with engine updates at 60 Hz.
+function run(audio, seconds) {
+  for (let i = 0; i < Math.round(seconds * 60); i++) {
+    audio.ctx.currentTime += 1 / 60;
+    audio.update(1 / 60);
+  }
+}
+
+const lastRamp = (param) => param.calls.findLast(([m]) => m === 'linearRampToValueAtTime');
+
+test('darkMode: the storm replaces the birds and pastoral bed, the dark track fades in, an alarm stings; off crossfades back', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['alarm']);
+  const birds = [];
+  const playAt = audio.ambience.playAt;
+  audio.ambience.playAt = (recipe, pos, volume) => {
+    if (volume !== undefined) birds.push(volume); // bird calls carry their fade level
+    playAt(recipe, pos, volume);
+  };
+  try {
+    run(audio, 5);
+    assert.ok(birds.length > 3, 'birds sing in sunny weather');
+    assert.equal(audio.storm.active, false, 'no storm graph while sunny');
+    const t0 = audio.ctx.currentTime;
+    events.emit('darkMode', { on: true });
+    assert.equal(log.alarm.length, 1, 'alarm sting');
+    assert.equal(audio.track?.name, 'dark');
+    const fadeIn = lastRamp(audio.track.gain.gain);
+    assert.ok(fadeIn[1] > 0 && Math.abs(fadeIn[2] - (t0 + 3)) < 1e-6, `dark track fades in over 3 s: ${fadeIn}`);
+    assert.ok(audio.storm.active, 'storm built');
+    assert.deepEqual(lastRamp(audio.storm.graph.bus.gain).slice(1), [1, t0 + 3]);
+    assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [0, t0 + 3]);
+    events.emit('darkMode', { on: true }); // repeated: nothing new
+    assert.equal(log.alarm.length, 1);
+    run(audio, 3.2);
+    birds.length = 0;
+    run(audio, 20);
+    assert.equal(birds.length, 0, 'no birds in the storm');
+    // Off: back to the grounds' ambience, no music (the grounds have none in free roam).
+    const dark = audio.track;
+    const t1 = audio.ctx.currentTime;
+    events.emit('darkMode', { on: false });
+    assert.equal(audio.track, null);
+    assert.deepEqual(lastRamp(dark.gain.gain).slice(1), [0, t1 + 3], 'dark track fades out over 3 s');
+    assert.deepEqual(lastRamp(audio.storm.graph.bus.gain).slice(1), [0, t1 + 3]);
+    assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [1, t1 + 3]);
+    run(audio, 3.5);
+    assert.equal(audio.storm.active, false, 'storm torn down once faded out');
+    birds.length = 0;
+    run(audio, 10);
+    assert.ok(birds.length > 3, 'birds are back');
+    assert.equal(log.alarm.length, 1, 'no alarm when switching off');
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('the storm mode set before audio exists applies when the context is made', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  events.emit('darkMode', { on: true });
+  assert.equal(audio.wantMusic, 'dark', 'the loop waits for audio');
+  await audio.unlock();
+  assert.ok(audio.storm.active && audio.ambience.dark);
+  mock.timers.tick(700);
+  assert.equal(audio.track?.name, 'dark');
+  audio.stopMusic();
+  mock.timers.tick(5000);
+});
+
+test('a game over in the storm: the jingle cuts the dark track, the storm ends after the card', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  events.emit('darkMode', { on: true });
+  run(audio, 10);
+  events.emit('gameOver');
+  assert.equal(audio.track.name, 'game_over');
+  assert.equal(audio.dark, true, 'the frozen dark world keeps its storm under the card');
+  mock.timers.tick(3300);
+  assert.equal(audio.dark, false);
+  assert.equal(lastRamp(audio.storm.graph.bus.gain)[1], 0);
+  assert.equal(audio.track.name, 'game_over', 'the jingle is not touched');
+  // gameStart is a backstop too.
+  events.emit('darkMode', { on: true });
+  events.emit('gameStart');
+  assert.equal(audio.dark, false);
+  audio.stopMusic();
+  mock.timers.tick(5000);
+});
+
+test('lightning: thunder after 0.3-2.5 s (sooner and fuller for a strong strike), two rolls at most', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['thunder'], 3.5);
+  try {
+    for (let i = 0; i < 20; i++) {
+      audio.ctx.currentTime = 100 * i;
+      events.emit('lightning', { strength: i % 2 ? 1 : 0.1 });
+    }
+    events.emit('lightning', {}); // no strength: a medium one
+    const strong = log.thunder.filter((x) => x.o.strength === 1);
+    const weak = log.thunder.filter((x) => x.o.strength === 0.1);
+    assert.equal(strong.length, 10);
+    for (const x of log.thunder) assert.ok(x.delay >= 0.3 && x.delay <= 2.51, `delay ${x.delay}`);
+    assert.ok(Math.max(...strong.map((x) => x.delay)) < Math.min(...weak.map((x) => x.delay)), 'close strikes are heard sooner');
+    assert.ok(strong[0].volume > weak[0].volume);
+    // The voice slot covers the delay as well as the roll.
+    const end = audio.active.at(-1).end;
+    assert.ok(end >= audio.ctx.currentTime + log.thunder.at(-1).delay + 3.5);
+    audio.ctx.currentTime = 5000;
+    for (let i = 0; i < 5; i++) events.emit('lightning', { strength: 0.8 });
+    assert.equal(log.thunder.filter((x) => x.o.strength === 0.8).length, 2);
+  } finally {
+    restore();
+  }
+});
+
+test('footsteps grow louder and brighter with speed; landings weigh the air time', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['footstep', 'land', 'land_hard', 'jump']);
+  try {
+    const speeds = [1, 4, 7, 10, 13, 16, 19, 23, 27, 32, 40];
+    speeds.forEach((speed, i) => {
+      audio.ctx.currentTime = 1 + i * 0.2;
+      events.emit('footstep', { terrain: 'grass', speed });
+    });
+    const steps = log.footstep;
+    assert.equal(steps.length, speeds.length);
+    for (let i = 1; i < steps.length; i++) {
+      assert.ok(steps[i].volume >= steps[i - 1].volume, 'volume rises with speed');
+      assert.ok(steps[i].o.bright >= steps[i - 1].o.bright, 'brightness rises with speed');
+    }
+    const at = (speed) => steps[speeds.indexOf(speed)];
+    assert.ok(at(4).volume < at(32).volume * 0.3, 'tiptoe');
+    assert.ok(at(13).volume <= at(32).volume * 0.5, 'walk');
+    assert.equal(at(32).volume, 1, 'run as before');
+    // A hop (0.3 s in the air), a full jump (1 s), a step down after walking, a ground pound.
+    const land = (t, e = {}) => {
+      audio.ctx.currentTime = t;
+      events.emit('land', { terrain: 'grass', hard: false, ...e });
+    };
+    audio.ctx.currentTime = 10;
+    events.emit('sfx', { name: 'jump' });
+    land(10.3);
+    audio.ctx.currentTime = 20;
+    events.emit('sfx', { name: 'jump' });
+    land(21);
+    audio.ctx.currentTime = 30;
+    events.emit('footstep', { terrain: 'grass', speed: 12 });
+    land(30.15);
+    land(40, { hard: true });
+    const [hop, jump, stepDown] = log.land;
+    assert.ok(hop.volume < 0.7 && stepDown.volume < 0.6, `hop ${hop.volume}, step down ${stepDown.volume}`);
+    assert.equal(jump.volume, 1);
+    assert.ok(hop.o.bright < jump.o.bright);
+    assert.equal(log.land_hard[0].volume, 1);
+    land(60, { fall: 900 }); // a given fall height decides
+    assert.equal(log.land.at(-1).volume, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('AI RACE events play their sounds; bursts are rate-limited; big sounds carry farther', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const names = ['kaiju_roar', 'button_press', 'burn', 'hurt', 'fire_crackle', 'jump', 'fireball_explode'];
+  const { log, restore } = recordSfx(names, 2);
+  try {
+    audio.ctx.currentTime = 1;
+    events.emit('kaijuRoar', {});
+    events.emit('sfx', { name: 'kaiju_roar' }); // the same roar from two modules: once
+    events.emit('aiRaceButton', { on: true });
+    events.emit('sfx', { name: 'button_press' });
+    events.emit('hurt', { amount: 1, fire: true });
+    events.emit('sfx', { name: 'burn' });
+    events.emit('sfx', { name: 'no_such_sound' });
+    assert.equal(log.kaiju_roar.length, 1);
+    assert.equal(log.button_press.length, 1);
+    assert.equal(log.hurt.length, 1);
+    assert.equal(log.burn.length, 1);
+    // Crackles requested every tick of a burning fire: spaced out, three at most at once.
+    for (let i = 0; i < 60; i++) {
+      audio.ctx.currentTime = 10 + i / 30;
+      events.emit('sfx', { name: 'fire_crackle', pos: { ...audio.listener } });
+    }
+    assert.equal(log.fire_crackle.length, 3);
+    // Inaudible requests do not use up the gap.
+    log.fire_crackle.length = 0;
+    audio.ctx.currentTime = 100;
+    events.emit('sfx', { name: 'fire_crackle', pos: { x: 1e6, y: 0, z: 0 } });
+    audio.ctx.currentTime = 100.01;
+    events.emit('sfx', { name: 'fire_crackle', pos: { ...audio.listener } });
+    assert.equal(log.fire_crackle.length, 1);
+    // The roar carries across the grounds; an ordinary sound from there is silent.
+    const far = { x: audio.listener.x, y: audio.listener.y, z: audio.listener.z - 8500 };
+    audio.ctx.currentTime = 200;
+    events.emit('sfx', { name: 'kaiju_roar', pos: far });
+    events.emit('sfx', { name: 'jump', pos: far });
+    events.emit('sfx', { name: 'fireball_explode', pos: far });
+    assert.ok(log.kaiju_roar.at(-1).volume > 0.4, `roar at 8500: ${log.kaiju_roar.at(-1).volume}`);
+    assert.equal(log.jump.length, 0);
+    assert.ok(log.fireball_explode[0].o.dist > 8000, 'recipes get the distance');
+  } finally {
+    restore();
+  }
 });

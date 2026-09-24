@@ -5,13 +5,24 @@
 // follows the camera every frame (so it never gets closer) and drifts very slowly.
 //
 // Drawn first and behind everything: renderOrder -1, depthWrite false, fog false.
+//
+// AI RACE mode (setDarkness(t)): the dome crossfades to a storm: a low, heavy, churning deck
+// of dark slate / purple-grey cloud masses receding in perspective to the horizon, lit tops
+// and dark bellies, patches of sickly green light low on the horizon, no blue, rolling by
+// much faster. The deck is two layers of one small tileable density map (paintStorm) projected
+// onto a plane overhead (view direction xz / y), scrolling past each other, mixed in the
+// dome's shader by uniforms (no recompile, no second mesh). The dome's material is a
+// SkyMaterial, so the underwater tinted copy the renderer makes (material.clone() plus its own
+// onBeforeCompile) keeps the storm.
 
 import * as THREE from 'three';
-import { HAS_CANVAS, canvasTexture, hexToRgb, mixRgb } from '../render/texgen.js';
+import { HAS_CANVAS, canvasTexture, hexToRgb, mixRgb, tileableFbm } from '../render/texgen.js';
 import { clamp, makeRng, smoothstep } from '../core/math.js';
 
 // Fog should use this so distant terrain melts into the bottom of the sky.
 export const SKY_HORIZON_COLOR = 0xa9caee;
+// The storm sky's horizon haze (sRGB): the storm fog should use this (AI RACE mode).
+export const SKY_STORM_HORIZON_COLOR = 0x2a323c; // = the renderer's STORM_FOG colour (render/post/storm.js)
 
 const RADIUS = 20000; // inside the camera far plane (~45000)
 const DRIFT = 0.0035; // radians per second
@@ -21,6 +32,14 @@ const TEX_W = 1024;
 const TEX_H = 256;
 const LAT_MIN = -10;
 const LAT_MAX = 90;
+// Storm density map (tiles both ways over the cloud deck), the deck's scale (map repeats per
+// unit of view direction xz / y) and its layers' scroll velocities (repeats per second).
+const STORM_SIZE = 256;
+const STORM_SCALE = 0.2;
+const STORM_WIND = [
+  [0.011, 0.006],
+  [-0.004, 0.017],
+];
 
 // Vertical gradient stops [latitude (deg), colour].
 const GRADIENT = [
@@ -47,7 +66,16 @@ export function buildSky() {
 
   const map = canvasTexture(TEX_W, TEX_H, paintPanorama);
   map.wrapT = THREE.ClampToEdgeWrapping; // wraps around horizontally only
-  const mat = new THREE.MeshBasicMaterial({ map, side: THREE.BackSide, depthWrite: false, fog: false });
+  const stormMap = canvasTexture(STORM_SIZE, STORM_SIZE, paintStorm);
+  stormMap.colorSpace = THREE.NoColorSpace; // densities, not colours
+  const storm = {
+    stormT: { value: 0 },
+    stormScroll: { value: new THREE.Vector4() },
+    stormTime: { value: 0 },
+    stormMap: { value: stormMap },
+    stormHorizon: { value: new THREE.Color(SKY_STORM_HORIZON_COLOR) },
+  };
+  const mat = new SkyMaterial({ map, side: THREE.BackSide, depthWrite: false, fog: false }, storm);
   if (!HAS_CANVAS) mat.color.setHex(SKY_HORIZON_COLOR); // node: no panorama was painted
 
   const mesh = new THREE.Mesh(geo, mat);
@@ -64,14 +92,108 @@ export function buildSky() {
   });
 
   const camPos = new THREE.Vector3();
+  let last = null;
   return {
     object3D: group,
     colliders: [],
     update(time, camera) {
       if (camera) group.position.copy(camera.getWorldPosition(camPos));
       mesh.rotation.y = time * DRIFT;
+      // The storm layers scroll on while it shows (by game time: they freeze with the pause).
+      const dt = last === null || time < last || time - last > 1 ? 0 : time - last;
+      last = time;
+      const k = storm.stormT.value;
+      if (k > 0) {
+        const sc = storm.stormScroll.value;
+        const f = dt * (0.3 + 0.7 * k);
+        sc.set((sc.x + f * STORM_WIND[0][0]) % 1, (sc.y + f * STORM_WIND[0][1]) % 1, (sc.z + f * STORM_WIND[1][0]) % 1, (sc.w + f * STORM_WIND[1][1]) % 1);
+      }
+      storm.stormTime.value = time;
+    },
+    setDarkness(t) {
+      const k = clamp(t, 0, 1);
+      storm.stormT.value = k * k * (3 - 2 * k);
     },
   };
+}
+
+// The dome's material: a MeshBasicMaterial whose shader always mixes in the storm by its
+// uniforms (`storm`, shared with every clone). A clone gets the storm patch too, and an
+// onBeforeCompile assigned to it (the renderer's underwater tint) runs after the patch.
+export class SkyMaterial extends THREE.MeshBasicMaterial {
+  constructor(params, storm) {
+    super(params);
+    this.storm = storm;
+    this.extraCompile = null;
+    this.customProgramCacheKey = () => 'sky-storm';
+  }
+
+  get onBeforeCompile() {
+    return (shader, renderer) => {
+      if (this.storm) patchStorm(shader, this.storm);
+      this.extraCompile?.(shader, renderer);
+    };
+  }
+
+  set onBeforeCompile(fn) {
+    this.extraCompile = fn;
+  }
+
+  copy(source) {
+    super.copy(source);
+    this.storm = source.storm;
+    return this;
+  }
+}
+
+function patchStorm(shader, storm) {
+  Object.assign(shader.uniforms, storm);
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vSkyDir;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkyDir = position;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+uniform float stormT;
+uniform vec4 stormScroll;
+uniform float stormTime;
+uniform sampler2D stormMap;
+uniform vec3 stormHorizon;
+varying vec3 vSkyDir;`,
+    )
+    .replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+if (stormT > 0.0) {
+  vec3 dir = normalize(vSkyDir);
+  float up = max(dir.y, 0.0);
+  // The cloud deck: a plane overhead, seen in perspective (mipmaps blur it to haze far off).
+  vec2 deck = dir.xz / (up + 0.035) * ${STORM_SCALE.toFixed(3)};
+  // Two layers of cloud masses rolling past each other, the second warped by the first.
+  vec3 a = texture2D(stormMap, deck + stormScroll.xy).rgb;
+  vec3 b = texture2D(stormMap, deck * 1.61 + stormScroll.zw + (a.rg - 0.5) * 0.12).rgb;
+  float low = 1.0 - smoothstep(0.0, 0.5, up); // heavier toward the horizon
+  float dens = clamp(a.r * (0.8 + 0.3 * low) + 0.35 * b.r * (0.3 + 0.7 * a.r) + 0.3 * low - 0.12, 0.0, 1.0);
+  // Gaps: deep slate; masses: purple-grey, lit on their tops, dark in their bellies.
+  float lit = clamp((a.g - 0.5) * 4.0, 0.0, 1.0);
+  float belly = clamp((0.5 - a.g) * 4.0, 0.0, 1.0);
+  vec3 col = mix(vec3(0.02, 0.021, 0.03), vec3(0.075, 0.068, 0.098), dens);
+  col = mix(col, vec3(0.18, 0.167, 0.23), lit * dens * 0.7);
+  col = mix(col, vec3(0.012, 0.012, 0.018), belly * dens * 0.6);
+  col += vec3(0.022, 0.02, 0.03) * b.b * dens; // billows
+  col *= 1.0 - 0.3 * smoothstep(0.5, 1.0, up); // darker overhead
+  // Patches of sickly green light low on the horizon, showing through the gaps, breathing.
+  float lon = atan(dir.x, dir.z);
+  float patches = smoothstep(0.45, 0.95, (0.5 + 0.5 * sin(lon * 3.0 + 1.3)) * (0.55 + 0.45 * sin(lon * 7.0 - 0.7 + stormScroll.x * 6.2832)));
+  float greenBand = (1.0 - smoothstep(0.05, 0.2, up)) * smoothstep(0.0, 0.04, up);
+  float breathe = 0.75 + 0.25 * sin(stormTime * 0.9 + lon * 4.0);
+  col = mix(col, vec3(0.07, 0.13, 0.03), greenBand * patches * breathe * (1.0 - 0.6 * dens));
+  // Haze at the very bottom melts into the storm fog.
+  col = mix(col, stormHorizon, 1.0 - smoothstep(0.0, 0.07, dir.y));
+  diffuseColor.rgb = mix(diffuseColor.rgb, col, stormT);
+}`,
+    );
 }
 
 // ---------------------------------------------------------------- panorama painting
@@ -207,6 +329,31 @@ function paintPanorama(ctx, w, h) {
     img.data[j + 1] = buf[i + 1];
     img.data[j + 2] = buf[i + 2];
     img.data[j + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// Storm density map, tiling both ways: r = heavy cloud masses, g = their relief (lit from
+// the sun side: > 0.5 on the lit side, < 0.5 in the bellies), b = finer billows (ridged
+// noise).
+function paintStorm(ctx, w, h) {
+  const big = tileableFbm(w, h, 4, 4, 4401);
+  const fine = tileableFbm(w, h, 8, 3, 5503);
+  const A = (x, y) => smoothstep(0.3, 0.72, big(x, y));
+  const img = ctx.createImageData(w, h);
+  const d = img.data;
+  const shift = 5; // pixels toward the light for the relief
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = A(x, y);
+      const toward = A((x + shift) % w, (y + shift) % h);
+      const ridge = 1 - Math.abs(2 * fine(x, y) - 1);
+      const i = (y * w + x) * 4;
+      d[i] = clamp(255 * a, 0, 255);
+      d[i + 1] = clamp(128 + 300 * (a - toward), 0, 255);
+      d[i + 2] = clamp(255 * smoothstep(0.45, 0.95, ridge), 0, 255);
+      d[i + 3] = 255;
+    }
   }
   ctx.putImageData(img, 0, 0);
 }

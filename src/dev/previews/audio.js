@@ -14,6 +14,12 @@
 //   __stress(names?)                                -> peak of many sfx at once over music
 //   __loopSeam(name)                                -> analysis around the loop point
 //   __showRoll(name)                                -> draws the compiled score as a piano roll
+//   __renderDark(spot?, seconds?, opts?)            -> AI RACE mode in steady state: the storm
+//                                                      beds and/or the dark track, lightning
+//   __renderDarkSwitch(spot?)                       -> sunny -> darkMode on -> off through the
+//                                                      engine (ambience, storm, music, alarm)
+//   __renderSteps(speeds?, terrain?) / __renderLandings() -> footstep / landing levels through
+//                                                      the engine's event handlers
 // Renders mimic the live engine: music is scheduled in 0.1 s steps (like the lookahead
 // timer) and every sound starts after PRE_ROLL seconds, once the master compressor has
 // settled (it starts out in gain reduction). Analysis covers only the part after PRE_ROLL.
@@ -21,12 +27,12 @@
 // await promises, so poll that after a wait). &roll=<song> draws a piano roll on load.
 
 import { AudioEngine } from '../../audio/AudioEngine.js';
-import { Ambience } from '../../audio/ambience.js';
+import { Events } from '../../core/events.js';
 import { SONGS } from '../../audio/songs.js';
 import { compileSong } from '../../audio/compile.js';
 import { createMixer } from '../../audio/mixer.js';
 import { Sequencer } from '../../audio/Sequencer.js';
-import { SFX } from '../../audio/sfx.js';
+import { SFX, footstepLevel } from '../../audio/sfx.js';
 import { WATERFALL, SPAWN, POND, LAWN_BASE, BRIDGE, ISLAND_TOP, EAST_HILL } from '../../world/layout.js';
 
 const SAMPLE_RATE = 44100;
@@ -40,6 +46,12 @@ const INST_COLORS = {
   timpani: '#c08bff',
   kick: '#888',
   shaker: '#555',
+  darkpad: '#6c8cff',
+  pulse: '#ff5d73',
+  glass: '#ffe066',
+  clang: '#c08bff',
+  thump: '#888',
+  tick: '#555',
 };
 
 const PRE_ROLL = 1.5;
@@ -82,19 +94,33 @@ function renderSong(name, seconds, fromBeat, only = null) {
   return renderOffline(seconds, (ctx, mix, t0) => songPlayer(ctx, mix, t0, song, fromBeat));
 }
 
-// An AudioEngine playing into an offline context, for the real voice/ambience code paths.
-// (The engine only plays into a 'running' context, and an OfflineAudioContext reports
-// 'suspended' inside suspend() callbacks, hence the state override.)
-function offlineEngine(ctx, mix) {
-  const engine = new AudioEngine(null);
+// An AudioEngine playing into an offline context, for the real voice/ambience/storm code
+// paths (with `events`, its event handlers too). (The engine only plays into a 'running'
+// context, and an OfflineAudioContext reports 'suspended' inside suspend() callbacks, hence
+// the state override.)
+function offlineEngine(ctx, mix, events = null) {
+  const engine = new AudioEngine(events);
   Object.defineProperty(ctx, 'state', { get: () => 'running' });
-  const ambience = new Ambience(ctx, mix.amb, {
-    playAt: (recipe, pos) => engine.voice(recipe, { pos }, mix.amb),
-    spatial: (pos) => engine.spatial(pos),
-  });
-  Object.assign(engine, { ctx, mix, ambience });
-  engine.applyLevels();
+  engine.attach(ctx, mix);
   return engine;
+}
+
+// The engine's music tracks run on a wall-clock lookahead timer, which an offline render
+// outruns; this takes over each track the engine starts and schedules it on the render's
+// steps instead (tracks it has faded out keep going for a few seconds, as live).
+function trackDriver(engine) {
+  const driven = [];
+  return (t) => {
+    const tr = engine.track;
+    if (tr && !driven.some((d) => d.track === tr)) {
+      tr.seq.stop();
+      driven.push({ track: tr, until: Infinity });
+    }
+    for (const d of driven) {
+      if (d.track !== engine.track && d.until === Infinity) d.until = t + 4;
+      if (t < d.until) d.track.seq.scheduleUntil(t + 0.15);
+    }
+  };
 }
 
 const db = (x) => Math.round(20 * Math.log10(Math.max(x, 1e-9)) * 10) / 10;
@@ -321,6 +347,8 @@ const SPOTS = {
 
 // Sounds for the headroom stress test: the loudest ones, all at once.
 const STRESS = ['star_get', 'star_appear', 'ground_pound_land', 'land_hard', 'triple_jump', 'hurt', 'coin', 'red_coin', 'one_up', 'bonk', 'splash', 'wallkick', 'kick', 'jump_kick', 'jump'];
+// ...and the AI RACE mode's, over the dark track (a blast, a roar and thunder at once).
+const DARK_STRESS = ['fireball_explode', 'kaiju_roar', 'thunder', 'fireball_launch', 'burn', 'button_press', 'alarm', 'land_hard', 'hurt', 'steam', 'fire_crackle', 'jump'];
 
 export async function setup({ scene, THREE, ui, params }) {
   scene.background = new THREE.Color(0x111111);
@@ -343,10 +371,21 @@ export async function setup({ scene, THREE, ui, params }) {
   }
   section(panel, 'Sound effects');
   for (const name of Object.keys(SFX)) button(panel, name, withAudio(() => audio.play(name, { index: 1 + Math.floor(Math.random() * 8) })));
-  section(panel, 'Footsteps');
+  section(panel, 'Footsteps (tiptoe / walk / run)');
   for (const terrain of ['grass', 'stone', 'wood', 'sand', 'water']) {
-    button(panel, terrain, withAudio(() => audio.play('footstep', { terrain })));
+    button(panel, terrain, withAudio(() => {
+      [5, 12, 30].forEach((speed, i) => setTimeout(() => audio.play('footstep', { terrain, ...footstepLevel(speed) }), i * 450));
+    }));
   }
+  section(panel, 'AI RACE mode');
+  button(panel, 'dark on', withAudio(() => audio.setDark(true)));
+  button(panel, 'dark off', withAudio(() => audio.setDark(false)));
+  for (const s of [0.2, 0.6, 1]) button(panel, `lightning ${s}`, withAudio(() => audio.thunder(s)));
+  const tick = () => {
+    audio.update(1 / 60);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
   section(panel, 'Offline render');
   // A jingle (a song that is nothing but its cue) renders as heard in game, not looped.
   for (const [name, song] of Object.entries(SONGS)) {
@@ -505,6 +544,137 @@ export async function setup({ scene, THREE, ui, params }) {
       peak: whole.peak,
       windowsDb: whole.windowsDb,
     });
+  };
+
+  // ---- AI RACE mode
+
+  // Steady-state dark mode heard from a SPOTS listener: the storm beds (storm), the dark
+  // track at its playback level (music), and thunder for lightning at [[t, strength]] (with
+  // the engine's random delay). Returns the analysis (0.5 s windows).
+  window.__renderDark = async (spot = 'spawn', seconds = 30, { storm = true, music = true, lightning = [], fromBeat = 0 } = {}) => {
+    publish({ status: 'running' });
+    const buf = await renderOffline(seconds, (ctx, mix, t0) => {
+      const engine = offlineEngine(ctx, mix);
+      engine.setListener(...SPOTS[spot]);
+      engine.dark = true;
+      engine.ambience.setDark(true, 0.01);
+      engine.ambience.birds = 0;
+      if (storm) engine.storm.set(true, 0.01);
+      else engine.ambience.pastoral.gain.value = 0;
+      const song = music && songPlayer(ctx, mix, t0, compileSong(SONGS.dark), fromBeat);
+      const flashes = lightning.map(([t, strength]) => ({ at: t0 + t, strength }));
+      return (t) => {
+        while (flashes.length && flashes[0].at <= t + 1e-6) engine.thunder(flashes.shift().strength);
+        engine.update(STEP);
+        song?.(t);
+      };
+    });
+    drawRender(g, buf, `dark mode at ${spot}: ${[storm && 'storm', music && 'music', lightning.length && 'thunder'].filter(Boolean).join(' + ')}, ${seconds} s`);
+    return publish({ status: 'done', ...analyze(buf) });
+  };
+
+  // The switch through the engine itself: sunny for 5 s, darkMode on (alarm, 3 s crossfade to
+  // the storm and the dark track), on for `onSeconds`, then off (3 s back), 8 s more.
+  window.__renderDarkSwitch = async (spot = 'spawn', onSeconds = 15) => {
+    publish({ status: 'running' });
+    const seconds = 5 + onSeconds + 8;
+    let voicesMax = 0;
+    const buf = await renderOffline(seconds, (ctx, mix, t0) => {
+      const events = new Events();
+      const engine = offlineEngine(ctx, mix, events);
+      engine.setListener(...SPOTS[spot]);
+      const drive = trackDriver(engine);
+      return (t) => {
+        if (Math.abs(t - (t0 + 5)) < 1e-6) events.emit('darkMode', { on: true });
+        if (Math.abs(t - (t0 + 5 + onSeconds)) < 1e-6) events.emit('darkMode', { on: false });
+        if (t >= t0) engine.update(STEP);
+        drive(t);
+        voicesMax = Math.max(voicesMax, engine.active.length);
+      };
+    });
+    drawRender(g, buf, `darkMode at ${spot}: on at 5 s, off at ${5 + onSeconds} s`);
+    const a = analyze(buf, 1);
+    return publish({ status: 'done', voicesMax, ...a });
+  };
+
+  // Footsteps through the engine's 'footstep' handler at each speed (one step every 0.3 s):
+  // the peak and short-term level of each step.
+  window.__renderSteps = async (speeds = [3, 6, 10, 14, 18, 24, 32], terrain = 'grass') => {
+    publish({ status: 'running' });
+    const buf = await renderOffline(speeds.length * 0.3 + 0.5, (ctx, mix, t0) => {
+      const events = new Events();
+      const engine = offlineEngine(ctx, mix, events);
+      engine.ambience.pastoral.gain.value = 0;
+      engine.ambience.birds = 0;
+      engine.ambience.dark = true; // no birds between the steps
+      const pending = speeds.map((speed, i) => ({ at: t0 + i * 0.3, speed }));
+      return (t) => {
+        while (pending.length && pending[0].at <= t + 1e-6) events.emit('footstep', { terrain, speed: pending.shift().speed });
+      };
+    });
+    drawRender(g, buf, `footsteps on ${terrain} at speeds ${speeds.join(', ')}`);
+    const at = (x) => Math.floor((PRE_ROLL + x) * SAMPLE_RATE);
+    const out = {};
+    speeds.forEach((speed, i) => {
+      const w = analyze(buf, 0.05, at(i * 0.3), at(i * 0.3 + 0.25));
+      out[speed] = { peak: w.peak, shortMaxDb: w.shortMaxDb };
+    });
+    return publish({ status: 'done', terrain, ...out });
+  };
+
+  // Landings through the engine's 'land' handler: a tiny hop (0.3 s after a jump), a full
+  // jump (0.8 s), a step down right after a footstep, an unknown (long) fall, a hard landing.
+  window.__renderLandings = async (terrain = 'grass') => {
+    publish({ status: 'running' });
+    const cases = [['hop', 0.3], ['jump', 0.8], ['stepDown', 0.1], ['fall', null], ['hard', null]];
+    const buf = await renderOffline(cases.length * 1.5, (ctx, mix, t0) => {
+      const events = new Events();
+      const engine = offlineEngine(ctx, mix, events);
+      engine.ambience.pastoral.gain.value = 0;
+      engine.ambience.dark = true;
+      engine.ambience.birds = 0;
+      const plan = [];
+      cases.forEach(([name, air], i) => {
+        const at = t0 + i * 1.5 + 0.5;
+        if (name === 'stepDown') plan.push({ at: at - air, fn: () => (engine.groundedAt = ctx.currentTime) });
+        else if (air) plan.push({ at: at - air, fn: () => (engine.groundedAt = ctx.currentTime) });
+        else plan.push({ at: at - 0.05, fn: () => (engine.groundedAt = -Infinity) });
+        plan.push({ at, fn: () => events.emit('land', { terrain, hard: name === 'hard' }) });
+      });
+      plan.sort((a, b) => a.at - b.at);
+      return (t) => {
+        while (plan.length && plan[0].at <= t + 1e-6) plan.shift().fn();
+      };
+    });
+    drawRender(g, buf, `landings on ${terrain}: ${cases.map(([n]) => n).join(', ')}`);
+    const at = (x) => Math.floor((PRE_ROLL + x) * SAMPLE_RATE);
+    const out = {};
+    cases.forEach(([name], i) => {
+      const w = analyze(buf, 0.05, at(i * 1.5 + 0.45), at(i * 1.5 + 1.2));
+      out[name] = { peak: w.peak, shortMaxDb: w.shortMaxDb };
+    });
+    return publish({ status: 'done', terrain, ...out });
+  };
+
+  // Headroom in dark mode: the loudest AI RACE sounds at once over the storm and dark track.
+  window.__stressDark = async (names = DARK_STRESS) => {
+    publish({ status: 'running' });
+    const buf = await renderOffline(6, (ctx, mix, t0) => {
+      const engine = offlineEngine(ctx, mix);
+      engine.dark = true;
+      engine.ambience.setDark(true, 0.01);
+      engine.ambience.birds = 0;
+      engine.storm.set(true, 0.01);
+      names.forEach((n, i) => SFX[n](ctx, mix.sfx, t0 + 0.5 + i * 0.012, { p: 1, big: true, strength: 1, terrain: 'stone' }));
+      const song = songPlayer(ctx, mix, t0, compileSong(SONGS.dark), 64);
+      return (t) => {
+        engine.update(STEP);
+        song(t);
+      };
+    });
+    drawRender(g, buf, `dark stress: ${names.length} sounds over storm + dark track`);
+    const { peak, clipped } = analyze(buf);
+    return publish({ status: 'done', peak, clipped });
   };
 
   if (params.get('roll')) drawRoll(g, params.get('roll'));

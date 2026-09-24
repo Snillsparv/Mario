@@ -653,7 +653,7 @@ export class CameraController {
     h.covered = this.cover.track(p, h.inWater, this.pos); // a low deck over the swimmer
 
     const floorY = player.floor?.y ?? p.y;
-    h.onPole = player.action === K.POLE_ACTION;
+    h.onPole = K.POLE_ACTION.test(player.action || '');
     const anchored = K.ANCHORED_ACTION.test(player.action || '');
     h.grounded = anchored || (!h.inWater && p.y - floorY < 10 && !((vel.y || 0) > 0));
     return h;

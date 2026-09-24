@@ -49,9 +49,13 @@ test('running jumps at every tree grab its trunk from all directions', () => {
 let level = null;
 const getLevel = () => (level ??= buildLevel(new THREE.Scene()));
 
-test('Z at the top of any tree drops Pip to the ground without re-grabbing that trunk', () => {
+// Climbing to the top of a tree ends in the handstand on its tip (round 3); Z there lets go.
+test('Z in the handstand on top of any tree drops Pip to the ground without re-grabbing that trunk or getting hurt', () => {
   const col = getLevel().collision;
-  const p = new Player({ collision: col, events: null, spawn: getLevel().spawn });
+  const events = new Events();
+  const p = new Player({ collision: col, events, spawn: getLevel().spawn });
+  const hurts = [];
+  events.on('hurt', (e) => hurts.push(e));
   const ctl = new ScriptedController();
   const regrabs = [];
   let tries = 0;
@@ -61,15 +65,16 @@ test('Z at the top of any tree drops Pip to the ground without re-grabbing that 
       p.teleport(pole.x - Math.sin(yaw) * 90, pole.y1 - 260, pole.z - Math.cos(yaw) * 90, yaw);
       p.setAction('pole', pole);
       for (let t = 0; t < 203; t++) p.update(ctl.next({ stickY: t < 3 ? 0 : 1 }), 0);
-      if (p.action !== 'pole') continue;
+      if (p.action !== 'pole_top') continue;
       tries++;
       p.update(ctl.next({ Z: true }), 0);
       const acts = [];
+      hurts.length = 0;
       for (let t = 0; t < 90 && !p.grounded; t++) {
         p.update(ctl.next({}), 0);
         if (acts.at(-1) !== p.action) acts.push(p.action);
       }
-      if (acts.lastIndexOf('pole') > acts.indexOf('freefall') || !p.grounded) regrabs.push(`(${pole.x}, ${pole.z}) facing ${k}: ${acts.join('>')}`);
+      if (acts.lastIndexOf('pole') > acts.indexOf('freefall') || !p.grounded || hurts.length) regrabs.push(`(${pole.x}, ${pole.z}) facing ${k}: ${acts.join('>')}`);
     }
   }
   assert.ok(tries >= col.poles.length * 6, `only ${tries} climbs`);

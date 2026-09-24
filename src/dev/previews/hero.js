@@ -2,7 +2,7 @@
 //   anim=<name>&t=<s>&yaw=<rad>   one pose (defaults to a representative time per anim)
 //   live=1                        animate in real time instead of freezing at t
 //   grid=1[&page=0&per=8&shift=s]  labelled grid of the anims at representative times (+shift)
-//   turn=1[&anim=]                 front / left / back / right turnaround
+//   turn=1[&anim=&yaws=a,b,..]    front / left / back / right turnaround (or the given yaws)
 //   strip=<anim>&ts=0.1,0.3|phs=0,0.25   one anim at several times (or cycle phases)
 //   faces=1                        every facial expression side by side
 //   ph=<cyclePhase>&fv=<forwardVel>&vy=<vy>&pitch=&roll=&slope=&inv=1&action=   RenderState overrides
@@ -10,6 +10,14 @@
 //   yawrate=<rad/s>                turn continuously (the view counter-rotates) to show the bank
 //   (phs / ph are gait phases for walk/run/tiptoe/crawl: converted to the Player's cyclePhase)
 //   wall_brace is the model's pose for the Player's air_hit_wall action (anim wallkick).
+//   from=<anim>[&fromT=s&fdy=&fdz=]  play <anim> first (for fromT s, default 0.5) with rs.pos
+//                                  fdy/fdz from where it ends up (body frame), then switch to
+//                                  anim and run it from 0 to t, like the Player: shows the
+//                                  blend in and carried moves (pole_handstand comes from
+//                                  pole_climb at the top of the climb by default)
+//   move=1                         with from=: rs.pos rises with vy (and gravity) up to t
+//   pr=<radius>                    pole_handstand: radius of the pole under the hands (12)
+//   tree=<i>[&anim=&t=&yaw=&cy=&cd=&h=]  on the level's tree i, in context (see below)
 // Scenery sits where the physics puts it relative to rs.pos (see model/physicsLink.js): the
 // ledge lip HANG_DEPTH up and WALL_DIST ahead (ledge_climb moves rs.pos like the Player), a
 // wall WALL_DIST ahead, a trunk surface POLE_GAP ahead.
@@ -23,6 +31,9 @@ import {
   HANG_DEPTH, WALL_DIST, POLE_GAP, LEDGE_CLIMB_TIME, climbProgress, physicsStride,
 } from '../../player/model/physicsLink.js';
 import { SUN_DIR } from '../../world/layout.js';
+
+const POLE_RADIUS = 40; // a tree's climbable pole (world/props/trees.js)
+const TIP_Y = 260; // pole_handstand: the tip above the preview floor
 
 // Representative moments: t = animTime, ph = cyclePhase, fv/vy = velocities (units/tick),
 // y = height above the ground, prop = scenery that makes the pose readable.
@@ -43,6 +54,12 @@ const PRESETS = {
   jump_kick: { t: 0.2, vy: 5, y: 50 }, swim_idle: { t: 0.5, y: 80, prop: 'water' }, swim_stroke: { t: 0.2, fv: 8, y: 80, prop: 'water' },
   swim_flutter: { t: 0.3, fv: 10, y: 80, prop: 'water' }, water_surface: { t: 0.5, prop: 'surface' },
   water_jump: { t: 0.2, vy: 20, y: 60 }, star_dance: { t: 1.35 }, spawn: { t: 0.4 }, death: { t: 1.8 },
+  // rs.pos on the pole tip (TIP_Y up); by default it cartwheels up from the top of the climb.
+  pole_handstand: {
+    t: 1.2, prop: 'tip', y: 0, yaw: 2.6, lookUp: 0,
+    from: { anim: 'pole_climb', dy: -HANG_DEPTH, dz: -(POLE_RADIUS + POLE_GAP) },
+  },
+  burn: { t: 0.35, vy: 25, y: 70 },
 };
 const LEDGE_Y = 170; // ledge top above the preview floor
 const CLIMB_INSET = 65; // how far the Player moves Pip onto the ledge
@@ -96,6 +113,11 @@ export async function setup({ THREE, scene, ui, params, camera }) {
       props.add(new THREE.Mesh(new THREE.BoxGeometry(200, 200, 20).translate(0, 100, WALL_DIST + 10), stone));
     } else if (pre.prop === 'pole') {
       props.add(new THREE.Mesh(new THREE.CylinderGeometry(TRUNK_R, TRUNK_R, 300, 9).translate(0, 150, POLE_GAP + TRUNK_R), bark));
+    } else if (pre.prop === 'tip') {
+      // A pole whose tip is rs.pos (TIP_Y up); pr=<radius>.
+      y += TIP_Y;
+      const r = num('pr', 12);
+      props.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, TIP_Y, 9).translate(0, TIP_Y / 2, 0), bark));
     } else if (pre.prop === 'water' || pre.prop === 'surface') {
       const level = pre.prop === 'water' ? y + 170 : 105;
       props.add(new THREE.Mesh(new THREE.BoxGeometry(200, level, 200).translate(0, level / 2, 0), water));
@@ -116,8 +138,41 @@ export async function setup({ THREE, scene, ui, params, camera }) {
       vy: num('vy', pre.vy ?? 0), floorY, floorNormal, invincible: params.has('inv'), headYaw: 0,
     };
     const actor = { model, rs, props, yaw };
-    // Settle blends, the bank and the scarf before the first frame.
-    for (let i = 0; i < 90; i++) step(actor, 1 / 60);
+    const from = params.has('from')
+      ? { anim: params.get('from'), dy: num('fdy', 0), dz: num('fdz', 0) }
+      : pre.from;
+    if (from) {
+      // Like the Player: the previous anim at its own anchor, then the switch (rs.pos moves
+      // to this anim's anchor) and this anim from animTime 0 up to t.
+      const t1 = rs.animTime;
+      const { x, y: y0, z } = rs.pos;
+      Object.assign(rs, { anim: from.anim, action: from.anim, animTime: 0 });
+      rs.pos = { x, y: y0 + from.dy, z: z + from.dz };
+      const fromT = num('fromT', 0.5);
+      for (let i = 0; i < fromT * 60; i++) {
+        rs.animTime = i / 60;
+        rs.cyclePhase += 0.04;
+        actor.model.update(rs, 1 / 60);
+      }
+      Object.assign(rs, { anim: pre.anim ?? anim, action: params.get('action') ?? pre.action ?? anim });
+      rs.pos = { x, y: y0, z };
+      const vy0 = rs.vy;
+      for (let i = 0; i * (1 / 60) <= t1 + 1e-6; i++) {
+        rs.animTime = Math.min(t1, i / 60);
+        if (params.has('move') && i > 0) {
+          // Ballistic like the Player: vy units/tick, gravity 4 units/tick^2 (half-tick steps).
+          rs.pos.y += rs.vy / 2;
+          rs.vy -= 2;
+        }
+        actor.model.update(rs, 1 / 60);
+      }
+      if (!params.has('move')) rs.vy = vy0;
+      rs.animTime = t1;
+      actor.frozen = true; // hold that frame: more frames at a fixed animTime would finish the blend
+    } else {
+      // Settle blends, the bank and the scarf before the first frame.
+      for (let i = 0; i < 90; i++) step(actor, 1 / 60);
+    }
     actors.push(actor);
     return model;
   }
@@ -134,7 +189,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
       rs.yaw += yawRate * dt;
       a.props.rotation.y = a.yaw - rs.yaw;
     }
-    a.model.update(rs, dt);
+    a.model.update(rs, a.frozen && !live ? 0 : dt);
   }
 
   function label(text, x, y, z) {
@@ -148,7 +203,51 @@ export async function setup({ THREE, scene, ui, params, camera }) {
   const labels = [];
 
   let view;
-  if (params.has('grid')) {
+  let world = null;
+  if (params.has('tree')) {
+    // In context on a real tree of the level (world/props.js): tree=<index>&anim=&t=&yaw=
+    // (Pip's facing) &cy=<camera yaw offset, 0 = behind him>&cd=<camera distance>.
+    // pole_handstand stands on the pole top (cartwheeling up from the top of the climb);
+    // pole_hold / pole_climb hold on at h=<height below the top> (default the top).
+    const [{ buildProps }, layout] = await Promise.all([import('../../world/props.js'), import('../../world/layout.js')]);
+    world = buildProps(layout);
+    scene.add(world.object3D);
+    const pole = world.poles[num('tree', 0)];
+    const anim = params.get('anim') || 'pole_handstand';
+    const yaw = num('yaw', 0);
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const back = pole.radius + POLE_GAP;
+    const climbY = pole.y1 - HANG_DEPTH - num('h', 0);
+    const climb = { x: pole.x - fx * back, y: climbY, z: pole.z - fz * back };
+    const tip = { x: pole.x, y: pole.y1, z: pole.z };
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(900, 24).rotateX(-Math.PI / 2), grass);
+    ground.position.set(pole.x, pole.y0 - 2, pole.z);
+    scene.add(ground);
+    const model = new PlayerModel();
+    scene.add(model.object3D);
+    const t1 = num('t', PRESETS[anim]?.t ?? 0.5);
+    const rs = {
+      pos: { ...climb }, yaw, pitch: 0, roll: 0, action: 'pole_climb', anim: 'pole_climb', animTime: 0, cyclePhase: 0,
+      forwardVel: 0, vy: 0, floorY: pole.y0, floorNormal: { x: 0, y: 1, z: 0 }, invincible: false, headYaw: 0,
+    };
+    for (let i = 0; i < 30; i++) {
+      rs.animTime = i / 60;
+      rs.cyclePhase += 0.04;
+      model.update(rs, 1 / 60);
+    }
+    Object.assign(rs, { action: anim, anim, pos: anim === 'pole_handstand' ? { ...tip } : { ...climb } });
+    for (let i = 0; i * (1 / 60) <= t1 + 1e-6; i++) {
+      rs.animTime = Math.min(t1, i / 60);
+      model.update(rs, 1 / 60);
+    }
+    const cy = yaw + Math.PI + num('cy', 0);
+    const cd = num('cd', 700);
+    const look = { x: rs.pos.x, y: rs.pos.y + 150, z: rs.pos.z };
+    camera.userData.focus = look; // like the game camera: the foliage fade finds the hero
+    view = { pos: [look.x + Math.sin(cy) * cd, look.y + cd * 0.2, look.z + Math.cos(cy) * cd], look: [look.x, look.y - 40, look.z] };
+    labels.push(label(`${anim}  t=${t1}  tree ${num('tree', 0)}`, look.x, rs.pos.y - 60, look.z));
+  } else if (params.has('grid')) {
     // Narrow field of view so every cell is seen from nearly the same angle.
     camera.fov = 20;
     const per = num('per', 8);
@@ -180,12 +279,14 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     });
     for (const a of actors) for (let i = 0; i < 30; i++) step(a, 1 / 60);
     camera.fov = 25;
-    const lift = actors[0].rs.pos.y;
+    const lift = actors[0].rs.pos.y + (PRESETS[anim]?.lookUp ?? 0);
     view = { pos: [0, 260 + lift, ts.length * 240 * 1.35 + 250], look: [0, 70 + lift, 0] };
   } else if (params.has('turn')) {
     const anim = params.get('anim') || 'idle';
-    [0, Math.PI / 2, Math.PI, -Math.PI / 2].forEach((yaw, i) => addHero(anim, (i - 1.5) * 210, 0, 0, { yaw }));
-    view = { pos: [0, 120, 900], look: [0, 80, 0] };
+    const yaws = params.get('yaws')?.split(',').map(Number) ?? [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    yaws.forEach((yaw, i) => addHero(anim, (i - (yaws.length - 1) / 2) * 210, 0, 0, { yaw }));
+    const lift = actors[0].rs.pos.y + (PRESETS[anim]?.lookUp ?? 0);
+    view = { pos: [0, 120 + lift, 900], look: [0, 80 + lift, 0] };
   } else if (params.has('faces')) {
     FACES.forEach((face, i) => {
       const x = (i - (FACES.length - 1) / 2) * 90;
@@ -198,8 +299,8 @@ export async function setup({ THREE, scene, ui, params, camera }) {
   } else {
     const anim = params.get('anim') || 'idle';
     addHero(anim, 0, 0, 0);
-    const lift = actors[0].rs.pos.y;
-    view = { pos: [230, 170 + lift * 0.6, 430], look: [0, 75 + lift * 0.6, 0] };
+    const lift = actors[0].rs.pos.y * 0.6 + (PRESETS[anim]?.lookUp ?? 0);
+    view = { pos: [230, 170 + lift, 430], look: [0, 75 + lift, 0] };
     labels.push(label(`${anim}  t=${actors[0].rs.animTime}`, 0, -30, 0));
   }
 
@@ -209,7 +310,8 @@ export async function setup({ THREE, scene, ui, params, camera }) {
 
   return {
     camera: view,
-    update(dt) {
+    update(dt, t) {
+      world?.update(t, camera);
       for (const a of actors) {
         if (!a.face) step(a, dt); // (expression strip: frozen)
       }

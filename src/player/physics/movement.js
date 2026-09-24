@@ -23,16 +23,20 @@ export function stickHeldBack(p) {
   return p.stickHeld && Math.abs(angleDiff(p.faceYaw, p.intendedYaw)) > T.STICK_BACK_ANGLE;
 }
 
-// Ground acceleration (units/tick^2) at forward speed fv: a gentle START_ACCEL near a
-// standstill that blends into the running curve (RUN_ACCEL_LIMIT - fv) / RUN_ACCEL_TICKS by
-// START_BLEND_SPEED, so a start from rest eases in while running at speed feels unchanged.
-// Backward speeds (knockbacks) recover on the running curve. Uphill (`slope` < 0, the slope
-// pull) the pull already slows the start, and the soft start would stall the hero on steep
-// walkable slopes, so it gives way to the running curve by a pull of START_UPHILL_BLEND.
+// Ground acceleration (units/tick^2) at forward speed fv: an S-curve start. A gentle
+// START_ACCEL near a standstill rises to START_PEAK_ACCEL by START_PEAK_SPEED, then blends
+// into the running curve (RUN_ACCEL_LIMIT - fv) / RUN_ACCEL_TICKS by START_BLEND_SPEED (both
+// smoothsteps, so the acceleration never jumps): a start from rest tiptoes briefly, walks
+// briskly into the run, while running at speed feels unchanged. Backward speeds (knockbacks)
+// recover on the running curve. Uphill (`slope` < 0, the slope pull) the start curve gives
+// way to the running curve by a pull of START_UPHILL_BLEND: the soft first ticks would stall
+// the hero on steep walkable slopes, and the brisk walk would let him run up them much
+// faster than on the running curve (steep walkable slopes keep slowing the run a lot).
 export function walkAccel(fv, slope = 0) {
   const run = (T.RUN_ACCEL_LIMIT - fv) / T.RUN_ACCEL_TICKS;
   if (fv < 0 || fv >= T.START_BLEND_SPEED) return run;
-  const soft = T.START_ACCEL + (run - T.START_ACCEL) * smoothstep(0, T.START_BLEND_SPEED, fv);
+  const start = T.START_ACCEL + (T.START_PEAK_ACCEL - T.START_ACCEL) * smoothstep(0, T.START_PEAK_SPEED, fv);
+  const soft = start + (run - start) * smoothstep(T.START_PEAK_SPEED, T.START_BLEND_SPEED, fv);
   return slope < 0 ? soft + (run - soft) * Math.min(1, -slope / T.START_UPHILL_BLEND) : soft;
 }
 
