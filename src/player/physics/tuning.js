@@ -148,6 +148,9 @@ export const POLE_SLIDE_SPEED = 16;
 // up) climbs back onto the trunk; Z lets go.
 export const POLE_TOP_SETTLE_TICKS = 8;
 export const POLE_TOP_DOWN_STICK = -0.5; // raw stick Y at or below this climbs back down
+// Stick left/right turns the handstand on a tree top around the pole (radians per tick at
+// full stick), like the classic tree-top handstand.
+export const POLE_TOP_TURN_RATE = 0.1;
 export const POLE_TOP_JUMP_VY = 66;
 export const POLE_TOP_JUMP_FV = 14; // toward the stick when held, else the facing
 

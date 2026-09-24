@@ -76,6 +76,21 @@ describe('handstand on top of a tree', () => {
     }
   });
 
+  test('stick left/right turns the handstand round on the tip', () => {
+    const { s } = climbToTop(0.3);
+    const p = s.p;
+    s.run(T.POLE_TOP_SETTLE_TICKS, {});
+    for (const dir of [1, -1]) {
+      const yaw = p.faceYaw;
+      s.run(10, { stickX: dir }, (pp) => {
+        assert.equal(pp.action, 'pole_top', 'keeps balancing while turning');
+        assert.deepEqual({ ...pp.pos }, { x: 0, y: TIP, z: 0 }, 'hands stay on the tip');
+      });
+      const turned = angleDiff(yaw, p.faceYaw);
+      assert.ok(Math.abs(turned + dir * 10 * T.POLE_TOP_TURN_RATE) < 1e-6, `turned ${turned.toFixed(3)} for stick ${dir}`);
+    }
+  });
+
   test('A springs off in a big high flip with a little forward speed; the landing never hurts', () => {
     for (const stick of [null, 'side']) {
       const { s } = climbToTop();

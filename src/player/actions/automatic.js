@@ -161,6 +161,8 @@ const poleTopAction = {
       }
     }
     if (p.actionTimer >= T.POLE_TOP_SETTLE_TICKS && p.rawStickY <= T.POLE_TOP_DOWN_STICK) return p.setAction('pole', p.pole);
+    // Stick left/right spins the handstand round on the tip (the jump off follows the facing).
+    p.faceYaw = wrapAngle(p.faceYaw - p.rawStickX * T.POLE_TOP_TURN_RATE);
     return false;
   },
 };
