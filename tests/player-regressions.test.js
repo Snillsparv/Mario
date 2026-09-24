@@ -701,3 +701,318 @@ describe('bad input', () => {
     assert.ok(s.p.pos.y > 100, 'jumps normally afterwards');
   });
 });
+
+describe('water jumps out of a walled moat', () => {
+  // A moat pit (floor -1100, water -20) whose far wall at z = 0 rises to the rim at y = 100.
+  const RIM = 100;
+  const moat = (b) => {
+    const [x0, z0, x1, z1, y0] = [-3000, -3000, 3000, 0, -1100];
+    b.ground(30000, RIM, { x0, z0, x1, z1 });
+    b.floor(x0, z0, x1, z1, y0, { terrain: 'sand' });
+    b.quad([x0, y0, z0], [x0, y0, z1], [x0, RIM, z1], [x0, RIM, z0], [1, 0, 0]);
+    b.quad([x1, y0, z0], [x1, y0, z1], [x1, RIM, z1], [x1, RIM, z0], [-1, 0, 0]);
+    b.quad([x0, y0, z0], [x1, y0, z0], [x1, RIM, z0], [x0, RIM, z0], [0, 0, 1]);
+    b.quad([x0, y0, z1], [x1, y0, z1], [x1, RIM, z1], [x0, RIM, z1], [0, 0, -1]);
+    b.pools.push({ x0, z0, x1, z1, level: -20 });
+  };
+  // Floats facing the wall (+Z; the sim's stick up is +Z), strokes at ticks 0 and 12, presses
+  // A with the stick pulled back at tick `jumpAt`, then `after(k)` input. Returns the sim and
+  // every action seen from the jump on.
+  const leap = (z, after, jumpAt = 24) => {
+    const s = sim(moat, { x: 0, y: -100, z, yaw: 0 });
+    s.p.setAction('water_surface');
+    const seen = new Set();
+    for (let t = 0; t < 150; t++) {
+      if (t < jumpAt) s.run(1, { A: t % 12 === 0 });
+      else s.run(1, t === jumpAt ? { stickY: -1, A: true } : after(t - jumpAt - 1));
+      if (t >= jumpAt) seen.add(s.p.action);
+      if (s.p.grounded && !s.p.inWater) break;
+    }
+    return { s, seen };
+  };
+  const followUps = { neutral: () => ({}), forward: () => ({ stickY: 1 }), backThenNeutral: (k) => (k < 15 ? { stickY: -1 } : {}) };
+
+  test('a stroke-speed leap against the wall slides up it onto the rim, never bonks', () => {
+    for (const [name, after] of Object.entries(followUps)) {
+      for (let z = -900; z <= -500; z += 50) {
+        const { s, seen } = leap(z, after);
+        assert.ok(seen.has('water_jump'), `${name} z=${z}: no water jump`);
+        for (const a of ['air_hit_wall', 'soft_bonk', 'bonk']) assert.ok(!seen.has(a), `${name} z=${z}: ${a}`);
+        assert.ok(s.p.grounded && !s.p.inWater && s.p.pos.y === RIM && s.p.pos.z > 0, `${name} z=${z}: ${s.p.action} at ${s.p.pos.y}, ${s.p.pos.z}`);
+      }
+    }
+  });
+
+  test('A with the stick pulled back jumps out at once, even right after a stroke', () => {
+    for (let k = 1; k < 10; k++) {
+      const s = sim(moat, { x: 0, y: -100, z: -2000, yaw: 0 });
+      s.p.setAction('water_surface');
+      s.run(1, { A: true });
+      assert.equal(s.p.action, 'swim_stroke');
+      s.run(k, {});
+      s.run(1, { stickY: -1, A: true });
+      assert.equal(s.p.action, 'water_jump', `${k} ticks into the stroke`);
+    }
+  });
+
+  test('plain A presses mid-stroke still wait for the re-stroke point', () => {
+    const s = sim(moat, { x: 0, y: -100, z: -2000, yaw: 0 });
+    s.p.setAction('water_surface');
+    s.run(1, { A: true });
+    s.run(4, {});
+    s.run(1, { A: true });
+    assert.equal(s.p.action, 'swim_stroke');
+    assert.equal(s.p.actionTimer, 6, 'a press at tick 5 does not restart the stroke');
+  });
+});
+
+describe('star grabbed in mid-air', () => {
+  test('drops first, then celebrates on the ground for the full dance', () => {
+    const s = sim(flat, { x: 0, y: 0, z: 0, yaw: 0 });
+    s.run(1, { A: true });
+    s.run(8, { A: true });
+    assert.ok(s.p.pos.y > 200 && !s.p.grounded);
+    s.p.collectStar();
+    assert.equal(s.p.stars, 1);
+    assert.equal(s.p.action, 'star_fall');
+    let airborneDance = 0;
+    const t = s.until(60, { stickY: 1, A: true, B: true }, (p) => {
+      if (!p.grounded && p.anim === 'star_dance') airborneDance++;
+      return p.action === 'star_dance';
+    });
+    assert.ok(t < 60, 'lands');
+    assert.equal(airborneDance, 0, 'never poses in the air');
+    assert.ok(s.p.grounded && s.p.pos.y === 0 && Math.abs(s.p.pos.x) + Math.abs(s.p.pos.z) < 1e-6, 'dropped straight down');
+    assert.deepEqual(s.events('land').map((e) => e.hard), [false], 'touchdown is a soft landing');
+    s.run(79, { stickY: 1 });
+    assert.equal(s.p.action, 'star_dance', 'the dance timer starts at touchdown');
+    s.run(2, {});
+    assert.equal(s.p.action, 'idle');
+  });
+
+  test('a high drop with the star does no fall damage', () => {
+    const s = sim(flat, { x: 0, y: 3000, z: 0, yaw: 0 });
+    s.p.setAction('freefall');
+    s.run(1, {});
+    s.p.collectStar();
+    s.until(100, {}, (p) => p.grounded);
+    assert.equal(s.p.health, 8);
+    assert.equal(s.p.action, 'star_dance');
+  });
+});
+
+describe('death under water', () => {
+  test('drowning keeps the hero in the water (camera stays under) until the respawn', () => {
+    const pool = (b) => {
+      const hole = { x0: -1000, z0: -3000, x1: 1000, z1: -500 };
+      b.ground(30000, 0, hole);
+      b.pool({ ...hole, y0: -2000, level: -60, bank: 1000 });
+    };
+    const s = sim(pool, { x: 0, y: -1000, z: -1500, yaw: 0 });
+    s.run(1, {});
+    s.p.health = 1;
+    s.until(300, {}, (p) => p.action === 'death');
+    assert.equal(s.p.action, 'death');
+    let dry = 0;
+    s.until(80, {}, (p) => {
+      if (p.action === 'death' && !p.inWater) dry++;
+      return p.action !== 'death';
+    });
+    assert.equal(dry, 0, 'inWater dropped during the death');
+    assert.equal(s.p.action, 'spawn');
+    assert.ok(!s.p.inWater);
+  });
+
+  test('a death on land is not in the water', () => {
+    const s = sim(flat);
+    s.run(1, {});
+    s.p.loseHealth(8);
+    s.run(5, {}, (p) => assert.ok(!p.inWater));
+  });
+});
+
+// Solid mound like the level's rocks: prism walls up to a shoulder, a floor cone on top.
+function mound(b, x, z, shoulder, top, r, sides = 8) {
+  prism(b, x, z, -80, shoulder, r, sides);
+  for (let i = 0; i < sides; i++) {
+    const a0 = (i / sides) * 2 * Math.PI;
+    const a1 = ((i + 1) / sides) * 2 * Math.PI;
+    const p0 = [x + r * Math.sin(a0), shoulder, z + r * Math.cos(a0)];
+    const p1 = [x + r * Math.sin(a1), shoulder, z + r * Math.cos(a1)];
+    b.tri([x, top, z], p0, p1, [0, 1, 0]);
+  }
+}
+
+// Largest raw wall push at the hero's ground probes (> 0: standing inside a wall).
+function overlap(p) {
+  const knee = p.collision.findWalls(p.pos.x, p.pos.y, p.pos.z, 30, 24);
+  const chest = p.collision.findWalls(knee.x, p.pos.y, knee.z, 60, 50);
+  return Math.hypot(chest.x - p.pos.x, chest.z - p.pos.z);
+}
+
+describe('leaving rocks and trunks without pops', () => {
+  test('walking off a rock never stands in its side walls or snaps sideways', () => {
+    const rock = (b) => {
+      flat(b);
+      mound(b, 0, 0, 70, 90, 130);
+    };
+    for (const stick of [1, 0.6, 0.35]) {
+      for (let k = 0; k < 16; k++) {
+        const yaw = (k / 16) * 2 * Math.PI + 0.05;
+        const s = sim(rock, { x: 0, y: 90, z: 0, yaw });
+        let maxStep = 0;
+        s.run(45, toward(yaw, { stickMag: stick }), (p) => {
+          if (p.grounded) assert.ok(overlap(p) < 1, `stick ${stick} dir ${k}: ${overlap(p).toFixed(1)} deep in the rock at y ${p.pos.y}`);
+          const step = Math.hypot(p.pos.x - p.prevPos.x, p.pos.z - p.prevPos.z);
+          if (stick >= 0.6) maxStep = Math.max(maxStep, step - Math.abs(p.forwardVel));
+        });
+        assert.ok(Math.hypot(s.p.pos.x, s.p.pos.z) > 200 && s.p.pos.y === 0, `stick ${stick} dir ${k}: walked off`);
+        assert.ok(maxStep < 10, `stick ${stick} dir ${k}: sideways snap of ${maxStep.toFixed(1)}`);
+      }
+    }
+  });
+
+  test('sliding down a trunk eases out of its collider: no pop at the bottom or walking away', () => {
+    const tree = (b) => {
+      flat(b);
+      prism(b, 0, 0, -100, 350, 45);
+      b.pole(0, 0, 0, 600, 40);
+    };
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * 2 * Math.PI + 0.2;
+      const s = sim(tree, { x: Math.sin(a) * 100, y: 250, z: Math.cos(a) * 100, yaw: a + Math.PI });
+      s.p.setAction('freefall');
+      s.until(10, {}, (p) => p.action === 'pole');
+      assert.equal(s.p.action, 'pole');
+      const noPop = (p) => {
+        const step = Math.hypot(p.pos.x - p.prevPos.x, p.pos.z - p.prevPos.z);
+        assert.ok(step <= Math.abs(p.forwardVel) + 11, `dir ${k}: popped ${step.toFixed(1)} in ${p.action}`);
+      };
+      s.until(40, { stickY: -1 }, (p) => (noPop(p), p.action !== 'pole'));
+      assert.ok(s.p.grounded && overlap(s.p) < 1, `dir ${k}: released ${overlap(s.p).toFixed(1)} inside the trunk collider`);
+      s.run(30, toward(a), noPop); // walk away from the trunk
+      assert.ok(Math.hypot(s.p.pos.x, s.p.pos.z) > 200, `dir ${k}: walked away`);
+    }
+  });
+
+  test('Z lets go of a trunk: eases off it while dropping, no pop, no ground pound', () => {
+    const tree = (b) => {
+      flat(b);
+      prism(b, 0, 300, -100, 350, 45);
+      b.pole(0, 300, 0, 600, 40);
+    };
+    const s = sim(tree, { x: 0, y: 250, z: 200, yaw: 0 });
+    s.p.setAction('freefall');
+    s.until(10, {}, (p) => p.action === 'pole');
+    s.run(3, {});
+    const y0 = s.p.pos.y;
+    s.run(1, { Z: true });
+    assert.equal(s.p.anim, 'fall');
+    assert.ok(s.p.pos.y < y0, 'starts dropping at once');
+    const seen = new Set();
+    s.until(60, { Z: true }, (p) => {
+      seen.add(p.action);
+      const step = Math.hypot(p.pos.x - p.prevPos.x, p.pos.z - p.prevPos.z);
+      assert.ok(step <= 12, `popped ${step.toFixed(1)} in ${p.action}`);
+      return p.grounded;
+    });
+    assert.ok(seen.has('freefall') && !seen.has('ground_pound'), [...seen].join());
+    assert.ok(s.p.grounded && overlap(s.p) < 1, `landed ${overlap(s.p).toFixed(1)} inside the trunk collider`);
+  });
+});
+
+describe('letting go of a tall trunk', () => {
+  test('Z at the top drops to the ground without grabbing the same trunk again, which can then be climbed again', () => {
+    const tree = (b) => {
+      flat(b);
+      prism(b, 0, 0, -100, 1150, 45);
+      b.pole(0, 0, 0, 1300, 40);
+    };
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * 2 * Math.PI + 0.2;
+      const s = sim(tree, { x: Math.sin(a) * 100, y: 1100, z: Math.cos(a) * 100, yaw: a + Math.PI });
+      s.p.setAction('freefall');
+      s.until(10, {}, (p) => p.action === 'pole');
+      assert.equal(s.p.action, 'pole', `dir ${k}: grabbed`);
+      s.run(40, { stickY: 1 }); // to the top
+      s.run(1, { Z: true });
+      const acts = [];
+      const air = s.until(90, {}, (p) => (acts.at(-1) !== p.action && acts.push(p.action), p.grounded));
+      assert.ok(air > 15, `dir ${k}: the fall (${air} ticks) outlasts the grab cooldown`);
+      assert.ok(acts.lastIndexOf('pole') < acts.indexOf('freefall'), `dir ${k}: ${acts.join('>')}`);
+      assert.ok(s.p.grounded && s.p.pos.y === 0, `dir ${k}: ${acts.join('>')} at y ${s.p.pos.y}`);
+      assert.ok(Math.hypot(s.p.pos.x, s.p.pos.z) < 40 + 65, `dir ${k}: landed within reach of the trunk`);
+      s.run(3, {});
+      s.run(1, { A: true });
+      s.until(20, { A: true }, (p) => p.action === 'pole');
+      assert.equal(s.p.action, 'pole', `dir ${k}: grabs the trunk again after landing`);
+    }
+  });
+});
+
+describe('walking slowly off a ledge', () => {
+  // A 150-high block (x < 0) and a wedge whose sloped side, like the castle door steps', is at x = 0.
+  const block = (b) => {
+    flat(b);
+    b.box(-1500, 0, -1500, 0, 150, 1500, { noBottom: true });
+  };
+  const wedge = (b) => {
+    flat(b);
+    b.ramp(-1500, 0, -700, 700, 0, 280, { terrain: 'stone' });
+  };
+  // Stick tilted `m` of the way toward world yaw `yaw`.
+  const tilt = (yaw, m) => ({ stickX: -Math.sin(yaw) * m, stickY: Math.cos(yaw) * m });
+  // Largest one-tick sideways move beyond the hero's own speed while walking off toward +X.
+  function walkOff(build, z, yaw, stick) {
+    const y = build === wedge ? (280 * (z + 700)) / 1400 : 150;
+    const s = sim(build, { x: -80, y, z, yaw });
+    let pop = 0;
+    let fv = 0;
+    const seen = new Set();
+    s.run(120, tilt(yaw, stick), (p) => {
+      seen.add(p.action);
+      const step = Math.hypot(p.pos.x - p.prevPos.x, p.pos.z - p.prevPos.z);
+      pop = Math.max(pop, step - Math.max(fv, Math.abs(p.forwardVel)));
+      fv = Math.abs(p.forwardVel);
+    });
+    return { s, pop, seen };
+  }
+
+  test('slides clear of the side while dropping instead of popping out of it in one tick', () => {
+    for (const build of [block, wedge]) {
+      for (const z of [-300, 0, 300]) {
+        for (const yaw of [Math.PI / 2, Math.PI / 2 - 0.6, Math.PI / 2 + 0.6]) {
+          for (const stick of [0.25, 0.35, 0.5]) {
+            const { s, pop, seen } = walkOff(build, z, yaw, stick);
+            const at = `${build === wedge ? 'wedge' : 'block'} z ${z} yaw ${yaw.toFixed(1)} stick ${stick}`;
+            assert.ok(seen.has('freefall'), `${at}: walked off`);
+            assert.ok(pop < 13, `${at}: popped ${pop.toFixed(1)} sideways in one tick`);
+            assert.ok(s.p.grounded && s.p.pos.y === 0 && overlap(s.p) < 1, `${at}: ends on the ground clear of the side`);
+          }
+        }
+      }
+    }
+  });
+
+  test('a fast walk-off gets no extra drift', () => {
+    const { pop } = walkOff(block, 0, Math.PI / 2, 1);
+    assert.ok(pop < 1, `moved ${pop.toFixed(1)} beyond its speed`);
+  });
+
+  test('a crevice narrower than the hero beside the ledge is not stepped into', () => {
+    // A 40-wide gap between the block and a slightly taller one (like the door steps beside a
+    // tower's base): its walls would fight over him down there.
+    const crevice = (b) => {
+      block(b);
+      b.box(40, 0, -1500, 600, 175, 1500, { noBottom: true });
+    };
+    for (const yaw of [Math.PI / 2, Math.PI / 2 - 0.5]) {
+      for (const stick of [0.3, 1]) {
+        const s = sim(crevice, { x: -200, y: 150, z: 0, yaw });
+        s.run(60, tilt(yaw, stick), (p) => {
+          assert.ok(p.grounded && p.pos.y === 150 && p.pos.x <= 1, `yaw ${yaw.toFixed(1)} stick ${stick}: ${p.action} at (${p.pos.x.toFixed(0)}, ${p.pos.y.toFixed(0)})`);
+        });
+      }
+    }
+  });
+});

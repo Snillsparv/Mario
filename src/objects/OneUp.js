@@ -62,6 +62,12 @@ export class OneUp {
     this.mesh.visible = false;
   }
 
+  // Back in its spot, ready to be found again (a new game).
+  reset() {
+    this.alive = true;
+    this.mesh.visible = true;
+  }
+
   animate(clock) {
     if (!this.alive) return;
     this.mesh.position.y = this.pos.y + BOB * Math.sin(clock * 2.8);

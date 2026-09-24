@@ -4,10 +4,18 @@
 // They keep out of solid scenery: at startup each spot's wander disk is fitted into open air
 // (shifted away from buildings if needed), every tick walls push them out and deflect a flight
 // along the wall, and one that rises close under a roof flies back home.
+//
+// Once JIT-compiled, update() and animate() allocate nothing themselves: no Math.hypot or
+// Math.max/min on doubles (V8 calls them out of line, boxing arguments and result), no
+// iterators, no numbers passed to helpers that may not be inlined. The only per-tick garbage
+// is the small result objects of the collision queries (CollisionWorld's contract) and the
+// numbers boxed to pass to them: a staggered floor probe every PROBE_EVERY ticks per
+// butterfly (plus a water query only over floors below `waterTop`), and a wall query per tick
+// for one that has left its home's open-air radius.
 
 import * as THREE from 'three';
 import { makeWingAtlas, wingUV, WING_VARIANTS } from './textures.js';
-import { TAU, approachAngle, clamp } from '../core/math.js';
+import { TAU, clamp } from '../core/math.js';
 import { FRAME_DT } from '../core/constants.js';
 
 const PER_SPOT = 3;
@@ -33,16 +41,43 @@ const PROBE_EVERY = 8; // ticks between floor/roof probes (staggered per butterf
 const WALL_MEMORY = 30; // ticks a touched wall keeps deflecting the flight
 const HOMING_TICKS = 60;
 const HEADROOM = 300; // a floor this close overhead sends the butterfly home
+const TURN_RATE = 0.25; // rad/tick
 const SKY = 1e5; // probe height for "anything built above this column?"
 const PITCH_S = Math.sin(0.25); // nose up
 const PITCH_C = Math.cos(0.25);
 
+// Math.max / Math.min stand-ins for the per-tick path: V8's mid tier (Maglev) does not inline
+// Math.max/min on doubles, so each call would box its arguments and result.
+const higher = (a, b) => (a > b ? a : b);
+const lower = (a, b) => (a < b ? a : b);
+
+// Has butterfly b left its home's open-air radius (where walls may be within reach)?
+function outsideClear(b) {
+  const { pos, home } = b;
+  const dx = pos.x - home.x;
+  const dz = pos.z - home.z;
+  return home.clear < 0 || dx * dx + dz * dz > home.clear * home.clear;
+}
+
+// Turns butterfly b toward its horizontal velocity by at most TURN_RATE (like core/math's
+// approachAngle). Branch-free: V8's mid tier boxed the angles merged by approachAngle's
+// branches (one allocation per call).
+function faceVelocity(b) {
+  const d = Math.atan2(b.vel.x, b.vel.z) - b.yaw;
+  const wrapped = d - TAU * Math.round(d / TAU); // [-PI, PI]
+  const turn = wrapped > TURN_RATE ? TURN_RATE : wrapped < -TURN_RATE ? -TURN_RATE : wrapped;
+  const yaw = b.yaw + turn;
+  b.yaw = yaw - TAU * Math.round(yaw / TAU);
+}
+
 export class Butterflies {
   // groundAt(x, z): analytic terrain height; collision: CollisionWorld (findFloor, findWalls,
-  // waterLevelAt).
-  constructor(spots, { collision, groundAt, rng }) {
+  // waterLevelAt); waterTop: no water surface is higher than this (layout.WATER_LEVEL), so a
+  // floor at or above it needs no water query.
+  constructor(spots, { collision, groundAt, rng, waterTop = Infinity }) {
     this.collision = collision;
     this.groundAt = groundAt;
+    this.waterTop = waterTop;
     this.list = [];
     this._target = { x: 0, y: 0, z: 0 };
     for (const spot of spots) {
@@ -67,18 +102,13 @@ export class Butterflies {
           flap: rng() * TAU,
           variant: Math.floor(rng() * WING_VARIANTS),
         };
-        this._wanderTarget(b, 0, home.floor, b.pos);
+        this._wanderTarget(b, 0, b.pos);
         Object.assign(b.prev, b.pos);
         b.prevFlap = b.flap;
         this.list.push(b);
       }
     }
     this.mesh = this._buildMesh();
-  }
-
-  // Floor or water surface height below (x, y, z).
-  _floorBelow(x, y, z) {
-    return Math.max(this.collision.findFloor(x, y, z).y, this.collision.waterLevelAt(x, z));
   }
 
   // Is the column at (x, z) unfit for butterflies flying `base` + [ALT_MIN, ALT_MAX]?
@@ -156,9 +186,13 @@ export class Butterflies {
     return mesh;
   }
 
-  // Smooth Lissajous wander point around home at time t (seconds), written into out.
-  _wanderTarget(b, t, base, out) {
+  // Smooth Lissajous wander point around home at the given tick, written into out, at the
+  // altitude band over the higher of the floor under the butterfly and its home's floor.
+  // (Integer and object arguments only: doubles passed to a call that is not inlined get boxed.)
+  _wanderTarget(b, tick, out) {
     const { home, freq: f, phase: p } = b;
+    const t = tick * FRAME_DT;
+    const base = higher(b.floor, home.floor);
     const r = home.radius;
     out.x = home.x + r * (0.72 * Math.sin(t * f[0] + p[0]) + 0.28 * Math.sin(t * f[2] + p[2]));
     out.z = home.z + r * (0.72 * Math.cos(t * f[1] + p[1]) + 0.28 * Math.sin(t * f[3] + p[3]));
@@ -168,10 +202,11 @@ export class Butterflies {
   // Refreshes the floor under a butterfly. Walls push it out sideways, but nothing stops it
   // rising into a low roof or deck from below, so one with a floor just overhead heads home
   // (only possible outside its home's open-air radius).
-  _probe(b, fromHome) {
+  _probe(b) {
     const { pos } = b;
-    b.floor = this._floorBelow(pos.x, pos.y, pos.z);
-    if (fromHome > b.home.clear && this.collision.findFloor(pos.x, pos.y + HEADROOM, pos.z, 0).y > pos.y) {
+    const floor = this.collision.findFloor(pos.x, pos.y, pos.z).y;
+    b.floor = floor >= this.waterTop ? floor : higher(floor, this.collision.waterLevelAt(pos.x, pos.z));
+    if (outsideClear(b) && this.collision.findFloor(pos.x, pos.y + HEADROOM, pos.z, 0).y > pos.y) {
       b.flee = 0;
       b.homing = HOMING_TICKS;
     }
@@ -203,7 +238,7 @@ export class Butterflies {
     if (into >= 0) return;
     d.x -= into * w.x;
     d.z -= into * w.z;
-    const len = Math.hypot(d.x, d.z);
+    const len = Math.sqrt(d.x * d.x + d.z * d.z);
     if (len < 0.35) {
       d.x = -w.z * b.side;
       d.z = w.x * b.side;
@@ -214,21 +249,23 @@ export class Butterflies {
   }
 
   update(tick, hero) {
-    const t = tick * FRAME_DT;
     const target = this._target;
-    for (let i = 0; i < this.list.length; i++) {
-      const b = this.list[i];
+    const list = this.list;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
       const { pos, vel, prev, home } = b;
       prev.x = pos.x;
       prev.y = pos.y;
       prev.z = pos.z;
       b.prevFlap = b.flap;
-      const fromHome = Math.hypot(pos.x - home.x, pos.z - home.z);
-      if ((tick + i) % PROBE_EVERY === 0) this._probe(b, fromHome);
+      const ox = pos.x - home.x;
+      const oz = pos.z - home.z;
+      const fromHome = Math.sqrt(ox * ox + oz * oz);
+      if ((tick + i) % PROBE_EVERY === 0) this._probe(b);
 
       const hx = pos.x - hero.x;
       const hz = pos.z - hero.z;
-      const hd = Math.hypot(hx, hz);
+      const hd = Math.sqrt(hx * hx + hz * hz);
       if (b.homing === 0 && hd < FLEE_RADIUS && Math.abs(pos.y - hero.y) < FLEE_RADIUS + 200) {
         b.flee = FLEE_TICKS;
         b.fleeDir.x = hd > 1 ? hx / hd : Math.sin(b.yaw);
@@ -241,7 +278,7 @@ export class Butterflies {
       }
 
       // Fly at the home altitude over lower ground (e.g. out over the moat), follow higher ground.
-      const base = Math.max(b.floor, home.floor);
+      const base = higher(b.floor, home.floor);
       let maxSpeed = CRUISE_SPEED;
       if (b.homing > 0) {
         b.homing--;
@@ -251,23 +288,23 @@ export class Butterflies {
       } else if (b.flee > 0) {
         b.flee--;
         target.x = pos.x + b.fleeDir.x * 500;
-        target.y = Math.min(pos.y + 250, base + 700);
+        target.y = lower(pos.y + 250, base + 700);
         target.z = pos.z + b.fleeDir.z * 500;
         maxSpeed = FLEE_SPEED;
       } else {
-        this._wanderTarget(b, t, base, target);
+        this._wanderTarget(b, tick, target);
       }
 
       // Steer toward the target with limited acceleration.
       const dx = target.x - pos.x;
       const dy = target.y - pos.y;
       const dz = target.z - pos.z;
-      const d = Math.hypot(dx, dy, dz) || 1;
-      const speed = Math.min(maxSpeed, d * 0.06 + 0.5);
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const speed = lower(maxSpeed, d * 0.06 + 0.5);
       const ax = (dx / d) * speed - vel.x;
       const ay = (dy / d) * speed - vel.y;
       const az = (dz / d) * speed - vel.z;
-      const a = Math.hypot(ax, ay, az);
+      const a = Math.sqrt(ax * ax + ay * ay + az * az);
       const k = a > ACCEL ? ACCEL / a : 1;
       vel.x += ax * k;
       vel.y += ay * k;
@@ -275,47 +312,45 @@ export class Butterflies {
       pos.x += vel.x;
       pos.y = clamp(pos.y + vel.y, b.floor + 60, base + ALT_CEIL);
       pos.z += vel.z;
-      if (Math.hypot(pos.x - home.x, pos.z - home.z) > home.clear) this._pushOutOfWalls(b);
+      if (outsideClear(b)) this._pushOutOfWalls(b);
 
-      if (Math.hypot(vel.x, vel.z) > 0.3) b.yaw = approachAngle(b.yaw, Math.atan2(vel.x, vel.z), 0.25);
+      if (vel.x * vel.x + vel.z * vel.z > 0.09) faceVelocity(b);
       b.flap += (b.flee > 0 ? 13 : 8) * TAU * FRAME_DT;
     }
   }
 
   animate(alpha) {
     const P = this.positions;
-    let o = 0;
+    const list = this.list;
     const half = WING_L / 2;
-    for (const b of this.list) {
+    let o = 0;
+    for (let n = 0; n < list.length; n++) {
+      const b = list[n];
       const flap = b.prevFlap + (b.flap - b.prevFlap) * alpha;
       const s = Math.sin(flap);
       const wing = 0.15 + 1.15 * (0.5 + 0.5 * s); // hinge angle above horizontal
-      F.x = b.prev.x + (b.pos.x - b.prev.x) * alpha;
-      F.y = b.prev.y + (b.pos.y - b.prev.y) * alpha - 5 * s; // body dips as the wings rise
-      F.z = b.prev.z + (b.pos.z - b.prev.z) * alpha;
-      F.sy = Math.sin(b.yaw);
-      F.cy = Math.cos(b.yaw);
+      const fx = b.prev.x + (b.pos.x - b.prev.x) * alpha;
+      const fy = b.prev.y + (b.pos.y - b.prev.y) * alpha - 5 * s; // body dips as the wings rise
+      const fz = b.prev.z + (b.pos.z - b.prev.z) * alpha;
+      const sy = Math.sin(b.yaw);
+      const cy = Math.cos(b.yaw);
       const tipX = WING_W * Math.cos(wing);
       const tipY = WING_W * Math.sin(wing);
       for (let side = 1; side >= -1; side -= 2) {
-        o = corner(P, o, 0, 0, -half); // hinge-tail
-        o = corner(P, o, 0, 0, half); // hinge-head
-        o = corner(P, o, side * tipX, tipY, half); // tip-head
-        o = corner(P, o, side * tipX, tipY, -half); // tip-tail
+        // Corners hinge-tail, hinge-head, tip-head, tip-tail in local space (forward +Z),
+        // pitched nose-up, yawed and placed.
+        for (let c = 0; c < 4; c++) {
+          const x = c < 2 ? 0 : side * tipX;
+          const y = c < 2 ? 0 : tipY;
+          const z = c === 1 || c === 2 ? half : -half;
+          const z1 = z * PITCH_C - y * PITCH_S;
+          P[o] = fx + x * cy + z1 * sy;
+          P[o + 1] = fy + y * PITCH_C + z * PITCH_S;
+          P[o + 2] = fz - x * sy + z1 * cy;
+          o += 3;
+        }
       }
     }
     this.mesh.geometry.attributes.position.needsUpdate = true;
   }
-}
-
-// Frame of the butterfly being written by animate(): centre and yaw.
-const F = { x: 0, y: 0, z: 0, sy: 0, cy: 1 };
-
-// Writes local point (x, y, z) (forward +Z) pitched, yawed and placed; returns the next offset.
-function corner(P, o, x, y, z) {
-  const z1 = z * PITCH_C - y * PITCH_S;
-  P[o] = F.x + x * F.cy + z1 * F.sy;
-  P[o + 1] = F.y + y * PITCH_C + z * PITCH_S;
-  P[o + 2] = F.z - x * F.sy + z1 * F.cy;
-  return o + 3;
 }

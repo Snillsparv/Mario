@@ -52,5 +52,6 @@ export class BlobShadows {
 
 // Shadow diameter for an object `height` units above the floor: shrinks as it rises.
 export function shadowSize(base, height) {
-  return base * Math.max(0.35, 1 - height / 1400);
+  const k = 1 - height / 1400;
+  return base * (k > 0.35 ? k : 0.35);
 }

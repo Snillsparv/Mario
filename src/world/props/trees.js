@@ -4,7 +4,7 @@
 
 import { makeRng } from '../../core/math.js';
 import { prismWalls } from './geom.js';
-import { FOLIAGE, cellUV } from './textures.js';
+import { FOLIAGE, canopyProfile, cellUV } from './textures.js';
 
 export const TREE_HEIGHT = 800; // nominal billboard height (each tree varies +-10 %)
 export const TRUNK_RADIUS = 45;
@@ -24,14 +24,16 @@ export function buildTrees(layout, kit) {
     // Slight per-tree tint: some a bit yellower, some a bit bluer/darker.
     const warm = rng() - 0.5;
     const bright = 0.92 + 0.12 * rng();
+    const cell = FOLIAGE.tree[i % FOLIAGE.tree.length];
     kit.foliage.push({
       x: t.x,
       y: ground - SINK,
       z: t.z,
       w: h,
       h: h + SINK,
-      uv: cellUV(FOLIAGE.tree[i % FOLIAGE.tree.length]),
+      uv: cellUV(cell),
       tint: [bright * (1 + 0.08 * warm), bright, bright * (1 - 0.1 * warm)],
+      occluder: canopyProfile(cell), // the canopy can hide the hero, not the thin trunk
     });
     prismWalls(kit.colliders.wood, t.x, t.z, ground - 100, ground + TRUNK_HEIGHT, TRUNK_RADIUS);
     kit.shadow(t.x, t.z, 330 * scale, 0.9);

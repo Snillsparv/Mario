@@ -17,8 +17,6 @@ const STRIDES = {
   crawl: { cadence: 0, min: 44, max: 44 },
 };
 
-export const GAIT_ANIMS = Object.keys(STRIDES);
-
 // Stride length (units per cycle) of a gait anim at `speed` (units/tick); 0 for other anims.
 export function gaitStride(anim, speed) {
   const s = STRIDES[anim];

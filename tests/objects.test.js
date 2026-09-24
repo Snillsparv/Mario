@@ -1,6 +1,8 @@
 // ObjectManager logic in node (no canvas): coin pickups, red coins -> star, star and 1-up
-// pickups, butterflies fleeing, pause freeze, title backdrop, draw-call budget, placement on
-// the real layout.
+// pickups, butterflies fleeing, pause freeze, title backdrop, reset for a new game after GAME
+// OVER, draw-call budget, placement on
+// the real layout, and the allocation-free hot paths (pooled sparkles, few collision queries,
+// no boxing constructs in the per-tick / per-frame methods).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -8,6 +10,12 @@ import * as realLayout from '../src/world/layout.js';
 import { CollisionWorld } from '../src/collision/CollisionWorld.js';
 import { Events } from '../src/core/events.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
+import { Butterflies } from '../src/objects/Butterflies.js';
+import { Birds } from '../src/objects/Birds.js';
+import { Sparkles, TINT } from '../src/objects/Sparkles.js';
+import { CoinField } from '../src/objects/CoinField.js';
+import { SpriteBatch } from '../src/objects/SpriteBatch.js';
+import { angleDiff } from '../src/core/math.js';
 import { COIN_HOVER, PICKUP_RADIUS } from '../src/objects/CoinField.js';
 import { coinFaceShade, coinFrameUV, COIN_FRAMES } from '../src/objects/textures.js';
 import { CEIL_NONE } from '../src/core/constants.js';
@@ -317,4 +325,244 @@ test('the real layout places every coin above the canonical ground', () => {
     if (given === undefined) assert.ok(c.y >= realLayout.groundHeight(c.x, c.z) + COIN_HOVER - 1e-6);
   }
   assert.equal(objects.butterflies.list.length, realLayout.BUTTERFLY_SPOTS.length * 3);
+});
+
+// The per-tick and per-frame methods must not use what V8 allocates for in optimized code:
+// Math.hypot and Math.max/min on doubles are called out of line (arguments and result boxed),
+// iterators allocate below the top tier, and so do numbers passed to calls that are not
+// inlined (hence SpriteBatch.push reads its sprite from batch.next).
+test('hot object paths avoid allocating constructs', () => {
+  const hot = {
+    'Butterflies.update': Butterflies.prototype.update,
+    'Butterflies.animate': Butterflies.prototype.animate,
+    'Butterflies._probe': Butterflies.prototype._probe,
+    'Butterflies._wanderTarget': Butterflies.prototype._wanderTarget,
+    'Butterflies._pushOutOfWalls': Butterflies.prototype._pushOutOfWalls,
+    'Birds.animate': Birds.prototype.animate,
+    'Sparkles.animate': Sparkles.prototype.animate,
+    'CoinField.animate': CoinField.prototype.animate,
+    'CoinField.collect': CoinField.prototype.collect,
+    'SpriteBatch.push': SpriteBatch.prototype.push,
+    'ObjectManager._step': ObjectManager.prototype._step,
+    'ObjectManager.animate': ObjectManager.prototype.animate,
+    'ObjectManager._draw': ObjectManager.prototype._draw,
+    'ObjectManager.ambient': ObjectManager.prototype.ambient,
+  };
+  for (const [name, fn] of Object.entries(hot)) {
+    const src = fn.toString();
+    assert.doesNotMatch(src, /Math\.(hypot|max|min)\(/, name);
+    assert.doesNotMatch(src, /for \((const|let|var) [^;]* of /, name);
+  }
+  assert.equal(SpriteBatch.prototype.push.length, 0, 'push() takes no numbers');
+});
+
+test('sparkles recycle a fixed pool of particle records', () => {
+  const { objects, step } = setup();
+  const sp = objects.sparkles;
+  const pool = new Set(sp.parts);
+  assert.equal(pool.size, sp.parts.length);
+  // Far more sparkles than the pool holds, all in one tick: the extra ones are dropped.
+  for (let i = 0; i < 40; i++) sp.burst({ x: 0, y: 100, z: 0 }, objects.time, TINT.coin);
+  assert.equal(sp.count, sp.parts.length);
+  objects.animate(0, 1, null);
+  assert.ok(sp.batch.count <= sp.batch.capacity);
+  step(60); // they expire; the 1-up keeps twinkling
+  assert.ok(sp.count < 10, `${sp.count} live`);
+  sp.burst({ x: 0, y: 100, z: 0 }, objects.time, TINT.red);
+  assert.equal(sp.parts.length, pool.size);
+  assert.ok(sp.parts.every((p) => pool.has(p)), 'no new particle records');
+  objects.animate(0, 1, null);
+  const n = sp.batch.count;
+  assert.ok(n >= 8, `${n} sprites drawn`);
+  const alpha = sp.batch.color;
+  for (let i = 0; i < n; i++) assert.ok(alpha[i * 4 + 3] > 0 && Number.isFinite(sp.batch.pos[i * 3]), `sprite ${i}`);
+});
+
+test('butterflies query the water only over floors below the highest water surface', () => {
+  const dry = flatWorld(0);
+  let calls = 0;
+  const waterLevelAt = dry.waterLevelAt.bind(dry);
+  dry.waterLevelAt = (x, z) => {
+    calls++;
+    return waterLevelAt(x, z);
+  };
+  const { step } = setup({ ...LAYOUT, WATER_LEVEL: -20 }, dry);
+  calls = 0;
+  step(64);
+  assert.equal(calls, 0, 'no water queries over dry land above the water level');
+
+  // A deep pool: the butterflies fly over its surface, not its bed.
+  const pool = flatWorld(-1000);
+  pool.setWaterLevelFn(() => -20);
+  const wet = setup({ ...LAYOUT, WATER_LEVEL: -20, groundHeight: () => -1000 }, pool);
+  wet.step(120);
+  for (const b of wet.objects.butterflies.list) {
+    assert.equal(b.floor, -20);
+    assert.ok(b.pos.y >= 40, `above the water (${b.pos.y.toFixed(0)})`);
+  }
+});
+
+test('butterflies face their flight direction', () => {
+  const { objects, player, step } = setup();
+  step(40);
+  const b = objects.butterflies.list[0];
+  player.pos = { x: b.pos.x + 100, y: b.pos.y - 100, z: b.pos.z }; // make them flee
+  step(20);
+  for (const bf of objects.butterflies.list) {
+    assert.ok(bf.yaw >= -Math.PI - 1e-9 && bf.yaw <= Math.PI + 1e-9, `yaw ${bf.yaw} wrapped`);
+    if (Math.hypot(bf.vel.x, bf.vel.z) > 2) assert.ok(Math.abs(angleDiff(bf.yaw, Math.atan2(bf.vel.x, bf.vel.z))) < 0.3);
+  }
+});
+
+test('coins keep one shape after pickups', () => {
+  const { objects, player, step } = setup();
+  player.pos = { x: REDS[0].x, y: 0, z: REDS[0].z };
+  step();
+  player.pos = { x: 0, y: 0, z: 0 };
+  step();
+  const keys = objects.coins.coins.map((c) => Object.keys(c).join());
+  assert.equal(new Set(keys).size, 1, keys.join(' | '));
+  assert.equal(objects.coins.coins.find((c) => c.red && !c.alive).index, 1);
+});
+
+test('the idle star needs no floor queries', () => {
+  const layout = { ...LAYOUT, BUTTERFLY_SPOTS: [] };
+  const collision = flatWorld();
+  const { objects, player, step } = setup(layout, collision);
+  for (const r of REDS) {
+    player.pos = { x: r.x, y: 0, z: r.z };
+    step();
+  }
+  player.pos = { x: 1000, y: 0, z: 3000 };
+  step(60);
+  assert.equal(objects.star.state, 'idle');
+  assert.equal(objects.starFloor.y, 0, 'shadow floor found');
+  let calls = 0;
+  const findFloor = collision.findFloor.bind(collision);
+  collision.findFloor = (...a) => {
+    calls++;
+    return findFloor(...a);
+  };
+  step(30);
+  assert.equal(calls, 0);
+  assert.equal(objects.starFloor.y, 0);
+});
+
+// Whether blob shadow slot i is drawn (hidden slots hold a zero-scale matrix).
+function shadowShown(objects, i) {
+  const m = new THREE.Matrix4();
+  objects.shadows.mesh.getMatrixAt(i, m);
+  return m.elements[0] !== 0;
+}
+
+test('reset() brings back every pickup for a new game', () => {
+  const { objects, player, log, step } = setup();
+  const coinCount = objects.coins.coins.length;
+  // Take a yellow coin, every red coin, the star and the 1-up.
+  player.pos = { x: 0, y: 0, z: 0 };
+  step();
+  for (const r of REDS) {
+    player.pos = { x: r.x, y: 0, z: r.z };
+    step();
+  }
+  player.pos = { x: 1000, y: 0, z: -1500 };
+  step(60);
+  player.pos = { x: 0, y: 300, z: -1500 };
+  step();
+  player.pos = { x: 2500, y: 0, z: -2500 };
+  step();
+  assert.equal(objects.star.state, 'collected');
+  assert.equal(player.stars, 1);
+  assert.equal(objects.oneUp.alive, false);
+  assert.equal(objects.coins.coins.filter((c) => c.alive).length, coinCount - 9);
+  assert.ok(objects.sparkles.count > 0);
+  const tick = objects.tick;
+
+  objects.reset();
+  assert.ok(objects.coins.coins.every((c) => c.alive && c.index === 0), 'every coin back');
+  assert.equal(objects.coins.redCollected, 0);
+  assert.equal(objects.coins.allRedCollected, false);
+  for (let i = 0; i < coinCount; i++) assert.ok(shadowShown(objects, i), `coin shadow ${i}`);
+  assert.equal(objects.star.state, 'hidden');
+  assert.equal(objects.star.mesh.visible, false);
+  assert.equal(shadowShown(objects, objects.starShadow), false, 'no star shadow');
+  assert.equal(objects.sparkles.glow.visible, false, 'no star glow');
+  assert.equal(objects.oneUp.alive, true);
+  assert.equal(objects.oneUp.mesh.visible, true);
+  assert.ok(shadowShown(objects, objects.oneUpShadow), '1-up shadow');
+  assert.equal(objects.sparkles.count, 0, 'sparkles cleared');
+  assert.equal(player.stars, 0, 'the restored star is taken back off the count');
+  assert.equal(objects.tick, tick, 'the clock keeps running');
+  objects.animate(0, 1, null);
+  assert.equal(objects.coins.batch.count, coinCount, 'every coin drawn');
+
+  // Everything can be earned again, exactly as in the first game.
+  log.length = 0;
+  player.coins = 0;
+  player.pos = { x: 0, y: 0, z: 0 };
+  step();
+  for (const r of REDS) {
+    player.pos = { x: r.x, y: 0, z: r.z };
+    step();
+  }
+  assert.deepEqual(log.filter((l) => l.name === 'coin' && l.e.red).map((l) => l.e.index), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(player.coins, 17);
+  assert.equal(log.filter((l) => l.name === 'redCoinsComplete').length, 1);
+  assert.equal(objects.star.state, 'rising');
+  player.pos = { x: 1000, y: 0, z: -1500 };
+  step(60);
+  player.pos = { x: 0, y: 300, z: -1500 };
+  step();
+  assert.equal(player.stars, 1, 'counted once');
+  player.pos = { x: 2500, y: 0, z: -2500 };
+  step();
+  assert.equal(log.filter((l) => l.name === 'oneUp').length, 1);
+  // A star count reset by the game as well never goes negative.
+  player.stars = 0;
+  objects.reset();
+  assert.equal(player.stars, 0);
+});
+
+test('after reset() the objects run the backdrop again until play resumes, without a jump', () => {
+  const { objects, player, step } = setup();
+  step(200);
+  const bird = objects.birds.birds[0].pos;
+  objects.reset();
+  player.pos = { x: 0, y: 0, z: 0 }; // on a coin: no pickups behind the title
+  let prev = { ...bird };
+  let maxJump = 0;
+  for (let t = 500; t < 503; t += 1 / 60) {
+    objects.animate(t, 1, null);
+    maxJump = Math.max(maxJump, Math.hypot(bird.x - prev.x, bird.z - prev.z));
+    prev = { ...bird };
+  }
+  assert.ok(Math.abs(objects.tick - 290) <= 1, `ambient ticks carry on from 200: ${objects.tick}`);
+  assert.ok(maxJump < 40, `birds glide (largest step ${maxJump.toFixed(1)})`);
+  assert.equal(player.coins, 0, 'no pickups behind the title');
+  step();
+  assert.equal(player.coins, 1, 'play picks the coin up');
+  assert.ok(Math.hypot(bird.x - prev.x, bird.z - prev.z) < 40, 'birds do not jump into play');
+});
+
+test('ambient() keeps the objects moving behind a later title without a jump', () => {
+  const { objects, player, step } = setup();
+  step(100);
+  const bird = objects.birds.birds[0].pos;
+  let prev = { ...bird };
+  let maxJump = 0;
+  player.pos = { x: 0, y: 0, z: 0 };
+  for (let t = 1000; t < 1002; t += 1 / 60) {
+    const alpha = objects.ambient(t);
+    assert.ok(alpha >= 0 && alpha <= 1);
+    objects.animate(t, alpha, null);
+    maxJump = Math.max(maxJump, Math.hypot(bird.x - prev.x, bird.z - prev.z));
+    prev = { ...bird };
+  }
+  assert.ok(Math.abs(objects.tick - 160) <= 1, `ambient ticks ${objects.tick}`);
+  assert.ok(maxJump < 40, `birds glide (largest step ${maxJump.toFixed(1)})`);
+  assert.equal(player.coins, 0);
+  // Play continues from the ambient clock; a later backdrop anchors afresh.
+  step(30);
+  objects.ambient(5000);
+  assert.ok(Math.abs(objects.tick - 190) <= 1, `re-anchored at ${objects.tick}`);
 });

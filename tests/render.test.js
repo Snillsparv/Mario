@@ -5,7 +5,15 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { fitViewport, internalResolution, bayerMatrix, overlayStyle, PILLARBOX_ASPECT } from '../src/render/post/screen.js';
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from '../src/render/post/settings.js';
-import { UnderwaterFog, isBelowWater, UNDERWATER_FOG } from '../src/render/post/underwater.js';
+import {
+  UnderwaterFog,
+  isBelowWater,
+  tintedSkyMaterial,
+  UNDERWATER_FOG,
+  UNDERWATER_SKY_TINT,
+  SKY_DOME_NAME,
+} from '../src/render/post/underwater.js';
+import { worldMaterial } from '../src/render/materials.js';
 import { N64Pass } from '../src/render/post/N64Pass.js';
 import { NO_WATER } from '../src/core/constants.js';
 import * as sky from '../src/world/sky.js';
@@ -152,6 +160,100 @@ test('UnderwaterFog tolerates scenes without fog or with a non-colour background
   uw.update(false);
   assert.equal(scene.fog, null);
   assert.ok(scene.background.isTexture);
+});
+
+function skyScene() {
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xa8c8f0, 8000, 30000);
+  const part = sky.buildSky();
+  scene.add(part.object3D);
+  const dome = scene.getObjectByName(SKY_DOME_NAME);
+  assert.ok(dome?.isMesh, 'world/sky.js names its dome mesh ' + SKY_DOME_NAME);
+  return { scene, dome };
+}
+
+test('underwater: the sky dome is drawn tinted toward the fog colour, then restored', () => {
+  const { scene, dome } = skyScene();
+  const own = dome.material;
+  assert.equal(own.fog, false, 'the sky itself is unfogged');
+  const uw = new UnderwaterFog(scene);
+
+  uw.update(true);
+  const tinted = dome.material;
+  assert.notEqual(tinted, own);
+  assert.equal(tinted.fog, true, 'reads the (underwater) fog colour');
+  assert.equal(tinted.map, own.map, 'same panorama texture');
+  assert.equal(tinted.side, own.side);
+  assert.equal(tinted.depthWrite, false);
+
+  uw.update(false);
+  assert.equal(dome.material, own, 'own material back on surfacing');
+  uw.update(true);
+  assert.equal(dome.material, tinted, 'the tinted copy is reused, not rebuilt');
+  uw.dispose();
+  assert.equal(dome.material, own, 'dispose surfaces first');
+});
+
+test('underwater: the tinted sky mixes a constant share of the fog colour into the output', () => {
+  const tint = { value: UNDERWATER_SKY_TINT };
+  const mat = tintedSkyMaterial(new THREE.MeshBasicMaterial({ fog: false }), tint);
+  const shader = {
+    uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.basic.uniforms),
+    vertexShader: THREE.ShaderLib.basic.vertexShader,
+    fragmentShader: THREE.ShaderLib.basic.fragmentShader,
+  };
+  mat.onBeforeCompile(shader);
+  assert.equal(shader.uniforms.underwaterSkyTint, tint, 'shared uniform, live-tunable');
+  assert.ok(shader.fragmentShader.startsWith('uniform float underwaterSkyTint;'));
+  assert.ok(!shader.fragmentShader.includes('#include <fog_fragment>'), 'distance fog replaced');
+  assert.match(shader.fragmentShader, /#ifdef USE_FOG\s+gl_FragColor\.rgb = mix\( gl_FragColor\.rgb, fogColor, underwaterSkyTint \);\s+#endif/);
+  assert.equal(mat.customProgramCacheKey(), 'underwaterSky');
+  assert.ok(UNDERWATER_SKY_TINT > 0.5 && UNDERWATER_SKY_TINT < 1, 'murky, but cloud shapes still show');
+});
+
+test('underwater: warm() compiles the tinted sky once while dry and leaves the sky as it was', () => {
+  const { scene, dome } = skyScene();
+  const own = dome.material;
+  const uw = new UnderwaterFog(scene);
+  const compiled = [];
+  const compile = (obj) => compiled.push([obj, obj.material]);
+
+  assert.equal(uw.warm(compile, 'n64'), true);
+  assert.equal(compiled.length, 1);
+  assert.equal(compiled[0][0], dome);
+  assert.equal(compiled[0][1].fog, true, 'compiled with the tinted material');
+  assert.equal(dome.material, own, 'restored after compiling');
+  assert.equal(uw.warm(compile, 'n64'), false, 'only once per variant');
+  assert.equal(uw.warm(compile, 'native'), true, 'another render target: another program');
+  assert.equal(uw.warm(compile, 'native'), false);
+  uw.update(true);
+  assert.equal(dome.material, compiled[0][1], 'the warmed material is the one used underwater');
+  assert.equal(uw.warm(compile, 'other'), false, 'not while submerged (the tinted sky is live)');
+  uw.update(false);
+  assert.equal(dome.material, own);
+
+  // A scene without a sky: nothing to compile, and it only searches again when the scene's
+  // top level changes (no traversal every frame).
+  const bare = new THREE.Scene();
+  const uw2 = new UnderwaterFog(bare);
+  let searches = 0;
+  const find = uw2.findSky.bind(uw2);
+  uw2.findSky = () => (searches++, find());
+  assert.equal(uw2.warm(compile), false);
+  assert.equal(uw2.warm(compile), false);
+  assert.equal(searches, 1);
+  bare.add(sky.buildSky().object3D);
+  assert.equal(uw2.warm(compile), true);
+  assert.equal(searches, 2);
+  assert.equal(compiled.length, 3);
+});
+
+test('worldMaterial draws transparent double-sided sheets in one pass', () => {
+  const water = worldMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  assert.equal(water.forceSinglePass, true, 'no per-frame back/front double draw');
+  assert.equal(worldMaterial({ side: THREE.DoubleSide }).forceSinglePass, false, 'opaque: already one pass');
+  assert.equal(worldMaterial({ transparent: true }).forceSinglePass, false);
+  assert.equal(worldMaterial().forceSinglePass, false);
 });
 
 test('N64Pass builds its material in node with the dither table inlined', () => {

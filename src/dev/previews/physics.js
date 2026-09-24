@@ -84,6 +84,12 @@ export const DEMOS = {
       { n: 20, stickY: -1 },
     ],
   },
+  // A surface stroke toward the pool's side wall, then (mid-stroke, at speed) A with the stick
+  // pulled back: the leap slides up the wall (no bonk) and carries on onto the rim.
+  waterjump: {
+    spawn: [690, -300, -3000, HALF_PI],
+    script: [{ until: 'water_surface' }, { n: 1, A: 1 }, { n: 6 }, { n: 1, stickY: -1, A: 1 }, { until: 'grounded', stickY: 1 }, { n: 15 }],
+  },
   pole: {
     spawn: [2000, 0, -2500, 0],
     script: [{ n: 32, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'pole', stickY: 1, A: 1 }, { n: 40, stickY: 1 }, { n: 1 }, { n: 1, A: 1 }, { until: 'grounded' }, { n: 10 }],

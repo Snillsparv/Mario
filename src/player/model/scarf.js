@@ -30,6 +30,8 @@ function segmentGeometry([len, w0, w1]) {
 
 const tmpQ = new THREE.Quaternion();
 const tmpV = new THREE.Vector3();
+const tmpP = new THREE.Vector3();
+const tmpS = new THREE.Vector3();
 const wind = new THREE.Vector3();
 const dir = new THREE.Vector3();
 
@@ -69,8 +71,11 @@ export class ScarfTails {
     }
     (this.prevRel ??= new THREE.Vector3()).copy(tmpV);
 
-    // Into torso space: gravity + wind (negated velocity).
-    this.torso.getWorldQuaternion(tmpQ).invert();
+    // Into torso space: gravity + wind (negated velocity). The world matrices are current,
+    // so read the rotation straight off the torso's (getWorldQuaternion would recompute the
+    // whole parent chain first).
+    this.torso.matrixWorld.decompose(tmpP, tmpQ, tmpS);
+    tmpQ.invert();
     const speed = wind.length();
     wind.multiplyScalar(-WIND_SCALE).applyQuaternion(tmpQ);
     dir.set(0, -1, 0).applyQuaternion(tmpQ).add(wind).normalize();
@@ -79,8 +84,8 @@ export class ScarfTails {
     const flutter = Math.min(0.45, 0.04 + speed / 2200);
 
     const h = Math.min(dt, 1 / 30);
-    for (const tail of this.tails) {
-      const { ax, az, vx, vz, joints, def } = tail;
+    for (let t = 0; t < this.tails.length; t++) {
+      const { ax, az, vx, vz, joints, def } = this.tails[t];
       for (let i = 0; i < joints.length; i++) {
         const wob = Math.sin(time * 15 - i * 1.4 + def.spread * 9);
         const tx = clamp(baseAx + flutter * wob, MIN_PITCH, MAX_PITCH);

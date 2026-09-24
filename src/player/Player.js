@@ -67,6 +67,8 @@ export class Player {
     this.wallTouchTick = -Infinity;
     this.jumpChain = { kind: null, landedAt: -Infinity };
     this.grabCooldownUntil = 0;
+    this.letGoPole = null; // trunk let go of with Z: not grabbed again before landing
+    this.walkOff = null; // walked off a ledge: where the air steps drift him clear of it (step.js)
 
     this.health = T.MAX_HEALTH;
     this.coins = 0;
@@ -136,10 +138,16 @@ export class Player {
 
   afterTick() {
     const group = ACTIONS[this.action].group;
-    this.inWater = group === 'submerged';
+    // A death at swimming depth (drowning, hurt while swimming) still counts as in the water,
+    // so the camera stays under the surface with the hero instead of popping above it.
+    this.inWater =
+      group === 'submerged' ||
+      (this.action === 'death' && this.waterLevel !== NO_WATER && this.pos.y < this.waterLevel - T.WATER_ENTER_DEPTH);
     if (this.action !== 'punch') this.punchStep = 0;
     if (this.grounded || this.inWater || group === 'automatic') this.peakY = this.pos.y;
     else this.peakY = Math.max(this.peakY, this.pos.y);
+    if ((this.grounded || this.inWater) && this.action !== 'pole') this.letGoPole = null;
+    if (group !== 'airborne') this.walkOff = null;
     this.updateBreath();
     this.emitFootsteps();
     this.checkOutOfBounds();
@@ -228,6 +236,8 @@ export class Player {
     this.slideVel.x = this.slideVel.z = 0;
     this.forwardVel = 0;
     this.airDrift = 0;
+    this.letGoPole = null;
+    this.walkOff = null;
     this.faceYaw = this.prevFaceYaw = yaw;
     this.pitch = this.roll = this.prevPitch = this.prevRoll = 0;
     this.peakY = y;
@@ -269,9 +279,11 @@ export class Player {
     this.health = Math.min(T.MAX_HEALTH, this.health + value);
   }
 
+  // The celebration plays on the ground: grabbed in mid-air, the hero drops first (star_fall).
   collectStar() {
     this.stars++;
-    if (!this.inWater && this.action !== 'death') this.setAction('star_dance');
+    if (this.inWater || this.action === 'death') return;
+    this.setAction(this.grounded ? 'star_dance' : 'star_fall');
   }
 
   // Damage with knockback away from fromPos, then INVINCIBLE_TICKS of invulnerability.

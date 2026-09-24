@@ -6,6 +6,14 @@
 //   title.setViewport({ x, y, width, height });   // optional: picture rect (4:3 pillarbox)
 //   await title.show();   // resolves after Enter / Space / Esc / click / tap / gamepad Start
 //
+// show() requests the 'title' track. Browsers only let audio start after a user gesture, so
+// on a first visit the card first asks for any key/click/tap (PRESS ANY KEY): that press
+// unlocks audio, starts the title music and reveals PRESS START, and is swallowed (it does
+// not start the game). Without that step the Start press itself would unlock audio and
+// start the game at once, and the title music would never be heard. The step is skipped
+// when audio is muted, unavailable or already allowed (e.g. the title after a game over);
+// gamepad presses are no user gesture, so a pad starts the game from either phase.
+//
 // On start: audio.unlock(), an sfx 'menu_select' event, a 0.4 s fade. The promise resolves
 // only once the start key/button has been released too, so the game's own input never sees
 // the same press (which would immediately toggle pause or jump).
@@ -13,7 +21,7 @@
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
 import { renderLogoWord } from './logo.js';
-import { hudMetrics, boxStyle, START_PROMPT, TITLE_HINT } from './hudLogic.js';
+import { hudMetrics, boxStyle, TitleGate, START_PRESS, START_PROMPT, UNLOCK_PRESS, UNLOCK_PROMPT, TITLE_HINT } from './hudLogic.js';
 
 // Escape is the in-game Start (pause) key, so it starts the game here too.
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
@@ -44,15 +52,19 @@ const CSS = `
 .cg-bob { display:flex; flex-direction:column; align-items:center;
   animation: cg-drop 0.75s cubic-bezier(.2,1.5,.45,1) both, cg-bob 3.4s ease-in-out 0.75s infinite; }
 .cg-starring { display:flex; align-items:center; justify-content:center; }
-.cg-press { position:absolute; left:50%; transform:translateX(-50%); animation: cg-blink 1.2s steps(1) infinite; }
+.cg-press, .cg-wake { position:absolute; left:50%; transform:translateX(-50%); }
+.cg-press { animation: cg-blink 1.2s steps(1) infinite; }
 .cg-out .cg-press { animation: cg-blink 0.12s steps(1) infinite; }
+.cg-wake { animation: cg-pulse 2.4s ease-in-out infinite; }
 .cg-prompt, .cg-hint { position:absolute; left:50%; transform:translateX(-50%); opacity:0.9; }
+.cg-title.cg-locked .cg-if-ready, .cg-title:not(.cg-locked) .cg-if-locked { display:none; }
 @keyframes cg-drop { from { transform: translateY(-60vh) scale(0.6); } to { transform: none; } }
 @keyframes cg-bob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(calc(var(--u) * -3)) rotate(-0.6deg); }
 }
 @keyframes cg-blink { 0% { opacity:1; } 62% { opacity:0; } }
+@keyframes cg-pulse { 0%, 100% { opacity:1; } 50% { opacity:0.45; } }
 `;
 
 function injectStyles() {
@@ -64,6 +76,13 @@ function injectStyles() {
 }
 
 const drift = (a, b) => Math.abs(a / b - 1);
+
+// The page's sticky user activation (a key/click/tap happened, so browsers let audio
+// start): true/false, or null where the browser does not report it.
+function hasBeenActive() {
+  const ua = typeof navigator !== 'undefined' ? navigator.userActivation : undefined;
+  return ua ? !!ua.hasBeenActive : null;
+}
 
 // One canvas-drawn part of the card. render(px) draws it at px device pixels per logical
 // pixel; fit() shows it at the wanted scale and redraws only when that drifts more than
@@ -189,9 +208,13 @@ export class TitleScreen {
       this.root.appendChild(this.el);
       this._build();
       this._layout();
-      this.audio?.playMusic?.('title');
+      const audio = this.audio;
+      audio?.playMusic?.('title');
+      const gate = new TitleGate(this._audioLocked());
+      this.el.classList.toggle('cg-locked', gate.locked);
+      // Allowed already (e.g. a click while the page loaded) but not created yet: start it.
+      if (!gate.locked && !audio?.ctx) audio?.unlock?.();
 
-      let starting = false;
       let rafId = 0;
       const heldPad = this._pressedPadButtons(); // buttons already down when the title appeared
       const cleanups = [];
@@ -200,10 +223,17 @@ export class TitleScreen {
         cleanups.push(() => target.removeEventListener(type, fn, opts));
       };
 
+      // The first press unlocked audio: start the title music and ask for Start.
+      const wake = () => {
+        this.el.classList.remove('cg-locked');
+        audio?.unlock?.();
+        audio?.playMusic?.('title'); // the context exists now, so the track starts at once
+      };
+
       const begin = (released) => {
-        if (starting) return;
-        starting = true;
-        this.audio?.unlock?.();
+        this.el.classList.remove('cg-locked'); // PRESS START flickers out with the fade
+        // A pad press is no user gesture: creating audio then would only log a warning.
+        if (hasBeenActive() !== false) audio?.unlock?.();
         this.events?.emit('sfx', { name: 'menu_select' });
         this.el.classList.add('cg-out');
         const faded = new Promise((r) => setTimeout(r, FADE_MS));
@@ -225,28 +255,40 @@ export class TitleScreen {
         window,
         'keydown',
         (e) => {
-          if (!START_KEYS.has(e.code)) return;
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          if (!starting) {
-            begin(new Promise((r) => (keyReleased = { code: e.code, r })));
+          const start = START_KEYS.has(e.code);
+          if (start) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
           }
+          const act = gate.key({ start, repeat: e.repeat, activated: hasBeenActive() });
+          if (act === 'unlock') wake();
+          else if (act === 'begin') begin(new Promise((r) => (keyReleased = { code: e.code, r })));
         },
         true,
       );
       listen(window, 'keyup', (e) => {
         if (keyReleased && e.code === keyReleased.code) keyReleased.r();
       });
-      listen(this.el, 'click', () => begin(Promise.resolve()));
+      // Pointer: any press on the page unlocks audio (mouse on press, touch/pen on release);
+      // a click on the card starts, except the one that ends the unlocking press.
+      const onPointer = (down) => () => {
+        if ((down ? gate.pointerDown(hasBeenActive()) : gate.pointerUp(hasBeenActive())) === 'unlock') wake();
+      };
+      listen(window, 'pointerdown', onPointer(true), true);
+      listen(window, 'pointerup', onPointer(false), true);
+      listen(window, 'touchend', onPointer(false), true);
+      listen(this.el, 'click', () => gate.click() === 'begin' && begin(Promise.resolve()));
 
       // Gamepad Start/A, polled every frame; waits for release like the keyboard path.
       let padRelease = null;
       const poll = () => {
+        // Unlocked by a gesture the card did not see (e.g. a handler that stopped the event).
+        if (gate.locked && (hasBeenActive() === true || audio?.ctx?.state === 'running') && gate.unlock()) wake();
         const down = this._pressedPadButtons();
         for (const k of heldPad) if (!down.has(k)) heldPad.delete(k);
-        if (!starting) {
+        if (!gate.starting) {
           const fresh = [...down].find((k) => !heldPad.has(k));
-          if (fresh) begin(new Promise((r) => (padRelease = { key: fresh, r })));
+          if (fresh && gate.pad()) begin(new Promise((r) => (padRelease = { key: fresh, r })));
         } else if (padRelease && !down.has(padRelease.key)) {
           padRelease.r();
         }
@@ -259,6 +301,21 @@ export class TitleScreen {
       observer.observe(this.el);
       cleanups.push(() => observer.disconnect());
     });
+  }
+
+  // Whether browser autoplay rules still hold the audio back: no key/click/tap on the page
+  // yet (sticky activation), and audio is neither muted, unavailable nor already running.
+  _audioLocked() {
+    const a = this.audio;
+    if (!a?.unlock || !a.playMusic || a.muted || a.failed) return false;
+    if (typeof window === 'undefined' || !(window.AudioContext || window.webkitAudioContext)) return false;
+    if (a.ctx?.state === 'running') return false;
+    try {
+      if (navigator.getAutoplayPolicy?.('audiocontext') === 'allowed') return false;
+    } catch {
+      // not supported: rely on the activation state
+    }
+    return hasBeenActive() !== true;
   }
 
   // Set of "padIndex:button" strings for start-capable buttons currently held.
@@ -286,8 +343,10 @@ export class TitleScreen {
       grounds: logoWord('GROUNDS', 3.6, { colors: GROUNDS_COLORS, arc: 0.22 }),
       pip: logoWord('PIP', 2.2, { colors: PIP_COLORS, jitter: 0.08 }),
       starring: new Piece('cg-pixel', (px) => textCanvas(SMALL_FONT, 'starring', 1.5 * px, 'white')),
-      press: new Piece('cg-press cg-pixel', (px) => textCanvas(BIG_FONT, 'PRESS START', 1.2 * px, 'gold')),
-      prompt: new Piece('cg-prompt cg-pixel', (px) => textCanvas(SMALL_FONT, START_PROMPT, px, 'white')),
+      press: new Piece('cg-press cg-if-ready cg-pixel', (px) => textCanvas(BIG_FONT, START_PRESS, 1.2 * px, 'gold')),
+      prompt: new Piece('cg-prompt cg-if-ready cg-pixel', (px) => textCanvas(SMALL_FONT, START_PROMPT, px, 'white')),
+      wake: new Piece('cg-wake cg-if-locked cg-pixel', (px) => textCanvas(BIG_FONT, UNLOCK_PRESS, 1.2 * px, 'gold')),
+      wakePrompt: new Piece('cg-prompt cg-if-locked cg-pixel', (px) => textCanvas(SMALL_FONT, UNLOCK_PROMPT, px, 'white')),
       hint: new Piece('cg-hint cg-pixel', (px) => textCanvas(SMALL_FONT, TITLE_HINT, px, 'white')),
     };
     const div = (className, children) => {
@@ -296,10 +355,10 @@ export class TitleScreen {
       d.append(...children);
       return d;
     };
-    const { castle, grounds, pip, starring, press, prompt, hint } = this.pieces;
+    const { castle, grounds, pip, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
     this.starringRow = div('cg-starring', [starring.el, pip.el]);
     this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el, this.starringRow])]);
-    this.el.append(this.logo, press.el, prompt.el, hint.el);
+    this.el.append(this.logo, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
   }
 
   // Size and place everything for the current box; the layout is in 320x240 logical units.
@@ -318,8 +377,8 @@ export class TitleScreen {
     p.grounds.el.style.marginTop = at(-16);
     p.pip.el.style.marginLeft = at(-2);
     this.starringRow.style.marginTop = at(-8);
-    p.press.el.style.top = at(H * 0.73);
-    p.prompt.el.style.top = at(H * 0.73 + 16);
+    p.press.el.style.top = p.wake.el.style.top = at(H * 0.73);
+    p.prompt.el.style.top = p.wakePrompt.el.style.top = at(H * 0.73 + 16);
     p.hint.el.style.bottom = at(8);
   }
 }

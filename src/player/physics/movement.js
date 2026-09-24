@@ -46,10 +46,11 @@ export function decelerate(p, amount) {
 // forward speed in [AIR_MAX_BACK_SPEED, topSpeed] that the speed eases toward (faster when
 // pushing toward it, slower when merely coasting); speeds outside the range bleed off. The
 // sideways component eases a strafe drift that is added to the velocity, never stored as speed.
-export function updateAirControl(p, topSpeed = T.AIR_MAX_SPEED) {
+// `coastBack`: a stick pulled back only coasts (no braking, no backward target).
+export function updateAirControl(p, topSpeed = T.AIR_MAX_SPEED, coastBack = false) {
   const m = p.stickHeld ? p.intendedMag / T.MAX_TARGET_SPEED : 0;
   const d = angleDiff(p.faceYaw, p.intendedYaw);
-  const along = Math.cos(d) * m;
+  const along = coastBack ? Math.max(0, Math.cos(d) * m) : Math.cos(d) * m;
   const fv = p.forwardVel;
   const target = along >= 0 ? topSpeed * along : -T.AIR_MAX_BACK_SPEED * along;
   let rate = T.AIR_DRAG;

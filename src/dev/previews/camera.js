@@ -440,8 +440,10 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     `${name}  t=${(tick * TICK).toFixed(2)}s  mode=${cam.mode} zoom=${cam.zoom}\n` +
     `dist=${cam.pos.distanceTo(cam.target).toFixed(0)} yaw=${((cam.getYaw() * 180) / Math.PI).toFixed(1)} ` +
     `camY=${cam.pos.y.toFixed(0)} underwater=${cam.underwater} hero=${hero.action}\n` +
+    `aim=${((cam.aimRise * 180) / Math.PI).toFixed(1)} rest=${((cam.restAim * 180) / Math.PI).toFixed(1)} hlift=${cam.collider.heightLift.toFixed(0)} ` +
     `ratio=${(cam.collider.ratio ?? 1).toFixed(2)} view=${cam.collider.viewRatio.toFixed(2)} ` +
     `lift=${((cam.collider.lift * 180) / Math.PI).toFixed(0)}${cam.collider.occluded ? ' occluded' : ''} ` +
+    `crest=${cam.collider.crestRise.toFixed(0)}${cam.hero.covered ? ' covered' : ''}${cam.swimSight.goal !== null ? ' swim-swing' : ''}${cam.celebration ? ' celebrating' : ''} ` +
     `sfx: ${sfxLog.slice(-4).join(' ')}`;
 
   const W = renderer.domElement.width;

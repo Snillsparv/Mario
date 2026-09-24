@@ -4,7 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PlayerModel } from '../src/player/PlayerModel.js';
 import { ANIM_NAMES, resolveAnim } from '../src/player/model/animations.js';
-import { CHANNELS } from '../src/player/model/pose.js';
+import { Session } from 'node:inspector/promises';
+import { CHANNELS, createPose, resetPose, copyPose, blendPose } from '../src/player/model/pose.js';
+import { gaitAt, gaitLegs } from '../src/player/model/gait.js';
 import { makeRng } from '../src/core/math.js';
 
 // The complete AnimName list from docs/ARCHITECTURE.md.
@@ -113,6 +115,85 @@ test('invincibility blinks the body, not the shadow', () => {
   assert.deepEqual([...seen].sort(), [false, true]);
   model.update({ pos: { x: 0, y: 0, z: 0 }, anim: 'idle', animTime: 0.2, floorY: 0, invincible: false }, 1 / 60);
   assert.equal(model.rig.orient.visible, true);
+});
+
+test('no invincibility flicker while dying: Pip stays drawn for the whole collapse', () => {
+  // The Player keeps its post-hit invincibility through 'death' (the hit took the last wedge).
+  const model = new PlayerModel();
+  for (let i = 0; i < 60; i++) {
+    model.update({ pos: { x: 0, y: 0, z: 0 }, action: 'death', anim: 'death', animTime: i / 60, floorY: 0, invincible: true }, 1 / 60);
+    assert.equal(model.rig.orient.visible, true, `hidden ${i} frames into the death anim`);
+  }
+  // ...and the flicker still runs for a knockback.
+  const seen = new Set();
+  for (let i = 0; i < 8; i++) {
+    model.update({ pos: { x: 0, y: 0, z: 0 }, action: 'hurt', anim: 'hurt', animTime: i / 60, floorY: 0, invincible: true }, 1 / 60);
+    seen.add(model.rig.orient.visible);
+  }
+  assert.equal(seen.size, 2);
+});
+
+test('a gait never inherits another gait\'s params (walk after tiptoe/run keeps heel-toe steps)', () => {
+  const TIPTOE = { stance: 0.62, reach: 30, tiptoe: true, heelUp: 0.75, lift: 11, kick: 0, zMid: -2 };
+  const RUN = { stance: 0.45, reach: 47, toeUp: 0.2, heelUp: 0.9, lift: 12, kick: 18, drive: 24, zMid: -2 };
+  const WALK = { stance: 0.58, reach: 47, toeUp: 0.25, heelUp: 0.6, lift: 6, kick: 3, zMid: 3 };
+  const p = createPose();
+  gaitLegs(p, 0.3, gaitAt(TIPTOE, 48));
+  gaitLegs(p, 0.3, gaitAt(RUN, 240));
+  const g = gaitAt(WALK, 100);
+  assert.equal(g.tiptoe, false, 'walk on tiptoe after a tiptoe step');
+  assert.equal(g.drive, 0, 'walk with the run\'s knee drive');
+  // At the left heel strike the boot lands heel first, toes raised by toeUp.
+  gaitLegs(resetPose(p), 0, g);
+  const bootPitch = p.ankleL + p.flipPitch + p.hipsPitch - p.legLSwing + p.kneeL; // + = toes down
+  assert.ok(Math.abs(bootPitch + WALK.toeUp) < 1e-6, `boot pitch at heel strike ${bootPitch}`);
+});
+
+test('whole-pose helpers cover every channel', () => {
+  const a = createPose();
+  const b = createPose();
+  CHANNELS.forEach((c, i) => {
+    a[c] = 0.01 * (i + 1);
+    b[c] = -0.02 * (i + 1);
+  });
+  b.face = 'happy';
+  const copy = copyPose(createPose(), a);
+  const mid = blendPose(createPose(), a, b, 0.5);
+  for (const c of CHANNELS) {
+    assert.equal(copy[c], a[c], `copyPose misses ${c}`);
+    assert.ok(Math.abs(mid[c] - (a[c] + b[c]) / 2) < 1e-12, `blendPose misses ${c}`);
+  }
+  assert.equal(mid.face, 'happy');
+  resetPose(a);
+  for (const c of CHANNELS) assert.equal(a[c], 0, `resetPose misses ${c}`);
+  assert.deepEqual(Object.keys(createPose()), [...CHANNELS, 'face'], 'all poses share one shape');
+});
+
+// Bytes allocated per call of fn once it is warm (V8 heap sampling).
+async function bytesPerCall(fn, n = 20000) {
+  for (let i = 0; i < n; i++) fn(i);
+  const session = new Session();
+  session.connect();
+  await session.post('HeapProfiler.enable');
+  await session.post('HeapProfiler.startSampling', { samplingInterval: 32, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true });
+  for (let i = 0; i < n; i++) fn(i);
+  const { profile } = await session.post('HeapProfiler.stopSampling');
+  session.disconnect();
+  let total = 0;
+  const walk = (node) => {
+    total += node.selfSize;
+    node.children.forEach(walk);
+  };
+  walk(profile.head);
+  return total / n;
+}
+
+test('walking legs allocate little per frame (foot solutions reuse scratch records)', async () => {
+  // Before the fix every leg solve returned fresh {z, y, pitch} records (~770 B per call).
+  const p = createPose();
+  const WALK = { stance: 0.58, reach: 47, toeUp: 0.25, heelUp: 0.6, lift: 6, kick: 3, zMid: 3 };
+  const bytes = await bytesPerCall((i) => gaitLegs(p, i * 0.013, gaitAt(WALK, 100 + (i % 10))));
+  assert.ok(bytes < 400, `${bytes.toFixed(0)} bytes per gaitLegs call`);
 });
 
 test('anim changes blend instead of snapping', () => {

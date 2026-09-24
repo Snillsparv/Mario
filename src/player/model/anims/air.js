@@ -35,8 +35,9 @@ function jump(p, c) {
 function fall(p, c) {
   const a = smoothstep(0, 0.3, c.t);
   const f = c.t * 13;
-  for (const [side, o] of [['L', 0], ['R', PI]]) {
-    arm(p, side, 0.35 + 0.3 * Math.cos(f + o), 0.3 + a * (1.85 + 0.35 * Math.sin(f + o)), 0.5 + 0.35 * Math.sin(f + o + 1));
+  for (let i = 0; i < 2; i++) {
+    const o = i * PI; // the arms flail half a turn apart
+    arm(p, i ? 'R' : 'L', 0.35 + 0.3 * Math.cos(f + o), 0.3 + a * (1.85 + 0.35 * Math.sin(f + o)), 0.5 + 0.35 * Math.sin(f + o + 1));
   }
   const g = c.t * 9;
   leg(p, 'L', 0.35 + 0.35 * a * Math.sin(g), 0.7 + 0.5 * a * Math.sin(g + 1.2), 0.3);
@@ -219,7 +220,8 @@ function wallBrace(p, c) {
   const wall = WALL_DIST - 2;
   legTo(p, 'L', wall - 19, 34, -1.35); // toes up, sole to the wall
   legTo(p, 'R', wall - 21, 20, -1.2);
-  for (const [side, x] of [['L', 22], ['R', -22]]) reachArm(p, side, x, 104, wall - HAND_R, 1, 0.7);
+  reachArm(p, 'L', 22, 104, wall - HAND_R, 1, 0.7);
+  reachArm(p, 'R', -22, 104, wall - HAND_R, 1, 0.7);
   p.face = 'hurt';
 }
 

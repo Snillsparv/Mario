@@ -242,3 +242,29 @@ test('terrain part has a scene graph and an animating water surface', () => {
   assert.ok(names.length <= 10, `${names.length} draw calls`);
   part.update(12.5);
 });
+
+test('the path decal cannot show through the bridge deck resting just above the lawn', () => {
+  let paths = null;
+  part.object3D.traverse((o) => o.name === 'paths' && (paths = o));
+  // A slope bias grows with the pixel size at grazing angles (several units at the N64 mode's
+  // 240 lines), more than the ~2-unit gap under the deck's lawn end: only a constant bias.
+  assert.equal(paths.material.polygonOffsetFactor, 0);
+  assert.ok(paths.material.polygonOffsetUnits < 0);
+
+  // No decal under the deck's footprint, but the path still runs right up to the deck's end.
+  const B = L.BRIDGE;
+  const pos = paths.geometry.attributes.position;
+  const idx = paths.geometry.index;
+  const under = (i) => Math.abs(pos.getX(i) - B.x) <= B.width / 2 && pos.getZ(i) >= B.northZ && pos.getZ(i) <= B.southZ;
+  let covered = 0;
+  let atEnd = 0;
+  for (let t = 0; t < idx.count; t += 3) {
+    const v = [idx.getX(t), idx.getX(t + 1), idx.getX(t + 2)];
+    if (v.every(under)) covered++;
+    const cz = (pos.getZ(v[0]) + pos.getZ(v[1]) + pos.getZ(v[2])) / 3;
+    const cx = (pos.getX(v[0]) + pos.getX(v[1]) + pos.getX(v[2])) / 3;
+    if (Math.abs(cx - B.x) < B.width / 4 && cz > B.southZ && cz < B.southZ + 100) atEnd++;
+  }
+  assert.equal(covered, 0, `${covered} decal triangles hidden under the deck`);
+  assert.ok(atEnd > 0, 'the path decal reaches the deck');
+});

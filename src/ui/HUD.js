@@ -5,6 +5,7 @@
 //   const hud = new HUD(uiRoot, { events });   // events optional (red-coin pop-ups)
 //   hud.update({ lives, coins, stars, health, showPower, breath, paused })   // 30 Hz
 //   hud.setPaused(bool)
+//   hud.setVisible(bool)                        // e.g. hidden behind the title card
 //   hud.setViewport({ x, y, width, height })   // picture rect in the root (4:3 pillarbox)
 //
 // Game logic (meter timing, counters) advances in update(); drawing runs on its own
@@ -37,6 +38,7 @@ export class HUD {
     this.gamepad = false; // pause legend shows pad bindings
     this.slide = new MeterSlide();
     this.active = false; // nothing is drawn until the game first feeds state (not over the title)
+    this.visible = true; // setVisible(): hidden HUDs skip their repaints
     this.dirty = true;
     this.unsub = events?.on('coin', (e) => {
       if (e?.red) this.showRedCoin(e.index);
@@ -85,6 +87,14 @@ export class HUD {
     this.paused = !!paused;
     if (this.paused) this.gamepad = gamepadConnected();
     this.dirty = true;
+  }
+
+  // Show or hide the whole HUD (the title and the game-over card use the screen alone).
+  // While hidden the counters and the meter keep following update(), without repainting.
+  setVisible(visible) {
+    this.visible = !!visible;
+    this.dirty = true; // repaint the current state when it shows again
+    if (this.el) this.el.style.visibility = this.visible ? '' : 'hidden';
   }
 
   // Confine the HUD to the picture rectangle (CSS px relative to the root), e.g. the
@@ -144,7 +154,7 @@ export class HUD {
     const dt = Math.max(0, Math.min(0.1, (now - this._last) / 1000));
     this._last = now;
     const moving = this._animate(dt);
-    if (!this.active || (!moving && !this.dirty)) return;
+    if (!this.active || !this.visible || (!moving && !this.dirty)) return;
     this.dirty = moving; // keep repainting until the last animation frame has settled
     const { ctx, s } = this;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);

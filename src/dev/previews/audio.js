@@ -1,7 +1,7 @@
 // Audio preview: /preview.html?m=audio
 //
-// For people: buttons to audition every sound effect, both music loops and the ambience
-// at a few listener positions.
+// For people: buttons to audition every sound effect, the music (the loops, and the cues as
+// they play in game) and the ambience at a few listener positions.
 // For automation (no speakers in CI): offline renders with analysis and pictures.
 //   __renderMusic(name, seconds = 20, fromBeat = 0)  -> analysis; draws waveform + spectrogram
 //   __renderCue(name, barsBefore = 3)               -> the in-game ending of a cue song
@@ -343,7 +343,10 @@ export async function setup({ scene, THREE, ui, params }) {
     button(panel, terrain, withAudio(() => audio.play('footstep', { terrain })));
   }
   section(panel, 'Offline render');
-  for (const name of Object.keys(SONGS)) button(panel, `render ${name}`, () => window.__renderMusic(name, 20));
+  // A jingle (a song that is nothing but its cue) renders as heard in game, not looped.
+  for (const [name, song] of Object.entries(SONGS)) {
+    button(panel, `render ${name}`, () => (song.jingle ? window.__renderCue(name) : window.__renderMusic(name, 20)));
+  }
 
   const publish = (r) => (window.__audioResult = r);
 

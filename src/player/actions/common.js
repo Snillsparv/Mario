@@ -109,9 +109,10 @@ export function poleInReach(p) {
   return p.collision.findPole(p.pos.x, p.pos.y + 60, p.pos.z, T.POLE_GRAB_REACH);
 }
 
-// Grabs `pole` (one in reach) unless grabs are on cooldown.
+// Grabs `pole` (one in reach) unless grabs are on cooldown or it is the trunk just let go of
+// (p.letGoPole: ignored until he lands or leaves its reach, see Player.afterTick / airTick).
 export function tryPoleGrab(p, pole) {
-  if (p.tick < p.grabCooldownUntil) return false;
+  if (p.tick < p.grabCooldownUntil || pole === p.letGoPole) return false;
   p.setAction('pole', pole);
   return true;
 }

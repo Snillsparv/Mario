@@ -2,7 +2,8 @@
 // a half-failed context setup leaves a clean silent engine, a track replaced right after it
 // started is cut instead of crossfaded, terrain-less sounds use the last terrain, names
 // inherited from Object.prototype are unknown, voice slots free on the audio clock, a cue
-// ends by itself, and music requested before audio existed waits for the unlocking press.
+// ends by itself, music requested before audio existed waits for the unlocking press, and
+// game over plays a jingle over the card with the ambience ducked.
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
@@ -12,6 +13,7 @@ import { SONGS } from '../src/audio/songs.js';
 import { compileSong } from '../src/audio/compile.js';
 import { Sequencer } from '../src/audio/Sequencer.js';
 import { INSTRUMENTS } from '../src/audio/instruments.js';
+import { LEVELS } from '../src/audio/mixer.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.
@@ -329,4 +331,42 @@ test('with nothing newer requested, the pending track starts a moment after the 
   assert.equal(audio.track?.name, 'title');
   audio.stopMusic();
   mock.timers.tick(2000);
+});
+
+test('game over: a jingle takes the music slot, the ambience drops back for the card, the title crossfades in', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  events.emit('gameOver'); // no context (muted or never unlocked): no jingle turns up later
+  assert.equal(audio.wantMusic, null);
+  mock.timers.tick(4000);
+  await audio.unlock();
+  const level = (bus) => audio.mix[bus].gain.calls.findLast(([m]) => m === 'setTargetAtTime')[1];
+  audio.playMusic('castle_grounds');
+  const castle = audio.track;
+  audio.ctx.currentTime = 10; // castle music still playing (an unusually quick game over)
+  events.emit('gameOver');
+  assert.equal(audio.track.name, 'game_over');
+  const { seq, gain } = audio.track;
+  assert.ok(castle.gain.gain.calls.some(([m, v, t]) => m === 'linearRampToValueAtTime' && v === 0 && t <= 10.2), 'castle music cut');
+  assert.ok(!gain.gain.calls.some(([m]) => m === 'linearRampToValueAtTime'), 'the jingle cuts in at full level');
+  audio.ctx.currentTime = 30;
+  assert.ok(seq.endBeat * seq.spb >= 1.5 && seq.endBeat * seq.spb <= 2.8, 'final chord lands during the card');
+  assert.ok(level('amb') < LEVELS.amb * 0.5, 'ambience ducked');
+  assert.equal(level('music'), LEVELS.music, 'the jingle is not ducked');
+  mock.timers.tick(3300); // the card is gone: the title is back
+  assert.equal(level('amb'), LEVELS.amb);
+  audio.ctx.currentTime = 33.2;
+  audio.playMusic('title');
+  assert.equal(audio.track.name, 'title');
+  assert.ok(gain.gain.calls.some(([m, v]) => m === 'linearRampToValueAtTime' && v === 0), 'jingle fades out');
+  assert.ok(audio.track.gain.gain.calls.some(([m]) => m === 'linearRampToValueAtTime'), 'title fades in (crossfade)');
+  // A new game starts from resting levels, whatever was ducked before.
+  events.emit('pause');
+  events.emit('gameOver');
+  events.emit('gameStart');
+  assert.equal(level('music'), LEVELS.music);
+  assert.equal(level('amb'), LEVELS.amb);
+  audio.stopMusic();
+  mock.timers.tick(5000);
+  assert.equal(level('amb'), LEVELS.amb, 'no stale duck release');
 });

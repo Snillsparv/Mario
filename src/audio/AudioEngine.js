@@ -8,7 +8,8 @@
 // Audio must never break gameplay: event handlers and voices swallow (and log once) errors.
 //
 // Music: a looping track plays until replaced; a cue (a song with finalBar) plays once and
-// frees the music slot when it has faded out. A menu track stops when the game starts.
+// frees the music slot when it has faded out. A menu track stops when the game starts, and
+// the game-over jingle plays over the GAME OVER card.
 
 import { SONGS } from './songs.js';
 import { compileSong } from './compile.js';
@@ -35,6 +36,8 @@ const FULL_VOLUME_DIST = 1400; // positional sounds are full volume within this 
 const SILENT_DIST = 9000;
 const PAUSE_DUCK = 0.35;
 const FANFARE_SECONDS = 2.8;
+const GAME_OVER_SECONDS = 3.2; // the GAME OVER card (main.js), before the title returns
+const GAME_OVER_AMB_DUCK = 0.3; // the frozen world's ambience drops back under the jingle
 
 // Only a table's own entries count: names like 'toString' or '__proto__' are unknown.
 const own = (table, name) => (typeof name === 'string' && Object.hasOwn(table, name) ? table[name] : null);
@@ -62,8 +65,9 @@ export class AudioEngine {
     this.active = []; // sounding one-shots: { end (context time), node }
     this.lastPlayed = new Map();
     this.terrain = 'grass'; // last terrain seen in footstep/land events
-    this.duck = { pause: 1, fanfare: 1 };
+    this.duck = { pause: 1, fanfare: 1, gameOver: 1 };
     this.fanfareTimer = 0;
+    this.gameOverTimer = 0;
     this.suspendTimer = 0;
     this._muted = false;
     this.listener = { x: SPAWN.x, y: LAWN_BASE + 500, z: SPAWN.z + 1200, yaw: SPAWN.yaw };
@@ -206,7 +210,19 @@ export class AudioEngine {
     // and then the first key/pointer press unlocks instead (no autoplay warning).
     on('gameStart', () => {
       if (this.wantMusic && own(SONGS, this.wantMusic).menu) this.stopMusic();
+      this.clearDucks(); // a new game is never paused, fanfaring or over
       if (hasUserActivation()) this.unlock();
+    });
+    // GAME OVER card: a short original jingle cuts in on the music slot (and through any
+    // fanfare duck) while the ambience of the frozen world drops back; the title track then
+    // crossfades in from the jingle's last chord, and the ambience returns.
+    // Without a context (muted, or audio never unlocked) nothing is queued: a jingle must
+    // not turn up later.
+    on('gameOver', () => {
+      this.clearDucks();
+      if (this.ctx) this.playMusic('game_over');
+      this.setDuck('gameOver', GAME_OVER_AMB_DUCK);
+      this.gameOverTimer = setTimeout(() => this.setDuck('gameOver', 1), GAME_OVER_SECONDS * 1000);
     });
   }
 
@@ -321,13 +337,14 @@ export class AudioEngine {
 
   // Crossfade from the current track, or cut it quickly if it has only just started
   // (then the new track comes in at full level instead of overlapping a clashing key).
+  // A jingle always cuts in: fading in would swallow half of it.
   startMusic(name) {
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const old = this.track;
-    const crossfade = !!old && now - old.started >= YOUNG_TRACK;
-    if (old) this.fadeOutTrack(old, crossfade ? MUSIC_FADE : QUICK_CUT);
     const song = compiled(name);
+    const crossfade = !!old && !song.jingle && now - old.started >= YOUNG_TRACK;
+    if (old) this.fadeOutTrack(old, crossfade ? MUSIC_FADE : QUICK_CUT);
     const gain = ctx.createGain();
     gain.connect(this.mix.music);
     gain.gain.setValueAtTime(crossfade ? 0 : song.level, now);
@@ -370,10 +387,19 @@ export class AudioEngine {
     this.applyLevels();
   }
 
+  // Back to resting levels, cancelling pending duck releases.
+  clearDucks() {
+    clearTimeout(this.fanfareTimer);
+    clearTimeout(this.gameOverTimer);
+    for (const key of Object.keys(this.duck)) this.duck[key] = 1;
+    this.applyLevels();
+  }
+
   applyLevels() {
     if (!this.mix) return;
     const t = this.ctx.currentTime;
-    this.mix.music.gain.setTargetAtTime(LEVELS.music * this.duck.pause * this.duck.fanfare, t, 0.12);
-    this.mix.amb.gain.setTargetAtTime(LEVELS.amb * this.duck.pause, t, 0.12);
+    const { pause, fanfare, gameOver } = this.duck;
+    this.mix.music.gain.setTargetAtTime(LEVELS.music * pause * fanfare, t, 0.12);
+    this.mix.amb.gain.setTargetAtTime(LEVELS.amb * pause * gameOver, t, 0.12);
   }
 }

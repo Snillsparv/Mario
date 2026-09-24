@@ -106,7 +106,7 @@ export function wallQuad(out, ax, az, bx, bz, a0, a1, b0, b1) {
 // Corners of a polygon around (x, z): `sides` corners on a circle of `radius`, or, when
 // `radius` is an array, one corner per entry at that distance. Corner i sits at angle
 // (i + phase) / sides turns, running from +x toward +z.
-function ring(x, z, radius, sides, phase = 0) {
+export function ring(x, z, radius, sides, phase = 0) {
   const radii = Array.isArray(radius) ? radius : Array(sides).fill(radius);
   return radii.map((r, i) => {
     const a = ((i + phase) / radii.length) * Math.PI * 2;
@@ -118,11 +118,33 @@ function ring(x, z, radius, sides, phase = 0) {
 // but not stand on. Walls face outward (each edge's (dz, -dx) points away from the axis).
 // `radius` is a number (regular prism of `sides` sides) or per-corner radii (see ring).
 export function prismWalls(out, x, z, y0, y1, radius, sides = 8, phase = 0) {
-  const pts = ring(x, z, radius, sides, phase);
+  polygonWalls(out, ring(x, z, radius, sides, phase), y0, y1);
+}
+
+// Walls from y0 to y1 along a closed polygon of [x, z] corners running from +x toward +z
+// (like ring, or convexHull), facing outward.
+export function polygonWalls(out, pts, y0, y1) {
   pts.forEach(([ax, az], i) => {
     const [bx, bz] = pts[(i + 1) % pts.length];
     wallQuad(out, ax, az, bx, bz, y0, y1, y0, y1);
   });
+}
+
+// Convex hull of [x, z] points, its corners running from +x toward +z like ring's (Andrew's
+// monotone chain; points on an edge are dropped).
+export function convexHull(points) {
+  const pts = [...points].sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list) => {
+    const h = [];
+    for (const p of list) {
+      while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], p) <= 0) h.pop();
+      h.push(p);
+    }
+    h.pop(); // each half's last point starts the other
+    return h;
+  };
+  return [...half(pts), ...half(pts.reverse())];
 }
 
 // Solid round obstacle (boulder, bush, post): an open prism of walls up to `shoulder` and a

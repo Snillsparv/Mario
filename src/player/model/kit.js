@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { clamp, smoothstep, TAU } from '../../core/math.js';
-import { SIDE, createPose, resetPose, blendPose } from './pose.js';
+import { createPose, resetPose, blendPose } from './pose.js';
 import {
   ANKLE_Y, CENTER, FOREARM, HAND_OFFSET, HIP_DROP, HIP_X, HIP_Y, SHIN, SHOULDER_X, SHOULDER_Y, SPINE_Y, THIGH,
   UPPER_ARM,
@@ -28,13 +28,20 @@ export const easeOutBack = (x) => {
 // 0 -> 1 -> 0 over [0, 1].
 export const hump = (x) => Math.sin(PI * unit(x));
 
-// Sets one arm; side is 'L' or 'R'.
+// Sets one arm; side is 'L' or 'R'. (The per-side helpers write channels by name, never
+// p[name], which would box every number: see pose.js.)
 export function arm(p, side, swing, raise, elbow, sweep = 0) {
-  const k = SIDE[side];
-  p[k.swing] = swing;
-  p[k.raise] = raise;
-  p[k.elbow] = elbow;
-  p[k.sweep] = sweep;
+  if (side === 'L') {
+    p.armLSwing = swing;
+    p.armLRaise = raise;
+    p.elbowL = elbow;
+    p.armLSweep = sweep;
+  } else {
+    p.armRSwing = swing;
+    p.armRRaise = raise;
+    p.elbowR = elbow;
+    p.armRSweep = sweep;
+  }
 }
 
 export function arms(p, swing, raise, elbow, sweep = 0) {
@@ -43,11 +50,17 @@ export function arms(p, swing, raise, elbow, sweep = 0) {
 }
 
 export function leg(p, side, swing, knee, ankle = 0, spread = 0) {
-  const k = SIDE[side];
-  p[k.leg] = swing;
-  p[k.knee] = knee;
-  p[k.ankle] = ankle;
-  p[k.spread] = spread;
+  if (side === 'L') {
+    p.legLSwing = swing;
+    p.kneeL = knee;
+    p.ankleL = ankle;
+    p.legLSpread = spread;
+  } else {
+    p.legRSwing = swing;
+    p.kneeR = knee;
+    p.ankleR = ankle;
+    p.legRSpread = spread;
+  }
 }
 
 export function legs(p, swing, knee, ankle = 0, spread = 0) {
@@ -107,7 +120,6 @@ function bodyToHips(p) {
 // whatever sideways offset the plane has there; legXSpread is left alone) with the boot
 // pitched `toePitch` from flat (+ = toes down, - = heel down).
 export function legTo(p, s, z, y, toePitch = 0) {
-  const k = SIDE[s];
   const hx = s === 'L' ? HIP_X : -HIP_X;
   const m = bodyToHips(p).multiply(tmpM.makeTranslation(hx, -HIP_DROP, 0)).invert();
   // The x (body space) at which (x, y, z) lies in the thigh's swing plane (thigh x = 0).
@@ -116,14 +128,22 @@ export function legTo(p, s, z, y, toePitch = 0) {
   const t = target.set(x, y, z).applyMatrix4(m);
   const dy = t.y;
   const dz = t.z;
-  const d = clamp(Math.hypot(dy, dz), Math.abs(THIGH - SHIN) + 0.01, THIGH + SHIN - 0.01);
+  const d = clamp(Math.sqrt(dy * dy + dz * dz), Math.abs(THIGH - SHIN) + 0.01, THIGH + SHIN - 0.01);
   const knee = PI - Math.acos(clamp((THIGH * THIGH + SHIN * SHIN - d * d) / (2 * THIGH * SHIN), -1, 1));
   const aim = Math.atan2(dz, -dy);
   const lead = Math.acos(clamp((THIGH * THIGH + d * d - SHIN * SHIN) / (2 * THIGH * d), -1, 1));
-  p[k.leg] = aim + lead;
-  p[k.knee] = knee;
+  const swing = aim + lead;
   // The boot's pitch is the sum of everything above it: cancel it, then add toePitch.
-  p[k.ankle] = toePitch - p.flipPitch - p.hipsPitch + p[k.leg] - knee;
+  const ankle = toePitch - p.flipPitch - p.hipsPitch + swing - knee;
+  if (s === 'L') {
+    p.legLSwing = swing;
+    p.kneeL = knee;
+    p.ankleL = ankle;
+  } else {
+    p.legRSwing = swing;
+    p.kneeR = knee;
+    p.ankleR = ankle;
+  }
 }
 
 // Keeps a boot flat on the floor at height groundY, footZ forward of the body origin.
@@ -168,12 +188,22 @@ export function reachArm(p, s, x, y, z, w = 1, elbowOut = 0.3) {
   upper.negate(); // the frame's +Y (the arm hangs along -Y)
   side.crossVectors(upper, bend);
   tmpE.setFromRotationMatrix(tmpM.makeBasis(side, upper, bend), 'XYZ'); // (-swing, -sweep, raise)
-  const ch = SIDE[s];
-  const mix = (key, v) => { p[ch[key]] += (wrapNear(v, p[ch[key]]) - p[ch[key]]) * w; };
-  mix('swing', -tmpE.x);
-  mix('sweep', -tmpE.y);
-  mix('raise', tmpE.z);
-  mix('elbow', elbow);
+  if (s === 'L') {
+    p.armLSwing = mixAngle(p.armLSwing, -tmpE.x, w);
+    p.armLSweep = mixAngle(p.armLSweep, -tmpE.y, w);
+    p.armLRaise = mixAngle(p.armLRaise, tmpE.z, w);
+    p.elbowL = mixAngle(p.elbowL, elbow, w);
+  } else {
+    p.armRSwing = mixAngle(p.armRSwing, -tmpE.x, w);
+    p.armRSweep = mixAngle(p.armRSweep, -tmpE.y, w);
+    p.armRRaise = mixAngle(p.armRRaise, tmpE.z, w);
+    p.elbowR = mixAngle(p.elbowR, elbow, w);
+  }
+}
+
+// `from` moved toward angle a by weight w, the short way round.
+function mixAngle(from, a, w) {
+  return from + (wrapNear(a, from) - from) * w;
 }
 
 // The equivalent angle closest to `ref` (so blends never take the long way round).
@@ -199,9 +229,9 @@ const keyB = createPose();
 export function keyframes(p, t, keys, c) {
   let i = 0;
   while (i < keys.length - 1 && t >= keys[i + 1][0]) i++;
-  const [t0, f0] = keys[i];
+  const t0 = keys[i][0];
   const next = keys[Math.min(i + 1, keys.length - 1)];
-  f0(resetPose(keyA), c);
+  keys[i][1](resetPose(keyA), c);
   if (next === keys[i]) return blendPose(p, keyA, keyA, 1);
   next[1](resetPose(keyB), c);
   const u = easeInOut((t - t0) / (next[0] - t0));

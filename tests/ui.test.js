@@ -17,8 +17,14 @@ import {
   PAD_CONTROLS,
   BIG_STRINGS,
   SMALL_STRINGS,
+  TitleGate,
+  UNLOCK_PROMPT,
+  START_PROMPT,
+  GAME_OVER,
+  GAME_OVER_SCALE,
 } from '../src/ui/hudLogic.js';
 import { HUD } from '../src/ui/HUD.js';
+import { GameOverCard } from '../src/ui/GameOverCard.js';
 import { Events } from '../src/core/events.js';
 
 const TICK = 1 / 30;
@@ -268,5 +274,91 @@ test('red-coin number and counter bumps freeze while paused', () => {
   hud.setPaused(false);
   for (let i = 0; i < 120; i++) hud._animate(1 / 60);
   assert.equal(hud.redPopup, null);
+  hud.dispose();
+});
+
+// Title music regression: the press that unlocks audio must not also start the game, or
+// the title track is replaced before it is ever heard.
+test('title: the first key only unlocks audio; a fresh Start press begins', () => {
+  const g = new TitleGate(true);
+  assert.equal(g.key({ start: true, activated: true }), 'unlock', 'Enter on the locked card unlocks audio');
+  assert.equal(g.locked, false);
+  assert.equal(g.key({ start: true, repeat: true, activated: true }), null, 'holding that Enter does not start');
+  assert.equal(g.key({ start: false, activated: true }), null, 'other keys do not start');
+  assert.equal(g.key({ start: true, activated: true }), 'begin', 'a fresh Enter starts');
+  assert.equal(g.key({ start: true, activated: true }), null, 'starts once');
+  assert.equal(g.pad(), null);
+  assert.equal(g.unlock(true), null);
+});
+
+test('title: a press that grants no user activation (Esc) cannot unlock audio', () => {
+  const g = new TitleGate(true);
+  assert.equal(g.key({ start: true, activated: false }), null);
+  assert.equal(g.locked, true);
+  assert.equal(g.key({ start: false, activated: true }), 'unlock', 'any other key unlocks');
+  assert.equal(g.key({ start: true, activated: true }), 'begin');
+  // Browsers without navigator.userActivation: any press counts.
+  assert.equal(new TitleGate(true).key({ start: false, activated: null }), 'unlock');
+});
+
+test('title: the click ending the unlocking mouse press or tap is swallowed', () => {
+  const mouse = new TitleGate(true);
+  assert.equal(mouse.pointerDown(true), 'unlock', 'mouse presses grant activation on press');
+  assert.equal(mouse.pointerUp(true), null);
+  assert.equal(mouse.click(), null, 'the click of the unlocking press does not start');
+  assert.equal(mouse.pointerDown(true), null);
+  assert.equal(mouse.click(), 'begin', 'the next click starts');
+
+  const touch = new TitleGate(true);
+  assert.equal(touch.pointerDown(false), null, 'a touch press grants activation only on release');
+  assert.equal(touch.pointerUp(true), 'unlock');
+  assert.equal(touch.click(), null);
+  touch.pointerDown(true);
+  touch.pointerUp(true);
+  assert.equal(touch.click(), 'begin');
+});
+
+test('title: gamepad starts at once; without the audio lock the first press starts', () => {
+  const pad = new TitleGate(true);
+  assert.equal(pad.pad(), 'begin', 'pad presses cannot unlock audio, so they start from the locked card');
+  assert.equal(pad.unlock(true), null, 'no unlock once starting');
+  assert.equal(pad.click(), null);
+
+  const muted = new TitleGate(false);
+  assert.equal(muted.key({ start: false, activated: true }), null);
+  assert.equal(muted.key({ start: true, activated: false }), 'begin', 'Esc starts when audio is not waiting');
+  const clicked = new TitleGate(false);
+  assert.equal(clicked.pointerDown(true), null);
+  assert.equal(clicked.click(), 'begin');
+});
+
+test('title prompts fit the 320-wide card', () => {
+  for (const s of [UNLOCK_PROMPT, START_PROMPT]) assert.ok(measureText(SMALL_FONT, s) <= 300, s);
+  assert.ok(measureText(BIG_FONT, 'PRESS ANY KEY') * 1.2 <= 300);
+});
+
+test('GAME OVER is covered by the big font and fits the 320-wide card like PAUSE', () => {
+  assert.ok(BIG_STRINGS.includes(GAME_OVER), 'glyph coverage checks the game-over text');
+  assert.equal(GAME_OVER_SCALE, 2, 'same size as the pause screen PAUSE');
+  assert.ok(measureText(BIG_FONT, GAME_OVER) * GAME_OVER_SCALE <= 300, `${measureText(BIG_FONT, GAME_OVER) * GAME_OVER_SCALE} px`);
+  // The module touches no DOM until show(): importable and inert in node.
+  const card = new GameOverCard(null);
+  assert.equal(card.shown, false);
+  assert.doesNotThrow(() => card.remove());
+  assert.doesNotThrow(() => card.setViewport({ x: 0, y: 0, width: 320, height: 240 }));
+});
+
+test('HUD setVisible hides it without losing state; showing again repaints', () => {
+  const hud = new HUD(null);
+  assert.equal(hud.visible, true);
+  hud.update({ lives: 2, coins: 0, stars: 0, health: 8 });
+  hud.setVisible(false);
+  assert.equal(hud.visible, false);
+  hud.update({ lives: 4, coins: 3, stars: 1, health: 8 }); // keeps following the game while hidden
+  hud.dirty = false;
+  hud.setVisible(true);
+  assert.equal(hud.visible, true);
+  assert.equal(hud.dirty, true, 'repaints the current counters when shown');
+  assert.equal(hud.state.lives, 4);
   hud.dispose();
 });

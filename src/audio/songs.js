@@ -161,4 +161,44 @@ const title = {
   ],
 };
 
-export const SONGS = { castle_grounds: castleGrounds, title };
+// "Lanterns Out" - game-over jingle. Bb major, 4/4: one bar and a final chord (2.4 s to the
+// last downbeat, which then rings and fades under the 3.2 s GAME OVER card). A sighing
+// descent over vi - IV - iv: the borrowed minor iv (Ebm) turns the line chromatically
+// (G -> Gb in the flute and the horn) before it settles plagally, low, onto Bb, the key of
+// the title waltz that crossfades in after it. A jingle: nothing but its cue (finalBar),
+// never looped, and never faded in (it cuts whatever still plays).
+const gameOver = {
+  title: 'Lanterns Out',
+  level: 0.8,
+  jingle: true,
+  finalBar: 2,
+  key: 'Bb',
+  bpm: 100,
+  beatsPerBar: 4,
+  swing: 0,
+  chords: ['Gm:2 Eb:1 Ebm:1', 'Bb'],
+  sections: [{ from: 1, to: 2, pad: 0.3, bass: 'hold', comp: 'arp', drums: 'none' }],
+  parts: [
+    {
+      inst: 'flute',
+      vel: 0.8,
+      bars: {
+        1: 'D6:.75 C6:.25 Bb5:.5 G5:.5 Bb5:.5 G5:.5 Gb5:.5 Eb5:.5',
+        2: 'Bb4:4',
+      },
+    },
+    {
+      // Inner chromatic line under the tune: 1 - 3 - b3 of the moving chords, then the 5th.
+      inst: 'horn',
+      vel: 0.55,
+      bars: { 1: 'G4:2 G4:1 Gb4:1', 2: 'F4:4' },
+    },
+    {
+      inst: 'timpani',
+      vel: 0.55,
+      bars: { 1: 'r:3 Bb2~:1', 2: 'Bb2!:4' },
+    },
+  ],
+};
+
+export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver };

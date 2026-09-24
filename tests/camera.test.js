@@ -775,3 +775,113 @@ test('entering and leaving first person never passes through the head', () => {
   }
   assert.equal(cam.firstPerson, false);
 });
+
+// ---------------------------------------------------------------- framing (aim above the hero)
+
+// Screen height (NDC y: +1 top, -1 bottom) of a world point in the rendered view.
+function screenY(cam, camera, x, y, z) {
+  cam.apply(1);
+  camera.updateMatrixWorld();
+  return new THREE.Vector3(x, y, z).project(camera).y;
+}
+
+test('the view aims above the hero: it stands in the lower middle of the screen, the horizon near the centre', () => {
+  const { cam, camera } = makeCam(flatWorld());
+  const hero = makeHero(0, 0, 0, Math.PI);
+  cam.reset(hero);
+  // On the move (running on the spot): the moving view.
+  hero.forwardVel = 20;
+  for (let i = 0; i < 40; i++) cam.update(ctrl(), hero);
+  let feet = screenY(cam, camera, 0, 0, 0);
+  let head = screenY(cam, camera, 0, 175, 0);
+  assert.ok(feet > -0.8 && feet < -0.45, `feet at ${feet.toFixed(2)}`);
+  assert.ok(head < -0.05, `head at ${head.toFixed(2)} (below the centre)`);
+  // Nearly level view: far-off tall things (the castle, the sky) fill the top half.
+  assert.ok(viewPitch(cam) > -1 && viewPitch(cam) < 3, `view pitch ${viewPitch(cam).toFixed(1)}`);
+  // Only the height of the target moves: stick-relative control still follows the orbit.
+  assert.ok(Math.abs(angleDiff(cam.getYaw(), Math.atan2(-cam.pos.x, -cam.pos.z))) < 1e-9);
+
+  // Standing still: after a moment the view tilts up a little more (the resting view), slowly,
+  // and the hero stays in the lower part of the picture.
+  hero.forwardVel = 0;
+  const moving = viewPitch(cam);
+  let prev = moving;
+  let maxStep = 0;
+  for (let i = 0; i < 150; i++) {
+    cam.update(ctrl(), hero);
+    if (i < 15) assert.ok(Math.abs(viewPitch(cam) - moving) < 0.01, 'no tilt right after stopping');
+    maxStep = Math.max(maxStep, Math.abs(viewPitch(cam) - prev));
+    prev = viewPitch(cam);
+  }
+  feet = screenY(cam, camera, 0, 0, 0);
+  head = screenY(cam, camera, 0, 175, 0);
+  assert.ok(viewPitch(cam) < moving - 2.5 && viewPitch(cam) > -3, `resting view pitch ${viewPitch(cam).toFixed(1)}`);
+  assert.ok(maxStep < 0.2, `tilts up gently (${maxStep.toFixed(2)} deg per tick)`);
+  assert.ok(feet > -0.8 && head < -0.05, `feet ${feet.toFixed(2)}, head ${head.toFixed(2)}`);
+  // Setting off tilts it back within ~1 s.
+  hero.forwardVel = 20;
+  for (let i = 0; i < 30; i++) cam.update(ctrl(), hero);
+  assert.ok(Math.abs(viewPitch(cam) - moving) < 0.3, `back to the moving view (${viewPitch(cam).toFixed(1)})`);
+  // A reset (level start, respawn) starts in the resting view.
+  hero.forwardVel = 0;
+  cam.reset(hero);
+  assert.ok(viewPitch(cam) < moving - 2.5, `reset view pitch ${viewPitch(cam).toFixed(1)}`);
+});
+
+test('rising ground behind the camera lifts it without tipping the view down', () => {
+  // Flat where the hero stands, then a 15 deg slope climbing behind the camera (the lawn
+  // rising toward the cliffs behind the spawn).
+  const w = new CollisionWorld();
+  const k = Math.tan(15 * DEG);
+  w.addTriangles(quad([-3000, 0, 100], [3000, 0, 100], [3000, 0, -3000], [-3000, 0, -3000]));
+  w.addTriangles(quad([-3000, k * 2900, 3000], [3000, k * 2900, 3000], [3000, 0, 100], [-3000, 0, 100]));
+  w.finalize();
+  const { cam, camera } = makeCam(w);
+  const hero = makeHero(0, 0, 0, Math.PI); // faces -z: the camera trails up the slope
+  cam.reset(hero);
+  for (let i = 0; i < 40; i++) cam.update(ctrl(), hero);
+  // (Over an open slope falling toward the hero the camera may sit lower than the usual 150.)
+  const ground = k * (cam.pos.z - 100);
+  assert.ok(cam.pos.y - ground > 50 && cam.pos.y - ground < 100, `${(cam.pos.y - ground).toFixed(0)} over the slope`);
+  assert.ok(cam.collider.heightLift > 30, `the floor clearance lifted the camera by ${cam.collider.heightLift.toFixed(0)}`);
+  assert.ok(viewPitch(cam) < 4, `view pitch ${viewPitch(cam).toFixed(1)} (the orbit's is 8 minus the aim)`);
+  const feet = screenY(cam, camera, 0, 0, 0);
+  assert.ok(feet > -0.8, `feet at ${feet.toFixed(2)}`);
+  // Walking down the slope toward the camera and back: the view pitch never jumps.
+  let prev = viewPitch(cam);
+  for (let i = 0; i < 120; i++) {
+    hero.pos.z += i < 60 ? 15 : -15;
+    hero.pos.y = Math.max(0, (hero.pos.z - 100) * k);
+    hero.floor.y = hero.pos.y;
+    hero.vel.z = i < 60 ? 15 : -15;
+    cam.update(ctrl(), hero);
+    assert.ok(Math.abs(viewPitch(cam) - prev) < 1.5, `tick ${i}: view pitch ${prev.toFixed(2)} -> ${viewPitch(cam).toFixed(2)}`);
+    prev = viewPitch(cam);
+  }
+});
+
+test("the aim never pushes the hero's feet off screen while it drops and dives below the lagging look point", () => {
+  // Plateau at y = 520 for z > 0 with a sheer face down to a pool (floor -800, water 0).
+  const w = new CollisionWorld();
+  w.addTriangles(quad([-3000, 520, 6000], [3000, 520, 6000], [3000, 520, 0], [-3000, 520, 0]));
+  w.addTriangles(quad([3000, -800, 0], [-3000, -800, 0], [-3000, 520, 0], [3000, 520, 0]));
+  w.addTriangles(quad([-3000, -800, 0], [3000, -800, 0], [3000, -800, -4000], [-3000, -800, -4000]));
+  w.setWaterLevelFn((x, z) => (z < 0 ? 0 : NO_WATER));
+  w.finalize();
+  const { cam, camera } = makeCam(w);
+  const hero = makeHero(0, 520, 600, Math.PI);
+  cam.reset(hero);
+  let lowest = 1;
+  for (let i = 0; i < 120; i++) {
+    stepFall(hero, w, i < 30 ? 30 : 0);
+    if (hero.inWater) {
+      // Keep diving (faster than the look point follows a swimmer).
+      hero.vel.y = -20;
+      hero.pos.y = Math.max(hero.pos.y - 20, -780);
+    }
+    cam.update(ctrl(), hero);
+    lowest = Math.min(lowest, screenY(cam, camera, hero.pos.x, hero.pos.y, hero.pos.z));
+  }
+  assert.ok(hero.pos.y < -500, 'the hero dived deep');
+  assert.ok(lowest > -0.95, `feet dipped to ${lowest.toFixed(2)}`);
+});

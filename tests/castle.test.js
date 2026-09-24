@@ -6,6 +6,8 @@ import * as layout from '../src/world/layout.js';
 import { buildCastle } from '../src/world/castle.js';
 import { CollisionWorld } from '../src/collision/CollisionWorld.js';
 import { groundStep } from '../src/player/physics/step.js';
+import { SURFACE_FLOAT_DEPTH } from '../src/player/physics/tuning.js';
+import { PLAYER_HEIGHT } from '../src/core/constants.js';
 
 const C = layout.CASTLE;
 const BR = layout.BRIDGE;
@@ -154,13 +156,51 @@ test('bridge rails block walking off the side but are low enough to jump over', 
 
 test('timbers under the bridge are solid for swimmers', () => {
   // Horizontal rays under the deck from just off the south abutment toward the island: the
-  // underwater cross beam and the braces stop them well before the north abutment.
+  // underwater tie and the trestle cap stop them well before the north abutment.
   const zStart = layout.MOAT.maxZ - 100;
   for (const y of [layout.WATER_LEVEL - 240, layout.WATER_LEVEL + 120]) {
     const hit = world.raycast({ x: BR.x, y, z: zStart }, { x: 0, y: 0, z: -1 }, 2000);
     assert.ok(hit && hit.surface.terrain === 'wood', `timber blocks the swimmer at y ${y}`);
     assert.ok(hit.point.z > layout.ISLAND.maxZ + 200, `hit a trestle in the moat (z ${hit.point.z.toFixed(0)})`);
   }
+  // The trestle posts stand in the water, solid from the moat floor to above the surface.
+  const zt = layout.ISLAND.maxZ + ((layout.MOAT.maxZ - layout.ISLAND.maxZ) * 2) / 3;
+  const px = BR.x + BR.width / 2 - 120;
+  for (const y of [layout.WATER_LEVEL - 600, layout.WATER_LEVEL - 90, layout.WATER_LEVEL + 30]) {
+    const hit = world.raycast({ x: px + 400, y, z: zt }, { x: -1, y: 0, z: 0 }, 800);
+    assert.ok(hit && hit.surface.terrain === 'wood' && Math.abs(hit.point.x - (px + 30)) < 1, `post face at y ${y}`);
+  }
+});
+
+test('the moat surface under the bridge is open to a floating swimmer', () => {
+  // A hero floating at the surface: feet SURFACE_FLOAT_DEPTH under it, PLAYER_HEIGHT tall,
+  // wall probes 10 and 110 over his feet (the water step). Nothing but the trestle posts may
+  // touch him anywhere between the abutments, and no ceiling may push him under.
+  const feet = layout.WATER_LEVEL - SURFACE_FLOAT_DEPTH;
+  const hw = BR.width / 2;
+  const zA = layout.ISLAND.maxZ + 90 + PLAYER_R + 10; // clear of the abutment faces
+  const zB = layout.MOAT.maxZ - 90 - PLAYER_R - 10;
+  const posts = [];
+  for (const f of [1 / 3, 2 / 3]) {
+    const zt = layout.ISLAND.maxZ + (layout.MOAT.maxZ - layout.ISLAND.maxZ) * f;
+    for (const s of [-1, 1]) posts.push({ x: BR.x + s * (hw - 120), z: zt });
+  }
+  // Within the post's half-size (30) + radius of a post, with a little slack.
+  const nearPost = (x, z) => posts.some((p) => Math.abs(x - p.x) < 30 + PLAYER_R + 5 && Math.abs(z - p.z) < 30 + PLAYER_R + 5);
+  let checked = 0;
+  for (let x = BR.x - hw - 100; x <= BR.x + hw + 100; x += 25) {
+    for (let z = zA; z <= zB; z += 20) {
+      const ceil = world.findCeil(x, feet + 80, z).y;
+      assert.ok(ceil >= feet + PLAYER_HEIGHT, `ceiling ${ceil.toFixed(0)} over a floating swimmer at ${x},${z}`);
+      if (nearPost(x, z)) continue;
+      checked++;
+      for (const dy of [10, 110]) {
+        const r = world.findWalls(x, feet, z, dy, PLAYER_R);
+        assert.equal(r.walls.length, 0, `wall at ${x},${z} probe +${dy}`);
+      }
+    }
+  }
+  assert.ok(checked > 800, `checked ${checked} spots`);
 });
 
 test('flags wave over time', () => {

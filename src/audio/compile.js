@@ -29,6 +29,12 @@ const BASS_PATTERNS = {
     2: [[0, 1.8, 'R']],
     1: [[0, 0.9, 'R']],
   },
+  // One root per chord, whatever its length (short cues).
+  hold: {
+    4: [[0, 3.6, 'R']],
+    2: [[0, 1.8, 'R']],
+    1: [[0, 0.9, 'R']],
+  },
 };
 
 // Percussion on an 8th-note grid: 'x' hit, 'X' accent, '.' rest. Patterns are cycled to
@@ -216,6 +222,7 @@ export function compileSong(song) {
     bpm: song.bpm,
     level: song.level ?? 1,
     menu: !!song.menu,
+    jingle: !!song.jingle,
     beatsPerBar: bpb,
     loopBeats,
     endBeat,

@@ -1,6 +1,8 @@
 // N64-style blob shadow: a soft dark disc laid on the floor under the hero. It lives inside
 // the hero's object3D (so the scene only needs one object) but cancels the hero's yaw and
-// ignores pitch/roll/flips: it is oriented to the floor normal only.
+// ignores pitch/roll/flips: it is oriented to the floor normal only. Its local matrix is
+// composed directly (matrixAutoUpdate off), so the per-frame update runs no Object3D
+// quaternion/euler change callbacks.
 
 import * as THREE from 'three';
 import { canvasTexture, HAS_CANVAS } from '../../render/texgen.js';
@@ -13,7 +15,8 @@ const NO_FLOOR = -10000;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const tmpN = new THREE.Vector3();
-const tmpQ = new THREE.Quaternion();
+const tmpQ = new THREE.Quaternion(); // detached quaternions: no change callbacks
+const alignQ = new THREE.Quaternion();
 
 function blobTexture() {
   return canvasTexture(64, 64, (ctx, w, h) => {
@@ -41,6 +44,7 @@ export class BlobShadow {
     this.mesh = new THREE.Mesh(new THREE.CircleGeometry(RADIUS, 16).rotateX(-Math.PI / 2), material);
     this.mesh.name = 'blobShadow';
     this.mesh.renderOrder = 1;
+    this.mesh.matrixAutoUpdate = false;
   }
 
   // rs: RenderState; parentQuat: world rotation of the object3D that holds the shadow.
@@ -57,11 +61,13 @@ export class BlobShadow {
     tmpN.set(n.x, n.y, n.z);
     if (tmpN.lengthSq() < 1e-6 || tmpN.y <= 0) tmpN.copy(UP);
     tmpN.normalize();
-    // World orientation = floor normal; express it in the parent's (yawed) frame.
-    tmpQ.copy(parentQuat).invert();
-    m.quaternion.setFromUnitVectors(UP, tmpN).premultiply(tmpQ);
+    // Lie along the floor normal, expressed in the parent's (yawed) frame. (The disc is
+    // round, so its twist about the normal does not matter.)
+    tmpN.applyQuaternion(tmpQ.copy(parentQuat).invert());
+    alignQ.setFromUnitVectors(UP, tmpN);
     // Straight down to the floor (the vertical axis is unaffected by yaw), lifted 2 units.
-    tmpN.applyQuaternion(tmpQ);
     m.position.set(0, rs.floorY - rs.pos.y, 0).addScaledVector(tmpN, 2);
+    m.matrix.compose(m.position, alignQ, m.scale);
+    m.matrixWorldNeedsUpdate = true;
   }
 }

@@ -9,6 +9,10 @@ const DECK_T = 40; // deck thickness
 const RAIL_H = 95; // rail top above the deck: low enough to jump over
 const PILLAR_H = 170;
 const RAIL_HALF = 16; // half-width of the rail collider: the visible posts and rails
+// Clearance of the timbers under the deck over the moat surface. A hero floating at the
+// surface has his feet 80 under it and is 160 tall, so his head (and his collision top)
+// reaches 80 above the water; the stringers and caps stay a little higher.
+const SWIM_HEADROOM = 85;
 
 export function buildBridge(kit, L) {
   const Br = L.BRIDGE;
@@ -115,7 +119,13 @@ export function buildBridge(kit, L) {
   }
 
   // Under-structure: two stringers, cross beams, and two trestles standing in the moat.
+  // The deck slopes down to the lawn, leaving little room over the water at the south end, so
+  // everything under the deck stops at a level soffit just over a floating swimmer's head:
+  // only the trestle posts (and knee braces well under the surface) reach lower. A swimmer can
+  // paddle anywhere under the bridge, and no timber clips through his head.
   const under = (z) => top(z) - DECK_T;
+  const soffit = L.WATER_LEVEL + SWIM_HEADROOM;
+  const trestles = [1 / 3, 2 / 3].map((f) => bankN + (bankS - bankN) * f);
   wood.color(TINT.door, 0.7);
   // Every timber below the deck collides too, so a swimmer cannot pass through them.
   const timber = (polys) => {
@@ -123,27 +133,52 @@ export function buildBridge(kit, L) {
     solids.solid(polys, 'wood');
   };
   const timberBox = (x0, x1, y0, y1, z0, z1) => timber(boxPolys(x0, x1, y0, y1, z0, z1));
+  // Timber hanging from the deck's underside (its top follows the slope) down to height y0.
+  const hanger = (x0, x1, z0, z1, y0) =>
+    timber(
+      hexaPolys(
+        [
+          [x0, y0, z0],
+          [x1, y0, z0],
+          [x1, y0, z1],
+          [x0, y0, z1],
+          [x0, under(z0), z0],
+          [x1, under(z0), z0],
+          [x1, under(z1), z1],
+          [x0, under(z1), z1],
+        ],
+        { top: false },
+      ),
+    );
+  // Stringers: from inside the north abutment to the far side of the last trestle's cap,
+  // deep at the island end and tapering toward the lawn along the level soffit.
+  const capHalf = 36;
   for (const s of [-1, 1]) {
     const sx = X + s * (hw - 120);
-    timber(beamPolys([sx, under(bankN) - 35, bankN], [sx, under(bankS) - 35, bankS], [1, 0, 0], 50, 70));
+    hanger(sx - 25, sx + 25, bankN, trestles[1] + capHalf, soffit);
   }
+  // Cross beams under the planks, where there is room for them and clear of the caps.
   for (let z = bankN + 60; z < bankS - 40; z += 170) {
-    wood.box(X - hw + 12, X + hw - 12, under(z) - 26, under(z), z - 16, z + 16, { top: false });
+    const y0 = Math.max(under(z) - 26, soffit);
+    if (under(z) - y0 < 12 || trestles.some((zt) => Math.abs(z - zt) < 60)) continue;
+    wood.box(X - hw + 12, X + hw - 12, y0, under(z), z - 16, z + 16, { top: false });
   }
   wood.shade = waterlineShade(L.WATER_LEVEL);
-  for (const f of [1 / 3, 2 / 3]) {
-    const zt = bankN + (bankS - bankN) * f;
-    const capTop = under(zt) - 70;
-    const capBot = capTop - 50;
+  const tieY0 = L.WATER_LEVEL - 260;
+  const tieY1 = L.WATER_LEVEL - 220;
+  for (const zt of trestles) {
+    // Cap under the deck, on the same soffit as the stringers.
+    hanger(X - hw + 40, X + hw - 40, zt - capHalf, zt + capHalf, soffit);
     for (const s of [-1, 1]) {
       const px = X + s * (hw - 120);
-      wood.box(px - 30, px + 30, L.MOAT_FLOOR, capBot, zt - 30, zt + 30, { bottom: false, top: false, ys: waterBands });
-      solids.box(px - 30, px + 30, L.MOAT_FLOOR, capBot, zt - 30, zt + 30, 'wood');
-      // Diagonal brace from low on this post up to the cap on the other side.
-      timber(beamPolys([px, L.WATER_LEVEL - 120, zt], [X - s * (hw - 140), capBot - 10, zt], [0, 0, 1], 22, 30));
+      wood.box(px - 30, px + 30, L.MOAT_FLOOR, soffit, zt - 30, zt + 30, { bottom: false, top: false, ys: waterBands });
+      solids.box(px - 30, px + 30, L.MOAT_FLOOR, soffit, zt - 30, zt + 30, 'wood');
+      // Knee brace from low on the post in to the tie: the middle of the bent stays open
+      // (the red coin hangs under the tie there) and the surface stays clear.
+      timber(beamPolys([px, tieY0 - 200, zt], [X + s * (hw - 250), (tieY0 + tieY1) / 2, zt], [0, 0, 1], 22, 30));
     }
-    timberBox(X - hw + 40, X + hw - 40, capBot, capTop, zt - 36, zt + 36);
-    timberBox(X - hw + 100, X + hw - 100, L.WATER_LEVEL - 260, L.WATER_LEVEL - 220, zt - 24, zt + 24);
+    // Tie between the posts under the water.
+    timberBox(X - hw + 100, X + hw - 100, tieY0, tieY1, zt - 24, zt + 24);
   }
   wood.shade = null;
 }

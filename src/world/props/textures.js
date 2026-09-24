@@ -49,15 +49,18 @@ function streakNoise(w, h, cellsX, stretch, seed) {
 export const FOLIAGE_CELL = 64;
 // 2 x 2 atlas cells: two round bushy trees, two round bushes.
 export const FOLIAGE = { tree: [0, 1], bush: [2, 3] };
+// Clear texels between the painted foliage and its cell's edges.
+export const FOLIAGE_MARGIN = 2;
 // Bushes only use the lower part of their cell (the quad is shorter than it is wide).
 export const BUSH_CELL_HEIGHT = 0.68;
 
 // Shapes (cell units, y up): canopy ellipse centre/radii, rim and inner clump counts, clump
 // size (x the smaller radius), optional trunk, and a flat base for bushes. A handful of big
-// clumps give the bumpy round outline.
+// clumps give the bumpy round outline. Every clump ends a few texels inside its cell
+// (FOLIAGE_MARGIN): a canopy reaching the cell's edge is cut off flat there.
 const FOLIAGE_SHAPES = [
-  { cx: 0.5, cy: 0.62, rx: 0.33, ry: 0.31, ring: 8, inner: 4, clump: 0.46, trunk: true, seed: 11 },
-  { cx: 0.5, cy: 0.63, rx: 0.3, ry: 0.3, ring: 7, inner: 4, clump: 0.48, trunk: true, seed: 23 },
+  { cx: 0.5, cy: 0.584, rx: 0.311, ry: 0.292, ring: 8, inner: 4, clump: 0.46, trunk: true, seed: 11 },
+  { cx: 0.5, cy: 0.574, rx: 0.28, ry: 0.28, ring: 7, inner: 4, clump: 0.48, trunk: true, seed: 23 },
   { cx: 0.5, cy: 0.3, rx: 0.34, ry: 0.22, ring: 8, inner: 3, clump: 0.6, base: 0.03, seed: 37 },
   { cx: 0.5, cy: 0.28, rx: 0.3, ry: 0.2, ring: 7, inner: 3, clump: 0.65, base: 0.03, seed: 41 },
 ];
@@ -86,12 +89,9 @@ const FOLIAGE_LIGHT = (() => {
 // Index into a list of flat tones for a light value in 0..1.
 const band = (tones, lit) => tones[clamp(Math.floor(lit * tones.length), 0, tones.length - 1)];
 
-// One round, bushy tree or bush: the canopy is an ellipsoid body covered by big clump
-// spheres (the visible clump at a pixel is the one that bulges furthest toward the viewer),
-// lit by the clump and body normals and painted in a few flat tone bands, with dark creases
-// between clumps, small leafy flecks and a crisp dark outline; trees get a short
-// flared trunk below. Returns fn(px, py) for pixels in the cell.
-function foliagePainter(size, shape) {
+// The clump discs covering a canopy's body (cell units): { x, y, r, z = depth toward the
+// viewer }, the same for the painter and canopyProfile.
+function canopyClumps(shape) {
   const rng = makeRng(shape.seed);
   const { cx, cy, rx, ry } = shape;
   const rmin = Math.min(rx, ry);
@@ -111,6 +111,45 @@ function foliagePainter(size, shape) {
     const r = rmin * shape.clump * (0.85 + rng() * 0.3);
     clumps.push({ x: cx + Math.cos(a) * q * rx, y: cy + Math.sin(a) * q * ry + 0.03, r, z: onBody(q) });
   }
+  return clumps;
+}
+
+// Outline of foliage cell `cell`'s canopy (not the thin trunk) for the billboard fade:
+// `rows` half widths (fractions of the cell width, from its centre line), bottom row first,
+// over the lower `height` fraction of the cell (as cellUV maps it onto a quad).
+export function canopyProfile(cell, rows = 16, height = 1) {
+  return cached(`canopy:${cell}:${rows}:${height}`, () => paintCanopyProfile(FOLIAGE_SHAPES[cell], rows, height));
+}
+function paintCanopyProfile(shape, rows, height) {
+  const clumps = canopyClumps(shape);
+  const out = new Float32Array(rows);
+  const SUB = 4; // samples per row: a row is as wide as its widest sample
+  for (let i = 0; i < rows; i++) {
+    let half = 0;
+    for (let k = 0; k <= SUB; k++) {
+      const y = ((i + k / SUB) / rows) * height;
+      if (y < (shape.base ?? -1)) continue;
+      const gy = (y - shape.cy) / shape.ry;
+      if (Math.abs(gy) < 1) half = Math.max(half, shape.rx * Math.sqrt(1 - gy * gy));
+      for (const c of clumps) {
+        const dy = y - c.y;
+        if (Math.abs(dy) < c.r) half = Math.max(half, Math.abs(c.x - shape.cx) + Math.sqrt(c.r * c.r - dy * dy));
+      }
+    }
+    out[i] = Math.min(half, 0.5);
+  }
+  return out;
+}
+
+// One round, bushy tree or bush: the canopy is an ellipsoid body covered by big clump
+// spheres (the visible clump at a pixel is the one that bulges furthest toward the viewer),
+// lit by the clump and body normals and painted in a few flat tone bands, with dark creases
+// between clumps, small leafy flecks and a crisp dark outline; trees get a short
+// flared trunk below. Returns fn(px, py) for pixels in the cell.
+function foliagePainter(size, shape) {
+  const { cx, cy, rx, ry } = shape;
+  const rmin = Math.min(rx, ry);
+  const clumps = canopyClumps(shape);
   const edgeNoise = tileableNoise(size, size, 12, shape.seed + 1);
   const fleck = tileableNoise(size, size, size / 4, shape.seed + 2);
   const bark = streakNoise(size, size, 12, 4, shape.seed + 3);

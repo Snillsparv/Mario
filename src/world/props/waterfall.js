@@ -110,7 +110,7 @@ export function buildWaterfall(layout, kit) {
 
   // ------------------------------------------------------------ spray, foam, mist
   const impact = fall(1);
-  const splash = new SplashSprites({ W, width, impactO: impact.o, water, rng });
+  const splash = new SplashSprites({ frame: { x: WF.x, z: WF.z, n: nx }, width, impactO: impact.o, water, rng });
 
   return {
     sheets: sheetMesh,
@@ -178,10 +178,20 @@ function buildSpillway(builder, { W, outDir, width, rim, lipY }) {
 
 // Animated sprites at the foot of the fall, all in one mesh: rising spray puffs and slow
 // mist (camera-facing) and foam patches drifting out over the pond (flat on the water).
-// Each sprite loops on its own period; update() rewrites positions and vertex alpha.
+// Each sprite loops on its own period; update() rewrites positions and vertex alpha in
+// place (allocation free), and only while the splash can be seen: inside the view frustum
+// and nearer than the fog's far end.
+const MIST_TINT = [0.92, 0.96, 1];
+const WHITE = [1, 1, 1];
+const _viewProj = new THREE.Matrix4();
+const _frustum = new THREE.Frustum();
+const _sphere = new THREE.Sphere();
+
 class SplashSprites {
-  constructor({ W, width, impactO, water, rng }) {
-    this.W = W;
+  // frame: the waterfall's local frame (see buildWaterfall's W): world x = frame.x + o * n,
+  // z = frame.z + s * n.
+  constructor({ frame, width, impactO, water, rng }) {
+    this.frame = frame;
     this.water = water;
     const make = (kind, count, f) => Array.from({ length: count }, (_, i) => ({ kind, ...f(i) }));
     this.sprites = [
@@ -222,6 +232,11 @@ class SplashSprites {
         alpha: 0.18,
       })),
     ];
+    for (const sp of this.sprites) {
+      sp.flat = sp.kind === 'foam';
+      sp.aspect ??= 1;
+      sp.tint = sp.kind === 'mist' ? MIST_TINT : WHITE;
+    }
     const n = this.sprites.length;
     const geo = new THREE.BufferGeometry();
     this.pos = new THREE.BufferAttribute(new Float32Array(n * 12), 3);
@@ -238,65 +253,107 @@ class SplashSprites {
     geo.setAttribute('color', this.col);
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(index);
-    const c = W(impactO, water, 0);
-    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(c.x, c.y, c.z), width + 1800);
+    geo.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(frame.x + impactO * frame.n, water, frame.z),
+      width + 1800,
+    );
     const mat = worldMaterial({ map: puffTexture(), transparent: true, depthWrite: false });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'waterfallSplash';
     this.mesh.renderOrder = 4;
-    this.right = { x: 1, z: 0 };
+    this.rx = 1;
+    this.rz = 0;
     this.fwd = new THREE.Vector3();
     this.update(0, null);
   }
 
+  // Whether the splash can show in this camera's view: its bounding sphere is inside the
+  // frustum and nearer than the scene fog's far end (e.g. the short underwater fog).
+  visibleFrom(camera) {
+    _sphere.copy(this.mesh.geometry.boundingSphere).applyMatrix4(this.mesh.matrixWorld);
+    const e = camera.matrixWorld.elements;
+    let root = this.mesh;
+    while (root.parent) root = root.parent;
+    const fog = root.fog;
+    if (fog?.far && Math.hypot(_sphere.center.x - e[12], _sphere.center.y - e[13], _sphere.center.z - e[14]) - _sphere.radius > fog.far) {
+      return false;
+    }
+    _viewProj.copy(camera.matrixWorld).invert().premultiply(camera.projectionMatrix);
+    return _frustum.setFromProjectionMatrix(_viewProj).intersectsSphere(_sphere);
+  }
+
   update(time, camera) {
     if (camera) {
-      camera.getWorldDirection(this.fwd);
+      camera.getWorldDirection(this.fwd); // also brings camera.matrixWorld up to date
+      if (!this.visibleFrom(camera)) return;
       const l = Math.hypot(this.fwd.x, this.fwd.z);
-      if (l > 1e-3) this.right = { x: -this.fwd.z / l, z: this.fwd.x / l };
+      if (l > 1e-3) {
+        this.rx = -this.fwd.z / l;
+        this.rz = this.fwd.x / l;
+      }
     }
-    const { x: rx, z: rz } = this.right;
+    const rx = this.rx;
+    const rz = this.rz;
+    const { x: fx, z: fz, n } = this.frame;
     const p = this.pos.array;
     const c = this.col.array;
-    this.sprites.forEach((sp, i) => {
+    const sprites = this.sprites;
+    for (let i = 0; i < sprites.length; i++) {
+      const sp = sprites[i];
       const a = (time / sp.period + sp.phase) % 1;
       const size = sp.size[0] + (sp.size[1] - sp.size[0]) * a;
       const h = size / 2;
+      const o = i * 12;
       let alpha;
-      if (sp.kind === 'foam') {
-        const ctr = this.W(sp.o + sp.driftO * a, this.water + 4, sp.s + sp.driftS * a);
+      if (sp.flat) {
+        const x = fx + (sp.o + sp.driftO * a) * n;
+        const y = this.water + 4;
+        const z = fz + (sp.s + sp.driftS * a) * n;
         const cr = Math.cos(sp.rot + a) * h;
         const sr = Math.sin(sp.rot + a) * h;
         // Flat quad, wound to face up: corners c -+ U -+ V with U = (cos, sin), V = (sin, -cos).
-        p.set(
-          [
-            ctr.x - cr - sr, ctr.y, ctr.z - sr + cr,
-            ctr.x + cr - sr, ctr.y, ctr.z + sr + cr,
-            ctr.x + cr + sr, ctr.y, ctr.z + sr - cr,
-            ctr.x - cr + sr, ctr.y, ctr.z - sr - cr,
-          ],
-          i * 12,
-        );
+        p[o] = x - cr - sr;
+        p[o + 1] = y;
+        p[o + 2] = z - sr + cr;
+        p[o + 3] = x + cr - sr;
+        p[o + 4] = y;
+        p[o + 5] = z + sr + cr;
+        p[o + 6] = x + cr + sr;
+        p[o + 7] = y;
+        p[o + 8] = z + sr - cr;
+        p[o + 9] = x - cr + sr;
+        p[o + 10] = y;
+        p[o + 11] = z - sr - cr;
         alpha = sp.alpha * smoothstep(0, 0.12, a) * (1 - a);
       } else {
         const lift = 1 - (1 - a) * (1 - a);
-        const ctr = this.W(sp.o + sp.driftO * a, this.water + h * 0.55 + sp.rise * lift, sp.s);
-        const hx = rx * h * (sp.aspect ?? 1);
-        const hz = rz * h * (sp.aspect ?? 1);
-        p.set(
-          [
-            ctr.x - hx, ctr.y - h, ctr.z - hz,
-            ctr.x + hx, ctr.y - h, ctr.z + hz,
-            ctr.x + hx, ctr.y + h, ctr.z + hz,
-            ctr.x - hx, ctr.y + h, ctr.z - hz,
-          ],
-          i * 12,
-        );
+        const x = fx + (sp.o + sp.driftO * a) * n;
+        const y = this.water + h * 0.55 + sp.rise * lift;
+        const z = fz + sp.s * n;
+        const hx = rx * h * sp.aspect;
+        const hz = rz * h * sp.aspect;
+        p[o] = x - hx;
+        p[o + 1] = y - h;
+        p[o + 2] = z - hz;
+        p[o + 3] = x + hx;
+        p[o + 4] = y - h;
+        p[o + 5] = z + hz;
+        p[o + 6] = x + hx;
+        p[o + 7] = y + h;
+        p[o + 8] = z + hz;
+        p[o + 9] = x - hx;
+        p[o + 10] = y + h;
+        p[o + 11] = z - hz;
         alpha = sp.alpha * Math.sin(Math.PI * a) ** 0.8;
       }
-      const tint = sp.kind === 'mist' ? [0.92, 0.96, 1] : [1, 1, 1];
-      for (let k = 0; k < 4; k++) c.set([...tint, alpha], i * 16 + k * 4);
-    });
+      const t = sp.tint;
+      for (let k = i * 16, end = k + 16; k < end; k += 4) {
+        c[k] = t[0];
+        c[k + 1] = t[1];
+        c[k + 2] = t[2];
+        c[k + 3] = alpha;
+      }
+    }
     this.pos.needsUpdate = true;
     this.col.needsUpdate = true;
   }

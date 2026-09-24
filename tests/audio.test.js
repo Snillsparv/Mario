@@ -111,7 +111,12 @@ for (const [name, song] of Object.entries(SONGS)) {
     const c = compileSong(song);
     const seconds = (c.loopBeats * 60) / c.bpm;
     if (name === 'castle_grounds') assert.ok(seconds >= 60 && seconds <= 90, `loop ${seconds}s`);
-    else assert.ok(seconds >= 25 && seconds <= 90, `loop ${seconds}s`);
+    else if (song.jingle) {
+      // A jingle (nothing but its cue): the final chord lands well inside the 3.2 s
+      // GAME OVER card, so it rings before the title track crossfades in.
+      const toFinal = (c.endBeat * 60) / c.bpm;
+      assert.ok(toFinal >= 1.5 && toFinal <= 2.8, `jingle reaches its final chord at ${toFinal}s`);
+    } else assert.ok(seconds >= 25 && seconds <= 90, `loop ${seconds}s`);
     for (const e of c.events) {
       assert.ok(INSTRUMENTS[e.inst] && CHANNELS[e.inst], `instrument ${e.inst}`);
       assert.ok(e.beat >= 0 && e.beat < c.loopBeats, `event at ${e.beat}`);
@@ -130,8 +135,11 @@ for (const [name, song] of Object.entries(SONGS)) {
     const timeline = chordTimeline(song);
     const chordAt = (beat) => timeline.findLast((s) => s.beat <= beat + 0.2).chord;
     const melody = c.events.filter((e) => e.inst === 'flute');
+    // Every note is in the key, or a tone of the chord sounding under it (a borrowed chord
+    // such as the minor iv).
     for (const e of c.events.filter((ev) => ev.midi !== null && ev.inst !== 'timpani')) {
-      assert.ok(scale.includes(pitchClass(e.midi)), `${e.inst} ${e.midi} at ${e.beat} not in ${song.key} major`);
+      const pc = pitchClass(e.midi);
+      assert.ok(scale.includes(pc) || chordAt(e.beat).pcs.includes(pc), `${e.inst} ${e.midi} at ${e.beat} not in ${song.key} major or ${chordAt(e.beat).symbol}`);
     }
     // Held melody notes may be chord tones or tensions, but never a semitone above a
     // chord tone (the harsh "avoid note" clash).

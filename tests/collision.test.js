@@ -93,3 +93,43 @@ test('diagonal walls use their true extent along the face', () => {
   // Beyond the end of the face: no push.
   assert.equal(w.findWalls(1100 + n.x * 20, 0, 1100 + n.z * 20, 60, 50).walls.length, 0);
 });
+
+test('grid cells work on both sides of the origin and far out', () => {
+  const w = new CollisionWorld();
+  for (const [cx, cz] of [[-20500, -31000], [-500, 700], [31000, -20500], [45000, 45000]]) {
+    w.addTriangles(quad([cx - 200, 10, cz + 200], [cx + 200, 10, cz + 200], [cx + 200, 10, cz - 200], [cx - 200, 10, cz - 200]));
+  }
+  w.finalize();
+  for (const [cx, cz] of [[-20500, -31000], [-500, 700], [31000, -20500], [45000, 45000]]) {
+    assert.equal(w.findFloor(cx + 50, 100, cz - 50).y, 10, `floor at ${cx},${cz}`);
+    assert.equal(w.findFloor(cx + 1500, 100, cz).surface, null, `nothing beside ${cx},${cz}`);
+  }
+  // A ray crossing from a negative into a positive cell index finds the floor it points at.
+  const hit = w.raycast({ x: -1200, y: 300, z: 700 }, { x: 700, y: -290, z: 0 }, 5000);
+  assert.ok(hit && Math.abs(hit.point.y - 10) < 1e-6 && hit.surface.kind === 'floor');
+});
+
+test('findWalls without contact returns an empty, read-only walls list; contacts get their own', () => {
+  const w = makeRoom();
+  const free = w.findWalls(0, 0, 0, 50, 50);
+  assert.deepEqual([free.x, free.z, free.walls.length], [0, 0, 0]);
+  const a = w.findWalls(780, 0, 0, 50, 50);
+  const b = w.findWalls(790, 0, 10, 50, 50);
+  assert.equal(a.walls.length, 1);
+  assert.notEqual(a.walls, b.walls, 'each contact result has its own array');
+  assert.ok(Math.abs(a.x - 750) < 1e-6);
+});
+
+test('raycast filters by surface kind and allows repeated calls', () => {
+  const w = makeRoom();
+  const down = { x: 0, y: -1, z: 0 };
+  const floor = w.raycast({ x: 400, y: 800, z: 0 }, down, 2000);
+  assert.equal(floor.surface.kind, 'floor');
+  assert.equal(w.raycast({ x: 400, y: 800, z: 0 }, down, 2000, { floors: false }), null);
+  const wall = w.raycast({ x: 0, y: 100, z: 0 }, { x: 1, y: 0, z: 0 }, 2000, { floors: false, ceilings: false });
+  assert.equal(wall.surface.kind, 'wall');
+  assert.ok(Math.abs(wall.distance - 800) < 1e-6);
+  const again = w.raycast({ x: 400, y: 800, z: 0 }, down, 2000);
+  assert.equal(again.distance, floor.distance);
+  assert.notEqual(again, floor, 'results are fresh objects callers may keep');
+});

@@ -79,23 +79,33 @@ export class SpriteBatch {
     this.mesh = new THREE.Mesh(geo, material);
     this.mesh.frustumCulled = false; // instances span the whole level
     this.geometry = geo;
+    // The sprite push() appends: callers set its fields, then call push(). push() takes no
+    // numeric arguments because V8's mid tier (Maglev) does not inline it and would box every
+    // number passed, i.e. allocate per sprite per frame.
+    this.next = { x: 0, y: 0, z: 0, size: 0, rot: 0, uv: null, r: 1, g: 1, b: 1, a: 1 };
   }
 
-  // Appends a sprite; returns false when the batch is full.
-  push(x, y, z, size, rot, uv, r = 1, g = 1, b = 1, a = 1) {
+  // Appends a copy of this.next (uv: an atlas rect [u, v, du, dv]; r, g, b, a: tint); returns
+  // false when the batch is full.
+  push() {
     const i = this.count;
     if (i >= this.capacity) return false;
-    const { pos, sizeRot, color } = this;
-    pos[i * 3] = x;
-    pos[i * 3 + 1] = y;
-    pos[i * 3 + 2] = z;
-    sizeRot[i * 2] = size;
-    sizeRot[i * 2 + 1] = rot;
-    this.uv.set(uv, i * 4);
-    color[i * 4] = r;
-    color[i * 4 + 1] = g;
-    color[i * 4 + 2] = b;
-    color[i * 4 + 3] = a;
+    const s = this.next;
+    const { pos, sizeRot, uv, color } = this;
+    pos[i * 3] = s.x;
+    pos[i * 3 + 1] = s.y;
+    pos[i * 3 + 2] = s.z;
+    sizeRot[i * 2] = s.size;
+    sizeRot[i * 2 + 1] = s.rot;
+    const rect = s.uv;
+    uv[i * 4] = rect[0];
+    uv[i * 4 + 1] = rect[1];
+    uv[i * 4 + 2] = rect[2];
+    uv[i * 4 + 3] = rect[3];
+    color[i * 4] = s.r;
+    color[i * 4 + 1] = s.g;
+    color[i * 4 + 2] = s.b;
+    color[i * 4 + 3] = s.a;
     this.count++;
     return true;
   }

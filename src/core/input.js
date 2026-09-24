@@ -15,6 +15,10 @@
 //
 // Tests can inject input with setOverride({ stickX, stickY, A: true, ... }); overridden
 // buttons are treated as held and edge detection still works across polls.
+//
+// Short taps are latched: a key (or gamepad button, sampled every render frame via
+// sample()) that goes down and up again between two polls still reads as held for one
+// poll, so it is `pressed` on that poll and `released` on the next.
 
 const BUTTONS = ['A', 'B', 'Z', 'R', 'START', 'CU', 'CD', 'CL', 'CR'];
 
@@ -34,24 +38,39 @@ const KEYMAP = {
   ArrowRight: 'CR',
 };
 
+const KEY_ENTRIES = Object.entries(KEYMAP);
+
 const DEADZONE = 0.18;
+
+function buttonRecord() {
+  const r = {};
+  for (const b of BUTTONS) r[b] = false;
+  return r;
+}
 
 export class Input {
   constructor(target = window) {
     this.keys = new Set();
+    this.tapped = new Set(); // key codes that went down since the last poll
+    this.padLatch = buttonRecord(); // gamepad buttons seen down by sample() since the last poll
+    this.held = buttonRecord(); // scratch for poll()
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.dragging = false;
     this.override = null;
-    this.prev = Object.fromEntries(BUTTONS.map((b) => [b, false]));
+    this.prev = buttonRecord();
     this.enabled = true;
 
     this._onKeyDown = (e) => {
       if (e.code in KEYMAP || /^Key[WASDQ]$/.test(e.code)) e.preventDefault();
       this.keys.add(e.code);
+      this.tapped.add(e.code);
     };
     this._onKeyUp = (e) => this.keys.delete(e.code);
-    this._onBlur = () => this.keys.clear();
+    this._onBlur = () => {
+      this.keys.clear();
+      this.tapped.clear();
+    };
     this._onMouseDown = (e) => {
       if (e.button === 0 || e.button === 2) this.dragging = true;
     };
@@ -85,10 +104,47 @@ export class Input {
     return null;
   }
 
+  // Sets out[btn] = true for every mapped gamepad button currently held.
+  _padButtons(pad, out) {
+    const b = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
+    if (b(0)) out.A = true;
+    if (b(1) || b(2)) out.B = true;
+    if (b(6) || b(7) || b(4)) out.Z = true;
+    if (b(5)) out.R = true;
+    if (b(9)) out.START = true;
+    const rx = pad.axes[2] || 0;
+    const ry = pad.axes[3] || 0;
+    if (rx < -0.5 || b(14)) out.CL = true;
+    if (rx > 0.5 || b(15)) out.CR = true;
+    if (ry < -0.5 || b(12)) out.CU = true;
+    if (ry > 0.5 || b(13)) out.CD = true;
+  }
+
+  // Call once per render frame: latches gamepad buttons that are held now, so a flick
+  // shorter than a 30 Hz tick still reaches the next poll().
+  sample() {
+    if (!this.enabled) return;
+    const pad = this._gamepad();
+    if (pad) this._padButtons(pad, this.padLatch);
+  }
+
+  // Forget latched taps and the previous button state (held buttons will not read as
+  // freshly pressed). Used when gameplay (re)starts after a menu.
+  flush() {
+    this.tapped.clear();
+    for (const b of BUTTONS) this.padLatch[b] = false;
+    this.poll();
+  }
+
   poll() {
     let sx = 0;
     let sy = 0;
-    const held = Object.fromEntries(BUTTONS.map((b) => [b, false]));
+    const held = this.held;
+    for (let i = 0; i < BUTTONS.length; i++) {
+      const b = BUTTONS[i];
+      held[b] = this.padLatch[b];
+      this.padLatch[b] = false;
+    }
 
     if (this.enabled) {
       const k = this.keys;
@@ -102,7 +158,11 @@ export class Input {
         sx = (sx / len) * walk;
         sy = (sy / len) * walk;
       }
-      for (const [code, btn] of Object.entries(KEYMAP)) if (k.has(code)) held[btn] = true;
+      const tapped = this.tapped;
+      for (let i = 0; i < KEY_ENTRIES.length; i++) {
+        const code = KEY_ENTRIES[i][0];
+        if (k.has(code) || tapped.has(code)) held[KEY_ENTRIES[i][1]] = true;
+      }
 
       const pad = this._gamepad();
       if (pad) {
@@ -114,30 +174,18 @@ export class Input {
           sx = (ax / m) * scaled;
           sy = (ay / m) * scaled;
         }
-        const b = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
-        if (b(0)) held.A = true;
-        if (b(1) || b(2)) held.B = true;
-        if (b(6) || b(7) || b(4)) held.Z = true;
-        if (b(5)) held.R = true;
-        if (b(9)) held.START = true;
-        const rx = pad.axes[2] || 0;
-        const ry = pad.axes[3] || 0;
-        if (rx < -0.5) held.CL = true;
-        if (rx > 0.5) held.CR = true;
-        if (ry < -0.5) held.CU = true;
-        if (ry > 0.5) held.CD = true;
-        if (b(12)) held.CU = true;
-        if (b(13)) held.CD = true;
-        if (b(14)) held.CL = true;
-        if (b(15)) held.CR = true;
+        this._padButtons(pad, held);
       }
+    } else {
+      for (const b of BUTTONS) held[b] = false;
     }
+    this.tapped.clear();
 
     if (this.override) {
       const o = this.override;
       if (typeof o.stickX === 'number') sx = o.stickX;
       if (typeof o.stickY === 'number') sy = o.stickY;
-      for (const btn of BUTTONS) if (o[btn]) held[btn] = true;
+      for (let i = 0; i < BUTTONS.length; i++) if (o[BUTTONS[i]]) held[BUTTONS[i]] = true;
     }
 
     let mag = Math.hypot(sx, sy);
@@ -150,7 +198,8 @@ export class Input {
     const out = { stickX: sx, stickY: sy, stickMag: mag, mouseDX: this.mouseDX, mouseDY: this.mouseDY };
     this.mouseDX = 0;
     this.mouseDY = 0;
-    for (const btn of BUTTONS) {
+    for (let i = 0; i < BUTTONS.length; i++) {
+      const btn = BUTTONS[i];
       const down = held[btn];
       out[btn] = { down, pressed: down && !this.prev[btn], released: !down && this.prev[btn] };
       this.prev[btn] = down;

@@ -1,9 +1,9 @@
 // Automatic actions that take over positioning: ledge hang / climb, holding a pole,
-// death and the star celebration.
+// death and the star celebration (star_fall drops an airborne hero first).
 
 import { angleDiff, approach, clamp, lerp, smoothstep, wrapAngle } from '../../core/math.js';
 import * as T from '../physics/tuning.js';
-import { airStep, groundStep, STEP_LANDED, STEP_LEFT_GROUND } from '../physics/step.js';
+import { airStep, clearSpot, groundStep, STEP_LANDED, STEP_LEFT_GROUND } from '../physics/step.js';
 import { applyGravity, setForwardVel } from '../physics/movement.js';
 
 function stop(p) {
@@ -72,6 +72,7 @@ const pole = {
   anim: 'pole_hold',
   enter(p, target) {
     p.pole = target;
+    p.poleLetGo = 0;
     p.faceYaw = Math.atan2(target.x - p.pos.x, target.z - p.pos.z);
     p.poleY = clamp(p.pos.y, target.y0, poleTop(target));
     stop(p);
@@ -79,11 +80,17 @@ const pole = {
     p.sfx('climb');
   },
   update(p, c) {
+    if (p.poleLetGo > 0) return letGoOfPole(p);
     if (p.actionTimer >= 2) {
       if (c.A.pressed) return p.setAction('pole_jump');
       if (c.Z.pressed) {
+        // Lets go: eases off the trunk while starting to drop, then falls (the same Z press
+        // never also starts a ground pound). The fall stays within reach of this trunk, so it
+        // can't be grabbed again until he lands or drifts out of its reach (letGoPole).
         p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
-        return p.setAction('freefall');
+        p.letGoPole = p.pole;
+        p.poleLetGo = 1;
+        return letGoOfPole(p);
       }
     }
     let anim = 'pole_hold';
@@ -98,13 +105,7 @@ const pole = {
     p.faceYaw = wrapAngle(p.faceYaw - c.stickX * 0.08);
     placeOnPole(p);
     p.setAnim(anim);
-    p.floor = p.collision.findFloor(p.pos.x, p.poleY + 10, p.pos.z);
-    if (p.floor.surface && p.poleY <= p.floor.y) {
-      p.pos.y = p.floor.y;
-      p.grounded = true;
-      p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
-      p.setAction('idle');
-    }
+    if (p.floor.surface && p.poleY <= p.floor.y) standAtPoleFoot(p);
     return false;
   },
 };
@@ -113,11 +114,51 @@ function poleTop(target) {
   return Math.max(target.y0, target.y1 - T.HANG_DEPTH);
 }
 
-function placeOnPole(p) {
+function standAtPoleFoot(p) {
+  p.pos.y = p.floor.y;
+  p.vel.y = 0;
+  p.grounded = true;
+  p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
+  p.setAction('idle');
+}
+
+// Letting go (Z): over POLE_LET_GO_TICKS the hero drops under gravity while easing out to
+// where the trunk's collider lets him fall, so no air step shoves him out of it.
+function letGoOfPole(p) {
+  const t = p.poleLetGo / T.POLE_LET_GO_TICKS;
+  p.poleLetGo++;
+  p.vel.y -= T.GRAVITY;
+  p.poleY += p.vel.y;
+  placeOnPole(p, smoothstep(0, 1, t));
+  p.setAnim('fall');
+  if (p.floor.surface && p.poleY <= p.floor.y) standAtPoleFoot(p);
+  else if (t >= 1) p.setAction('freefall');
+  return false;
+}
+
+// Holds the hero POLE_HOLD_DIST off the pole (closer than the trunk's collider lets him
+// stand). Over the last POLE_FOOT_BLEND above the floor the hold eases out to the spot where
+// he will stand, clear of that collider, so reaching the bottom never pops him out of it;
+// letGo (0..1) eases out to the same spot, from where he falls past the collider untouched.
+// Also finds the floor under him.
+function placeOnPole(p, letGo = 0) {
+  const col = p.collision;
   const d = p.pole.radius + T.POLE_HOLD_DIST;
-  p.pos.x = p.pole.x - Math.sin(p.faceYaw) * d;
+  let x = p.pole.x - Math.sin(p.faceYaw) * d;
+  let z = p.pole.z - Math.cos(p.faceYaw) * d;
+  let floor = col.findFloor(x, p.poleY + 10, z);
+  const foot = floor.surface ? smoothstep(0, 1, 1 - (p.poleY - floor.y) / T.POLE_FOOT_BLEND) : 0;
+  const b = Math.max(foot, letGo);
+  if (b > 0) {
+    const clear = floor.surface ? clearSpot(p, x, floor.y, z) : clearSpot(p, x, p.poleY, z, true);
+    x = lerp(x, clear.x, b);
+    z = lerp(z, clear.z, b);
+    floor = col.findFloor(x, p.poleY + 10, z);
+  }
+  p.pos.x = x;
   p.pos.y = p.poleY;
-  p.pos.z = p.pole.z - Math.cos(p.faceYaw) * d;
+  p.pos.z = z;
+  p.floor = floor;
 }
 
 // Falls (or floats, in water) with gravity only; used by non-interactive poses.
@@ -145,6 +186,28 @@ const death = {
   },
 };
 
+// Grabbing the star in mid-air: drop straight down (no control, no fall damage: the group
+// resets the fall peak), then celebrate on touchdown. Landing in water just swims.
+const starFall = {
+  group: 'automatic',
+  anim: 'fall',
+  enter(p) {
+    setForwardVel(p, 0);
+    p.vel.y = Math.min(p.vel.y, T.STAR_GRAB_MAX_VY);
+  },
+  update(p) {
+    if (airStep(p).result === STEP_LANDED) {
+      p.vel.y = 0;
+      p.emit('land', { terrain: p.floor.surface?.terrain ?? 'grass', pos: { ...p.pos }, hard: false });
+      p.setAction('star_dance');
+      return false;
+    }
+    applyGravity(p);
+    return false;
+  },
+};
+
+// The celebration pose, standing (collectStar drops an airborne hero first: star_fall).
 const starDance = {
   group: 'automatic',
   anim: 'star_dance',
@@ -153,7 +216,7 @@ const starDance = {
   },
   update(p) {
     settle(p);
-    if (p.actionTimer >= 80) p.setAction(p.grounded ? 'idle' : 'freefall');
+    if (p.actionTimer >= T.STAR_DANCE_TICKS) p.setAction(p.grounded ? 'idle' : 'freefall');
     return false;
   },
 };
@@ -163,5 +226,6 @@ export const AUTOMATIC_ACTIONS = {
   ledge_climb: ledgeClimb,
   pole,
   death,
+  star_fall: starFall,
   star_dance: starDance,
 };

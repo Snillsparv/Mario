@@ -15,6 +15,14 @@ const CELL_SIZE = 1000;
 const WALL_MARGIN = 200; // walls are inserted into cells within this distance so pushes near cell borders work
 // Sideways extent tolerance for wall pushes, as a fraction of the pushed radius.
 export const WALL_EDGE_MARGIN = 0.75;
+// Grid cells are keyed by a number (no string building per query): cell coordinates are
+// offset into [0, CELL_STRIDE) and packed as (cx + CELL_OFFSET) * CELL_STRIDE + cz + CELL_OFFSET.
+const CELL_OFFSET = 1 << 15;
+const CELL_STRIDE = 1 << 16;
+const cellKey = (cx, cz) => (cx + CELL_OFFSET) * CELL_STRIDE + (cz + CELL_OFFSET);
+// Shared result for findWalls when nothing was touched (callers only read it).
+const NO_WALLS = Object.freeze([]);
+const RAY_ALL = Object.freeze({});
 
 // Surface kinds affect slope sliding and friction in player physics.
 export const SURFACE = Object.freeze({
@@ -43,6 +51,8 @@ export class CollisionWorld {
     this.waterFn = null;
     this.finalized = false;
     this._rayStamp = 0;
+    this._rayBest = null; // raycast scratch: nearest surface and distance so far
+    this._rayT = 0;
   }
 
   // ---------------------------------------------------------------- building
@@ -149,7 +159,9 @@ export class CollisionWorld {
       terrain,
     };
     if (kind === 'wall') {
+      s.ys = [a[1], b[1], c[1]]; // vertex heights for the extent test (wallContains)
       const h = Math.hypot(nx, nz);
+      s.hscale = h; // |horizontal part of the unit normal|: plane distance -> horizontal distance
       s.hn = { x: nx / h, z: nz / h };
       // Horizontal tangent along the face; extent tests use (along-face, y) coordinates so
       // diagonal walls keep their true width.
@@ -166,7 +178,7 @@ export class CollisionWorld {
     const cs = this.cellSize;
     for (let cx = Math.floor(minX / cs); cx <= Math.floor(maxX / cs); cx++) {
       for (let cz = Math.floor(minZ / cs); cz <= Math.floor(maxZ / cs); cz++) {
-        const key = cx + ',' + cz;
+        const key = cellKey(cx, cz);
         let cell = this.cells.get(key);
         if (!cell) {
           cell = { floor: [], ceil: [], wall: [] };
@@ -188,7 +200,7 @@ export class CollisionWorld {
 
   _cell(x, z) {
     const cs = this.cellSize;
-    return this.cells.get(Math.floor(x / cs) + ',' + Math.floor(z / cs));
+    return this.cells.get(cellKey(Math.floor(x / cs), Math.floor(z / cs)));
   }
 
   // --------------------------------------------------------------- queries
@@ -200,7 +212,9 @@ export class CollisionWorld {
     let bestY = FLOOR_LOWER_LIMIT;
     let best = null;
     if (cell) {
-      for (const s of cell.floor) {
+      const list = cell.floor;
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i];
         if (s.maxY <= bestY) continue;
         if (!insideXZ(s, x, z)) continue;
         const h = -(s.normal.x * x + s.normal.z * z + s.d) / s.normal.y;
@@ -219,7 +233,9 @@ export class CollisionWorld {
     let bestY = CEIL_NONE;
     let best = null;
     if (cell) {
-      for (const s of cell.ceil) {
+      const list = cell.ceil;
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i];
         if (s.minY >= bestY) continue;
         if (!insideXZ(s, x, z)) continue;
         const h = -(s.normal.x * x + s.normal.z * z + s.d) / s.normal.y;
@@ -235,21 +251,22 @@ export class CollisionWorld {
   // Returns { x, z, walls } with the corrected x/z and the walls that were touched.
   findWalls(x, y, z, offsetY, radius) {
     const py = y + offsetY;
-    const walls = [];
+    let walls = NO_WALLS; // allocated on the first touch only
     const cell = this._cell(x, z);
     if (!cell) return { x, z, walls };
-    for (const s of cell.wall) {
+    const list = cell.wall;
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
       if (py < s.minY || py > s.maxY) continue;
-      const hn = s.hn;
+      const n = s.normal;
       // Horizontal signed distance of the point to the wall plane.
-      const planeDist = s.normal.x * x + s.normal.y * py + s.normal.z * z + s.d;
-      const hscale = Math.hypot(s.normal.x, s.normal.z);
-      const offset = planeDist / hscale;
+      const offset = (n.x * x + n.y * py + n.z * z + s.d) / s.hscale;
       if (offset < -radius || offset > radius) continue;
       if (!wallContains(s, x, py, z, radius * WALL_EDGE_MARGIN)) continue;
       const push = radius - offset;
-      x += hn.x * push;
-      z += hn.z * push;
+      x += s.hn.x * push;
+      z += s.hn.z * push;
+      if (walls === NO_WALLS) walls = [];
       walls.push(s);
     }
     return { x, z, walls };
@@ -259,8 +276,11 @@ export class CollisionWorld {
   // Walks the XZ grid cells the ray crosses (every surface is bucketed into each cell its
   // XZ extent overlaps, so this is exact) and stamps surfaces to test each only once.
   // Returns { point:{x,y,z}, normal, distance, surface } or null.
-  raycast(origin, dir, maxDist, { floors = true, walls = true, ceilings = true } = {}) {
-    const len = Math.hypot(dir.x, dir.y, dir.z);
+  raycast(origin, dir, maxDist, opts = RAY_ALL) {
+    const floors = opts.floors !== false;
+    const walls = opts.walls !== false;
+    const ceilings = opts.ceilings !== false;
+    const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
     if (len < 1e-9) return null;
     const dx = dir.x / len;
     const dy = dir.y / len;
@@ -270,21 +290,8 @@ export class CollisionWorld {
     const oz = origin.z;
     const stamp = (this._rayStamp = (this._rayStamp + 1) | 0 || 1);
     const cs = this.cellSize;
-    let best = null;
-    let bestT = maxDist;
-
-    const testList = (list) => {
-      for (let i = 0; i < list.length; i++) {
-        const s = list[i];
-        if (s.rayStamp === stamp) continue;
-        s.rayStamp = stamp;
-        const t = rayTri(ox, oy, oz, dx, dy, dz, s);
-        if (t !== null && t >= 0 && t < bestT) {
-          bestT = t;
-          best = s;
-        }
-      }
-    };
+    this._rayBest = null;
+    this._rayT = maxDist;
 
     let cx = Math.floor(ox / cs);
     let cz = Math.floor(oz / cs);
@@ -295,15 +302,15 @@ export class CollisionWorld {
     let tMaxX = Math.abs(dx) > 1e-12 ? ((cx + (dx > 0 ? 1 : 0)) * cs - ox) / dx : Infinity;
     let tMaxZ = Math.abs(dz) > 1e-12 ? ((cz + (dz > 0 ? 1 : 0)) * cs - oz) / dz : Infinity;
     for (;;) {
-      const cell = this.cells.get(cx + ',' + cz);
+      const cell = this.cells.get(cellKey(cx, cz));
       if (cell) {
-        if (floors) testList(cell.floor);
-        if (walls) testList(cell.wall);
-        if (ceilings) testList(cell.ceil);
+        if (floors) this._rayList(cell.floor, stamp, ox, oy, oz, dx, dy, dz);
+        if (walls) this._rayList(cell.wall, stamp, ox, oy, oz, dx, dy, dz);
+        if (ceilings) this._rayList(cell.ceil, stamp, ox, oy, oz, dx, dy, dz);
       }
       const tExit = Math.min(tMaxX, tMaxZ);
       // Stop once the nearest hit lies inside the cells already visited.
-      if (tExit >= bestT) break;
+      if (tExit >= this._rayT) break;
       if (tMaxX < tMaxZ) {
         cx += stepX;
         tMaxX += tDeltaX;
@@ -312,13 +319,31 @@ export class CollisionWorld {
         tMaxZ += tDeltaZ;
       }
     }
+    const best = this._rayBest;
     if (!best) return null;
+    const bestT = this._rayT;
+    this._rayBest = null;
     return {
       point: { x: ox + dx * bestT, y: oy + dy * bestT, z: oz + dz * bestT },
       normal: best.normal,
       distance: bestT,
       surface: best,
     };
+  }
+
+  // Tests one cell list for raycast(): surfaces already tested by this ray (same stamp) are
+  // skipped; the nearest hit so far is kept in _rayBest/_rayT.
+  _rayList(list, stamp, ox, oy, oz, dx, dy, dz) {
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (s.rayStamp === stamp) continue;
+      s.rayStamp = stamp;
+      const t = rayTri(ox, oy, oz, dx, dy, dz, s);
+      if (t !== null && t >= 0 && t < this._rayT) {
+        this._rayT = t;
+        this._rayBest = s;
+      }
+    }
   }
 
   // Water surface height at (x, z) or NO_WATER.
@@ -330,9 +355,13 @@ export class CollisionWorld {
   findPole(x, y, z, reach = 80) {
     let best = null;
     let bestD = reach;
-    for (const p of this.poles) {
+    const poles = this.poles;
+    for (let i = 0; i < poles.length; i++) {
+      const p = poles[i];
       if (y < p.y0 - 20 || y > p.y1) continue;
-      const d = Math.hypot(x - p.x, z - p.z) - p.radius;
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const d = Math.sqrt(dx * dx + dz * dz) - p.radius; // (Math.hypot allocates in V8)
       if (d < bestD) {
         bestD = d;
         best = p;
@@ -367,7 +396,7 @@ function insideXZ(s, x, z) {
 export function wallContains(s, x, y, z, margin = 0) {
   const pu = x * s.tx + z * s.tz;
   const P = s.pu;
-  const ys = [s.a[1], s.b[1], s.c[1]];
+  const ys = s.ys ?? (s.ys = [s.a[1], s.b[1], s.c[1]]);
   let lo = Infinity;
   let hi = -Infinity;
   for (let i = 0; i < 3; i++) {

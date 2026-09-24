@@ -34,16 +34,21 @@ export class CoinField {
       // Hang below a ceiling (e.g. a beam under the bridge) rather than poke into it.
       const ceil = collision.findCeil(c.x, y - HEADROOM, c.z, 0);
       if (ceil.surface && ceil.y - y < HEADROOM) y = ceil.y - HEADROOM;
-      return { x: c.x, y, z: c.z, red, value: red ? 2 : 1, alive: true };
+      // Every field up front (index: running red-coin count, set on pickup) so all coins keep
+      // one shape: a coin gaining a field later would make the per-tick loop polymorphic.
+      return { x: c.x, y, z: c.z, red, value: red ? 2 : 1, alive: true, index: 0 };
     };
     this.coins = [...(layout.COINS ?? []).map((c) => place(c, false)), ...(layout.RED_COINS ?? []).map((c) => place(c, true))];
     this.redTotal = this.coins.filter((c) => c.red).length;
     this.redCollected = 0;
     this.shadows = shadows;
-    this.coins.forEach((c, i) => {
+    // Each coin's shadow on the floor below it (null: no floor), kept so reset() can put the
+    // shadows back without collision queries.
+    this.shadowSpots = this.coins.map((c) => {
       const f = collision.findFloor(c.x, c.y, c.z, 0);
-      if (f.surface) shadows.place(i, c.x, f.y, c.z, f.surface.normal, shadowSize(SHADOW_SIZE, c.y - f.y));
+      return f.surface ? { y: f.y, normal: { ...f.surface.normal }, size: shadowSize(SHADOW_SIZE, c.y - f.y) } : null;
     });
+    this._placeShadows();
     this.hits = []; // reused by collect()
     this.batch = new SpriteBatch(Math.max(1, this.coins.length), { map: makeCoinAtlas(), alphaCut: 0.5 });
     this.mesh = this.batch.mesh;
@@ -55,11 +60,16 @@ export class CoinField {
     const hits = this.hits;
     hits.length = 0;
     const r2 = PICKUP_RADIUS * PICKUP_RADIUS;
-    for (let i = 0; i < this.coins.length; i++) {
-      const c = this.coins[i];
-      if (!c.alive || c.y < pos.y - PICKUP_BELOW || c.y > pos.y + PICKUP_ABOVE) continue;
-      const dx = c.x - pos.x;
-      const dz = c.z - pos.z;
+    const lo = pos.y - PICKUP_BELOW;
+    const hi = pos.y + PICKUP_ABOVE;
+    const px = pos.x;
+    const pz = pos.z;
+    const coins = this.coins;
+    for (let i = 0; i < coins.length; i++) {
+      const c = coins[i];
+      if (!c.alive || c.y < lo || c.y > hi) continue;
+      const dx = c.x - px;
+      const dz = c.z - pz;
       if (dx * dx + dz * dz > r2) continue;
       c.alive = false;
       this.shadows.hide(i);
@@ -67,6 +77,23 @@ export class CoinField {
       hits.push(c);
     }
     return hits;
+  }
+
+  _placeShadows() {
+    this.coins.forEach((c, i) => {
+      const f = this.shadowSpots[i];
+      if (c.alive && f) this.shadows.place(i, c.x, f.y, c.z, f.normal, f.size);
+    });
+  }
+
+  // Every coin back where it started (a new game): alive, with its shadow; no red coins taken.
+  reset() {
+    for (const c of this.coins) {
+      c.alive = true;
+      c.index = 0;
+    }
+    this.redCollected = 0;
+    this._placeShadows();
   }
 
   get allRedCollected() {
@@ -79,8 +106,19 @@ export class CoinField {
     const frame = Math.floor((turn - Math.floor(turn)) * COIN_FRAMES);
     const b = this.batch;
     b.clear();
-    for (const c of this.coins) {
-      if (c.alive) b.push(c.x, c.y, c.z, COIN_SIZE, 0, FRAME_UVS[c.red ? 1 : 0][frame]);
+    const s = b.next;
+    s.size = COIN_SIZE;
+    s.rot = 0;
+    s.r = s.g = s.b = s.a = 1;
+    const coins = this.coins;
+    for (let i = 0; i < coins.length; i++) {
+      const c = coins[i];
+      if (!c.alive) continue;
+      s.x = c.x;
+      s.y = c.y;
+      s.z = c.z;
+      s.uv = FRAME_UVS[c.red ? 1 : 0][frame];
+      b.push();
     }
     b.commit();
   }

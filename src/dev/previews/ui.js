@@ -1,4 +1,7 @@
-// UI preview: /preview.html?m=ui&state=full|damaged|lowhp|redcoin|paused|title|glyphs
+// UI preview: /preview.html?m=ui&state=full|damaged|lowhp|redcoin|paused|gameover|title|glyphs
+// (state=gameover: the GameOverCard over a HUD at x0 lives; &hud=0 hides the HUD via
+// setVisible(false), in any HUD state)
+// (&mute=1 with state=title: muted stand-in audio, so the card skips PRESS ANY KEY)
 // Optional overrides: &health=N &coins=N &stars=N &lives=N, &age=S (red-coin pop-up age),
 // &world=1 to show the level behind (instead of the plain sky gradient), &pillar=1 to
 // confine the UI to a centred 4:3 picture with black bars (like the renderer's F3 mode)
@@ -6,6 +9,7 @@
 // way N64Renderer.alignOverlay() does; &pad=1 fakes a connected gamepad (pause legend).
 import { HUD } from '../../ui/HUD.js';
 import { TitleScreen } from '../../ui/TitleScreen.js';
+import { GameOverCard } from '../../ui/GameOverCard.js';
 import { Events } from '../../core/events.js';
 import { BIG_FONT, SMALL_FONT } from '../../ui/bitmapFont.js';
 import { ICONS } from '../../ui/icons.js';
@@ -17,6 +21,7 @@ const STATES = {
   lowhp: { lives: 3, coins: 7, stars: 0, health: 2 },
   redcoin: { lives: 4, coins: 12, stars: 0, health: 8 },
   paused: { lives: 4, coins: 37, stars: 1, health: 6 },
+  gameover: { lives: 0, coins: 14, stars: 0, health: 8 },
 };
 
 function skyTexture(THREE) {
@@ -122,10 +127,25 @@ function runState(state, ui, params) {
   }
   if (state === 'title') {
     // Test hooks: __title is the TitleScreen, __titleDone flips when show() resolves,
-    // __sfx records emitted sfx names.
+    // __sfx records emitted sfx names, __musicLog every playMusic() as [name, audioRunning].
+    // The stand-in audio mimics AudioEngine: unlock() "creates" a running context (not
+    // while muted: &mute=1), so the card first asks for any key (PRESS ANY KEY).
     window.__sfx = [];
+    window.__musicLog = [];
     events.on('sfx', (e) => window.__sfx.push(e.name));
-    const audio = { unlock: () => (window.__unlocked = true), playMusic: (n) => (window.__music = n) };
+    const audio = {
+      muted: params.has('mute'),
+      ctx: null,
+      unlock() {
+        window.__unlocked = true;
+        if (!this.muted) this.ctx ??= { state: 'running' };
+        return Promise.resolve(!!this.ctx);
+      },
+      playMusic(name) {
+        window.__music = name;
+        window.__musicLog.push([name, !!this.ctx]);
+      },
+    };
     const title = new TitleScreen(ui, { events, audio });
     window.__title = title;
     title.setViewport(vp);
@@ -145,6 +165,12 @@ function runState(state, ui, params) {
   if (hud.meter.visible) hud.slide.t = 1;
   if (state === 'paused') hud.setPaused(true);
   if (state === 'redcoin') events.emit('coin', { value: 2, red: true, index: 3 });
+  if (params.get('hud') === '0') hud.setVisible(false);
+  if (state === 'gameover') {
+    const card = new GameOverCard(ui);
+    card.setViewport(vp);
+    window.__gameOver = card.show();
+  }
   // Freeze the red-coin pop-up at a fixed age for screenshots (the HUD's aging is ignored).
   const popupAge = Number(params.get('age') || 0.5);
   const frozenPopup = {

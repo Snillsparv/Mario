@@ -15,7 +15,12 @@ export function worldMaterial({
   depthWrite = true,
   fog = true,
 } = {}) {
-  return new THREE.MeshBasicMaterial({ map, color, vertexColors, transparent, alphaTest, side, depthWrite, fog });
+  const mat = new THREE.MeshBasicMaterial({ map, color, vertexColors, transparent, alphaTest, side, depthWrite, fog });
+  // three.js draws transparent double-sided materials twice (back faces, then front faces)
+  // and rebuilds their program key around each pass, every frame. World sheets (water,
+  // waterfall) are flat or nearly so and never cover themselves, so one pass looks the same.
+  if (transparent && side === THREE.DoubleSide) mat.forceSinglePass = true;
+  return mat;
 }
 
 // Bake simple directional + ambient lighting into a 'color' vertex attribute.

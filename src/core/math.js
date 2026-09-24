@@ -47,14 +47,6 @@ export function approach(cur, target, inc, dec = inc) {
   return Math.max(cur - dec, target);
 }
 
-export function yawFromVector(x, z) {
-  return Math.atan2(x, z);
-}
-
-export function forwardFromYaw(yaw) {
-  return { x: Math.sin(yaw), z: Math.cos(yaw) };
-}
-
 // Convert an analog stick direction into a world yaw, given the camera's look yaw
 // (the yaw of the direction the camera faces). Stick up (+Y) moves away from the camera,
 // stick right (+X) moves to the camera's right.

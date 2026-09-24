@@ -76,8 +76,8 @@ const swimIdle = {
   },
 };
 
-// Breaststroke: a burst of speed, then a glide. Pressing A again mid-glide re-strokes (or,
-// at the surface with the stick pulled back, jumps out).
+// Breaststroke: a burst of speed, then a glide. Pressing A again mid-glide re-strokes; at
+// the surface with the stick pulled back it jumps out at once (no re-stroke lockout).
 const swimStroke = {
   group: 'submerged',
   enter(p) {
@@ -85,7 +85,8 @@ const swimStroke = {
     p.sfx('swim');
   },
   update(p, c) {
-    if (c.A.pressed && p.actionTimer >= 10) return p.setAction(p.atSurface && c.stickY < -0.5 ? 'water_jump' : 'swim_stroke');
+    if (c.A.pressed && p.actionTimer >= 1 && p.atSurface && c.stickY < -0.5) return p.setAction('water_jump');
+    if (c.A.pressed && p.actionTimer >= T.RESTROKE_TICKS) return p.setAction('swim_stroke');
     if (p.actionTimer >= T.STROKE_TICKS) {
       if (p.atSurface) return p.setAction('water_surface');
       return p.setAction(c.A.down ? 'swim_flutter' : 'swim_idle');

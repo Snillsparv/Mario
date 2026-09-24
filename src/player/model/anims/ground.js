@@ -17,9 +17,10 @@ import { WALL_DIST } from '../physicsLink.js';
 // Occasional look-around while idling: glance left, pause, glance right, back to centre.
 function lookAround(t) {
   const u = t % 9;
-  const bump = (a, b) => smoothstep(a, a + 0.35, u) * (1 - smoothstep(b - 0.35, b, u));
-  return 0.75 * bump(3.2, 4.8) - 0.75 * bump(5.2, 6.8);
+  return 0.75 * bump(u, 3.2, 4.8) - 0.75 * bump(u, 5.2, 6.8);
 }
+// 0 -> 1 over [a, a + 0.35], back to 0 over [b - 0.35, b].
+const bump = (u, a, b) => smoothstep(a, a + 0.35, u) * (1 - smoothstep(b - 0.35, b, u));
 
 // The Player's headYaw (added to the head by the rig) is the look-around channel when it
 // drives one; the built-in glance only plays when it does not.
@@ -53,19 +54,30 @@ function sit(p, c) {
   p.face = 'sleep';
 }
 
+// The idle pose at its start (no glance), for the first sleep key.
+const idleCtx = { t: 0, time: 0, headYaw: 0, externalLook: false };
+function idleStart(p, c) {
+  idleCtx.time = c.time;
+  idleCtx.headYaw = c.headYaw;
+  idleCtx.externalLook = c.externalLook;
+  idle(p, idleCtx);
+}
+
+const SLEEP_KEYS = [
+  [0, idleStart],
+  [0.35, (q) => {
+    stand(q);
+    q.hipsY = -14;
+    q.spinePitch = 0.35;
+    plantFeet(q, 6, -2);
+    arms(q, 0.5, 0.3, 0.6);
+    q.face = 'half';
+  }],
+  [0.9, sit],
+];
+
 function sleep(p, c) {
-  keyframes(p, c.t, [
-    [0, (q) => idle(q, { ...c, t: 0 })],
-    [0.35, (q) => {
-      stand(q);
-      q.hipsY = -14;
-      q.spinePitch = 0.35;
-      plantFeet(q, 6, -2);
-      arms(q, 0.5, 0.3, 0.6);
-      q.face = 'half';
-    }],
-    [0.9, sit],
-  ], c);
+  keyframes(p, c.t, SLEEP_KEYS, c);
 }
 
 // Locomotion gaits (see ../gait.js); strides by speed come from ../strides.js.
@@ -228,13 +240,13 @@ function crawl(p, c) {
   p.headPitch = -0.85;
   const g = gaitAt(CRAWL, c.stride);
   gaitLegs(p, c.ph, g);
-  for (const [side, x, phase] of [['L', 16, 0.5], ['R', -16, 0]]) {
-    const u = (c.ph + phase) % 1;
+  for (let i = 0; i < 2; i++) { // left mitten with the right boot, and vice versa
+    const u = (c.ph + (i ? 0 : 0.5)) % 1;
     const down = u < g.stance;
     const k = down ? u / g.stance : (u - g.stance) / (1 - g.stance);
     const reach = g.stance * g.stride / 2;
     const z = down ? 12 + reach - 2 * reach * k : 12 - reach + 2 * reach * easeInOut(k);
-    reachArm(p, side, x, HAND_R + (down ? 0 : 6 * Math.sin(Math.PI * k)), z, 1, 0.8);
+    reachArm(p, i ? 'R' : 'L', i ? -16 : 16, HAND_R + (down ? 0 : 6 * Math.sin(Math.PI * k)), z, 1, 0.8);
   }
 }
 

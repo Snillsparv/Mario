@@ -7,8 +7,8 @@
 //     onViewportChange/alignOverlay keep DOM overlays such as the HUD inside it).
 //   F1: debug overlay (fps, draw calls, triangles).
 //   Underwater: when the camera is below the water surface the fog switches to a short
-//     blue-green one (surface heights from layout.waterLevelAt unless setWaterLevelFn
-//     overrides it).
+//     blue-green one and the sky dome is tinted toward it (surface heights from
+//     layout.waterLevelAt unless setWaterLevelFn overrides it).
 //
 // World geometry is unlit (baked vertex colours). The sun and hemisphere lights below only
 // shade dynamic actors (hero, coins, star) that use Lambert/Phong materials.
@@ -78,6 +78,7 @@ export class N64Renderer {
     });
     this.pass = new N64Pass();
     this.underwater = new UnderwaterFog(this.scene);
+    this.compileObject = (object) => this.renderer.compile(object, this.camera, this.scene);
     this.debug = new DebugOverlay();
     this.waterLevelFn = waterLevelAt;
     this.viewport = { x: 0, y: 0, width: 1, height: 1 }; // CSS px inside the container
@@ -220,10 +221,12 @@ export class N64Renderer {
     renderer.info.reset();
     if (this.n64) {
       renderer.setRenderTarget(this.target);
+      this.underwater.warm(this.compileObject, 'n64'); // programs depend on the bound target
       renderer.render(scene, camera);
       renderer.setRenderTarget(null);
       this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
     } else {
+      this.underwater.warm(this.compileObject, 'native');
       renderer.render(scene, camera);
     }
   }
@@ -241,6 +244,7 @@ export class N64Renderer {
     window.removeEventListener('resize', this.onResize);
     this.resizeObserver?.disconnect();
     this.debug.dispose();
+    this.underwater.dispose();
     this.pass.dispose();
     this.target.dispose();
     this.renderer.dispose();

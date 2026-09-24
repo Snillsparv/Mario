@@ -112,7 +112,7 @@ export class Star {
     Object.assign(this.prev, this.pos);
     this.age++;
     if (this.state === 'rising') {
-      this._setRisePos(Math.min(1, this.age / RISE_TICKS));
+      this._setRisePos(this.age < RISE_TICKS ? this.age / RISE_TICKS : 1);
       if (this.age >= RISE_TICKS) {
         this.state = 'idle';
         this.age = 0;
@@ -133,13 +133,21 @@ export class Star {
     this.mesh.visible = false;
   }
 
+  // Hidden again, ready to be spawned by the next full set of red coins (a new game).
+  reset() {
+    this.state = 'hidden';
+    this.age = 0;
+    this.mesh.visible = false;
+  }
+
   animate(clock, alpha) {
     if (!this.active) return;
     const { prev, pos } = this;
     const rising = this.state === 'rising';
     const e = rising ? this.riseEase : 1;
     // Bob fades in after the rise so the hand-over is seamless.
-    const bob = rising ? 0 : BOB * Math.min(1, (this.age + alpha) / 30) * Math.sin(clock * 2.4);
+    const fadeIn = (this.age + alpha) / 30;
+    const bob = rising ? 0 : BOB * (fadeIn < 1 ? fadeIn : 1) * Math.sin(clock * 2.4);
     const r = this.render;
     r.x = prev.x + (pos.x - prev.x) * alpha;
     r.y = prev.y + (pos.y - prev.y) * alpha + bob;

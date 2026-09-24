@@ -10,8 +10,8 @@ function swimIdle(p, c) {
   const w = c.t * 3;
   p.flipPitch = 0.65;
   p.rootY = 2 * Math.sin(c.t * 1.5);
-  for (const [side, o] of [['L', 0], ['R', PI]]) {
-    arm(p, side, 0.6, 1.0 + 0.15 * Math.sin(w + o), 0.6, 0.35 * Math.sin(w));
+  for (let i = 0; i < 2; i++) {
+    arm(p, i ? 'R' : 'L', 0.6, 1.0 + 0.15 * Math.sin(w + i * PI), 0.6, 0.35 * Math.sin(w));
   }
   leg(p, 'L', 0.1 + 0.25 * Math.sin(c.t * 3.5), 0.45, 0.5);
   leg(p, 'R', 0.1 - 0.25 * Math.sin(c.t * 3.5), 0.45, 0.5);

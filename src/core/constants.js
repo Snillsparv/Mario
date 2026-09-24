@@ -17,3 +17,7 @@ export const FLOOR_LOWER_LIMIT = -11000;
 export const CEIL_NONE = 20000;
 // Returned by waterLevelAt when there is no water at a position.
 export const NO_WATER = -11000;
+
+// Length of the GAME OVER card (main.js) before the title returns. The audio times its
+// game-over jingle and ambience duck to it, so both read this one value.
+export const GAME_OVER_SECONDS = 3.2;

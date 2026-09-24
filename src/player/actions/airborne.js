@@ -35,35 +35,51 @@ function stopAgainstWall(p, wall) {
   }
 }
 
+// Leaping out of the water against a bank or moat wall never bonks: the leap carries on up
+// (or down) the face with a little forward speed kept, so that once the feet clear the rim
+// Pip moves onto it (and air control can't build speed up while he is pressed there).
+function slideAlongWall(p, wall) {
+  p.forwardVel = Math.min(p.forwardVel, T.WATER_JUMP_WALL_FV);
+  const into = -(p.vel.x * wall.hn.x + p.vel.z * wall.hn.z);
+  if (into > 0) {
+    p.vel.x += wall.hn.x * into;
+    p.vel.z += wall.hn.z * into;
+  }
+}
+
 /*
  * One air tick. Options:
  *   anim (static), land (landFromAir opts), maxSpeed, gravity, terminal (fall speed limit),
  *   controlHeight (A release cuts rise), control (stick steering, default true),
  *   kick (B = dive / jump kick), pound (Z), ledge / pole (grabs), wallHit (action entered on
- *   a head-on wall hit at speed), wallKick (A may still wall kick shortly after touching a
- *   wall), pitch(p) (body pitch).
+ *   a head-on wall hit at speed), wallSlide (head-on walls are slid along at a capped speed
+ *   instead: never a bonk), coastRising (while rising, a stick held back doesn't brake),
+ *   wallKick (A may still wall kick shortly after touching a wall), pitch(p) (body pitch).
  */
 function airTick(p, c, o) {
   if (o.pound && c.Z.pressed) return p.setAction('ground_pound');
   if (o.kick && c.B.pressed) return p.setAction(p.forwardVel >= T.AIR_DIVE_MIN_SPEED ? 'dive' : 'jump_kick');
   if (o.wallKick && c.A.pressed && canWallKick(p)) return p.setAction('wallkick');
   if (o.control === false) keepMomentum(p);
-  else updateAirControl(p, o.maxSpeed);
+  else updateAirControl(p, o.maxSpeed, o.coastRising && p.vel.y > 0);
 
   const r = airStep(p);
   if (r.result === STEP_LANDED) return landFromAir(p, o.land);
   if (o.ledge && r.wall && tryLedgeGrab(p, r.wall)) return false;
   // A trunk in reach is grabbed; its collider walls never bonk (they are slid around).
   const trunk = poleInReach(p);
+  if (trunk !== p.letGoPole) p.letGoPole = null; // out of its reach: grabbable again
   if (o.pole && trunk && tryPoleGrab(p, trunk)) return false;
   const w = r.wall;
   if (w && !w.pole && facingWall(p, w, T.WALL_HEAD_ON_COS)) {
-    if (o.wallHit && !trunk && p.forwardVel >= T.WALL_KICK_MIN_SPEED) {
+    if (o.wallSlide) slideAlongWall(p, w);
+    else if (o.wallHit && !trunk && p.forwardVel >= T.WALL_KICK_MIN_SPEED) {
       p.wall = w;
       p.setAction(o.wallHit);
       return false;
+    } else {
+      stopAgainstWall(p, w);
     }
-    stopAgainstWall(p, w);
   }
   applyGravity(p, o.controlHeight, o.gravity, o.terminal);
   o.pitch?.(p);
@@ -177,13 +193,16 @@ const forwardRollout = airAction(
   { anim: 'triple_jump', pound: true, ledge: true, land: {} },
 );
 
+// Leaping out of the water (A with the stick pulled back at the surface). Keeping the stick
+// back while rising doesn't brake the leap, and a bank or moat wall ahead is slid up rather
+// than bonked off, so Pip carries on onto the rim once his feet clear it.
 const waterJump = airAction(
   (p) => {
     takeOff(p, T.WATER_JUMP_VY, Math.max(p.forwardVel, 8));
     p.sfx('water_exit');
     p.emit('splash', { pos: { ...p.pos }, big: false });
   },
-  { ...JUMPY, anim: 'water_jump', land: { chain: 'single' } },
+  { ...JUMPY, wallSlide: true, coastRising: true, anim: 'water_jump', land: { chain: 'single' } },
 );
 
 // Kicking off a trunk: the same leap as a wall kick, facing away from the trunk.

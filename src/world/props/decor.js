@@ -9,8 +9,8 @@ import * as THREE from 'three';
 import { makeRng, smoothstep } from '../../core/math.js';
 import { worldMaterial } from '../../render/materials.js';
 import { BillboardBatch } from './billboards.js';
-import { addSolid, cone, footprintRadii, lumpyDome, solidBox, solidMound } from './geom.js';
-import { BUSH_CELL_HEIGHT, FLOWER_VARIANTS, FOLIAGE, ROCK_TILE, cellUV, flowerAtlas } from './textures.js';
+import { addSolid, cone, convexHull, floorPolygon, footprintRadii, lumpyDome, polygonWalls, ring, solidBox, solidMound } from './geom.js';
+import { BUSH_CELL_HEIGHT, FLOWER_VARIANTS, FOLIAGE, ROCK_TILE, canopyProfile, cellUV, flowerAtlas } from './textures.js';
 
 // Boulders and bushes: radius r, height h. Boulders stand well clear of the ground around
 // them (at least ~85 above its highest point) so they are real obstacles; the small ones
@@ -28,9 +28,10 @@ export const ROCKS = [
   { x: 4700, z: -5600, r: 170, h: 130 },
 ];
 
+// The first two are one clump: their sprites overlap and they share a collider (SLOT_MIN).
 export const BUSHES = [
   { x: -4200, z: 1900, r: 170, h: 190 },
-  { x: -4020, z: 2120, r: 120, h: 140 },
+  { x: -4050, z: 2085, r: 120, h: 140 },
   { x: 4300, z: 1800, r: 170, h: 190 },
   { x: -1200, z: 3900, r: 150, h: 170 },
   { x: 1500, z: 4700, r: 160, h: 180 },
@@ -62,6 +63,8 @@ const BODY_PROBE = 60; // height of the hero's upper wall probe above his feet
 // Bush sprite width per unit of bush radius: the painted bush fills ~84 % of the cell's
 // width, so it ends up ~2 r wide.
 const BUSH_SPRITE_W = 2.4;
+// Bush collider radius per unit of bush radius (inside the painted edge: his hands brush it).
+const BUSH_COLLIDER = 0.8;
 
 // Lowest and highest ground on a circle around (x, z) (and at its centre).
 function rimGround(layout, x, z, r) {
@@ -137,6 +140,48 @@ function moundCollider(out, layout, x, z, radius, top, minShoulder) {
   solidMound(out, x, z, foot, shoulder, top, radius);
 }
 
+// Two solid lumps whose colliders stand closer than SLOT_MIN leave a slot the hero (100
+// across) can be pushed into but not through: the walls either side push him back and forth
+// and he wedges (playtest: between the first two bushes, then 284 apart). Such lumps
+// share one collider around the clump (clumpCollider).
+export const SLOT_MIN = 2 * HERO_REACH + 40;
+
+// One collider for a clump of lumps ({ x, z, radius, top, minShoulder }, as moundCollider
+// takes them, none a stepping stone): walls along the convex hull of their octagons up to a
+// shoulder common to all (the same rule as moundCollider's, over the whole clump), capped
+// flat there, with each lump's own low cone on top. Convex, so no slot and no notch.
+function clumpCollider(out, layout, lumps) {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const { x, z, radius } of lumps) {
+    for (const g of [rimGround(layout, x, z, radius + HERO_REACH), rimGround(layout, x, z, radius)]) {
+      low = Math.min(low, g.min);
+      high = Math.max(high, g.max);
+    }
+  }
+  const lowestTop = Math.min(...lumps.map((l) => l.top));
+  const shoulder = Math.min(lowestTop - CAP_RISE, Math.max(high + WALL_CLEAR, ...lumps.map((l) => l.minShoulder)));
+  const hull = convexHull(lumps.flatMap(({ x, z, radius }) => ring(x, z, radius, 8)));
+  polygonWalls(out, hull, low - 80, shoulder);
+  floorPolygon(out, hull.map(([px, pz]) => [px, shoulder, pz]));
+  for (const { x, z, radius, top } of lumps) cone(out, x, z, top, radius, 8, () => shoulder);
+}
+
+// Groups of lumps (indices) chained by gaps under SLOT_MIN between their collider circles.
+export function slotClumps(lumps) {
+  const group = lumps.map((_, i) => i);
+  const root = (i) => (group[i] === i ? i : (group[i] = root(group[i])));
+  lumps.forEach((a, i) => {
+    for (let j = i + 1; j < lumps.length; j++) {
+      const b = lumps[j];
+      if (Math.hypot(a.x - b.x, a.z - b.z) - a.radius - b.radius < SLOT_MIN) group[root(j)] = root(i);
+    }
+  });
+  const clumps = new Map();
+  lumps.forEach((_, i) => clumps.set(root(i), [...(clumps.get(root(i)) ?? []), i]));
+  return [...clumps.values()];
+}
+
 export function buildDecor(layout, kit) {
   const rng = makeRng(9001);
 
@@ -145,20 +190,32 @@ export function buildDecor(layout, kit) {
     if (layout.groundHeight(r.x, r.z) > layout.WATER_LEVEL) kit.shadow(r.x, r.z, r.r * 1.35, 0.7);
   });
 
+  const bushLumps = BUSHES.map((b) => {
+    const ground = layout.groundHeight(b.x, b.z);
+    return { x: b.x, z: b.z, radius: b.r * BUSH_COLLIDER, top: ground + b.h, minShoulder: ground + 0.5 * b.h };
+  });
+  for (const clump of slotClumps(bushLumps)) {
+    if (clump.length > 1) clumpCollider(kit.colliders.grass, layout, clump.map((i) => bushLumps[i]));
+    else {
+      const { x, z, radius, top, minShoulder } = bushLumps[clump[0]];
+      moundCollider(kit.colliders.grass, layout, x, z, radius, top, minShoulder);
+    }
+  }
   BUSHES.forEach((b, i) => {
     const ground = layout.groundHeight(b.x, b.z);
     const w = b.r * BUSH_SPRITE_W;
     const tint = 0.9 + 0.15 * rng();
+    const cell = FOLIAGE.bush[i % FOLIAGE.bush.length];
     kit.foliage.push({
       x: b.x,
       y: ground - 20,
       z: b.z,
       w,
       h: w * BUSH_CELL_HEIGHT,
-      uv: cellUV(FOLIAGE.bush[i % FOLIAGE.bush.length], BUSH_CELL_HEIGHT),
+      uv: cellUV(cell, BUSH_CELL_HEIGHT),
       tint: [tint, tint, tint * 0.95],
+      occluder: canopyProfile(cell, 16, BUSH_CELL_HEIGHT),
     });
-    moundCollider(kit.colliders.grass, layout, b.x, b.z, b.r * 0.8, ground + b.h, ground + 0.5 * b.h);
     kit.shadow(b.x, b.z, b.r * 1.4, 0.85);
   });
 

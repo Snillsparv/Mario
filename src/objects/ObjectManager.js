@@ -4,13 +4,22 @@
 //   new ObjectManager({ scene, collision, events, layout, player })
 //   update({ player })             30 Hz: pickups, star state, butterfly AI
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
+//   reset()                        new game: every pickup back, star hidden, star count taken back
+//   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //
 // Everything animates on the simulation clock (ticks + alpha), so pausing the game freezes the
-// objects too. Before the first update() (the title screen shows the level behind it),
-// animate() runs that clock from the caller's time instead, with ambient motion only (no
-// pickups), and play then carries on from there without a jump. Seven draw calls in total:
-// coins, sparkles, shadows, star, 1-up, butterflies, birds. The per-tick and per-frame paths do
-// not allocate (apart from event payloads).
+// objects too. Before the first update() (the title screen shows the level behind it), and
+// again after reset() until the next update(), animate() runs that clock from the caller's
+// time instead (ambient()): ambient motion only (no pickups), and play then carries on from
+// there without a jump. Seven draw calls in total: coins, sparkles, shadows, star, 1-up,
+// butterflies, birds.
+//
+// Allocation: once JIT-compiled, the per-frame path allocates nothing, and the per-tick path
+// only event payloads plus the small result objects of its few collision queries (see
+// Butterflies.js; also the star's floor while it rises). Sparkles come from a pool, sprites
+// are written through SpriteBatch.next, and the hot loops avoid what V8 boxes numbers for:
+// Math.hypot and Math.max/min on doubles, iterators, and numbers passed to calls that may not
+// be inlined (tests/objects.test.js guards the hot methods' source).
 //
 // Events: 'coin' { value, pos, red, index? } (index = running red-coin count),
 // 'redCoinsComplete' { pos } when the last red coin is taken (the audio plays the star
@@ -18,7 +27,7 @@
 
 import * as THREE from 'three';
 import { FRAME_DT, MAX_STEPS_PER_FRAME } from '../core/constants.js';
-import { makeRng } from '../core/math.js';
+import { clamp, makeRng } from '../core/math.js';
 import { BlobShadows, shadowSize } from './BlobShadows.js';
 import { CoinField } from './CoinField.js';
 import { Sparkles, TINT } from './Sparkles.js';
@@ -52,8 +61,9 @@ export class ObjectManager {
     this.player = player;
     this.collision = collision;
     this.tick = 0;
-    this.started = false; // first update() seen; until then animate() runs the backdrop
-    this._backdropStart = null; // caller time of the first backdrop frame
+    this.started = false; // update() seen since construction / reset(); until then animate() runs the backdrop
+    this._backdropStart = null; // caller time that matches tick 0 while the backdrop runs
+    this._starHolder = null; // the hero who got the star (reset() takes it back off his count)
     this.rng = makeRng(0x0b1ec7);
     this._animTick = -1; // see animate()
     this._animAlpha = 0;
@@ -67,9 +77,10 @@ export class ObjectManager {
     this.sparkles = new Sparkles(this.rng);
     this.star = new Star(makeStarEnvMap());
     this.starSpot = layout.STAR;
-    this.starFloor = null; // floor under the star, refreshed every tick while it shows
+    this.starFloor = null; // floor under the star (for its shadow), found while it rises
+    this.oneUpFloor = null; // { y, normal, size } of the 1-up's shadow (null: no floor)
     this.oneUp = this._makeOneUp(oneUpSpot(layout), groundAt);
-    this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng });
+    this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng, waterTop: layout.WATER_LEVEL });
     this.birds = new Birds(layout.BIRD_CIRCLES ?? [], { collision, rng: this.rng });
 
     this.group = new THREE.Group();
@@ -88,9 +99,36 @@ export class ObjectManager {
     const gem = new OneUp(spot, floorY);
     if (floor.surface) {
       const size = shadowSize(ONE_UP_SHADOW, gem.pos.y - floor.y);
+      this.oneUpFloor = { y: floor.y, normal: { ...floor.surface.normal }, size };
       this.shadows.place(this.oneUpShadow, spot.x, floor.y, spot.z, floor.surface.normal, size);
     }
     return gem;
+  }
+
+  // A new game after GAME OVER: every coin comes back (red-coin count 0), the star is hidden
+  // again until the next full set of red coins, the 1-up returns, and live sparkles vanish. The
+  // hero who got the star loses it from his count, so the restored star is not counted twice.
+  // The tick clock keeps running (birds and butterflies carry on where they are); until the
+  // next update(), animate() drives it from the caller's time, as behind the first title.
+  reset() {
+    this.coins.reset();
+    this.star.reset();
+    this.starFloor = null;
+    this.shadows.hide(this.starShadow);
+    if (this._starHolder) {
+      const holder = this._starHolder;
+      holder.stars = holder.stars > 0 ? holder.stars - 1 : 0;
+      this._starHolder = null;
+    }
+    const gem = this.oneUp;
+    if (gem) {
+      gem.reset();
+      const f = this.oneUpFloor;
+      if (f) this.shadows.place(this.oneUpShadow, gem.pos.x, f.y, gem.pos.z, f.normal, f.size);
+    }
+    this.sparkles.clear();
+    this.started = false;
+    this._backdropStart = null;
   }
 
   // Simulation time of the latest tick, in seconds.
@@ -100,6 +138,7 @@ export class ObjectManager {
 
   update(ctx = {}) {
     this.started = true;
+    this._backdropStart = null; // the next backdrop anchors to wherever play left the clock
     this._step(ctx.player ?? this.player);
   }
 
@@ -136,7 +175,9 @@ export class ObjectManager {
     const star = this.star;
     star.update();
     if (!star.active) return;
-    this.starFloor = this.collision.findFloor(star.pos.x, star.pos.y, star.pos.z, 0);
+    // The floor under the star (for its shadow) only changes while it rises; age 0 in 'idle'
+    // is the tick it arrives.
+    if (star.state === 'rising' || star.age === 0) this.starFloor = this.collision.findFloor(star.pos.x, star.pos.y, star.pos.z, 0);
     if (star.state === 'rising') {
       this.sparkles.trail(star.pos, this.time, TINT.star);
       this.sparkles.trail(star.pos, this.time, TINT.star);
@@ -149,6 +190,7 @@ export class ObjectManager {
         this.sparkles.glow.visible = false;
         this.sparkles.burst(pos, this.time, TINT.star, 12);
         player.collectStar();
+        this._starHolder = player;
         this.events.emit('starCollected', { pos });
       }
     }
@@ -168,25 +210,28 @@ export class ObjectManager {
   // Once play has started, time (seconds) is not used: the objects follow the simulation clock
   // so they pause with it.
   animate(time, alpha, camera) {
-    if (!this.started) alpha = this._backdrop(time);
+    if (!this.started) alpha = this.ambient(time);
     // While no tick runs (pause), the caller's alpha keeps cycling 0..1; holding the largest
     // alpha seen since the last tick freezes the objects instead of flickering. During play
     // alpha only grows between ticks, so this changes nothing.
-    if (this.tick === this._animTick) alpha = Math.max(alpha, this._animAlpha);
+    if (this.tick === this._animTick && this._animAlpha > alpha) alpha = this._animAlpha;
     this._animTick = this.tick;
     this._animAlpha = alpha;
-    this._draw(Math.max(0, (this.tick - 1 + alpha) * FRAME_DT), alpha, camera);
+    const clock = (this.tick - 1 + alpha) * FRAME_DT;
+    this._draw(clock > 0 ? clock : 0, alpha, camera);
   }
 
-  // Title backdrop: runs ambient ticks (butterflies wander, sparkles twinkle) to keep up with
-  // the caller's clock and returns the alpha into the latest one. A long stall (hidden tab)
-  // skips ahead instead of catching up.
-  _backdrop(time) {
-    this._backdropStart ??= time;
+  // Title backdrop: runs ambient ticks (butterflies wander, sparkles twinkle; no pickups) to
+  // keep up with the caller's clock `time` (seconds) and returns the alpha into the latest one,
+  // for animate(). The first call after construction, reset() or play anchors the clock where
+  // the ticks are, so nothing jumps. A long stall (hidden tab) skips ahead instead of catching
+  // up. animate() calls this itself until the first update() (and after reset()).
+  ambient(time) {
+    this._backdropStart ??= time - this.tick * FRAME_DT;
     const due = (time - this._backdropStart) / FRAME_DT;
     for (let n = 0; this.tick < Math.floor(due) && n < MAX_STEPS_PER_FRAME; n++) this._step(NOBODY);
     if (this.tick < Math.floor(due)) this._backdropStart = time - this.tick * FRAME_DT;
-    return Math.min(1, Math.max(0, due - this.tick));
+    return clamp(due - this.tick, 0, 1);
   }
 
   // Writes every object's pose for simulation time `clock` (seconds).

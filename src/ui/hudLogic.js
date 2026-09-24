@@ -163,10 +163,86 @@ export function pauseLayout(W, H, measure, controls = KEY_CONTROLS) {
 
 export const COURSE_NAME = 'CASTLE GROUNDS';
 
-// Title card lines under the logo.
+// Title card lines under the logo. Until a first key/click/tap lets the browser start
+// audio, the card asks for any press (it starts the title music) instead of Start.
+export const START_PRESS = 'PRESS START';
 export const START_PROMPT = 'Press Enter, Space or click to start';
+export const UNLOCK_PRESS = 'PRESS ANY KEY';
+export const UNLOCK_PROMPT = 'Click or press any key to turn the sound on';
 export const TITLE_HINT = 'WASD move · Space jump · J attack · Esc pause';
 
+// Game-over card (GameOverCard.js): the text is drawn at GAME_OVER_SCALE font pixels per
+// logical pixel, the same size as the pause screen's PAUSE.
+export const GAME_OVER = 'GAME OVER';
+export const GAME_OVER_SCALE = 2;
+
 // Every string the UI draws with each font (the glyph-coverage test checks these).
-export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, 'PRESS START', 'PIP'];
-export const SMALL_STRINGS = [...KEY_CONTROLS.flat(), ...PAD_CONTROLS.flat(), 'starring', 'CONTROLS', START_PROMPT, TITLE_HINT, '×0123456789'];
+export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, 'PIP', GAME_OVER];
+export const SMALL_STRINGS = [
+  ...KEY_CONTROLS.flat(),
+  ...PAD_CONTROLS.flat(),
+  'starring',
+  'CONTROLS',
+  START_PROMPT,
+  UNLOCK_PROMPT,
+  TITLE_HINT,
+  '×0123456789',
+];
+
+// When the title card starts the game, without the DOM. `locked`: browser autoplay rules
+// still hold the audio back until a user gesture. Then the first key/click/tap only
+// unlocks it (the title music starts, the card switches to PRESS START) and is swallowed,
+// so the music is heard; a later, fresh Start key or click begins the game. Gamepad
+// presses are no user gesture (they cannot unlock audio), so the pad begins at once.
+// `activated` is navigator.userActivation.hasBeenActive after the event (null: unknown);
+// a press that grants no activation (Esc) cannot unlock audio and is ignored while locked.
+// Every method returns 'unlock', 'begin' or null (nothing to do).
+export class TitleGate {
+  constructor(locked) {
+    this.locked = !!locked;
+    this.starting = false;
+    this.pressLocked = false; // the pointer press in progress went down while locked
+  }
+
+  key({ start, repeat = false, activated = null }) {
+    if (this.starting || repeat) return null; // held keys (auto-repeat) are never fresh
+    if (this.locked) return this.unlock(activated);
+    return start ? this._begin() : null;
+  }
+
+  pointerDown(activated = null) {
+    this.pressLocked = this.locked;
+    return this.unlock(activated);
+  }
+
+  // pointerup / touchend: touch and pen presses grant activation on release, not press.
+  pointerUp(activated = null) {
+    return this.unlock(activated);
+  }
+
+  // A click (or tap) on the card; the one ending the unlocking press is swallowed.
+  click() {
+    if (this.pressLocked) {
+      this.pressLocked = false;
+      return null;
+    }
+    return this._begin();
+  }
+
+  pad() {
+    return this._begin();
+  }
+
+  // Also called when audio turned out to be unlocked by a gesture the card did not see.
+  unlock(activated = null) {
+    if (!this.locked || this.starting || activated === false) return null;
+    this.locked = false;
+    return 'unlock';
+  }
+
+  _begin() {
+    if (this.starting) return null;
+    this.starting = true;
+    return 'begin';
+  }
+}

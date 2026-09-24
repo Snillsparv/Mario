@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { worldMaterial } from '../render/materials.js';
 import { MeshBuilder, bakedMesh } from './props/geom.js';
-import { BillboardBatch } from './props/billboards.js';
+import { BillboardBatch, heroLocator } from './props/billboards.js';
 import { buildTrees } from './props/trees.js';
 import { buildFences } from './props/fences.js';
 import { buildDecor } from './props/decor.js';
@@ -31,7 +31,12 @@ export function buildProps(layout) {
   buildFences(layout, kit);
   const decor = buildDecor(layout, kit);
   const waterfall = buildWaterfall(layout, kit);
-  const foliage = new BillboardBatch('foliage', kit.foliage, worldMaterial({ map: foliageAtlas(), alphaTest: 0.5 }));
+  // Foliage thins out (screen-door dither) when the camera is right up against it or a
+  // canopy stands between the camera and the hero it frames.
+  const foliage = new BillboardBatch('foliage', kit.foliage, worldMaterial({ map: foliageAtlas(), alphaTest: 0.5 }), {
+    fade: true,
+  });
+  const locateHero = heroLocator((x, z) => Math.max(layout.groundHeight(x, z), layout.waterLevelAt(x, z)));
 
   const group = new THREE.Group();
   group.name = 'props';
@@ -53,7 +58,7 @@ export function buildProps(layout) {
     })),
     poles,
     update(time, camera) {
-      foliage.update(camera);
+      foliage.update(camera, locateHero);
       decor.update(camera);
       waterfall.update(time, camera);
     },

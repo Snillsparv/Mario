@@ -13,6 +13,8 @@ import { CollisionWorld } from '../src/collision/CollisionWorld.js';
 import { COLLIDER_TOP, SLAB_HALF, fenceRuns } from '../src/world/props/fences.js';
 import { BUSHES, FLOWER_PATCHES, ROCKS, SIGNPOST, SIGN_BOX } from '../src/world/props/decor.js';
 import { POLE_HEIGHT, POLE_RADIUS, TRUNK_RADIUS } from '../src/world/props/trees.js';
+import { FADE_SNAP, OCCLUDER_ALPHA, heroLocator } from '../src/world/props/billboards.js';
+import { LOOK_HEIGHT, ORBIT_MODES } from '../src/camera/cameraConfig.js';
 
 const L = layout;
 const part = buildProps(L);
@@ -287,6 +289,146 @@ test('billboards turn to face the camera', () => {
       assert.ok(facing > 0.999 && Math.abs(n.y) < 1e-6, `${name} faces the camera (${facing})`);
     }
   }
+});
+
+// Foliage screen-door fade (playtest: a canopy the trailing camera passed behind filled the
+// screen and hid the hero). Camera poses are the in-game ones: the view is aimed a little
+// above the hero, 1250-1450 units behind him.
+function foliageFades(camPos, aimAt, focus) {
+  const camera = new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000);
+  camera.position.set(...camPos);
+  camera.lookAt(...aimAt);
+  camera.updateMatrixWorld();
+  if (focus !== undefined) camera.userData.focus = focus && { x: focus[0], y: focus[1] + LOOK_HEIGHT, z: focus[2] };
+  part.update(1, camera);
+  const a = part.object3D.getObjectByName('foliage').geometry.attributes.spriteFade.array;
+  return (i) => {
+    assert.ok(a[i * 4] === a[i * 4 + 1] && a[i * 4] === a[i * 4 + 3], 'one fade per sprite');
+    return a[i * 4];
+  };
+}
+const treeIndex = (x, z) => L.TREES.findIndex((t) => t.x === x && t.z === z);
+
+test('foliage between the camera and the hero thins out to a screen door', () => {
+  const tree = treeIndex(-2600, 5200);
+  const hero = [-2480, L.groundHeight(-2480, 4502), 4502];
+  // With the camera's published focus and with the props' own estimate of where he is.
+  for (const focus of [hero, undefined]) {
+    for (const camZ of [6007, 5815]) {
+      const fade = foliageFades([-2480, 450, camZ], [-2480, 437, 4502], focus);
+      assert.ok(fade(tree) <= OCCLUDER_ALPHA + 0.01, `canopy in front of the hero (cam z ${camZ}): ${fade(tree)}`);
+    }
+  }
+  // Nothing to keep in view (first person): only the near fade applies, and a tree ~800
+  // ahead is solid.
+  assert.equal(foliageFades([-2480, 450, 6007], [-2480, 437, 4502], null)(tree), 1);
+  // A bush hiding his legs fades; one in the foreground below his feet does not.
+  const bush = L.TREES.length + BUSHES.findIndex((b) => b.x === -1200 && b.z === 3900);
+  const behindBush = [-1200, L.groundHeight(-1200, 3620), 3620];
+  assert.ok(foliageFades([-1200, 430, 4870], [-1200, 417, 3620], behindBush)(bush) <= OCCLUDER_ALPHA + 0.01);
+  assert.equal(foliageFades([-1200, 432, 4488], [-1200, 419, 3250], [-1200, L.groundHeight(-1200, 3250), 3250])(bush), 1);
+});
+
+// The locator shares the camera's tuning (cameraConfig.js) rather than a private copy: the
+// published focus is LOOK_HEIGHT above the hero's feet, and without one the default trailing
+// camera's pitch and distance place him.
+test('the hero locator uses the camera config: focus height, trailing pitch and distance', () => {
+  const locate = heroLocator(() => 0); // flat ground at y = 0
+  const camera = new THREE.PerspectiveCamera();
+  const hero = { x: 0, y: 0, z: 0 };
+  camera.position.set(0, 900, 3000);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld();
+  camera.userData.focus = { x: 12, y: 480, z: -34 };
+  assert.equal(locate(camera, 0, -1, hero), true);
+  assert.deepEqual(hero, { x: 12, y: 480 - LOOK_HEIGHT, z: -34 });
+  camera.userData.focus = null;
+  assert.equal(locate(camera, 0, -1, hero), false, 'no hero to keep in view');
+  // No published focus: a camera where the default orbit puts it, `dist` behind the hero
+  // and dist * tan(pitch) above his look point, finds him at his feet.
+  delete camera.userData.focus;
+  const { dist, pitch } = ORBIT_MODES.lakitu;
+  camera.position.set(0, LOOK_HEIGHT + dist[0] * Math.tan(pitch[0]), dist[0]);
+  camera.updateMatrixWorld();
+  assert.equal(locate(camera, 0, -1, hero), true);
+  assert.ok(Math.abs(hero.z) < 2 && hero.x === 0 && hero.y === 0, `estimate ${hero.x}, ${hero.y}, ${hero.z}`);
+});
+
+test('foliage beside or behind the hero stays solid, foliage at the lens is gone', () => {
+  const tree = treeIndex(-2600, 5200);
+  // Running north past the tree: once he is in front of it, it stays solid (also with the
+  // estimate, on the lawn that slopes away from the camera here).
+  for (const focus of [[-2600, L.groundHeight(-2600, 5526), 5526], undefined]) {
+    assert.equal(foliageFades([-2600, 499, 6817], [-2600, 485, 5526], focus)(tree), 1);
+  }
+  // Hero just beside the canopy: not hidden, not faded.
+  const beside = foliageFades([-1981, 450, 5622], [-2600, 437, 4550], [-2600, L.groundHeight(-2600, 4550), 4550]);
+  assert.ok(beside(tree) > 0.9, `tree beside the hero: ${beside(tree)}`);
+  // Camera 150 in front of the tree's plane: fully faded.
+  assert.equal(foliageFades([-2600, 450, 5350], [-2600, 437, 4000], null)(tree), 0);
+});
+
+// Playtest: behind the castle, a camera ~400 from the tree at (2900, -6200) left its canopy
+// at fade 0.037, i.e. 1 pixel in 16: a sparse, perfectly regular dot grid over the sky and
+// the cliff that read as a screen overlay. Fades now skip the lowest and highest levels.
+test('foliage fades never leave a sparse dot grid: only 4/16 .. 12/16 dither levels show', () => {
+  const tree = treeIndex(2900, -6200);
+  const heroAt = (x, z) => [x, L.groundHeight(x, z), z];
+  const near = foliageFades([3238, 498, -6000], [2000, L.groundHeight(2000, -6000) + 137, -6000], heroAt(2000, -6000));
+  assert.equal(near(tree), 0, 'canopy right at the lens is gone, not a 1-in-16 dot grid');
+  // Sweep the trailing camera past trees and bushes all over the grounds: every sprite is
+  // gone, solid, or in the band of dense, even screen doors.
+  const n = L.TREES.length + BUSHES.length;
+  let partial = 0;
+  for (const t of [...L.TREES, ...BUSHES]) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      for (const d of [150, 300, 450, 600, 900]) {
+        const cam = [t.x + Math.cos(a) * d, L.groundHeight(t.x, t.z) + 300, t.z + Math.sin(a) * d];
+        const hero = heroAt(cam[0] - Math.cos(a) * 1250, cam[2] - Math.sin(a) * 1250);
+        const fade = foliageFades(cam, [hero[0], hero[1] + 137, hero[2]], hero);
+        for (let i = 0; i < n; i++) {
+          const f = fade(i);
+          if (f > 0 && f < 1) partial++;
+          assert.ok(f === 0 || f === 1 || (f >= FADE_SNAP[0] && f <= FADE_SNAP[1]), `sprite ${i}: fade ${f}`);
+        }
+      }
+    }
+  }
+  assert.ok(partial > 0, 'some sprites are part faded');
+  // The shader keeps a fragment when fade * 16 > Bayer + 0.5: 4 and 12 of 16 at the ends.
+  const kept = (f) => [...Array(16).keys()].filter((b) => f * 16 > b + 0.5).length;
+  assert.equal(kept(FADE_SNAP[0]), 4);
+  assert.equal(kept(FADE_SNAP[1]), 12);
+  assert.equal(kept(OCCLUDER_ALPHA) >= 4 && kept(OCCLUDER_ALPHA) <= 12, true);
+});
+
+test('the foliage material patch finds its anchors in the three.js shaders', () => {
+  const mat = part.object3D.getObjectByName('foliage').material;
+  const shader = { vertexShader: THREE.ShaderLib.basic.vertexShader, fragmentShader: THREE.ShaderLib.basic.fragmentShader };
+  mat.onBeforeCompile(shader);
+  assert.match(shader.vertexShader, /vSpriteFade = spriteFade;/);
+  assert.match(shader.fragmentShader, /if \(vSpriteFade \* 16\.0 <= BAYER4/);
+  assert.ok(!part.object3D.getObjectByName('flowers').geometry.attributes.spriteFade, 'flowers never fade');
+});
+
+test('waterfall splash only animates while it can be seen', () => {
+  const splash = part.object3D.getObjectByName('waterfallSplash').geometry.attributes.position;
+  const camera = new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000);
+  const WF = L.WATERFALL;
+  camera.position.set(WF.x + 3000, 600, WF.z + 2500);
+  camera.lookAt(WF.x, 300, WF.z);
+  camera.updateMatrixWorld();
+  part.update(2, camera);
+  const seen = splash.array.slice();
+  camera.lookAt(WF.x + 6000, 300, WF.z + 8000); // turned away
+  camera.updateMatrixWorld();
+  part.update(3, camera);
+  assert.deepEqual(splash.array, seen, 'no update while out of view');
+  camera.lookAt(WF.x, 300, WF.z);
+  camera.updateMatrixWorld();
+  part.update(3, camera);
+  assert.notDeepEqual(splash.array, seen, 'animates again in view');
 });
 
 test('draw calls: props + sky stay within 10 meshes', () => {

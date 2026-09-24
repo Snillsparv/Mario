@@ -158,13 +158,13 @@ function poleClimb(p, c) {
   hug(p, c.t);
   const w = c.ph * TAU;
   const s = Math.sin(w);
-  for (const [side, phase, x] of [['L', 0, HAND_X], ['R', 0.5, -HAND_X]]) {
-    const u = (c.ph + phase) % 1; // 0..0.5 gripping, 0.5..1 reaching up
+  for (let i = 0; i < 2; i++) {
+    const u = (c.ph + 0.5 * i) % 1; // 0..0.5 gripping, 0.5..1 reaching up
     const holding = u < 0.5;
     const k = holding ? u / 0.5 : smoothstep(0.5, 1, u);
     const top = HAND_Y + 0.55 * GRIP_TRAVEL;
     const y = holding ? top - GRIP_TRAVEL * k : top - GRIP_TRAVEL * (1 - k);
-    reachArm(p, side, x, clamp(y, 60, 125), HAND_Z - (holding ? 0 : 5 * Math.sin(TAU * k / 2)));
+    reachArm(p, i ? 'R' : 'L', i ? -HAND_X : HAND_X, clamp(y, 60, 125), HAND_Z - (holding ? 0 : 5 * Math.sin(TAU * k / 2)));
   }
   p.kneeL += 0.35 * s;
   p.kneeR -= 0.35 * s;

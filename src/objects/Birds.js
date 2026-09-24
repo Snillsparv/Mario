@@ -1,13 +1,15 @@
 // Small dark low-poly birds circling high over the grounds in loose flocks, alternating bouts
 // of flapping with glides. Purely decorative: the pose is a function of time, and every bird is
-// written into one dynamic flat-shaded mesh (one draw call) without per-frame allocations.
+// written into one dynamic flat-shaded mesh (one draw call). animate() allocates nothing: each
+// bird's local-space vertices go through a typed-array scratch and are transformed inline (no
+// helper calls taking doubles, which lower JIT tiers would box).
 //
 // A circle may pass over the castle, so at startup each bird's ring is checked against the
 // scenery: a bird whose path would clip a tower moves to the nearest clear radius at its
 // altitude, or (if there is none) climbs over the tallest scenery under its ring.
 
 import * as THREE from 'three';
-import { TAU, smoothstep } from '../core/math.js';
+import { TAU } from '../core/math.js';
 
 const BANK = 0.32;
 const SWAY = 140; // the circle's radius breathes by this much
@@ -44,33 +46,17 @@ const ROOT_B = 1;
 const ELBOW_F = 2;
 const ELBOW_B = 3;
 const TIP = 4;
-const WING_TRIS = [ROOT_F, ROOT_B, ELBOW_B, ROOT_F, ELBOW_B, ELBOW_F, ELBOW_F, ELBOW_B, TIP];
+const WING_TRIS = new Uint8Array([ROOT_F, ROOT_B, ELBOW_B, ROOT_F, ELBOW_B, ELBOW_F, ELBOW_F, ELBOW_B, TIP]);
 const WING_PTS = new Float32Array(5 * 3);
 const VERTS_PER_BIRD = BODY.length / 3 + 2 * WING_TRIS.length;
+// One bird's vertices in local space: the static body, then the right and left wings
+// (rewritten per bird every frame).
+const LOCAL = new Float32Array(VERTS_PER_BIRD * 3);
+LOCAL.set(BODY);
 const BODY_RGB = [0.3, 0.26, 0.24];
 const WING_RGB = [0.22, 0.2, 0.2];
-
-// Placement of the bird being written: position, roll, pitch and yaw sines/cosines.
-const F = { x: 0, y: 0, z: 0, cr: 1, sr: 0, cp: 1, sp: 0, cy: 1, sy: 0 };
-
-// Writes local point (px, py, pz) rolled (about Z), pitched (about X), yawed (about Y) and
-// placed; returns the next offset.
-function put(P, o, px, py, pz) {
-  const x1 = px * F.cr - py * F.sr;
-  const y1 = px * F.sr + py * F.cr;
-  const y2 = y1 * F.cp - pz * F.sp;
-  const z2 = pz * F.cp + y1 * F.sp;
-  P[o] = F.x + x1 * F.cy + z2 * F.sy;
-  P[o + 1] = F.y + y2;
-  P[o + 2] = F.z - x1 * F.sy + z2 * F.cy;
-  return o + 3;
-}
-
-function setWingPoint(i, x, y, z) {
-  WING_PTS[i * 3] = x;
-  WING_PTS[i * 3 + 1] = y;
-  WING_PTS[i * 3 + 2] = z;
-}
+const GLIDE_LO = 0.1; // glide = smoothstep(GLIDE_LO, GLIDE_HI, sin(...))
+const GLIDE_HI = 0.5;
 
 // Flat per-face normals of a non-indexed triangle list, (c - b) x (a - b) like three.js.
 function faceNormals(P, N) {
@@ -195,46 +181,82 @@ export class Birds {
 
   animate(clock) {
     const P = this.positions;
+    const L = LOCAL;
+    const W = WING_PTS;
+    const birds = this.birds;
     let o = 0;
-    for (const b of this.birds) {
+    for (let n = 0; n < birds.length; n++) {
+      const b = birds[n];
       // Position on a slightly breathing circle.
       const th = b.angle0 + b.dir * b.speed * clock;
       const r = b.radius + SWAY * Math.sin(clock * 0.23 + b.phase);
-      const glide = smoothstep(0.1, 0.5, Math.sin(clock * 0.42 + b.glidePhase)); // 1 = gliding
+      let g = (Math.sin(clock * 0.42 + b.glidePhase) - GLIDE_LO) / (GLIDE_HI - GLIDE_LO);
+      g = g < 0 ? 0 : g > 1 ? 1 : g;
+      const glide = g * g * (3 - 2 * g); // 1 = gliding
       const fp = clock * b.flapRate * TAU + b.phase;
       const flap = 1 - glide;
       const yaw = Math.atan2(-Math.sin(th) * b.dir, Math.cos(th) * b.dir);
       const roll = BANK * b.dir; // bank into the turn: the wing on the circle's inside dips
       const pitch = 0.08 * glide; // nose slightly down while gliding
-      F.x = b.c.x + Math.cos(th) * r;
-      F.y = b.alt + BOB * Math.sin(clock * 0.31 + b.phase) - 6 * flap * Math.sin(fp);
-      F.z = b.c.z + Math.sin(th) * r;
-      b.pos.x = F.x;
-      b.pos.y = F.y;
-      b.pos.z = F.z;
-      F.cr = Math.cos(roll);
-      F.sr = Math.sin(roll);
-      F.cp = Math.cos(pitch);
-      F.sp = Math.sin(pitch);
-      F.cy = Math.cos(yaw);
-      F.sy = Math.sin(yaw);
-      for (let i = 0; i < BODY.length; i += 3) o = put(P, o, BODY[i], BODY[i + 1], BODY[i + 2]);
+      const x = b.c.x + Math.cos(th) * r;
+      const y = b.alt + BOB * Math.sin(clock * 0.31 + b.phase) - 6 * flap * Math.sin(fp);
+      const z = b.c.z + Math.sin(th) * r;
+      b.pos.x = x;
+      b.pos.y = y;
+      b.pos.z = z;
 
       // Two-segment wings: the outer segment lags the inner one for a rolling stroke.
       const a1 = flap * 0.65 * Math.sin(fp) + glide * 0.14;
       const a2 = a1 + flap * 0.5 * Math.sin(fp - 0.9) - glide * 0.2;
       const ex = 6 + INNER_SPAN * Math.cos(a1);
       const ey = 3 + INNER_SPAN * Math.sin(a1);
+      const tx = ex + OUTER_SPAN * Math.cos(a2);
+      const ty = ey + OUTER_SPAN * Math.sin(a2);
+      let w = BODY.length;
       for (let side = 1; side >= -1; side -= 2) {
-        setWingPoint(ROOT_F, side * 6, 3, 14);
-        setWingPoint(ROOT_B, side * 6, 3, -12);
-        setWingPoint(ELBOW_F, side * ex, ey, 10);
-        setWingPoint(ELBOW_B, side * ex, ey, -16);
-        setWingPoint(TIP, side * (ex + OUTER_SPAN * Math.cos(a2)), ey + OUTER_SPAN * Math.sin(a2), -26);
+        W[ROOT_F * 3] = side * 6;
+        W[ROOT_F * 3 + 1] = 3;
+        W[ROOT_F * 3 + 2] = 14;
+        W[ROOT_B * 3] = side * 6;
+        W[ROOT_B * 3 + 1] = 3;
+        W[ROOT_B * 3 + 2] = -12;
+        W[ELBOW_F * 3] = side * ex;
+        W[ELBOW_F * 3 + 1] = ey;
+        W[ELBOW_F * 3 + 2] = 10;
+        W[ELBOW_B * 3] = side * ex;
+        W[ELBOW_B * 3 + 1] = ey;
+        W[ELBOW_B * 3 + 2] = -16;
+        W[TIP * 3] = side * tx;
+        W[TIP * 3 + 1] = ty;
+        W[TIP * 3 + 2] = -26;
         for (let i = 0; i < WING_TRIS.length; i++) {
           const p = WING_TRIS[i] * 3;
-          o = put(P, o, WING_PTS[p], WING_PTS[p + 1], WING_PTS[p + 2]);
+          L[w] = W[p];
+          L[w + 1] = W[p + 1];
+          L[w + 2] = W[p + 2];
+          w += 3;
         }
+      }
+
+      // Local (forward +Z, up +Y) to world: roll about Z, pitch about X, yaw about Y, place.
+      const cr = Math.cos(roll);
+      const sr = Math.sin(roll);
+      const cp = Math.cos(pitch);
+      const sp = Math.sin(pitch);
+      const cy = Math.cos(yaw);
+      const sy = Math.sin(yaw);
+      for (let i = 0; i < L.length; i += 3) {
+        const px = L[i];
+        const py = L[i + 1];
+        const pz = L[i + 2];
+        const x1 = px * cr - py * sr;
+        const y1 = px * sr + py * cr;
+        const y2 = y1 * cp - pz * sp;
+        const z2 = pz * cp + y1 * sp;
+        P[o] = x + x1 * cy + z2 * sy;
+        P[o + 1] = y + y2;
+        P[o + 2] = z - x1 * sy + z2 * cy;
+        o += 3;
       }
     }
     faceNormals(P, this.normals);

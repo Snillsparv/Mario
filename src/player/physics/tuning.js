@@ -106,6 +106,8 @@ export const POLE_BODY = 40; // hero keeps this far from a pole's surface on the
 // pole that hold the body further out (e.g. an octagonal prism: up to ~60 past the pole).
 export const POLE_GRAB_REACH = 65;
 export const POLE_HOLD_DIST = 30; // distance from the pole surface while holding
+export const POLE_FOOT_BLEND = 80; // near the floor the hold eases out to where he'll stand
+export const POLE_LET_GO_TICKS = 4; // Z: eases off the trunk over this many ticks, then falls
 export const POLE_CLIMB_SPEED = 7;
 export const POLE_SLIDE_SPEED = 16;
 
@@ -117,6 +119,7 @@ export const SWIM_TURN_RATE = 7 * DEG;
 export const SWIM_MAX_PITCH = 75 * DEG;
 export const SWIM_PITCH_RATE = 4 * DEG;
 export const STROKE_TICKS = 18;
+export const RESTROKE_TICKS = 10; // A re-strokes from this far into a stroke
 export const STROKE_BURST_TICKS = 6;
 export const STROKE_ACCEL = 3.5;
 export const STROKE_MAX_SPEED = 28;
@@ -125,6 +128,7 @@ export const SURFACE_PADDLE_SPEED = 12;
 export const BUOYANCY = 1.2; // slow upward drift underwater
 export const PLUNGE_DAMPING = 5; // entry vertical speed decays toward buoyancy by this per tick
 export const WATER_JUMP_VY = 62;
+export const WATER_JUMP_WALL_FV = 12; // forward speed kept while a water jump rises along a wall
 export const BREATHING_DEPTH = 140; // feet shallower than this below the surface = head above water
 export const DROWN_TICKS = 256; // one wedge lost per ~8.5 s with the head under water
 export const SURFACE_HEAL_TICKS = 10; // one wedge back per this many ticks while breathing
@@ -137,3 +141,7 @@ export const KNOCKBACK_VY = 24;
 export const DEATH_TICKS = 60;
 export const OUT_OF_BOUNDS_Y = -3000;
 export const INTRO_DROP = 1600;
+
+// Star celebration
+export const STAR_DANCE_TICKS = 80;
+export const STAR_GRAB_MAX_VY = 10; // a star grabbed while rising only carries on up this fast

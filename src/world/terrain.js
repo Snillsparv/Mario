@@ -266,6 +266,11 @@ export function buildTerrain(layout) {
   }
   const inCoarse = (cell) => coarse[Math.floor(Math.floor(cell / grid.cols) / K) * ccols + Math.floor((cell % grid.cols) / K)] === 1;
 
+  // The bridge deck's footprint: the deck rests only ~2 units above the lawn at its south end,
+  // so the ground under it is never seen and gets no decal.
+  const B = L.BRIDGE;
+  const underDeck = (v) => Math.abs(v.x - B.x) <= B.width / 2 && v.z >= B.northZ && v.z <= B.southZ;
+
   // Rendered ground triangle (with its path decal) for three vertices of a labelled piece.
   const renderTri = (verts, label) => {
     const facet = facetFor(label, verts);
@@ -273,7 +278,7 @@ export function buildTerrain(layout) {
     buf.tri(...verts.map((v) => buf.keyed(vertexKey(v, label, facet), () => groundVertex(v, label, facet))));
 
     const masks = verts.map((v) => decalMask(label, v.x, v.z));
-    if (Math.max(...masks) > DECAL_MIN) {
+    if (Math.max(...masks) > DECAL_MIN && !verts.every(underDeck)) {
       const decal = (v, i) => {
         const g = groundVertex(v, label, facet);
         return { ...g, ...rgbOf(groundTint(v.x, g.y, v.z)), u: v.x / TILE.path, v: v.z / TILE.path, a: masks[i] };
@@ -499,6 +504,11 @@ function rgbOf(c) {
 
 // Dirt path decal: the lawn triangles under a path, drawn again with the path texture and a
 // per-vertex alpha from pathMask so the path edges blend softly into the grass.
+//
+// The decal repeats the ground's own triangles, so it needs only a constant depth bias
+// (units) to win over them; a slope bias (factor) would grow with the pixel size at grazing
+// angles (several world units at the N64 mode's 240 lines) and let the dirt show through
+// opaque things lying just above the ground, such as the bridge deck's lawn end.
 function addPathOverlay(group, buffer) {
   const geo = buffer.toGeometry();
   const rgba = geo.attributes.color;
@@ -510,7 +520,7 @@ function addPathOverlay(group, buffer) {
   geo.setAttribute('color', new THREE.BufferAttribute(out, 4));
   const mat = worldMaterial({ map: tex.pathTexture(), transparent: true, depthWrite: false });
   mat.polygonOffset = true;
-  mat.polygonOffsetFactor = -1;
+  mat.polygonOffsetFactor = 0;
   mat.polygonOffsetUnits = -4;
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'paths';
