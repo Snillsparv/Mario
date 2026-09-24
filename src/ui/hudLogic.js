@@ -176,8 +176,12 @@ export const TITLE_HINT = 'WASD move · Space jump · J attack · Esc pause';
 export const GAME_OVER = 'GAME OVER';
 export const GAME_OVER_SCALE = 2;
 
+// The alert when AI RACE mode switches on (AlertBanner.js), at twice the HUD scale.
+export const AI_RACE = 'AI RACE';
+export const AI_RACE_SCALE = 2;
+
 // Every string the UI draws with each font (the glyph-coverage test checks these).
-export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, 'PIP', GAME_OVER];
+export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, 'PIP', GAME_OVER, AI_RACE];
 export const SMALL_STRINGS = [
   ...KEY_CONTROLS.flat(),
   ...PAD_CONTROLS.flat(),

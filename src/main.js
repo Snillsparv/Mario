@@ -30,6 +30,7 @@ import { HUD } from './ui/HUD.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { GameOverCard } from './ui/GameOverCard.js';
 import { DialogBox } from './ui/DialogBox.js';
+import { AlertBanner } from './ui/AlertBanner.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
 
@@ -70,6 +71,7 @@ async function start() {
   // Sign dialogs: the Player enters 'reading' and emits 'signRead'; the box takes the input
   // until its last page, then Pip is released (the closing press never reaches him).
   const dialog = new DialogBox(uiRoot, { events });
+  new AlertBanner(uiRoot, { events }); // flashes 'AI RACE' when the mode switches on
   events.on('dialogClosed', () => {
     player.endReading?.();
     input.flush();
