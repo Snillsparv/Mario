@@ -1,6 +1,7 @@
-// The winged hat that the mystery box releases: Pip's own teal wide-brim explorer hat (mustard
-// band) with a pair of white feathered wings on the sides of the crown. Stand-in built here
-// while the hero model has no buildWingedHat() of its own (MysteryBox prefers that one).
+// A stand-in winged hat: Pip's teal wide-brim explorer hat (mustard band) with a pair of white
+// feathered wings on the sides of the crown. MysteryBox uses the hero model's own
+// buildWingedHat() (src/player/model/wings.js) and falls back to this one only if that is
+// missing (and previews/tests may pass it as buildHat).
 //
 //   buildPlaceholderWingedHat() -> THREE.Group   origin at the hat's base, front +Z, ~110 wide
 //     userData.wings = [left, right]  pivots at the wing roots (flap with flapWings)

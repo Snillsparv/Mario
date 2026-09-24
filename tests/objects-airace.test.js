@@ -652,7 +652,7 @@ test('reset() clears the beast, fireballs, fire zones, burning trees and the but
   assert.equal(objects.beast.state, 'rising');
 });
 
-test('draw calls: the button adds two; the beast, fireballs and fire only while shown', () => {
+test('draw calls: the button adds two; the beast, fireballs, fire and minions only while shown', () => {
   const drawn = (objects) => {
     let n = 0;
     objects.group.traverseVisible((o) => {
@@ -673,7 +673,7 @@ test('draw calls: the button adds two; the beast, fireballs and fire only while 
     step();
     most = Math.max(most, drawn(objects));
   }
-  assert.ok(most - sunny <= 9 + 3, `${most - sunny} more while the beast shows (rig, cores, markers, fire)`);
+  assert.ok(most - sunny <= 9 + 3 + 1, `${most - sunny} more while the beast shows (rig, cores, markers, fire, minions)`);
   events.emit('darkMode', { on: false });
   step(BEAST.SINK_TICKS + 120);
   assert.equal(drawn(objects), sunny);

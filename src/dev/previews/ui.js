@@ -1,4 +1,10 @@
-// UI preview: /preview.html?m=ui&state=full|damaged|lowhp|redcoin|paused|gameover|title|glyphs|dialog
+// UI preview: /preview.html?m=ui&state=full|damaged|lowhp|redcoin|paused|gameover|title|glyphs|dialog|touch
+// (state=touch: the touch controller (ui/TouchController.js) under or over the HUD: a window
+// taller than wide shows the portrait body, a wider one the landscape overlay. &press=A,B,Z,R,
+// START,CU,CD,CL,CR shows those buttons held, &stick=x,y the knob pushed (-1..1, y up; in
+// landscape &at=x,y starts it floating there, px), &dpad=up|down|left|right|upleft|... a D-pad
+// direction; &paused=1 the pause screen with the touch legend. Real touches work too.
+// Hook: __touch (the TouchController), __touchLog (the input states it sent).)
 // (state=dialog: the sign dialog box over the HUD. &sign=<layout.SIGNS id> (default welcome),
 // &page=N (screen, 0-based; default 1) &progress=0..1 (typed share; default 0.55, 1 = complete
 // with its page marker) freeze it; &live=1 types in real time instead (J/K/Space/click press,
@@ -17,6 +23,8 @@ import { HUD } from '../../ui/HUD.js';
 import { TitleScreen } from '../../ui/TitleScreen.js';
 import { GameOverCard } from '../../ui/GameOverCard.js';
 import { DialogBox } from '../../ui/DialogBox.js';
+import { TouchController } from '../../ui/TouchController.js';
+import { STICK_DEADZONE, STICK_FULL } from '../../ui/touchLogic.js';
 import { SIGNS } from '../../world/layout.js';
 import { Events } from '../../core/events.js';
 import { BIG_FONT, SMALL_FONT } from '../../ui/bitmapFont.js';
@@ -31,6 +39,7 @@ const STATES = {
   paused: { lives: 4, coins: 37, stars: 1, health: 6 },
   gameover: { lives: 0, coins: 14, stars: 0, health: 8 },
   dialog: { lives: 4, coins: 3, stars: 0, health: 8 },
+  touch: { lives: 4, coins: 12, stars: 1, health: 6 },
 };
 
 function skyTexture(THREE) {
@@ -162,6 +171,7 @@ function runState(state, ui, params) {
     return {};
   }
 
+  const touch = state === 'touch' ? touchPreview(ui, events, params) : null;
   const hud = new HUD(ui, { events });
   hud.setViewport(vp);
   window.__hud = hud;
@@ -172,7 +182,7 @@ function runState(state, ui, params) {
   hud.update({ ...s, showPower: false });
   hud.meter.displayHealth = s.health;
   if (hud.meter.visible) hud.slide.t = 1;
-  if (state === 'paused') hud.setPaused(true);
+  if (state === 'paused' || (touch && params.get('paused'))) hud.setPaused(true);
   if (state === 'redcoin') events.emit('coin', { value: 2, red: true, index: 3 });
   if (params.get('hud') === '0') hud.setVisible(false);
   if (state === 'gameover') {
@@ -266,4 +276,39 @@ function dialogPreview(ui, events, vp, params) {
     press = false;
     box.update({ A, B: up });
   };
+}
+
+// state=touch: the controller (forced on) with a stand-in input; the UI root keeps to the
+// picture above the portrait body, as the renderer's alignOverlay does in the game.
+function touchPreview(ui, events, params) {
+  window.__touchLog = [];
+  const input = { setTouchState: (st) => window.__touchLog.push({ ...st }), addLookDelta() {} };
+  const tc = new TouchController({ input, events, search: '?touch=1', container: document.getElementById('game') });
+  window.__touch = tc;
+  const L = tc.layout;
+  ui.style.bottom = `${L.pictureBottom}px`;
+  let id = 0;
+  const hold = (x, y, to) => {
+    const t = `p${id++}`;
+    tc._pointer('start', t, x, y);
+    if (to) tc._pointer('move', t, to[0], to[1]);
+  };
+  for (const b of (params.get('press') || '').split(',').filter((b) => L.buttons[b])) hold(L.buttons[b].x, L.buttons[b].y);
+  if (params.get('stick')) {
+    // The thumb offset that gives this push (inverse of touchLogic.stickVector).
+    const [sx, sy] = params.get('stick').split(',').map(Number);
+    const at = params.get('at')?.split(',').map(Number) ?? [L.stick.x, L.stick.y];
+    const m = Math.min(1, Math.hypot(sx, sy));
+    const d = m > 0 ? L.stick.travel * (STICK_DEADZONE + m * (STICK_FULL - STICK_DEADZONE)) : 0;
+    const n = Math.hypot(sx, sy) || 1;
+    hold(at[0], at[1], [at[0] + (sx / n) * d, at[1] - (sy / n) * d]);
+  }
+  const dir = params.get('dpad');
+  if (dir) {
+    const d = L.dpad;
+    const ox = (dir.includes('left') ? -1 : 0) + (dir.includes('right') ? 1 : 0);
+    const oy = (dir.includes('up') ? -1 : 0) + (dir.includes('down') ? 1 : 0);
+    hold(d.x + ox * d.size * 0.35, d.y + oy * d.size * 0.35);
+  }
+  return tc;
 }

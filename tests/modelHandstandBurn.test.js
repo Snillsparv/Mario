@@ -23,12 +23,12 @@ function assertFinite(model, label) {
   });
 }
 
-// Every body vertex in world space (mittens flagged).
+// Every drawn body vertex in world space (mittens flagged).
 function eachVertex(model, f) {
   const v = new THREE.Vector3();
   model.object3D.updateMatrixWorld(true);
   model.rig.orient.traverse((o) => {
-    if (!o.isMesh) return;
+    if (!o.isMesh || !o.visible) return;
     const mitten = /^wrist/.test(o.parent?.name ?? '');
     const pos = o.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) f(v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld), mitten, o);

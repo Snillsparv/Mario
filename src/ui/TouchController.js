@@ -75,7 +75,8 @@ html.cg-touch-on #game { touch-action:none; }
     inset 0 2px 2px rgba(255,255,255,0.45), inset 0 -3px 4px rgba(0,0,0,0.22);
   transform: translateY(0); transition: transform 50ms ease-out, box-shadow 50ms ease-out, filter 50ms; --d:4px; }
 .cg-tc-btn.cg-down { transform: translateY(calc(var(--d) - 1px)); filter: brightness(0.9) saturate(1.1);
-  box-shadow: 0 1px 0 var(--edge), 0 2px 3px rgba(0,0,0,0.5), inset 0 2px 3px rgba(0,0,0,0.25), inset 0 -1px 2px rgba(255,255,255,0.2); }
+  box-shadow: 0 1px 0 var(--edge), 0 2px 3px rgba(0,0,0,0.5), 0 0 12px 3px rgba(120,240,225,0.55),
+    inset 0 2px 3px rgba(0,0,0,0.25), inset 0 -1px 2px rgba(255,255,255,0.2); }
 .cg-tc-btn.cg-pill { border-radius:999px; font-size:11px; letter-spacing:0.08em; --d:3px; }
 .cg-tc-A { --c:#18a293; --hi:#7de8da; --lo:#0a5a52; --edge:#073f3a; }
 .cg-tc-B { --c:#d6612a; --hi:#ffb987; --lo:#7a3110; --edge:#55200a; }
@@ -130,8 +131,10 @@ html.cg-touch-on #game { touch-action:none; }
 .cg-tc-dpad .cg-v { top:0; bottom:0; left:33%; right:33%; }
 .cg-tc-dpad .cg-dot { position:absolute; left:50%; top:50%; width:22%; height:22%; transform:translate(-50%,-50%);
   border-radius:50%; background: radial-gradient(circle at 50% 60%, #2a2c37, #4a4e60); }
-.cg-tc-dpad .cg-arrow { position:absolute; width:0; height:0; border:solid transparent; }
-.cg-tc-dpad .cg-arrow.cg-lit { filter: drop-shadow(0 0 3px rgba(111,232,216,0.9)); }
+.cg-tc-dpad .cg-arrow { position:absolute; width:0; height:0; border:solid transparent; color:rgba(200,206,228,0.55); }
+.cg-tc-dpad .cg-arrow.cg-lit { color:#7ff0e0; filter: drop-shadow(0 0 3px rgba(111,232,216,0.9)); }
+.cg-touch.cg-land .cg-tc-dpad .cg-arrow { color:rgba(255,255,255,0.65); }
+.cg-touch.cg-land .cg-tc-dpad .cg-arrow.cg-lit { color:#7ff0e0; }
 .cg-tc-dpad-socket { position:absolute; border-radius:50%;
   background: radial-gradient(circle at 50% 45%, #1b1c24 0, #191a21 60%, #22242e 100%);
   box-shadow: inset 0 3px 7px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.08); }
@@ -148,7 +151,10 @@ html.cg-touch-on #game { touch-action:none; }
 .cg-touch.cg-land .cg-tc-dpad-socket, .cg-touch.cg-land .cg-tc-rock-socket { display:none; }
 .cg-touch.cg-land .cg-tc-rock { opacity:0.55; }
 .cg-touch.cg-land .cg-tc-rock.cg-active { opacity:0.9; }
+.cg-tc-rock.cg-active { box-shadow: 0 2px 0 #6e6550, 0 0 12px 3px rgba(120,240,225,0.5), inset 0 2px 2px rgba(255,255,255,0.6), inset 0 -3px 4px rgba(0,0,0,0.18); }
 .cg-touch.cg-land .cg-tc-btn.cg-tc-C { opacity:1; }
+/* Paused (landscape): the overlays fade back so the pause screen's legend reads; START stays. */
+.cg-touch.cg-land.cg-paused > :not(.cg-tc-START):not(.cg-tc-zone) { opacity:0.14; transition: opacity 150ms; }
 `;
 
 function injectStyles() {
@@ -182,9 +188,9 @@ export function bodySvg(layout) {
     `H${W - r}`,
     `Q${W},${top} ${W},${top + r}`,
     `V${h}`,
-    `H${W * 0.69}`,
-    `C${W * 0.62},${h} ${W * 0.61},${notch} ${W * 0.5},${notch}`,
-    `C${W * 0.39},${notch} ${W * 0.38},${h} ${W * 0.31},${h}`,
+    `H${W * 0.67}`,
+    `C${W * 0.61},${h} ${W * 0.6},${notch} ${W * 0.5},${notch}`,
+    `C${W * 0.4},${notch} ${W * 0.39},${h} ${W * 0.33},${h}`,
     `H0`,
     `V${top + r}`,
     `Q0,${top} ${r},${top}`,
@@ -257,8 +263,7 @@ export class TouchController {
     for (const b of TOUCH_BUTTONS) this.state[b] = false;
     this.lit = {}; // what each button shows (pressed or not)
     this.stickShown = { kx: NaN, ky: NaN, x: NaN, y: NaN, drag: null };
-    this.dpadShown = '';
-    this._dpadOut = { x: 0, y: 0, mag: 0, up: false, down: false, left: false, right: false };
+    this.dpadShown = 0; // D-pad state drawn: 0 = idle, 16 | direction bits while touched
     if (typeof document === 'undefined') return; // logic-only use (node tests)
 
     this.container = container ?? view?.container ?? document.getElementById('game');
@@ -270,6 +275,10 @@ export class TouchController {
     injectStyles();
     this._build();
     this._listen();
+    if (events) {
+      const paused = (on) => () => this.root.classList.toggle('cg-paused', on);
+      (this._offs ??= []).push(events.on('pause', paused(true)), events.on('unpause', paused(false)), events.on('gameStart', paused(false)));
+    }
     if (this.wanted()) this.setVisible(true);
   }
 
@@ -468,12 +477,11 @@ export class TouchController {
     const sock = d.size * 0.66;
     place(this.dpadSocket, d.x - sock, d.y - sock, sock * 2, sock * 2);
     const a = d.size * 0.1; // arrow size
-    const arrowColor = land ? 'rgba(255,255,255,0.6)' : 'rgba(200,206,228,0.55)';
     for (const [dir, el] of Object.entries(this.dpadArrows)) {
       el.style.borderWidth = px(a * 0.8);
       el.style.borderColor = 'transparent';
       const side = { up: 'Bottom', down: 'Top', left: 'Right', right: 'Left' }[dir];
-      el.style[`border${side}Color`] = arrowColor;
+      el.style[`border${side}Color`] = 'currentColor';
       el.style[`border${side}Width`] = px(a);
       const c = d.size / 2 - a * 0.8;
       const far = d.size * 0.08;
@@ -686,9 +694,9 @@ export class TouchController {
 
     // D-pad: lit arrows and a small rock toward the pressed side.
     const d = dpad?.stick;
-    const key = d ? `${d.up | 0}${d.down | 0}${d.left | 0}${d.right | 0}` : '';
+    const key = d ? (d.up ? 1 : 0) | (d.down ? 2 : 0) | (d.left ? 4 : 0) | (d.right ? 8 : 0) | 16 : 0;
     if (key !== this.dpadShown) {
-      if (key && key !== '0000' && !this.dpadShown?.includes('1')) this._buzz();
+      if (key > 16 && !(this.dpadShown > 16)) this._buzz(); // a direction from none
       this.dpadShown = key;
       for (const dir of ['up', 'down', 'left', 'right']) this.dpadArrows[dir].classList.toggle('cg-lit', !!d?.[dir]);
       const rx = d ? (d.up ? 10 : d.down ? -10 : 0) : 0;

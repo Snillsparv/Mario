@@ -9,12 +9,12 @@ import { CHANNELS, createPose, resetPose, copyPose, blendPose } from '../src/pla
 import { gaitAt, gaitLegs } from '../src/player/model/gait.js';
 import { makeRng } from '../src/core/math.js';
 
-// The complete AnimName list from docs/ARCHITECTURE.md.
+// The complete AnimName list from docs/ARCHITECTURE.md (fly: the winged hat's flight).
 const CONTRACT_ANIMS = `idle sleep walk run tiptoe skid turnaround push crouch crawl crouch_slide jump fall land
   double_jump triple_jump backflip sideflip long_jump dive belly_slide butt_slide ground_pound_spin
   ground_pound_fall ground_pound_land wallkick bonk hurt fall_damage ledge_hang ledge_climb pole_hold
   pole_climb pole_jump punch1 punch2 kick jump_kick swim_idle swim_stroke swim_flutter water_surface
-  water_jump star_dance spawn death pole_handstand burn`.split(/\s+/);
+  water_jump star_dance spawn death pole_handstand burn fly`.split(/\s+/);
 
 function renderState(rng, anim, animTime) {
   const r = (a, b) => a + (b - a) * rng();
@@ -26,6 +26,7 @@ function renderState(rng, anim, animTime) {
     forwardVel: r(-20, 60), vy: r(-75, 60), grounded: rng() < 0.5, inWater: rng() < 0.2,
     floorY: rng() < 0.1 ? -11000 : r(-600, 2500), floorNormal: n,
     health: 8, invincible: rng() < 0.3, punchStep: 0, headYaw: r(-1, 1),
+    wingHat: rng() < 0.5, wingHatEnding: rng() < 0.2,
   };
 }
 
@@ -213,10 +214,12 @@ test('triangle budget stays N64-sized', () => {
   const count = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
   let tris = 0;
   model.object3D.traverse((o) => {
-    if (!o.isMesh || o === model.shadow.mesh || o === model.smoke.mesh) return;
+    if (!o.isMesh || o === model.shadow.mesh || o === model.smoke.mesh || o === model.wings.mesh) return;
     tris += count(o.geometry);
   });
   assert.ok(tris >= 1500 && tris <= 3000, `triangles: ${tris}`);
+  // The winged hat's wings: a hundred-odd triangles more, only while he wears it.
+  assert.ok(count(model.wings.mesh.geometry) <= 120, 'wings');
   // The hot-foot smoke is one small instanced puff on top of that.
   assert.ok(count(model.smoke.mesh.geometry) <= 100, 'smoke puff');
 });

@@ -120,10 +120,11 @@ export class ObjectManager {
     // The hero's previous tick (box bumps and stomps need his motion before the physics
     // stopped it): feet height, vertical speed, airborne.
     this.hero = { y: 0, vy: 0, air: false, valid: false };
+    this.cameraYaw = null;
     this.box = layout.MYSTERY_BOX
       ? new MysteryBox({ spot: layout.MYSTERY_BOX, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowSlots: [boxShadow, boxShadow + 1], groundAt, buildHat })
       : null;
-    this.door = layout.CASTLE ? new CastleDoor({ castle: layout.CASTLE, collision, events }) : null;
+    this.door = Number.isFinite(layout.CASTLE?.frontZ) ? new CastleDoor({ castle: layout.CASTLE, collision, events }) : null;
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -258,6 +259,9 @@ export class ObjectManager {
   update(ctx = {}) {
     this.started = true;
     this._backdropStart = null; // the next backdrop anchors to wherever play left the clock
+    // The camera's look yaw (main passes the CameraController): the hat glides toward it.
+    const cam = ctx.camera;
+    this.cameraYaw = cam && typeof cam.getYaw === 'function' ? cam.getYaw() : null;
     this._step(ctx.player ?? this.player);
   }
 
@@ -281,7 +285,7 @@ export class ObjectManager {
     this.butterflies.update(this.tick, pos);
     if (this.button !== null && this.button.update(player)) this._pressButton();
     const hero = this.hero.valid ? this.hero : null;
-    if (this.box !== null) this.box.update(player, hero, this.tick);
+    if (this.box !== null) this.box.update(player, hero, this.tick, this.cameraYaw);
     if (this.door !== null) this.door.update(player);
     if (this.beast !== null) {
       this.beast.update(player, this.tick);

@@ -192,3 +192,51 @@ export const CELEBRATE_PITCH = 5 * DEG;
 export const CELEBRATE_AIM = 2 * DEG;
 export const CELEBRATE_TICKS = 30; // swing to the front...
 export const CELEBRATE_RETURN_TICKS = 24; // ...and back
+
+// Winged-hat flight (flight.js): while the hero flies (action 'flying'), the orbit becomes a
+// flight-follow camera, as in the classic flying levels. It swings to straight behind his heading
+// (an eased turn rate: fairly quick, smooth, a touch of lag in a banked turn; no C-left/right
+// steps), trails at FLY_DIST (C-down still zooms out) and partly follows his flight pitch: it looks
+// down on him in a dive and sits level-ish behind him in a climb. His height is followed closely
+// (no jump band). The flight camera blends in over FLY_IN_TICKS as he takes off and back out to the
+// follow camera over FLY_OUT_TICKS once the flight ends (every setting eases, no pop). The collider
+// is tolerant meanwhile (CameraCollider.tolerant): it lifts over a blocker rather than dollying in,
+// and dollies gently when it must.
+export const FLY_ACTION = /^flying$/;
+export const FLY_IN_TICKS = 12;
+export const FLY_OUT_TICKS = 30;
+export const FLY_DIST = [1150, 1700]; // per zoom step (at speed the orbit centre's lag adds ~150)
+export const FLY_PITCH_BASE = 9 * DEG; // orbit pitch (looking down) behind a level flight...
+export const FLY_PITCH_FOLLOW = 0.5; // ...plus this fraction of his nose-down pitch (RenderState.pitch)...
+export const FLY_PITCH_MIN = 3 * DEG; // ...never lower than this in a climb...
+export const FLY_PITCH_MAX = 38 * DEG; // ...or steeper than this in a dive
+export const FLY_PITCH_RATE = 0.12; // that pitch eases by this fraction of the gap per tick
+export const FLY_AIM = 5 * DEG; // the view aims this far above the look point (fades out in a dive)
+export const FLY_SWING_GAIN = 0.12; // turn rate toward straight behind: this fraction of the angle...
+export const FLY_SWING_MAX = 6 * DEG; // ...at most this per tick...
+export const FLY_SWING_EASE = 0.3; // ...eased toward by this fraction per tick
+export const FLY_SWING_KEEP = 150 * DEG; // past this off his back, a swing under way keeps its direction
+export const FLY_FOCUS_RATE = 0.35; // vertical follow: fraction of the height gap closed per tick
+
+// AI RACE look-up (lookup.js): while AI RACE mode is on ('darkMode' { on }) and the robot beast
+// has risen onto the castle's front roof, a hero near the castle front with the camera facing the
+// castle gets a view tilted up by ~12 deg, so the beast looming over the roof is in the picture:
+// the orbit drops to about the hero's head height (LOOKUP_PITCH_DROP off the orbit pitch) and the
+// aim rises LOOKUP_AIM more, and the hero's feet may sit down to LOOKUP_FEET_BELOW under the view
+// axis (near the bottom edge; the half-height of the view is 22.5 deg). The look-up starts
+// LOOKUP_DELAY ticks after the mode switches on (the beast heaves itself up) and eases in and out
+// as the hero enters or leaves the zone, the camera turns toward or away from the castle, he climbs
+// high (the roofs) or flies, or the mode ends. Without AI RACE mode nothing changes.
+export const LOOKUP_DELAY = 15;
+export const LOOKUP_PITCH_DROP = 7 * DEG;
+export const LOOKUP_AIM = 6 * DEG;
+export const LOOKUP_FEET_BELOW = 20 * DEG;
+export const LOOKUP_FEET_HARD_BELOW = 21 * DEG;
+// Zone: horizontal distance from the front of the castle (layout.CASTLE: x, frontZ; a hero beside
+// the castle counts his distance across only) full up to [0], none beyond [1].
+export const LOOKUP_ZONE = [3300, 3900];
+export const LOOKUP_HEIGHT = [900, 1400]; // the framed feet height (above the island) fades it out
+export const LOOKUP_TARGET_BACK = 400; // the camera faces a point this far behind the front facade...
+export const LOOKUP_FACING = [30 * DEG, 60 * DEG]; // ...within [0] of its view yaw fully, [1] not at all
+export const LOOKUP_IN_RATE = 0.04; // easing per tick in (~2 s)...
+export const LOOKUP_OUT_RATE = 0.05; // ...and out

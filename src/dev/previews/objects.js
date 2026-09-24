@@ -18,6 +18,12 @@
 //                                     straight in front, its head close up, behind, the button
 //   pose=charge|roar|rise:N           (with dark=1) freeze-frame a moment: mid-charge (jaw open,
 //                                     throat and dewlap glowing), mid-roar, or N ticks into the rise
+//   view=box|boxLow|hat               the mystery box (lawn: from the side, from below) and the
+//                                     winged hat; hit=N: the fake hero bumps it N ticks before the
+//                                     first frame (hit=40: the hat hovers over it, hit=120: beside it)
+//   minions=N                         N robot lizard minions burst out of the lawn around the fake
+//                                     hero (view=minion: one close up, view=minions: the pack);
+//                                     wreck=N wrecks the first one N ticks before the first frame
 // Flat lawn with a round hill (for slope shadows), built into a small CollisionWorld, plus a
 // stone block standing in for the castle roof under the beast.
 
@@ -51,6 +57,7 @@ const LAYOUT = {
   ONE_UP: { x: 500, z: 250 },
   AI_BUTTON: { x: -900, z: 150, radius: 140 },
   KAIJU: { x: 0, z: -3600, yaw: 0 },
+  MYSTERY_BOX: { x: -600, z: 500, y: 340, size: 130 },
   groundHeight,
 };
 const ROOF = { minX: -1300, maxX: 1300, minZ: -3600, maxZ: -1900, y: 1200 };
@@ -63,6 +70,12 @@ const VIEWS = {
   flies: { pos: [-300, 350, 500], look: [-700, 250, -100] },
   oneup: { pos: [620, 170, 560], look: [500, 90, 250] },
   button: { pos: [-900, 420, 750], look: [-900, 40, 150] },
+  box: { pos: [-330, 520, 900], look: [-600, 400, 500] },
+  boxLow: { pos: [-470, 120, 700], look: [-600, 420, 500] },
+  hat: { pos: [-420, 260, 1080], look: [-600, 170, 740] },
+  hatHold: { pos: [-380, 700, 1000], look: [-600, 600, 500] },
+  minion: { pos: [300, 150, 1200], look: [0, 45, 1080] },
+  minions: { pos: [0, 900, 2600], look: [0, 60, 1300] },
 };
 
 // Real-level camera presets (world units; the lizard's front feet stand at about (0, 2260, -1100)).
@@ -94,9 +107,14 @@ function fakeHero(x, y, z) {
     pos: { x, y, z },
     vel: { x: 0, y: 0, z: 0 },
     action: 'idle',
+    faceYaw: Math.PI,
     health: 8,
     coins: 0,
     stars: 0,
+    wingHat: 0,
+    giveWingHat(s) {
+      this.wingHat = s * 30;
+    },
     takeDamage(n) {
       this.health = Math.max(0, this.health - n);
     },
@@ -227,7 +245,7 @@ async function setupLawn({ THREE, scene, params, camera }) {
   document.getElementById('ui').appendChild(hud);
   const log = [];
   for (const name of ['coin', 'redCoinsComplete', 'starCollected', 'oneUp', 'aiRaceButton']) events.on(name, (e) => log.push(name + (e?.red ? ` red #${e.index}` : '') + (name === 'aiRaceButton' ? ` ${e.on}` : '')));
-  events.on('sfx', (e) => /kaiju|fireball|button/.test(e.name) && log.push(e.name));
+  events.on('sfx', (e) => /kaiju|fireball|button|box|minion/.test(e.name) && log.push(e.name));
   // Stands in for main: the button's request switches the mode.
   events.on('aiRaceButton', ({ on }) => events.emit('darkMode', { on }));
   const level = { trees: [], addScorch() {} };
@@ -258,6 +276,35 @@ async function setupLawn({ THREE, scene, params, camera }) {
     scene.background.set(0x30363e);
     scene.fog.color.set(0x30363e);
   }
+  // Mystery box: the fake hero jumps into it from below `hit` ticks before the first frame.
+  if (params.has('hit') && objects.box) {
+    const box = objects.box;
+    const home = { ...player.pos };
+    player.pos = { x: box.x, y: box.bottomY - 160, z: box.z };
+    player.vel.y = 10;
+    player.faceYaw = Math.PI;
+    tick();
+    player.vel.y = 0;
+    player.pos = home;
+    for (let i = 0; i < num('hit', 30); i++) tick();
+  }
+  // Minions: N burst out of the lawn round the fake hero; the first one close in front of him.
+  if (params.has('minions') && objects.minions) {
+    const n = num('minions', 1);
+    for (let i = 0; i < n; i++) {
+      const a = i === 0 ? 0 : (i / n) * Math.PI * 2 + 0.4;
+      const r = i === 0 ? 330 : 700 + (i % 2) * 250;
+      const x = player.pos.x + Math.sin(a) * r;
+      const z = player.pos.z - Math.cos(a) * r;
+      objects.minions.spawnAt(x, z, Math.atan2(player.pos.x - x, player.pos.z - z));
+    }
+    for (let i = 0; i < num('mticks', 40); i++) tick();
+    if (params.has('wreck')) {
+      const m = objects.minions.list.find((r) => r.state !== 'free');
+      if (m) objects.minions._wreck(m, player, false);
+      for (let i = 0; i < num('wreck', 1); i++) tick();
+    }
+  }
   const title = params.has('title');
   const pause = params.has('pause');
   const ticks0 = title ? 0 : Math.max(num('ticks', 0), pause ? 1 : 0);
@@ -283,7 +330,7 @@ async function setupLawn({ THREE, scene, params, camera }) {
         ticks++;
       }
       objects.animate(t, freeze ? 1 : (acc / FRAME_DT) % 1, camera);
-      const beast = objects.beast ? `  beast:${objects.beast.state}  hp ${player.health}` : '';
+      const beast = objects.beast ? `  beast:${objects.beast.state}  hp ${player.health}  minions ${objects.minions.alive}` : '';
       hud.textContent = `coins ${player.coins}  stars ${player.stars}  star:${objects.star.state}${beast}  ${log.slice(-3).join(', ')}`;
     },
   };

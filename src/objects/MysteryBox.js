@@ -7,15 +7,20 @@
 // BUMP_REACH of the underside, his feet axis over its footprint) or an attack of his
 // (player.getAttack()) overlaps it, the box jolts up, flashes, emits sfx 'box_hit' and releases
 // the hat. The hat pops out of the top and hovers above the box, spinning, then glides down
-// beside it (the side Pip faces) to hover at chest height, where Pip can walk into it (above
-// the box it could only be reached with a triple jump). Touching it calls
+// beside it (the side toward the camera, so it stays in view) to hover at chest height, where
+// Pip can walk into it (above the box it could only be reached with a triple jump). Touching it calls
 // player.giveWingHat(HAT_SECONDS) (the player plays 'powerup'). The empty box shows dim and
 // without its "?"; RESPAWN_TICKS after the hat was taken it lights up again and can be hit
 // once more.
 //
 //   new MysteryBox({ spot, collision, events, sparkles, shadows, shadowSlots: [box, hat],
 //                    groundAt, buildHat? })
-//   update(player, hero, tick)   30 Hz; hero = { y, vy, air } of the previous tick (ObjectManager)
+//     buildHat() -> Object3D: the hat model; default: the hero model's buildWingedHat()
+//     (src/player/model/wings.js: Pip's own hat and wings, flapped via userData.flap), or the
+//     stand-in from wingedHat.js if that is missing
+//   update(player, hero, tick, cameraYaw?)  30 Hz; hero = { y, vy, air } of the previous tick
+//                                (ObjectManager); the hat glides toward the camera (cameraYaw + PI)
+//                                or, without one, back the way Pip came (faceYaw + PI)
 //   animate(alpha, clock)        render
 //   setDarkness(t)               the frame dims with the storm, the crystal keeps glowing
 //   reset()                      lit, hat inside
@@ -29,6 +34,7 @@ import { bakeLighting } from '../render/materials.js';
 import { tri } from './AiButton.js';
 import { makeCrystalTexture, CRYSTAL_CELLS } from './boxTextures.js';
 import { buildPlaceholderWingedHat, flapWings } from './wingedHat.js';
+import * as heroWings from '../player/model/wings.js';
 import { TINT } from './Sparkles.js';
 import { shadowSize } from './BlobShadows.js';
 
@@ -53,6 +59,7 @@ export const BOX = {
   HAT_RADIUS: 55, // pickup: hat radius (plus Pip's)
   HAT_LOW: -30, // pickup window relative to the feet
   HAT_HIGH: PLAYER_HEIGHT + 40,
+  HERO_HAT_SCALE: 1.2, // the hero model's hat (as Pip wears it) a little bigger as a pickup
 };
 
 const _q = new THREE.Quaternion();
@@ -94,8 +101,9 @@ export class MysteryBox {
     this.mesh = new THREE.Group();
     this.mesh.name = 'mysteryBox';
     this._buildBox();
-    this.hatMesh = (buildHat ?? buildPlaceholderWingedHat)();
+    this.hatMesh = (buildHat ?? heroWings.buildWingedHat ?? buildPlaceholderWingedHat)();
     this.hatMesh.visible = false;
+    this.hatScale = buildHat || !heroWings.buildWingedHat ? 1 : BOX.HERO_HAT_SCALE;
     this.mesh.add(this.hatMesh);
     this._addCollider();
     if (shadows && shadowSlots) {
@@ -145,18 +153,21 @@ export class MysteryBox {
         bar(T, T, L, a, b, 0); // along z
       }
     }
-    const C = T * 1.45;
+    // Corner joints: small blocks with their edges bevelled off (a cube cut by an octahedron).
+    const C = T * 1.5;
+    const corner = new THREE.BoxGeometry(C, C, C).toNonIndexed();
+    const cp = corner.attributes.position;
+    for (let i = 0; i < cp.count; i++) cp.setXYZ(i, cp.getX(i) * 0.999, cp.getY(i), cp.getZ(i));
     for (const cx of [-1, 1]) {
       for (const cy of [-1, 1]) {
         for (const cz of [-1, 1]) {
-          const g = new THREE.OctahedronGeometry(C * 0.9, 0).toNonIndexed();
-          g.scale(1, 1, 1);
-          const inset = h - T * 0.35;
-          g.translate(cx * inset, cy * inset, cz * inset);
-          parts.push(g);
+          const inset = h - T * 0.4;
+          parts.push(corner.clone().translate(cx * inset, cy * inset, cz * inset));
+          parts.push(new THREE.OctahedronGeometry(C * 0.82, 0).translate(cx * inset, cy * inset, cz * inset));
         }
       }
     }
+    corner.dispose();
     const n = parts.reduce((k, g) => k + g.attributes.position.count, 0);
     const pos = new Float32Array(n * 3);
     let o = 0;
@@ -172,10 +183,10 @@ export class MysteryBox {
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const y = pos[i * 3 + 1] / s + 0.5;
-      const k = 0.72 + 0.28 * y;
-      col[i * 3] = 0.86 * k;
-      col[i * 3 + 1] = 0.64 * k;
-      col[i * 3 + 2] = 0.26 * k;
+      const k = 0.62 + 0.38 * y;
+      col[i * 3] = 0.9 * k;
+      col[i * 3 + 1] = 0.6 * k;
+      col[i * 3 + 2] = 0.16 * k;
     }
     frameGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     bakeLighting(frameGeo, { ambient: 0.6, diffuse: 0.55 });
@@ -243,8 +254,9 @@ export class MysteryBox {
     return dx * dx + dy * dy + dz * dz <= atk.radius * atk.radius;
   }
 
-  update(player, hero, tick) {
+  update(player, hero, tick, cameraYaw = null) {
     this.tick = tick;
+    this.cameraYaw = cameraYaw;
     this.prevOffset = this.offset;
     if (this.jolt < BOX.JOLT_TICKS) {
       this.jolt++;
@@ -279,8 +291,9 @@ export class MysteryBox {
     this._releaseHat(player);
   }
 
-  // The hat pops out of the top; where it will glide to is chosen now: the side Pip faces, or
-  // the next clear side round the box (a floor, no wall, no water there).
+  // The hat pops out of the top; where it will glide to is chosen now: the side toward the
+  // camera (or back the way Pip came), else the next clear side round the box (a floor, no
+  // wall, no water there).
   _releaseHat(player) {
     const H = this.hat;
     H.state = 'pop';
@@ -288,7 +301,7 @@ export class MysteryBox {
     H.x = H.px = this.x;
     H.y = H.py = this.centerY;
     H.z = H.pz = this.z;
-    const yaw = player.faceYaw ?? 0;
+    const yaw = (typeof this.cameraYaw === 'number' ? this.cameraYaw : (player.faceYaw ?? 0)) + Math.PI;
     const col = this.collision;
     let best = null;
     for (let k = 0; k < 8 && !best; k++) {
@@ -425,7 +438,9 @@ export class MysteryBox {
     _e.set(H.state === 'glide' ? 0.18 * Math.sin(clock * 5) : 0.08, spin, 0, 'YXZ');
     hat.quaternion.copy(_q.setFromEuler(_e));
     const pop = H.state === 'pop' ? 0.4 + 0.6 * smooth((H.t - 1 + alpha) / BOX.HAT_POP_TICKS) : 1;
-    hat.scale.setScalar(pop);
-    flapWings(hat, clock, H.state === 'glide' ? 0.6 : 1);
+    hat.scale.setScalar(pop * this.hatScale);
+    const beat = H.state === 'glide' ? 0.6 : 1;
+    if (typeof hat.userData.flap === 'function') hat.userData.flap(clock, beat);
+    else flapWings(hat, clock, beat);
   }
 }

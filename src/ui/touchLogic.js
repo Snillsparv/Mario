@@ -6,6 +6,8 @@
 // Coordinates are CSS pixels in the window (clientX / clientY), y down. Stick and D-pad
 // vectors come out like the virtual controller's: x right, y up, magnitude 0..1.
 
+import { hudMetrics } from './hudLogic.js';
+
 // Buttons the controller feeds to input.setTouchState (the virtual controller's names).
 export const TOUCH_BUTTONS = ['A', 'B', 'Z', 'R', 'START', 'CU', 'CD', 'CL', 'CR'];
 
@@ -92,12 +94,15 @@ const PORTRAIT = {
   C: { a: 'R', x: 302, y: 76, r: 16, spread: 32 },
   B: { a: 'R', x: 252, y: 184, r: 30 },
   A: { a: 'R', x: 326, y: 226, r: 38 },
-  Z: { a: 'R', x: 234, y: 262, w: 74, h: 32, rot: -20 },
+  Z: { a: 'R', x: 238, y: 258, w: 74, h: 32, rot: -20 },
 };
 
 // Landscape: translucent controls over the picture, designed for a 390 px tall screen.
-// Anchors: BL/BR = from the bottom-left/right corner, TL/TR = from the top corners.
+// Anchors: BL/BR = from the bottom-left/right corner, TL/TR = from the top corners (kept
+// below the HUD's counter row, which scales with the picture: HUD_ROW_BOTTOM logical px).
 export const LANDSCAPE_REF_H = 390;
+export const HUD_ROW_BOTTOM = 30;
+const LANDSCAPE_TOP_MIN = 63; // top edge of the highest top-anchored control (START), ref px
 const LANDSCAPE = {
   stick: { a: 'BL', x: 124, y: 118, well: 60, knob: 28, travel: 36 },
   dpad: { a: 'BL', x: 66, y: 252, size: 72 },
@@ -172,7 +177,7 @@ function portraitLayout(W, H, s) {
     k,
     top,
     pictureBottom: ch,
-    body: { x: 0, y: top, w: W, h: ch, notchY: H - Math.min(0.2 * ch, 70) },
+    body: { x: 0, y: top, w: W, h: ch, notchY: H - Math.min(0.13 * ch, 46 * k) },
     stick,
     dpad,
     buttons,
@@ -185,8 +190,11 @@ function portraitLayout(W, H, s) {
 function landscapeLayout(W, H, s) {
   const k = clampNum(H / LANDSCAPE_REF_H, 0.62, 1.4);
   const L = LANDSCAPE;
+  // The HUD grows with the screen faster than the controls (k is capped): keep clear of it.
+  const hudRow = HUD_ROW_BOTTOM * hudMetrics(W, H).scale + 6 * k;
+  const drop = Math.max(0, hudRow - LANDSCAPE_TOP_MIN * k);
   const X = (p) => (p.a === 'BL' || p.a === 'TL' ? s.left + p.x * k : W - s.right - p.x * k);
-  const Y = (p) => (p.a === 'BL' || p.a === 'BR' ? H - s.bottom - p.y * k : s.top + p.y * k);
+  const Y = (p) => (p.a === 'BL' || p.a === 'BR' ? H - s.bottom - p.y * k : s.top + p.y * k + drop);
   const buttons = {
     A: circle(X(L.A), Y(L.A), L.A.r * k),
     B: circle(X(L.B), Y(L.B), L.B.r * k),
@@ -294,15 +302,18 @@ export function onDpad(layout, x, y) {
 
 const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-// What a touch starting at (x, y) takes hold of: a button name, 'dpad', 'stick', or null
-// (outside the controller: the picture). Buttons first, then the D-pad, then the stick zone.
+// What a touch starting at (x, y) takes hold of: a button name, 'dpad', 'stick', 'none' (on
+// the controller between controls: it presses whatever it slides onto) or null (outside the
+// controller: the picture). Buttons first, then the D-pad, then the stick well and zone.
 export function touchRole(layout, x, y) {
-  if (!layout.zones.some((z) => inRect(z, x, y))) return null;
+  let inside = false;
+  for (let i = 0; i < layout.zones.length && !inside; i++) inside = inRect(layout.zones[i], x, y);
+  if (!inside) return null;
   const b = buttonAt(layout, x, y);
   if (b) return b;
   if (onDpad(layout, x, y)) return 'dpad';
-  if (inRect(layout.stickZone, x, y)) return 'stick';
-  return 'none'; // on the controller, between controls: held until it slides onto a button
+  if (inWell(layout, x, y) || inRect(layout.stickZone, x, y)) return 'stick';
+  return 'none';
 }
 
 // Whether a stick touch starting at (x, y) grabs the knob in its well (true) or starts a

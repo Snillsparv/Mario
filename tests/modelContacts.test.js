@@ -22,12 +22,13 @@ function posed(rs, frames = 40) {
   return model;
 }
 
-// World-space vertices of the hero's body (not the shadow).
+// World-space vertices of the hero's body (not the shadow; drawn meshes only, so the winged
+// hat's wings count only while he wears it).
 function vertices(model) {
   const out = [];
   const v = new THREE.Vector3();
   model.rig.orient.traverse((o) => {
-    if (!o.isMesh) return;
+    if (!o.isMesh || !o.visible) return;
     const pos = o.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) out.push(v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).clone());
   });
@@ -287,7 +288,9 @@ test('one body material and about a mesh per bone', () => {
   const meshes = [];
   model.object3D.traverse((o) => o.isMesh && meshes.push(o));
   const materials = new Set(meshes.map((m) => m.material));
-  assert.ok(meshes.length <= 24, `${meshes.length} meshes`); // 15 bones, 6 scarf links, face, shadow, smoke
+  // 15 bones, 6 scarf links, face, shadow, smoke, and the winged hat's wings (one mesh for
+  // both, hidden without the hat).
+  assert.ok(meshes.length <= 25, `${meshes.length} meshes`);
   assert.equal(materials.size, 4, 'body + face + shadow + smoke');
   assert.ok(model.smoke.mesh.isInstancedMesh, 'the smoke puffs are one draw call');
 });

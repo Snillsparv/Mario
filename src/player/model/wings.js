@@ -117,19 +117,23 @@ const MAX_BEND = 1.45; // ...and the highest (never folds in over the crown)
 const NORMAL_LIFT = 1.4; // see poseWing
 export const BOUND_R = 100; // the wings' fixed bounding sphere: (0, 15, -10) in hat space
 
-// Flap styles: freq (beats/s), amp (rad), lift (rad), sweep (extra, rad), attack (rad).
+// Flap styles: freq (beats/s), amp (rad), lift (rad), sweep (extra, rad), attack (rad),
+// scale (size).
 // On the ground the wings stand up beside the crown like a winged helmet's; in flight they
 // spread out sideways for big bird-like beats.
-const GROUND = { freq: 1.1, amp: 0.1, lift: 0.95, sweep: 0, attack: 0.4 };
-const AIR = { freq: 3.2, amp: 0.4, lift: 0.8, sweep: 0, attack: 0.3 };
-const STREAMLINED = { freq: 1.6, amp: 0.07, lift: 0.5, sweep: 0.75, attack: 0.1 }; // dives, slides
-const WATER = { freq: 0.8, amp: 0.06, lift: 0.7, sweep: 0.55, attack: 0.3 };
+const GROUND = { freq: 1.1, amp: 0.1, lift: 0.95, sweep: 0, attack: 0.4, scale: 1 };
+const AIR = { freq: 3.2, amp: 0.4, lift: 0.8, sweep: 0, attack: 0.3, scale: 1 };
+const STREAMLINED = { freq: 1.6, amp: 0.07, lift: 0.5, sweep: 0.75, attack: 0.1, scale: 1 }; // dives, slides
+const WATER = { freq: 0.8, amp: 0.06, lift: 0.7, sweep: 0.55, attack: 0.3, scale: 1 };
+// Upside down on a tree top: folded small along the brim, out of the tree's crown.
+const FOLDED = { freq: 0.9, amp: 0.04, lift: 0.04, sweep: 0.8, attack: -0.12, scale: 0.72 };
 const AIR_ANIMS = new Set([
   'jump', 'fall', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'wallkick', 'pole_jump', 'water_jump',
   'jump_kick', 'burn', 'spawn', 'hurt', 'bonk', 'ground_pound_spin', 'star_dance',
 ]);
 const STREAMLINED_ANIMS = new Set(['dive', 'long_jump', 'belly_slide', 'ground_pound_fall', 'butt_slide']);
 const WATER_ANIMS = new Set(['swim_idle', 'swim_stroke', 'swim_flutter', 'water_surface']);
+const FOLDED_ANIMS = new Set(['pole_handstand']);
 
 const BLINK_RATE = 10; // wingHatEnding: visibility toggles per second
 const UNFOLD_TIME = 0.35; // the wings pop open when the hat goes on
@@ -272,7 +276,8 @@ export class HatWings {
     this.size += (s.scale - this.size) * k;
     this.amp += (s.amp - this.amp) * k;
     w.phase = (w.phase + TAU * this.freq * dt) % TAU;
-    this.mesh.visible = !rs.wingHatEnding || Math.floor(time * BLINK_RATE) % 2 === 0;
+    // (+ a hair, so a clock stepping in exact 1/30 s ticks toggles every 3 ticks, not 2 / 4)
+    this.mesh.visible = !rs.wingHatEnding || Math.floor(time * BLINK_RATE + 1e-4) % 2 === 0;
     if (!this.mesh.visible) return;
     const u = this.unfold;
     const keepSweep = w.sweep;
@@ -300,13 +305,14 @@ function styleFor(rs, out) {
   }
   const s = AIR_ANIMS.has(rs.anim) ? AIR
     : STREAMLINED_ANIMS.has(rs.anim) ? STREAMLINED
-      : WATER_ANIMS.has(rs.anim) ? WATER : GROUND;
+      : WATER_ANIMS.has(rs.anim) ? WATER
+        : FOLDED_ANIMS.has(rs.anim) ? FOLDED : GROUND;
   out.freq = s.freq;
   out.amp = s.amp;
   out.lift = s.lift;
   out.sweep = s.sweep;
   out.attack = s.attack;
-  out.scale = 1;
+  out.scale = s.scale;
   if (s === GROUND) {
     // A quicker, bigger flutter at a run, a little swept back by the wind.
     const run = clamp(Math.abs(rs.forwardVel) / 48, 0, 1);
@@ -319,8 +325,10 @@ function styleFor(rs, out) {
 
 // A standalone winged hat for the hovering pickup: Pip's teal explorer hat (one merged
 // vertex-coloured mesh, same look) with the same pair of wings (a second mesh), lit by the
-// scene's lights like Pip. Origin at the centre of the brim, +Y up, front +Z, ~100 units
-// across the brim (the wings reach ~60 each side, ~60 up). Spread at rest; call
+// scene's lights like Pip. Origin at the centre of the brim, +Y up, front +Z; the brim is
+// ~100 units across (y -1.4 .. 24 with the crown), the wings reach ~60 either side and ~67
+// up. (The wing mesh carries fixed culling bounds of radius BOUND_R: measure it with
+// Box3.setFromObject(hat, true).) Spread at rest; call
 //   hat.userData.flap(timeSeconds, strength = 1)
 // each frame to beat the wings (strength 0 = still, 1 = brisk beats).
 export function buildWingedHat() {

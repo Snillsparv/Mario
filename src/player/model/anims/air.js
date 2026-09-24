@@ -361,7 +361,7 @@ function flight(p, c) {
   const kick = (0.06 + 0.16 * climb) * Math.sin(w * (4 + 5 * climb));
   leg(p, 'L', -0.1 + kick, 0.15 + 0.25 * climb + 0.1 * Math.max(0, kick), 0.85, 0.02);
   leg(p, 'R', -0.1 - kick, 0.15 + 0.25 * climb + 0.1 * Math.max(0, -kick), 0.85, 0.02);
-  p.face = dive > 0.5 ? 'shout' : 'happy';
+  p.face = dive > 0.5 || climb > 0.6 ? 'shout' : 'open'; // wide-eyed whoops diving and climbing
 }
 
 // The take-off (the Player turns a triple jump straight into the flight): the triple jump's

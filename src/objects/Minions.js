@@ -108,6 +108,9 @@ export function heroInvincible(p) {
 
 // Not a target right now: reading a sign, dying or dropping in.
 const heroAway = (a) => a === 'reading' || a === 'death' || a === 'spawn';
+// Actions that never stomp: knocked back or burnt (landing on one after a hit is no stomp),
+// dying, dropping in.
+const NO_STOMP = { hurt: 1, burn: 1, death: 1, spawn: 1, spawn_land: 1, reading: 1 };
 
 function record(i) {
   return {
@@ -179,7 +182,7 @@ export class Minions {
     this.groundAt = groundAt;
     this.onCoin = onCoin;
     const c = layout.CASTLE;
-    this.door = c ? { x: c.x, z: c.frontZ } : null;
+    this.door = Number.isFinite(c?.frontZ) ? { x: c.x ?? 0, z: c.frontZ } : null;
     this.keepOut = layout.AI_BUTTON ? [{ x: layout.AI_BUTTON.x, z: layout.AI_BUTTON.z, r: (layout.AI_BUTTON.radius ?? 140) + 120 }] : [];
     this.list = Array.from({ length: MINION.POOL }, (_, i) => record(i));
     this.tick = 0;
@@ -265,8 +268,7 @@ export class Minions {
           this._wreck(m, player, false);
           continue;
         }
-        if (this._stomped(m, player, hero)) {
-          if (player.bounce) player.bounce();
+        if (this._stomped(m, player, hero) && (!player.bounce || player.bounce() !== false)) {
           this._wreck(m, player, true);
           continue;
         }
@@ -474,6 +476,10 @@ export class Minions {
     const w = col.findWalls(nx, m.y, nz, M.WALL_Y, M.WALL_RADIUS);
     nx = w.x;
     nz = w.z;
+    // Held up by a wall (little progress along the heading): steer round it.
+    const sx = Math.sin(m.yaw);
+    const sz = Math.cos(m.yaw);
+    const walled = w.walls.length > 0 && (nx - m.x) * sx + (nz - m.z) * sz < dist * 0.5;
     const f = col.findFloor(nx, m.y, nz, M.STEP_UP);
     const water = col.waterLevelAt ? col.waterLevelAt(nx, nz) : -Infinity;
     if (!f.surface || f.y < m.y - M.STEP_DOWN || f.surface.surface === 'death' || water > f.y - 10) {
@@ -483,7 +489,11 @@ export class Minions {
       if (m.blocked % 45 === 0) m.turn = -m.turn;
       return 0;
     }
-    if (m.blocked > 0) m.blocked = 0;
+    if (walled) {
+      m.blocked++;
+      m.avoid = clamp1(m.avoid + m.turn * 0.2, -2.2, 2.2);
+      if (m.blocked % 60 === 0) m.turn = -m.turn;
+    } else if (m.blocked > 0) m.blocked = 0;
     else m.avoid *= 0.96;
     const mx = nx - m.x;
     const mz = nz - m.z;
@@ -538,18 +548,21 @@ export class Minions {
     m.vy -= M.GRAVITY;
     m.y += m.vy;
     m.pitch = -m.vy * 0.018;
-    m.jaw = m.t < M.SNAP_AT ? 1 : 0;
-    m.flare = m.t < M.SNAP_AT ? 1 : 0.4;
     m.stride = 0.3;
-    if (m.t === M.SNAP_AT) this._sfx('minion_bite', m);
+    // The jaws snap shut on the hero (or at SNAP_AT on thin air): sfx minion_bite either way.
     if (!m.bit && m.t <= M.SNAP_AT + 1 && this._bites(m, player)) {
       m.bit = true;
-      const a = player.action;
-      if (!heroAway(a) && !heroInvincible(player)) {
+      this._sfx('minion_bite', m);
+      if (!heroAway(player.action) && !heroInvincible(player)) {
         this.bites++;
         player.takeDamage?.(1, { x: m.x, y: m.y, z: m.z });
       }
+    } else if (m.t === M.SNAP_AT && !m.bit) {
+      this._sfx('minion_bite', m);
     }
+    const open = m.t < M.SNAP_AT && !m.bit;
+    m.jaw = open ? 1 : 0;
+    m.flare = open ? 1 : 0.4;
     if ((m.y <= m.floorY && m.vy < 0) || m.t >= M.LUNGE) {
       m.y = m.floorY;
       m.vy = 0;
@@ -620,6 +633,7 @@ export class Minions {
   _stomped(m, player, hero) {
     const M = MINION;
     const p = player.pos;
+    if (NO_STOMP[player.action] === 1) return false;
     const vy = player.vel ? player.vel.y : 0;
     if (!(vy < 0 || (hero && hero.vy < 0))) return false;
     if (hero && !hero.air) return false;

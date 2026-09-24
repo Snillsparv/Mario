@@ -1,5 +1,6 @@
 // Winged-hat flight (action 'flying', anim 'fly'). While player.wingHat is on, a triple jump or
-// the flip jump off a tree top takes off into it (see takeOffFlying). Tank controls with the
+// the flip jump off a tree top takes off into it (common.js jumpFromGround, automatic.js
+// pole_top; arg.fromPole: the pole jumped off, not grabbed again). Tank controls with the
 // raw stick, like swimming: stick up = nose down (dive, gains speed), stick down = nose up
 // (climb, drains speed; the wings flap), stick left / right banks and the heading turns in
 // proportion to the bank. The air speed p.flySpeed runs along the heading and pitch
@@ -23,31 +24,35 @@ function subSteps(s) {
 
 // The edge of the world: with no ground at all EDGE_LOOKAHEAD ahead the flight is turned
 // toward the spawn (EDGE_TURN per tick, banking into the turn), and a step that would leave the
-// ground behind altogether is undone horizontally, so Pip never flies out of the level.
+// ground behind altogether is undone horizontally (and turns for home at once), so Pip never
+// flies out of the level. "Ground" is any floor or wall (steep hill facets are walls) straight
+// below or above the spot.
 const EDGE_LOOKAHEAD = 1500;
 const EDGE_TURN = 0.08;
+const SKY = 1e5;
+const rayFrom = { x: 0, y: SKY, z: 0 };
+const RAY_DOWN = { x: 0, y: -1, z: 0 };
+const RAY_GROUND = { floors: true, walls: true, ceilings: false };
 // The body's shown pitch / bank change at most this much per tick (smooths the take-off).
 const TILT_RATE = 0.2;
 
 function groundUnder(p, x, z) {
-  return !!p.collision.findFloor(x, 1e6, z, 0).surface;
+  if (p.collision.findFloor(x, SKY, z, 0).surface) return true;
+  rayFrom.x = x;
+  rayFrom.z = z;
+  return p.collision.raycast(rayFrom, RAY_DOWN, 2 * SKY, RAY_GROUND) !== null;
 }
 
-function turnForHome(p) {
+// `force`: turn even when there is ground ahead (the last step was undone at the edge).
+function turnForHome(p, force = false) {
   const x = p.pos.x + Math.sin(p.faceYaw) * EDGE_LOOKAHEAD;
   const z = p.pos.z + Math.cos(p.faceYaw) * EDGE_LOOKAHEAD;
-  if (groundUnder(p, x, z)) return;
+  if (!force && groundUnder(p, x, z)) return;
   const home = Math.atan2(p.spawn.x - p.pos.x, p.spawn.z - p.pos.z);
   const d = angleDiff(p.faceYaw, home);
   p.faceYaw = approachAngle(p.faceYaw, home, EDGE_TURN);
   // Turning left (yaw growing) banks left (roll < 0).
   p.flyBank = approach(p.flyBank, -Math.sign(d) * T.FLY_MAX_BANK, T.FLY_BANK_RATE);
-}
-
-// Starts the flight from a triple jump (arg: none) or from the tree-top handstand
-// (arg.fromPole: the pole, let go of; faces the stick when held).
-export function takeOffFlying(p, arg) {
-  return p.setAction('flying', arg);
 }
 
 // Velocity from the air speed, heading and pitch.
@@ -151,6 +156,7 @@ const flying = {
       p.pos.x = x0;
       p.pos.z = z0;
       p.floor = p.collision.findFloor(x0, p.pos.y, z0);
+      turnForHome(p, true);
     }
     // A wall ahead, or no room at the spot ahead (a low ceiling over it): crash.
     const w = r.wall;

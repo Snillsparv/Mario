@@ -35,11 +35,11 @@ const E_EMBER = [0.8, 1.2];
 const S = MINION_SCALE;
 // Landmarks (rig space, already scaled).
 export const MINION_RIG = {
-  EYE: [0, 46 * S, 73 * S], // the eye stripe's centre (glow sprite)
+  EYE: [0, 40 * S, 73 * S], // the eye stripe's centre (glow sprite)
   SNOUT: 100 * S, // snout tip ahead of the origin
   TAIL_TIP: -172 * S,
-  BACK: 63 * S, // top of the back (stomps land here)
-  BODY_Y: 40 * S, // body axis height
+  BACK: 56 * S, // top of the back (stomps land here)
+  BODY_Y: 34 * S, // body axis height
   LENGTH: (100 + 172) * S,
 };
 
@@ -59,11 +59,11 @@ function along(table, z) {
 }
 
 const BODY_PTS = [
-  [0, 36, -52],
-  [0, 41, -26],
-  [0, 43, 6],
-  [0, 42, 32],
-  [0, 39, 50],
+  [0, 30, -52],
+  [0, 34, -26],
+  [0, 36, 6],
+  [0, 35, 32],
+  [0, 33, 50],
 ];
 const BODY_R = [
   [19, 14],
@@ -76,8 +76,8 @@ const BACK_TOP = BODY_PTS.map((p, i) => [p[2], p[1] + BODY_R[i][1]]);
 
 // Head wedge half-width, bottom and top at z (from the neck at 46 to the snout at 100).
 const headHalf = (z) => 19 + ((8 - 19) * (z - 46)) / 54;
-const headTop = (z) => 56 + ((42 - 56) * (z - 46)) / 54;
-const headBottom = (z) => 28 + ((30 - 28) * (z - 46)) / 54;
+const headTop = (z) => 51 + ((36 - 51) * (z - 46)) / 54;
+const headBottom = (z) => 21 + ((24 - 21) * (z - 46)) / 54;
 
 function wedge(b, z0, z1, half, bottom, top, color, emit, grow = 0) {
   const c = [];
@@ -101,28 +101,28 @@ function buildBody() {
   b.box(0, along(BACK_TOP, 1) + 5.5, 1, 9, 2, 16, EMBER, E_EMBER);
   // Shoulder and hip plates.
   for (const s of [-1, 1]) {
-    b.box(s * 19, 54, 29, 16, 5, 22, GUN_LIGHT, E_NONE, 0, 0, s * 0.55);
-    b.box(s * 19, 52, -33, 16, 5, 22, GUN_LIGHT, E_NONE, 0, 0, s * 0.55);
+    b.box(s * 19, 47, 29, 16, 5, 22, GUN_LIGHT, E_NONE, 0, 0, s * 0.55);
+    b.box(s * 19, 45, -33, 16, 5, 22, GUN_LIGHT, E_NONE, 0, 0, s * 0.55);
   }
   // Neck collar.
-  b.ring([0, 40, 47], [0, 40, 60], 17.5, 9, RUST_DARK, E_JOINT, 8);
+  b.ring([0, 34, 47], [0, 34, 60], 17.5, 9, RUST_DARK, E_JOINT, 8);
   // Head: a wedge with a raised brow plate, the eye stripe wrapped round it, ember nostrils and
   // small teeth under the upper jaw.
   wedge(b, 46, 100, headHalf, headBottom, headTop, GUN);
   wedge(b, 48, 70, (z) => headHalf(z) - 3, (z) => headTop(z) - 2, (z) => headTop(z) + 3, GUN_LIGHT, E_NONE);
-  wedge(b, 64, 82, headHalf, () => 42.5, (z) => headTop(z) - 1, EYE, E_EYE, 1.6);
+  wedge(b, 64, 82, headHalf, () => 36.5, (z) => headTop(z) - 1, EYE, E_EYE, 1.6);
   for (const s of [-1, 1]) {
-    b.box(s * 4, 41, 98.5, 3.5, 3, 3, EMBER, E_EMBER);
-    for (const z of [70, 80, 90]) b.cone([s * 7, 31, z], [s * 7, 24, z + 2], 2.6, 4, TOOTH);
+    b.box(s * 4, 35, 98.5, 3.5, 3, 3, EMBER, E_EMBER);
+    for (const z of [70, 80, 90]) b.cone([s * 7, 24, z], [s * 7, 17, z + 2], 2.6, 4, TOOTH);
   }
   return b;
 }
 
 function buildJaw() {
   const b = new PartBuilder(302);
-  wedge(b, 50, 98, (z) => 15 + ((7 - 15) * (z - 50)) / 48, (z) => 20 + ((27 - 20) * (z - 50)) / 48, () => 31, GUN_DARK);
-  b.box(0, 21, 70, 17, 4, 26, RUST_DARK, E_JOINT);
-  for (const s of [-1, 1]) for (const z of [66, 76, 86, 94]) b.cone([s * 6, 30, z], [s * 6, 37, z + 1], 2.4, 4, TOOTH);
+  wedge(b, 50, 98, (z) => 15 + ((7 - 15) * (z - 50)) / 48, (z) => 13 + ((20 - 13) * (z - 50)) / 48, () => 24, GUN_DARK);
+  b.box(0, 14, 70, 17, 4, 26, RUST_DARK, E_JOINT);
+  for (const s of [-1, 1]) for (const z of [66, 76, 86, 94]) b.cone([s * 6, 23, z], [s * 6, 30, z + 1], 2.4, 4, TOOTH);
   return b;
 }
 
@@ -130,10 +130,10 @@ function buildJaw() {
 function buildLeg(s, front) {
   const b = new PartBuilder(310 + (front ? 0 : 2) + (s > 0 ? 1 : 0));
   const fz = front ? 1 : -1;
-  const top = [s * 22, 40, front ? 30 : -34];
-  const mid = [s * 50, 51, front ? 36 : -42];
-  const low = [s * 58, 10, front ? 44 : -46];
-  const foot = [s * 60, 3, front ? 49 : -43];
+  const top = [s * 22, 33, front ? 30 : -34];
+  const mid = [s * 55, 44, front ? 37 : -43];
+  const low = [s * 66, 9, front ? 46 : -48];
+  const foot = [s * 68, 3, front ? 51 : -45];
   b.ball(top, 10, RUST, E_JOINT, 1);
   b.cyl(top, mid, 8, 7, 6, GUN);
   b.bonePlate(top, mid, [0, 1, 0], 6, 11, 4, GUN_LIGHT);
@@ -154,11 +154,11 @@ function buildLeg(s, front) {
 function buildTail() {
   const b = new PartBuilder(320);
   const pts = [
-    [0, 36, -50],
-    [0, 33, -80],
-    [0, 29, -108],
-    [0, 25, -132],
-    [0, 22, -154],
+    [0, 30, -50],
+    [0, 27, -80],
+    [0, 23, -108],
+    [0, 19, -132],
+    [0, 16, -154],
   ];
   const radii = [
     [15, 12],
@@ -169,33 +169,33 @@ function buildTail() {
   ];
   b.tube(pts, radii, 6, (i) => (i % 2 ? RUST_DARK : GUN), E_NONE, { capStart: false, emitAt: (i) => (i % 2 ? E_JOINT : E_NONE) });
   for (const [z, h] of [[-70, 9], [-96, 7], [-120, 5]]) {
-    const top = along([[-50, 48], [-80, 42], [-108, 35.5], [-132, 29.5]], z);
+    const top = along([[-50, 42], [-80, 36], [-108, 29.5], [-132, 23.5]], z);
     b.cone([0, top - 2, z + 2], [0, top + h, z - 5], 3.5, 4, STEEL);
   }
   // Blade fin at the tip.
   b.hexa(
     [
-      [-1.5, 17, -148],
-      [1.5, 17, -148],
-      [-1.5, 28, -150],
-      [1.5, 28, -150],
-      [-1, 20, -172],
-      [1, 20, -172],
-      [-1, 25, -170],
-      [1, 25, -170],
+      [-1.5, 11, -148],
+      [1.5, 11, -148],
+      [-1.5, 22, -150],
+      [1.5, 22, -150],
+      [-1, 14, -172],
+      [1, 14, -172],
+      [-1, 19, -170],
+      [1, 19, -170],
     ],
     RUST,
     E_JOINT,
   );
-  b.ring([0, 36, -50], [0, 36, -40], 16.5, 7, RUST_DARK, E_JOINT, 8);
-  return { b, pivot: [0, 36, -50] };
+  b.ring([0, 30, -50], [0, 30, -40], 16.5, 7, RUST_DARK, E_JOINT, 8);
+  return { b, pivot: [0, 30, -50] };
 }
 
 // One non-indexed geometry for the whole minion with the animation attributes (see header).
 export function buildMinionGeometry() {
   const parts = [];
   parts.push({ b: buildBody(), kind: KIND.BODY, pivot: [0, 0, 0], param: () => 0 });
-  parts.push({ b: buildJaw(), kind: KIND.JAW, pivot: [0, 32, 50], param: () => 0 });
+  parts.push({ b: buildJaw(), kind: KIND.JAW, pivot: [0, 25, 50], param: () => 0 });
   for (const front of [true, false]) {
     for (const s of [-1, 1]) {
       const { b, pivot, phase } = buildLeg(s, front);
