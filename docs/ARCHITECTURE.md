@@ -477,6 +477,51 @@ version and back. Everything is original: no existing monster, character or bran
   an alarm sting; birds stop while dark.
 * **UI**: a flashing "AI RACE" alert banner when the mode switches on.
 
+## Winged hat, minions, locked castle, touch controller
+
+All original designs (no existing characters, blocks, caps or monsters are copied).
+
+* **Mystery box** (objects, `layout.MYSTERY_BOX`): a floating translucent blue crystal cube
+  in a brass frame with a glowing "?" on its faces (static collider). Pip bumping its
+  underside while rising (or punching it) makes it jolt and release the **winged hat**:
+  Pip's own teal explorer hat with a pair of white feathered wings, hovering and spinning.
+  Touching the hat calls `player.giveWingHat(seconds = 40)`. The box can be hit again 30 s
+  after its hat was taken.
+* **Flight** (player): `player.giveWingHat(s)` sets `player.wingHat` (ticks left) and emits
+  `'wingHat' { on: true }` (and `{ on: false }` when it runs out, `player.wingHat = 0`).
+  `RenderState.wingHat` (bool) and `RenderState.wingHatEnding` (last 3 s, for blinking). While
+  the hat is on, a triple jump (or the tree-top flip jump) takes off into action `'flying'`
+  (anim `'fly'`): stick up = nose down (dive, gains speed), stick down = nose up (climbs,
+  loses speed), left/right banks and turns (`RenderState.pitch/roll` show it), a stall
+  drops into a fall; Z ends the flight; landing skids to a stop; walls bonk. Taking the hat
+  off mid-flight turns the flight into a fall. sfx `wing_flap`, `powerup`.
+* **Attacks and stomps** (player): `player.getAttack()` -> `null` or `{ x, y, z, radius,
+  kind }` while a punch, kick, jump kick, dive, slide or ground-pound landing can hit
+  something this tick. `player.bounce(vy = 50)`: bounce up off an enemy Pip landed on
+  (action `'jump'`, sfx `stomp`).
+* **Minions** (objects): 10 s after Rustmaw has risen, small original robot lizards burrow
+  out of the ground (dust burst) around Pip (700-1600 away, on land), up to 5 at a time,
+  a new one every ~5 s. They skitter after him and lunge-bite (1 wedge, knockback via
+  `player.takeDamage(1, pos)`). A hit from `player.getAttack()` or a stomp (Pip falling onto
+  one: `player.bounce()`) wrecks it in a small blast of sparks and scrap (`fx.explode`) and
+  may drop a coin. They leave when the mode turns off; `reset()` clears them. sfx
+  `minion_emerge`, `minion_bite`, `minion_wreck`, `stomp`.
+* **Locked castle** (objects): walking up to the castle door (in front of it, within ~150,
+  facing it) plays sfx `evil_laugh` and shows a dialog via
+  `events.emit('signRead', { sign: { id: 'castle_locked', pages: [...] } })`; it can trigger
+  again once Pip has walked away (> 500) and come back. Pip is frozen while the dialog is up
+  (main); `player.endReading()` is safe when he wasn't reading.
+* **Touch controller** (ui + input): on touch screens (`pointer: coarse`, or `?touch=1`) a
+  retro game-controller UI appears (`src/ui/TouchController.js`, its own root appended to
+  `document.body`, outside `#game`/`#ui`). Portrait: the game picture takes the top of the
+  screen and the controller body fills the bottom (it sets `#game`'s bottom inset so the
+  renderer resizes); landscape: translucent controls over the picture's lower corners. An
+  analog thumb stick (and D-pad), JUMP (A), ATTACK (B), CROUCH (Z) buttons, the four camera
+  buttons (C), CAM (R) and START; multi-touch, no page scrolling or zooming, optional
+  vibration. It feeds the virtual controller through `input.setTouchState({ stickX, stickY,
+  A, B, Z, R, START, CU, CD, CL, CR })` (merged like a gamepad in `poll()`/`sample()`); a tap
+  also unlocks audio on the title.
+
 ## Objects (`src/objects/ObjectManager.js`)
 
 ```js
