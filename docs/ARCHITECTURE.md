@@ -228,7 +228,7 @@ player.stars, player.inWater (bool), player.breath (0..1, optional),
 player.floor ({ y, surface }), player.beginIntro()  // optional spawn drop-in
 player.collectCoin(value)      // +coins, heals 1 wedge per coin value
 player.collectStar()           // stars++, triggers the celebration action
-player.takeDamage(wedges, fromPos)
+player.takeDamage(wedges, fromPos, { fire }?)  // fire: true -> the 'burn' hot-foot hop
 ```
 
 Cross-module writes: `objects.reset()` takes the star it awarded back off `player.stars`
@@ -262,7 +262,12 @@ jump, fall, land, double_jump, triple_jump, backflip, sideflip, long_jump, dive,
 belly_slide, butt_slide, ground_pound_spin, ground_pound_fall, ground_pound_land,
 wallkick, bonk, hurt, fall_damage, ledge_hang, ledge_climb, pole_hold, pole_climb,
 pole_jump, punch1, punch2, kick, jump_kick, swim_idle, swim_stroke, swim_flutter,
-water_surface, water_jump, star_dance, spawn, death`.
+water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn`.
+
+Tree tops: climbing past the top of a tree's pole enters action `pole_top` (anim
+`pole_handstand`, a handstand on the crown). During it `RenderState.pos` is the pole tip
+(where the hands are). A jumps off with a big flip (`pole_top_jump`), stick down climbs back
+down, Z lets go; a fall that starts on a tree counts from its foot (no fall damage).
 
 ## Hero model (`src/player/PlayerModel.js`)
 
@@ -472,7 +477,7 @@ version and back. Everything is original: no existing monster, character or bran
 ## Objects (`src/objects/ObjectManager.js`)
 
 ```js
-new ObjectManager({ scene, collision, events, layout, player })
+new ObjectManager({ scene, collision, events, layout, player, fx, level })  // fx/level: AI RACE fireballs
 objects.update({ player, frame, camera })   // 30 Hz: collection, AI
 objects.animate(time, alpha, threeCamera)   // render: spin, billboards
 objects.reset()                             // new game: every pickup back (see below)
@@ -516,6 +521,10 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `lifeLost` / `oneUp` | `{}` | player / objects (main counts lives; audio plays sfx) |
 | `pause` / `unpause` / `gameStart` / `gameOver` | `{}` | main (audio consumes all four: ducks, menu-track stop, unlock, `game_over` jingle) |
 | `signRead` | `{ sign }` (a `layout.SIGNS` entry) | player (B in front of a sign); the dialog box opens |
+| `aiRaceButton` | `{ on }` | objects (the button was ground-pounded); main toggles AI RACE mode |
+| `darkMode` | `{ on }` | main; audio, UI banner and objects react |
+| `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
+| `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,
@@ -523,7 +532,9 @@ wallkick, dive, ground_pound, ground_pound_land, punch1, punch2, kick, jump_kick
 land_hard, skid,
 bonk, hurt, ledge_grab, climb, swim, splash, water_exit, coin, red_coin, star_appear,
 star_get, one_up, pause, menu_select`, plus `footstep, life_lost, unpause, camera_move,
-camera_buzz`, and the dialog box's `dialog_open, text_blip, dialog_next, dialog_close`.
+camera_buzz`, and the dialog box's `dialog_open, text_blip, dialog_next, dialog_close`, and
+AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
+fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`.
 Unknown names must be ignored silently.
 
 ## Tooling

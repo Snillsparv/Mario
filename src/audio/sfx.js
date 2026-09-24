@@ -603,6 +603,19 @@ export const SFX = {
     return 1.15;
   },
 
+  // A fireball put out by water sounds like any quenched flame: the steam hiss.
+  fireball_fizzle(ctx, out, t, opts) {
+    return SFX.steam(ctx, out, t, opts);
+  },
+
+  // A tree canopy catching fire: a rising flame whoosh that settles into crackling.
+  tree_ignite(ctx, out, t, { p }) {
+    const flame = noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 300 * p], [0.4, 1800 * p], [1, 700 * p]], dur: 1.1, gain: 0.3, attack: 0.08 });
+    lfo(ctx, flame.frequency, t, 1.1, { rate: 13, depth: 200 });
+    crackles(ctx, out, t + 0.2, { count: 12, span: 0.9, gain: 0.12, lo: 900, hi: 4000 });
+    return 1.15;
+  },
+
   // Thunder after lightning (the engine delays it by distance): a deep roll of low-passed
   // rumble whose level swells and fades a few times over 2-4 s (longer and louder the
   // stronger the strike), a slower sub layer under it, and for a close strike a sharp crack
@@ -651,6 +664,8 @@ export const SFX_INFO = {
   fireball_explode: { range: 1.8, max: 4 },
   fire_crackle: { gap: 0.12, max: 3 },
   steam: { gap: 0.1, max: 3 },
+  fireball_fizzle: { gap: 0.1, max: 3 },
+  tree_ignite: { range: 2, gap: 0.3, max: 2 },
   burn: { gap: 0.3 },
   button_press: { gap: 0.3 },
   alarm: { gap: 1.2 },

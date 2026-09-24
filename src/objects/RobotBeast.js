@@ -158,8 +158,8 @@ export class RobotBeast {
       const m = new THREE.Mesh(g, mat);
       m.name = name;
       if (pos) m.position.set(pos[0], pos[1], pos[2]);
-      m.frustumCulled = false; // the rig moves a lot; it is one object on screen anyway
-      return m;
+      return m; // rigid parts: their bounding spheres stay valid, so off-screen parts are culled
+
     };
     this.root = new THREE.Group();
     this.root.name = 'robotBeast';

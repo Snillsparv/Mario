@@ -292,6 +292,8 @@ async function start() {
         input.setOverride(controllerState ?? {});
         tick(input.poll());
         if (i < n - 1 && state.mode !== 'title') poseHero(FRAME_DT); // draw() poses the last
+        // Effects (rain, fires, blasts) advance every tick too, not once per batch.
+        if (i < n - 1 && state.mode === 'play' && !state.paused) fx.update(FRAME_DT, state.time, camera);
       }
       input.setOverride(null);
       if (state.mode !== 'title') draw(FRAME_DT);

@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { buildLevel } from '../src/world/level.js';
 import { Events } from '../src/core/events.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
+import { Player } from '../src/player/Player.js';
+import { ScriptedController } from '../src/player/physics/testCourse.js';
 
 const scene = new THREE.Scene();
 const level = buildLevel(scene);
@@ -171,4 +173,60 @@ test('the AI RACE button sits on the lawn by the path, clear of props, with its 
     const z = b.z + Math.sin(a) * (AI_BUTTON.radius + 60);
     assert.ok(collision.findFloor(x, 1e4, z).y < b.baseTop, 'nothing built right next to it');
   }
+});
+
+// The real hero on the real lawn: he walks over the button from every side (onto the cap and
+// off the far side), walking and jumping on it change nothing, and a jump + ground pound
+// landing on the cap sinks it with him, emits the toggle, and it pops back up.
+test('the real hero walks over the AI RACE button and ground-pounds it', () => {
+  const lvl = buildLevel(new THREE.Scene());
+  const col = lvl.collision;
+  const events = new Events();
+  const player = new Player({ collision: col, events, spawn: lvl.spawn });
+  const objects = new ObjectManager({ scene: new THREE.Scene(), collision: col, events, layout: lvl.layout, player, level: lvl });
+  const toggles = [];
+  events.on('aiRaceButton', (e) => toggles.push(e.on));
+  const b = objects.button;
+  const ctl = new ScriptedController();
+  const tick = (input, yaw) => {
+    player.update(ctl.next(input), yaw);
+    objects.update({ player });
+  };
+  for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+    const x = b.x - Math.sin(yaw) * 420;
+    const z = b.z - Math.cos(yaw) * 420;
+    player.teleport(x, col.findFloor(x, 1e4, z).y, z, yaw);
+    player.setAction('idle');
+    let top = -Infinity;
+    for (let t = 0; t < 45; t++) {
+      tick({ stickY: 1 }, yaw);
+      top = Math.max(top, player.pos.y);
+    }
+    const past = (player.pos.x - b.x) * Math.sin(yaw) + (player.pos.z - b.z) * Math.cos(yaw);
+    assert.ok(Math.abs(top - b.capTop0) < 1e-6, `yaw ${yaw.toFixed(2)}: walked over the cap (top ${top.toFixed(1)})`);
+    assert.ok(past > b.radius, `yaw ${yaw.toFixed(2)}: came off the far side (${past.toFixed(0)})`);
+  }
+  // Standing on the cap: a plain jump changes nothing.
+  player.teleport(b.x, b.capTop0, b.z, Math.PI);
+  player.setAction('idle');
+  tick({}, Math.PI);
+  tick({ A: true }, Math.PI);
+  for (let t = 0; t < 40; t++) tick({}, Math.PI);
+  assert.equal(player.action, 'idle');
+  assert.deepEqual(toggles, []);
+  // Jump, then Z at the top: the pound lands on the cap.
+  tick({ A: true }, Math.PI);
+  for (let t = 0; t < 6; t++) tick({}, Math.PI);
+  tick({ Z: true }, Math.PI);
+  let t = 0;
+  while (player.action !== 'ground_pound_land' && t++ < 60) tick({}, Math.PI);
+  assert.equal(player.action, 'ground_pound_land');
+  assert.deepEqual(toggles, [true]);
+  for (let k = 0; k < 6; k++) tick({}, Math.PI);
+  assert.equal(b.capTop, b.capTop0 - 15);
+  assert.ok(Math.abs(player.pos.y - b.capTop) < 1e-6, 'he sank with the cap');
+  for (let k = 0; k < 60; k++) tick({}, Math.PI);
+  assert.equal(b.state, 'up');
+  assert.ok(Math.abs(player.pos.y - b.capTop0) < 1e-6, 'and rose with it');
+  assert.deepEqual(toggles, [true]);
 });

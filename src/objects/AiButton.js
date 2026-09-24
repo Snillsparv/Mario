@@ -10,11 +10,13 @@
 //   reset()         cap up, ready
 //
 // Collision: static triangles added to the world at construction (CollisionWorld.addTriangles
-// works after finalize()): the base's side walls and top ring, the cap's side walls and its
-// flat top. The cap top's floor triangles move with the cap (their documented Surface fields
-// a/b/c, d, minY and maxY are shifted), so the hero sinks with it instead of hovering. The
-// base top sits at most BASE_HEIGHT above the lowest ground under it, so the hero's knee-height
-// wall probe (30) clears it and he can walk on from any side on the sloping lawn.
+// works after finalize()): the base's side walls and top ring, and the cap's flat top. The cap
+// has no side walls: it is a plain 20-unit step up from the ring, and walls there would catch
+// the hero's knee-height wall probe (30 up) while he still stands on the lawn. The base top
+// sits at most BASE_HEIGHT above the lowest ground under it, so that probe clears the base
+// too and he walks on from any side of the sloping lawn. The cap top's floor triangles move
+// with the cap (their documented Surface fields a/b/c, d, minY and maxY are shifted), so the
+// hero sinks with it instead of hovering.
 
 import * as THREE from 'three';
 import { bakeLighting } from '../render/materials.js';
@@ -225,11 +227,9 @@ export class AiButton {
       const a1 = ((i + 1) / N) * TAU;
       const nx = Math.cos((a0 + a1) / 2);
       const nz = Math.sin((a0 + a1) / 2);
-      // Base side and cap side (outward-facing walls).
+      // Base side (outward-facing walls).
       tri(walls, at(R, a0, this.bottomY), at(R, a1, this.bottomY), at(R, a1, this.baseTop), nx, 0, nz);
       tri(walls, at(R, a0, this.bottomY), at(R, a1, this.baseTop), at(R, a0, this.baseTop), nx, 0, nz);
-      tri(walls, at(r, a0, this.baseTop), at(r, a1, this.baseTop), at(r, a1, this.capTop0), nx, 0, nz);
-      tri(walls, at(r, a0, this.baseTop), at(r, a1, this.capTop0), at(r, a0, this.capTop0), nx, 0, nz);
       // Base top ring.
       tri(ring, at(r, a0, this.baseTop), at(R, a0, this.baseTop), at(R, a1, this.baseTop), 0, 1, 0);
       tri(ring, at(r, a0, this.baseTop), at(R, a1, this.baseTop), at(r, a1, this.baseTop), 0, 1, 0);
