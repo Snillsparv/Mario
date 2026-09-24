@@ -217,7 +217,7 @@ export class BillboardBatch {
 // of the camera: on ground sloping away at about that pitch the crossing is ill-defined.
 // LOOK_HEIGHT, the pitch and the distance are the camera's own (camera/cameraConfig.js), so
 // retuning the camera moves the hero band with it.
-const TRAILING = ORBIT_MODES.lakitu; // the default trailing camera, near zoom step
+const TRAILING = ORBIT_MODES.follow; // the default trailing camera, near zoom step
 const ORBIT_SLOPE = Math.tan(TRAILING.pitch[0]);
 const FOCUS_RANGE = [TRAILING.dist[0] - 250, TRAILING.dist[0] + 200]; // around the trailing distance
 const FOCUS_STEP = 90;

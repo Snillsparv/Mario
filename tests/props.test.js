@@ -347,7 +347,7 @@ test('the hero locator uses the camera config: focus height, trailing pitch and 
   // No published focus: a camera where the default orbit puts it, `dist` behind the hero
   // and dist * tan(pitch) above his look point, finds him at his feet.
   delete camera.userData.focus;
-  const { dist, pitch } = ORBIT_MODES.lakitu;
+  const { dist, pitch } = ORBIT_MODES.follow;
   camera.position.set(0, LOOK_HEIGHT + dist[0] * Math.tan(pitch[0]), dist[0]);
   camera.updateMatrixWorld();
   assert.equal(locate(camera, 0, -1, hero), true);

@@ -280,11 +280,11 @@ test('zoom steps, first-person look and hero-cam toggle', () => {
   cam.update(ctrl({ A: true }), hero);
   assert.equal(cam.firstPerson, false);
   for (let i = 0; i < 40; i++) cam.update(ctrl(), hero);
-  const lakitu = dist();
+  const follow = dist();
   cam.update(ctrl({ R: true }), hero);
   for (let i = 0; i < 40; i++) cam.update(ctrl(), hero);
   assert.equal(cam.mode, 'hero');
-  assert.ok(dist() < lakitu - 200, 'hero cam is tighter');
+  assert.ok(dist() < follow - 200, 'hero cam is tighter');
 });
 
 test('intro fly-in starts above the castle and settles behind the hero', async () => {
@@ -299,7 +299,7 @@ test('intro fly-in starts above the castle and settles behind the hero', async (
     assert.ok(cam.pos.distanceTo(last) < 500, 'no jumps along the path');
     last = cam.pos.clone();
   }
-  assert.equal(cam.mode, 'lakitu');
+  assert.equal(cam.mode, 'follow');
   assert.ok(cam.pos.z > hero.pos.z + 800, 'ends behind the hero');
   cam.titleOrbit(12.3);
   assert.ok(cam.pos.y >= 1500 && cam.pos.y <= 2500);

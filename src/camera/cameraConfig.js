@@ -6,7 +6,7 @@ const DEG = Math.PI / 180;
 export const FOV = 45;
 export const LOOK_HEIGHT = 150; // the orbit centre (look point) is this far above the hero's feet
 
-// Orbit modes. 'lakitu' is the default trailing camera, 'hero' the tighter R-button camera.
+// Orbit modes. 'follow' is the default trailing camera, 'hero' the tighter R-button camera.
 // dist/pitch/aim are per zoom step (index 0 = close, 1 = far).
 //
 // aim: the view is aimed this angle above the look point, so the hero stands in the lower
@@ -15,7 +15,7 @@ export const LOOK_HEIGHT = 150; // the orbit centre (look point) is this far abo
 // rendered target moves: the orbit, the collider's sight lines and getYaw() (horizontal) are
 // unchanged. See also AIM_FADE / FEET_MAX_BELOW below.
 export const ORBIT_MODES = {
-  lakitu: {
+  follow: {
     dist: [1250, 1800],
     pitch: [8 * DEG, 12 * DEG],
     aim: [7 * DEG, 9 * DEG],

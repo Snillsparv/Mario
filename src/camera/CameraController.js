@@ -1,6 +1,6 @@
 // N64-style trailing follow camera ("an invisible camera operator").
 //
-// Default ('lakitu') mode: orbits the hero at ~1250 units, pitched ~8 deg down at a point
+// Default ('follow') mode: orbits the hero at ~1250 units, pitched ~8 deg down at a point
 // 150 units above the hero's feet, with the view aimed ~7 deg above that point so the hero
 // stands in the lower middle of the screen under the castle and the sky (see cameraConfig:
 // aim). Nothing is rigidly attached to the hero:
@@ -65,13 +65,13 @@ export class CameraController {
     this.look = new THREE.Vector3(); // orbit look point (tighter lag than the pivot)
     this.anchor = new THREE.Vector3(); // unobstructed orbit position (drives the leash)
 
-    this.mode = 'lakitu'; // 'lakitu' | 'hero' | 'first_person' | 'intro'
-    this.orbitMode = 'lakitu'; // orbit mode to return to after first-person / intro
+    this.mode = 'follow'; // 'follow' | 'hero' | 'first_person' | 'intro'
+    this.orbitMode = 'follow'; // orbit mode to return to after first-person / intro
     this.zoom = 0;
     this.yaw = Math.PI; // orbit yaw: direction from the hero to the camera
-    this.dist = K.ORBIT_MODES.lakitu.dist[0];
-    this.basePitch = K.ORBIT_MODES.lakitu.pitch[0];
-    this.aimPitch = K.ORBIT_MODES.lakitu.aim[0]; // eased configured aim above the look point
+    this.dist = K.ORBIT_MODES.follow.dist[0];
+    this.basePitch = K.ORBIT_MODES.follow.pitch[0];
+    this.aimPitch = K.ORBIT_MODES.follow.aim[0]; // eased configured aim above the look point
     this.aimRise = 0; // eased total aim (radians) of the rendered target above the look point...
     this.aimFresh = true; // ...set outright on the next tick (after a reset or teleport)
     this.restAim = 0; // eased extra aim of the resting view (cameraConfig REST_*)...
@@ -264,7 +264,7 @@ export class CameraController {
       }
     }
     if (c.R.pressed) {
-      this.orbitMode = this.mode = this.mode === 'lakitu' ? 'hero' : 'lakitu';
+      this.orbitMode = this.mode = this.mode === 'follow' ? 'hero' : 'follow';
       this._sfx('camera_move');
     }
     if (c.CL.pressed) this._rotate(-1);
