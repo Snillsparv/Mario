@@ -365,6 +365,54 @@ export function groundStep(p) {
   return r;
 }
 
+// Holes in the collision mesh. A column with no floor and no wall at all, between floors on
+// both sides (along x or z, within HOLE_SPAN), is a gap in the level's collision (broken
+// geometry, e.g. a seam between terrain pieces), not a pit: once the falling feet sink to the
+// floor last flown over (p.rim: the last spot an air step had a floor under it, at most
+// HOLE_REACH away), the hero lands back there instead of dropping out of the level. The
+// level's real edges (floor on one side only) and pits with walls are left alone.
+const HOLE_SPAN = 150;
+const HOLE_REACH = 300;
+const SKY = 1e5;
+const skyRay = { x: 0, y: SKY, z: 0 };
+const RAY_DOWN = { x: 0, y: -1, z: 0 };
+const RAY_GROUND = { floors: true, walls: true, ceilings: false };
+
+function setRim(p, x, z, y) {
+  const rim = p.rim;
+  if (!rim) return;
+  rim.x = x;
+  rim.z = z;
+  rim.y = y;
+}
+
+const floorAt = (col, x, z) => col.findFloor(x, SKY, z, 0).surface !== null;
+
+function overHole(p, x, z) {
+  const col = p.collision;
+  const rim = p.rim;
+  const dx = x - rim.x;
+  const dz = z - rim.z;
+  if (dx * dx + dz * dz > HOLE_REACH * HOLE_REACH || floorAt(col, x, z)) return false;
+  skyRay.x = x;
+  skyRay.z = z;
+  if (col.raycast(skyRay, RAY_DOWN, 2 * SKY, RAY_GROUND)) return false;
+  const S = HOLE_SPAN;
+  return (floorAt(col, x - S, z) && floorAt(col, x + S, z)) || (floorAt(col, x, z - S) && floorAt(col, x, z + S));
+}
+
+// Lands the hero on the rim's floor (see overHole). Returns false if it can't be found.
+function landOnRim(p) {
+  const rim = p.rim;
+  const floor = p.collision.findFloor(rim.x, rim.y + 1, rim.z);
+  if (!floor.surface) return false;
+  p.pos.x = rim.x;
+  p.pos.z = rim.z;
+  p.pos.y = floor.y;
+  p.floor = floor;
+  return true;
+}
+
 // One air sub-step (of `n` per tick) moving by (dx, dz) horizontally and vel.y / n
 // vertically. Returns STEP_BLOCKED without committing when the spot ahead has no room for the
 // hero, unless `inPlace` (a retry without horizontal motion), which always commits.
@@ -386,10 +434,12 @@ function airQuarterStep(p, r, dx, dz, inPlace, n) {
   }
   const landing = floor.surface && y <= floor.y;
   if (landing && !inPlace && (hitCeiling || headroom(col, x, floor.y, z) < PLAYER_HEIGHT)) return STEP_BLOCKED;
+  if (!floor.surface && p.rim && y <= p.rim.y && overHole(p, x, z) && landOnRim(p)) return STEP_LANDED;
   if (wall) r.wall = wall;
   p.pos.x = x;
   p.pos.z = z;
   p.floor = floor;
+  if (floor.surface) setRim(p, x, z, floor.y);
   if (landing) {
     p.pos.y = floor.y;
     return STEP_LANDED;
@@ -406,10 +456,11 @@ function airQuarterStep(p, r, dx, dz, inPlace, n) {
 // classic quarter steps; fast movers such as the flight pass more so that no sub-step moves
 // further than the probes can resolve). Result: STEP_LANDED, STEP_HIT_WALL (r.wall) or
 // STEP_NONE; r.blocked when a spot without room (low ceiling over it) stopped the horizontal
-// motion (never the vertical).
+// motion (never the vertical). A hole in the collision mesh lands him on its rim (overHole).
 export function airStep(p, steps = 4) {
   const r = resetResult(airRes);
   const n = steps;
+  if (p.floor.surface) setRim(p, p.pos.x, p.pos.z, p.floor.y);
   p.grounded = false;
   for (let i = 0; i < n; i++) {
     const d = walkOffDrift(p, n);

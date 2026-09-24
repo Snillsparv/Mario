@@ -4,8 +4,10 @@
 //
 //   new Minions({ collision, events, fx, fire, sparkles, shadows, shadowBase, rng, layout,
 //                 groundAt, onCoin })
-//   update(player, hero, tick, active)  30 Hz. active: the beast is up (ObjectManager);
-//                                       hero = the previous tick's { y, vy, air } of the player
+//   update(player, hero, tick, active, hold?)  30 Hz. active: the beast is up (ObjectManager);
+//                                       hero = the previous tick's { y, vy, air } of the player;
+//                                       hold: a dialog is up (Pip is frozen): no spawns or bites,
+//                                       they keep their distance
 //   animate(alpha, clock, camera)       render: instance matrices, gait attributes, shadows,
 //                                       eye glows
 //   clear()                             every minion gone at once (reset)
@@ -192,6 +194,7 @@ export class Minions {
     this.wrecks = 0;
     this.bites = 0;
     this.camera = null;
+    this.hold = false;
 
     const geo = buildMinionGeometry();
     const anim = new THREE.InstancedBufferAttribute(new Float32Array(MINION.POOL * 4), 4);
@@ -242,8 +245,9 @@ export class Minions {
     this.events.emit('sfx', { name, pos: { x: m.x, y: m.y + 40, z: m.z } });
   }
 
-  update(player, hero, tick, active) {
+  update(player, hero, tick, active, hold = false) {
     this.tick = tick;
+    this.hold = hold;
     if (active) {
       if (this.activeTicks === 0) this.nextSpawn = MINION.FIRST_DELAY;
       this.activeTicks++;
@@ -252,7 +256,7 @@ export class Minions {
       this._burrowAll();
     }
     if (active && this.activeTicks >= this.nextSpawn) {
-      if (heroAway(player.action)) this.nextSpawn = this.activeTicks + MINION.RETRY;
+      if (this.hold || heroAway(player.action)) this.nextSpawn = this.activeTicks + MINION.RETRY;
       else if (this.alive >= MINION.MAX_ALIVE) this.nextSpawn = this.activeTicks + this._rand(MINION.EVERY);
       else this.nextSpawn = this.activeTicks + (this._trySpawn(player) ? this._rand(MINION.EVERY) : MINION.RETRY);
     }
@@ -431,7 +435,7 @@ export class Minions {
     const dz = p.z - m.z;
     const d = Math.sqrt(dx * dx + dz * dz);
     if (m.cooldown > 0) m.cooldown--;
-    const away = heroAway(player.action);
+    const away = this.hold || heroAway(player.action);
     const dy = p.y - m.y;
     m.jaw += (0.08 * (1 + Math.sin(this.tick * 0.7 + m.seed * 9)) - m.jaw) * 0.3;
     m.flare *= 0.8;
@@ -553,7 +557,7 @@ export class Minions {
     if (!m.bit && m.t <= M.SNAP_AT + 1 && this._bites(m, player)) {
       m.bit = true;
       this._sfx('minion_bite', m);
-      if (!heroAway(player.action) && !heroInvincible(player)) {
+      if (!this.hold && !heroAway(player.action) && !heroInvincible(player)) {
         this.bites++;
         player.takeDamage?.(1, { x: m.x, y: m.y, z: m.z });
       }
@@ -823,11 +827,11 @@ export class Minions {
           g.x = gx;
           g.y = gy;
           g.z = gz;
-          g.size = (70 + 70 * flare) * scale;
+          g.size = (46 + 60 * flare) * scale;
           g.r = TINTS.eye[0];
           g.g = TINTS.eye[1];
           g.b = TINTS.eye[2];
-          g.a = power * (0.5 + 0.5 * flare);
+          g.a = power * (0.4 + 0.6 * flare);
         }
       }
     }

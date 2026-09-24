@@ -2,7 +2,9 @@
 //
 //   new Fireballs({ collision, events, fx, level, layout, fire, rng })
 //   launch(x, y, z, vx, vy, vz) -> ball | null   (units, units/tick; pool of CAPACITY)
-//   update(player, tick)          30 Hz: flight, impacts, fire zones, burning trees, damage
+//   update(player, tick, hold?)   30 Hz: flight, impacts, fire zones, burning trees, damage;
+//                                 hold: a dialog box is up (Pip is frozen, main feeds him no
+//                                 input): balls still fly and burst, but nothing hurts him
 //   animate(alpha, clock)         render: cores, halos and flame trails, ground glow markers
 //   clear()                       nothing in flight, no fire zones, no burning trees
 //
@@ -19,6 +21,8 @@
 //   * the hero's body -> bursts on him (2 wedges)
 // Blast: the hero within BLAST_RADIUS takes 2 wedges (player.takeDamage(2, impactPos)).
 // Fire zones: feet inside one -> player.takeDamage(1, zoneCentre, { fire: true }).
+// No damage at all while `hold` (a sign or the locked door's message is up): a ball flies past
+// him and bursts on the ground, the blast and the zones spare him.
 // The ground under each ball glows (one instanced draw call), brighter as it falls, so the
 // landing spot is telegraphed.
 
@@ -110,6 +114,7 @@ export class Fireballs {
     this.zones = Array.from({ length: FIREBALL.MAX_ZONES }, zone);
     this.time = 0; // simulation seconds (ticks * FRAME_DT)
     this.inFlight = 0;
+    this.hold = false; // a dialog is up: no damage (see update)
     this.impacts = 0; // counters (tests, debugging)
 
     this.mesh = new THREE.Group();
@@ -190,8 +195,9 @@ export class Fireballs {
     this.markers.visible = false;
   }
 
-  update(player, tick) {
+  update(player, tick, hold = false) {
     this.time = tick * FRAME_DT;
+    this.hold = hold;
     const g = SHOT.GRAVITY;
     for (let i = 0; i < this.balls.length; i++) {
       const b = this.balls[i];
@@ -227,7 +233,7 @@ export class Fireballs {
   // Sphere (the ball, swept over this step in 4 samples) against the hero's body capsule.
   _hitsHero(b, player) {
     const a = player.action;
-    if (!player.pos || a === 'death' || a === 'spawn') return false;
+    if (!player.pos || this.hold || a === 'death' || a === 'spawn') return false;
     const F = FIREBALL;
     const px = player.pos.x;
     const pz = player.pos.z;
@@ -320,7 +326,7 @@ export class Fireballs {
     this._flare(x, y, z);
     if (kind === 'hero') {
       player.takeDamage?.(F.HIT_DAMAGE, pos);
-    } else if (this._inBlast(player, x, y, z)) {
+    } else if (!this.hold && this._inBlast(player, x, y, z)) {
       player.takeDamage?.(F.BLAST_DAMAGE, pos);
     }
     if (kind === 'ground') {
@@ -400,7 +406,7 @@ export class Fireballs {
         zn.alive = false;
         continue;
       }
-      if (burnt || !pos) continue;
+      if (burnt || !pos || this.hold) continue;
       const dx = pos.x - zn.x;
       const dz = pos.z - zn.z;
       const dy = pos.y - zn.y;

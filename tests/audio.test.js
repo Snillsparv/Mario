@@ -23,6 +23,8 @@ const RANGES = {
   pulse: [28, 62],
   glass: [60, 96],
   clang: [40, 62],
+  brass: [55, 90],
+  synarp: [48, 91],
 };
 
 test('engine is a silent no-op without an AudioContext', async () => {
@@ -57,6 +59,10 @@ test('engine is a silent no-op without an AudioContext', async () => {
     ['aiRaceButton', { on: true }],
     ['hurt', { fire: true }],
     ['darkMode', { on: false }],
+    ['wingHat', { on: true }],
+    ['sfx', { name: 'powerup' }],
+    ['sfx', { name: 'minion_emerge', pos: { x: 0, y: 0, z: 0 } }],
+    ['wingHat', { on: false }],
   ]) {
     events.emit(name, data);
   }
@@ -69,7 +75,8 @@ test('every standard sfx name has a recipe', () => {
     ground_pound_land punch kick land land_hard skid bonk hurt ledge_grab climb swim splash
     water_exit coin red_coin star_appear star_get one_up pause menu_select camera_move camera_buzz
     footstep life_lost unpause punch1 punch2 jump_kick dialog_open text_blip dialog_next dialog_close
-    button_press alarm kaiju_roar fireball_charge fireball_launch fireball_explode burn fire_crackle steam thunder`;
+    button_press alarm kaiju_roar fireball_charge fireball_launch fireball_explode burn fire_crackle steam thunder
+    box_hit powerup wing_flap stomp minion_emerge minion_bite minion_wreck evil_laugh`;
   for (const n of names.split(/\s+/)) assert.equal(typeof SFX[n], 'function', n);
 });
 
@@ -256,4 +263,41 @@ test('the AI RACE track: a slow D minor loop of synth pad, low pulse and metal, 
   // Nothing rings on past the loop end by more than a moment (the seam is seamless: the
   // next pass takes over on the downbeat).
   for (const e of c.events) assert.ok(e.beat + e.dur <= c.loopBeats + 1e-9, `${e.inst} at ${e.beat}`);
+});
+
+test('the flying theme: a bright, soaring D major loop of 40-60 s; its storm variant is the same tune in D minor', () => {
+  const fly = compileSong(SONGS.fly);
+  const dark = compileSong(SONGS.fly_dark);
+  for (const [name, c] of [['fly', fly], ['fly_dark', dark]]) {
+    const seconds = (c.loopBeats * 60) / c.bpm;
+    assert.ok(seconds >= 40 && seconds <= 60, `${name} loop ${seconds}s`);
+    assert.ok(c.bpm >= 110, `${name}: brisk`);
+    assert.ok(!SONGS[name].finalBar && !SONGS[name].menu && !SONGS[name].jingle, `${name}: a plain loop`);
+    assert.ok(c.fadeIn > 0 && c.fadeIn <= 2, `${name}: fades in under the power-up fanfare`);
+    assert.equal(c.lead, 'brass');
+    assert.ok(c.level <= 0.7);
+    for (const [inst, k] of Object.entries(c.mix)) assert.ok(c.events.some((e) => e.inst === inst) && k > 0 && k <= 2, `${name} mix ${inst}`);
+  }
+  assert.equal(SONGS.fly.key, 'D');
+  assert.ok(!SONGS.fly.mode || SONGS.fly.mode === 'major');
+  assert.equal(SONGS.fly_dark.key, 'D');
+  assert.equal(SONGS.fly_dark.mode, 'minor', 'the key of the storm drone and the dark track');
+  assert.equal(dark.roles.pad, 'darkpad');
+  // Soaring: the lead spans well over an octave and holds long high notes.
+  const lead = fly.events.filter((e) => e.inst === 'brass');
+  const pitches = lead.map((e) => e.midi);
+  assert.ok(Math.max(...pitches) - Math.min(...pitches) >= 15, 'wide range');
+  assert.ok(lead.some((e) => e.dur >= 2 && e.midi >= noteToMidi('C#6')), 'long high notes');
+  // The same tune: every bar of the storm variant has the same rhythm as the sunny one.
+  const bars = (song) => song.parts.find((p) => p.inst === 'brass').bars;
+  const rhythm = (str) => parseBar(str).notes.map((n) => `${n.beat}:${n.dur}`).join(' ');
+  assert.equal(Object.keys(bars(SONGS.fly)).length, Object.keys(bars(SONGS.fly_dark)).length);
+  for (const [bar, str] of Object.entries(bars(SONGS.fly))) assert.equal(rhythm(bars(SONGS.fly_dark)[bar]), rhythm(str), `bar ${bar}`);
+  assert.equal(SONGS.fly.chords.length, SONGS.fly_dark.chords.length);
+  // Both loops start on the tonic chord with the lead's high D, which the power-up fanfare's
+  // final D major chord hands over to.
+  for (const song of [SONGS.fly, SONGS.fly_dark]) {
+    assert.equal(chordTimeline(song)[0].chord.root, pitchClass(noteToMidi('D4')));
+    assert.equal(bars(song)[1], 'D6:4');
+  }
 });

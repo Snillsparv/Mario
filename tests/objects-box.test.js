@@ -80,8 +80,9 @@ test('the box floats spot.y above the ground with a solid collider', () => {
   const { box, collision } = setup();
   assert.equal(box.bottomY, SPOT.y);
   assert.equal(box.topY, SPOT.y + SPOT.size);
-  assert.equal(collision.findCeil(SPOT.x, 100, SPOT.z).y, SPOT.y, 'underside is a ceiling');
-  assert.equal(collision.findFloor(SPOT.x, 600, SPOT.z).y, SPOT.y + SPOT.size, 'top is a floor');
+  // (The collider stands where the box is drawn: bobbing at most BOB off its rest pose.)
+  assert.ok(Math.abs(collision.findCeil(SPOT.x, 100, SPOT.z).y - SPOT.y) <= BOX.BOB, 'underside is a ceiling');
+  assert.ok(Math.abs(collision.findFloor(SPOT.x, 600, SPOT.z).y - (SPOT.y + SPOT.size)) <= BOX.BOB, 'top is a floor');
   const w = collision.findWalls(SPOT.x + SPOT.size / 2 + 20, SPOT.y + 40, SPOT.z, 0, 40);
   assert.ok(w.walls.length > 0 && w.x > SPOT.x + SPOT.size / 2 + 20, 'sides push out');
   assert.equal(collision.findFloor(SPOT.x, 200, SPOT.z).y, 0, 'the ground below stays walkable');
@@ -141,6 +142,61 @@ test('no bump when falling, standing, too far below or outside the footprint', (
   step();
   assert.equal(box.state, 'ready');
   assert.equal(box.hits, 0);
+});
+
+// Where the box is drawn at the end of the latest tick (alpha 1): its underside and top.
+function drawn(box) {
+  const y = box.boxGroup.position.y;
+  return { bottom: y - box.half, top: y + box.half };
+}
+
+test('the collider bobs and jolts with the box, one tick ahead of the picture', () => {
+  const { box, player, step, collision } = setup();
+  const at = () => ({ top: collision.findFloor(box.x, 1000, box.z).y, bottom: collision.findCeil(box.x, 0, box.z).y });
+  let worst = 0;
+  const check = () => {
+    const c = at(); // what the next physics step collides with ...
+    step(); // ... is where the box is drawn at the end of that tick
+    const d = drawn(box);
+    worst = Math.max(worst, Math.abs(c.top - d.top), Math.abs(c.bottom - d.bottom));
+  };
+  for (let i = 0; i < 60; i++) check(); // bobbing
+  under(player, box, 5);
+  for (let i = 0; i < BOX.JOLT_TICKS + 3; i++) check(); // the jolt
+  assert.ok(box.hits === 1, 'bumped');
+  assert.ok(worst < 1e-9, `off by ${worst}`);
+  // It really moves (bob and jolt), and the walls go along.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < 70; i++) {
+    step();
+    lo = Math.min(lo, box.lift);
+    hi = Math.max(hi, box.lift);
+  }
+  assert.ok(hi - lo > BOX.BOB * 1.5, `bob ${lo}..${hi}`);
+  const y = box.bottomY + box.lift + 1;
+  const w = collision.findWalls(box.x + box.half + 20, y, box.z, 0, 40);
+  assert.ok(w.walls.length > 0, 'the side walls follow');
+  assert.equal(collision.findWalls(box.x + box.half + 20, box.topY + box.lift + 2, box.z, 0, 40).walls.length, 0, 'not above the top');
+});
+
+test('pounded from on top it dips under him instead of jumping up into his feet', () => {
+  const { box, player, step } = setup();
+  step();
+  player.pos = { x: box.x, y: box.topY + box.lift, z: box.z };
+  player.attack = { x: box.x, y: box.topY + box.lift, z: box.z, radius: 70, kind: 'pound' };
+  step();
+  player.attack = null;
+  assert.equal(box.state, 'empty');
+  step(3);
+  assert.ok(box.offset < -5, `dips: ${box.offset}`);
+  step(BOX.JOLT_TICKS);
+  assert.equal(box.offset, 0);
+  // From below it jumps up.
+  const b2 = setup();
+  under(b2.player, b2.box, 5);
+  b2.step(3);
+  assert.ok(b2.box.offset > 5);
 });
 
 test('a punch overlapping the box hits it too', () => {
@@ -285,6 +341,8 @@ test('mystery box hot paths avoid allocating constructs', () => {
     'MysteryBox._updateHat': MysteryBox.prototype._updateHat,
     'MysteryBox.touchesHat': MysteryBox.prototype.touchesHat,
     'MysteryBox.animate': MysteryBox.prototype.animate,
+    'MysteryBox._liftAt': MysteryBox.prototype._liftAt,
+    'MysteryBox._setLift': MysteryBox.prototype._setLift,
   };
   for (const [name, fn] of Object.entries(hot)) {
     const src = fn.toString();

@@ -247,7 +247,7 @@ export const KAIJU = { x: 0, z: -2300, yaw: 0 };
 
 // A floating mystery box (hit it from below) that releases the winged hat: y is the
 // height of the box's underside above the ground, low enough to bump with a standing jump.
-export const MYSTERY_BOX = { x: 1900, z: 4300, y: 340, size: 130 };
+export const MYSTERY_BOX = { x: 1300, z: 4300, y: 340, size: 130 };
 
 export const STAR = { x: 0, z: -100, y: ISLAND_TOP + 450 }; // above the courtyard, in front of the entrance steps
 

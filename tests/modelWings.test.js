@@ -12,6 +12,7 @@ import { CHANNELS, createPose, copyPose } from '../src/player/model/pose.js';
 import { buildWingedHat, BOUND_R } from '../src/player/model/wings.js';
 import { COLORS } from '../src/player/model/palette.js';
 import { wrapAngle } from '../src/core/math.js';
+import { HAND_R, HEAD_R } from '../src/player/model/dims.js';
 
 const UP = { x: 0, y: 1, z: 0 };
 const base = (over) => ({
@@ -131,6 +132,49 @@ test('flap styles: gentle on the ground, strong in flight (hardest climbing), fo
   assert.ok(climb.travel > glide.travel, `climb ${climb.travel.toFixed(1)} vs glide ${glide.travel.toFixed(1)}`);
   assert.ok(dive.travel < glide.travel * 0.6, `dive ${dive.travel.toFixed(1)}`);
   assert.ok(dive.back < glide.back - 8, `folded back: ${dive.back.toFixed(1)} vs ${glide.back.toFixed(1)}`);
+});
+
+// Share of the wings' area (0 edge-on .. 1 broadside) seen along `dir` (hat space).
+function shownArea(a, dir) {
+  let shown = 0;
+  let full = 0;
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  for (let i = 0; i < a.length; i += 9) {
+    e1.set(a[i + 3] - a[i], a[i + 4] - a[i + 1], a[i + 5] - a[i + 2]);
+    e2.set(a[i + 6] - a[i], a[i + 7] - a[i + 1], a[i + 8] - a[i + 2]);
+    const c = e1.cross(e2);
+    full += c.length();
+    shown += Math.abs(c.dot(dir));
+  }
+  return shown / full;
+}
+
+test('in flight the wings stay in view of the chase camera, even at the bottom of a beat', () => {
+  // Where the chase camera sits in hat space (measured in game): about level with the brim,
+  // a little under it, in level flight; 20-50 degrees over it, behind, when climbing.
+  const cases = [
+    ['glide', 0.1, [-8, 0], 0.45],
+    ['climb', -0.9, [25, 45], 0.3],
+  ];
+  for (const [name, pitch, elevs, least] of cases) {
+    const model = run(new PlayerModel(), base({ wingHat: true, anim: 'fly', forwardVel: 40, pitch }), 120);
+    const views = elevs.map((deg) => new THREE.Vector3(0, Math.sin((deg * Math.PI) / 180), -Math.cos((deg * Math.PI) / 180)));
+    let bottom = Infinity;
+    let lowest = Infinity;
+    let reach = 0;
+    run(model, base({ wingHat: true, anim: 'fly', forwardVel: 40, pitch, animTime: 2 }), 120, (m) => {
+      const w = m.wings.w;
+      lowest = Math.min(lowest, w.lift - w.amp);
+      const a = wingPos(m);
+      for (let k = 0; k < a.length; k += 3) reach = Math.max(reach, Math.abs(a[k]));
+      if (Math.sin(w.phase) > -0.9) return; // the bottom of the beat
+      for (const v of views) bottom = Math.min(bottom, shownArea(a, v));
+    });
+    assert.ok(bottom > least, `${name}: ${bottom.toFixed(2)} of the wings shown at the bottom of a beat`);
+    assert.ok(lowest > 0.25, `${name}: the beat bottoms out ${lowest.toFixed(2)} rad over the brim plane`);
+    assert.ok(reach > 60, `${name}: spread ${reach.toFixed(1)} from the hat centre (brim 50)`);
+  }
 });
 
 test('the wings never dip into the brim and stay inside their fixed bounds', () => {
@@ -253,10 +297,31 @@ test('fly: registered, lies flat along the flight path with the lead fist ahead'
   assert.ok(Math.abs(boots[0].x - boots[1].x) < 30, 'legs together');
   const fist = w(model.rig.armR.hand);
   assert.ok(fist.z > hips.z + 60, `lead fist ${(fist.z - hips.z).toFixed(1)} ahead`);
+  // Superhero, not airplane: the fist is thrust out level with the nose (its front at the
+  // nose tip), well ahead of the chin, near the centre line and below the face; the arm
+  // clears the head.
+  const face = model.rig.head.children.find((c) => c.isGroup); // head centre
+  const at = (x, y, z) => face.localToWorld(new THREE.Vector3(x, y, z));
+  const nose = at(0, -5.5, 35);
+  const chin = at(0, -29, 5);
+  assert.ok(fist.z + HAND_R > nose.z - 4, `fist ${(fist.z - nose.z).toFixed(1)} from the nose tip`);
+  assert.ok(fist.z > chin.z + 20, `fist ${(fist.z - chin.z).toFixed(1)} ahead of the chin`);
+  assert.ok(Math.abs(fist.x - hips.x) < 28, `fist ${(fist.x - hips.x).toFixed(1)} off the centre line`);
+  assert.ok(fist.y < nose.y, 'below the face');
+  const inHead = (v) => {
+    const l = face.worldToLocal(v.clone());
+    return Math.hypot(l.x / (HEAD_R * 1.07), l.y / (HEAD_R * 0.97), l.z / HEAD_R);
+  };
+  const { elbow } = model.rig.armR;
+  for (let k = 0; k <= 10; k++) {
+    const pt = elbow.localToWorld(new THREE.Vector3(0, -k * 2, 0));
+    assert.ok(inHead(pt) > 1.08, `forearm ${k} inside the head (${inHead(pt).toFixed(2)})`);
+  }
+  assert.ok(inHead(fist) > 1.25, 'mitten clear of the head');
   // The Player's pitch tilts it: nose down lowers the head below the hips.
-  const nose = run(new PlayerModel(), base({ anim: 'fly', animTime: 1, pitch: 0.8 }), 60);
-  nose.object3D.updateMatrixWorld(true);
-  assert.ok(w(nose.rig.head).y < w(nose.rig.hips).y - 20);
+  const diving = run(new PlayerModel(), base({ anim: 'fly', animTime: 1, pitch: 0.8 }), 60);
+  diving.object3D.updateMatrixWorld(true);
+  assert.ok(w(diving.rig.head).y < w(diving.rig.hips).y - 20);
 });
 
 test('fly take-off: the triple jump somersault rolls on forward into the flight pose', () => {
@@ -358,6 +423,32 @@ test('buildWingedHat: the teal explorer hat with the same wings, flapping on req
   assert.ok(wingBox.max.y > 45, 'rising above the crown');
   // The fixed culling bounds hold them.
   assert.ok(wings.geometry.boundingBox.containsBox(wingBox));
+});
+
+test('the round belly shades smoothly: no crease down the tunic seam', () => {
+  const model = new PlayerModel();
+  const torsoMesh = model.rig.torso.children.find((o) => o.isMesh);
+  const { position: pos, normal, color } = torsoMesh.geometry.attributes;
+  const tunic = new THREE.Color(COLORS.tunic);
+  const byPos = new Map();
+  let shared = 0;
+  for (let i = 0; i < pos.count; i++) {
+    if (Math.abs(color.getX(i) - tunic.r) > 1e-6 || Math.abs(color.getY(i) - tunic.g) > 1e-6) continue;
+    const key = [pos.getX(i), pos.getY(i), pos.getZ(i)].map((v) => Math.round(v * 100)).join();
+    const j = byPos.get(key);
+    if (j === undefined) {
+      byPos.set(key, i);
+      continue;
+    }
+    shared++;
+    const dot = normal.getX(i) * normal.getX(j) + normal.getY(i) * normal.getY(j) + normal.getZ(i) * normal.getZ(j);
+    assert.ok(dot > 0.999, `split normals at (${pos.getX(i).toFixed(1)}, ${pos.getY(i).toFixed(1)}, ${pos.getZ(i).toFixed(1)})`);
+  }
+  assert.ok(shared >= 8, `the lathe seam (${shared} shared vertices)`);
+  // The seam runs down the front of the belly, where the swell is.
+  let front = -Infinity;
+  for (let i = 0; i < pos.count; i++) front = Math.max(front, pos.getZ(i));
+  assert.ok(front > 22.8 * 0.9 + 3, `belly front ${front.toFixed(1)}`);
 });
 
 test('a slightly rounder Pip: the belly swells the tunic, colours and kit unchanged', () => {

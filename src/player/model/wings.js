@@ -107,7 +107,8 @@ const template = () => (TEMPLATE ??= wingTemplate());
 
 // ---- placement on the hat (hat space: origin at the brim centre, +Y up, front +Z) -----------
 // The hinge sits just inside the crown's side, above the band. A wing is posed by (in order)
-// `attack` (tilt about its span: + raises the trailing feathers), the flap about the hinge
+// `attack` (tilt about its span: + raises the trailing feathers; it swings by `twist` with
+// the beat, + at the top of the stroke and - at the bottom), the flap about the hinge
 // (`lift` + the beat: + raises the tip; ~1 rad stands it up beside the crown), and `sweep`
 // back about the vertical.
 const ROOT = { x: 22.5, y: 10.5, z: 3 };
@@ -118,15 +119,16 @@ const NORMAL_LIFT = 1.4; // see poseWing
 export const BOUND_R = 100; // the wings' fixed bounding sphere: (0, 15, -10) in hat space
 
 // Flap styles: freq (beats/s), amp (rad), lift (rad), sweep (extra, rad), attack (rad),
-// scale (size).
+// twist (rad), scale (size).
 // On the ground the wings stand up beside the crown like a winged helmet's; in flight they
 // spread out sideways for big bird-like beats.
-const GROUND = { freq: 1.1, amp: 0.1, lift: 0.95, sweep: 0, attack: 0.4, scale: 1 };
-const AIR = { freq: 3.2, amp: 0.4, lift: 0.8, sweep: 0, attack: 0.3, scale: 1 };
-const STREAMLINED = { freq: 1.6, amp: 0.07, lift: 0.5, sweep: 0.75, attack: 0.1, scale: 1 }; // dives, slides
-const WATER = { freq: 0.8, amp: 0.06, lift: 0.7, sweep: 0.55, attack: 0.3, scale: 1 };
+const GROUND = { freq: 1.1, amp: 0.1, lift: 0.95, sweep: 0, attack: 0.4, twist: 0, scale: 1 };
+const AIR = { freq: 3.2, amp: 0.4, lift: 0.8, sweep: 0, attack: 0.3, twist: 0, scale: 1 };
+const FLY_LOW = 0.35; // flying: the bottom of the beat (rad above the brim plane)
+const STREAMLINED = { freq: 1.6, amp: 0.07, lift: 0.5, sweep: 0.75, attack: 0.1, twist: 0, scale: 1 }; // dives, slides
+const WATER = { freq: 0.8, amp: 0.06, lift: 0.7, sweep: 0.55, attack: 0.3, twist: 0, scale: 1 };
 // Upside down on a tree top: folded small along the brim, out of the tree's crown.
-const FOLDED = { freq: 0.9, amp: 0.04, lift: 0.04, sweep: 0.8, attack: -0.12, scale: 0.72 };
+const FOLDED = { freq: 0.9, amp: 0.04, lift: 0.04, sweep: 0.8, attack: -0.12, twist: 0, scale: 0.72 };
 const AIR_ANIMS = new Set([
   'jump', 'fall', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'wallkick', 'pole_jump', 'water_jump',
   'jump_kick', 'burn', 'spawn', 'hurt', 'bonk', 'ground_pound_spin', 'star_dance',
@@ -141,7 +143,7 @@ const RESPONSE = 6; // 1/s: how fast the flap style follows the action
 
 // Writes one wing's posed vertices into the mesh arrays (offset o, in floats). side: 1 left,
 // -1 right (mirrored in x, with the triangle winding flipped to stay front-facing). w: the
-// pose { lift, amp, phase, sweep, attack, scale }.
+// pose { lift, amp, phase, sweep, attack, twist, scale }.
 function poseWing(src, dst, o, side, w) {
   const { pos, nrm } = src;
   const out = dst.pos;
@@ -150,8 +152,9 @@ function poseWing(src, dst, o, side, w) {
   const lag = -0.5 * w.amp * Math.cos(w.phase); // the tips trail the stroke
   const cs = Math.cos(SWEEP + w.sweep);
   const ss = Math.sin(SWEEP + w.sweep);
-  const ct = Math.cos(w.attack);
-  const st = Math.sin(w.attack);
+  const attack = w.attack + w.twist * Math.sin(w.phase);
+  const ct = Math.cos(attack);
+  const st = Math.sin(attack);
   const scale = w.scale;
   const n = pos.length / 3;
   for (let i = 0; i < n; i++) {
@@ -196,7 +199,7 @@ function poseWing(src, dst, o, side, w) {
   }
 }
 
-// Both wings as one mesh in hat space, posed by pose({ lift, amp, phase, sweep, attack, scale }).
+// Both wings as one mesh in hat space, posed by pose({ lift, amp, phase, sweep, attack, twist, scale }).
 class WingPair {
   constructor(material) {
     const src = template();
@@ -218,7 +221,7 @@ class WingPair {
     g.setAttribute('normal', this.nrmAttr);
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     this.dst = { pos, nrm };
-    this.pose({ lift: GROUND.lift, amp: 0, phase: 0, sweep: 0, attack: GROUND.attack, scale: 1 });
+    this.pose({ lift: GROUND.lift, amp: 0, phase: 0, sweep: 0, attack: GROUND.attack, twist: 0, scale: 1 });
     // Fixed bounds that hold every flap (no per-frame recompute).
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 15, -10), BOUND_R);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-BOUND_R, 15 - BOUND_R, -10 - BOUND_R), new THREE.Vector3(BOUND_R, 15 + BOUND_R, BOUND_R - 10));
@@ -249,8 +252,9 @@ export class HatWings {
     this.freq = GROUND.freq;
     this.amp = GROUND.amp; // the beat's amplitude (shown at amp x unfold)
     // The shown pose (eased toward the style of the current action).
-    this.w = { lift: GROUND.lift, amp: GROUND.amp, phase: 0, sweep: 0, attack: GROUND.attack, scale: 1 };
-    this.style = { freq: 0, amp: 0, lift: 0, sweep: 0, attack: 0, scale: 1 }; // scratch target
+    this.w = { lift: GROUND.lift, amp: GROUND.amp, phase: 0, sweep: 0, attack: GROUND.attack, twist: 0, scale: 1 };
+    this.style = { freq: 0, amp: 0, lift: 0, sweep: 0, attack: 0, twist: 0, scale: 1 }; // scratch target
+    this.twist = 0; // eased style twist (shown at twist x unfold)
     this.size = 1; // eased style scale
   }
 
@@ -273,6 +277,7 @@ export class HatWings {
     w.lift += (s.lift - w.lift) * k;
     w.sweep += (s.sweep - w.sweep) * k;
     w.attack += (s.attack - w.attack) * k;
+    this.twist += (s.twist - this.twist) * k;
     this.size += (s.scale - this.size) * k;
     this.amp += (s.amp - this.amp) * k;
     w.phase = (w.phase + TAU * this.freq * dt) % TAU;
@@ -282,6 +287,7 @@ export class HatWings {
     const u = this.unfold;
     const keepSweep = w.sweep;
     w.amp = this.amp * u; // a folded wing does not beat
+    w.twist = this.twist * u;
     w.sweep = keepSweep + 0.9 * (1 - u); // unfolding: swept back along the crown
     w.scale = this.size * Math.max(0.05, easeOutBack(u));
     this.pair.pose(w);
@@ -292,15 +298,24 @@ export class HatWings {
 // The flap style (see GROUND etc.) for the current action, written into `out`.
 function styleFor(rs, out) {
   if (rs.anim === 'fly') {
-    // Nose up (pitch < 0) climbs with hard beats; nose down folds the wings back.
+    // Nose up (pitch < 0) climbs with hard beats; nose down folds the wings back. Pip is
+    // small on screen in flight, so the wings spread big, past the brim, and the beat
+    // bottoms out FLY_LOW rad over the brim plane instead of lying flat along it.
     const climb = clamp(-rs.pitch / 0.5, 0, 1);
     const dive = clamp(rs.pitch / 0.6, 0, 1);
     out.freq = 2.4 + 2.2 * climb - 1.2 * dive;
-    out.amp = 0.48 + 0.2 * climb - 0.36 * dive;
-    out.lift = 0.55 + 0.12 * climb - 0.1 * dive;
-    out.sweep = 0.25 + 0.5 * dive;
-    out.attack = 0.45 + 0.1 * climb - 0.2 * dive;
-    out.scale = 1.12 - 0.1 * dive; // spread wide
+    out.amp = 0.44 + 0.08 * climb - 0.32 * dive;
+    out.lift = FLY_LOW + out.amp + 0.05 * climb - 0.2 * dive;
+    out.sweep = 0.15 - 0.1 * climb + 0.6 * dive;
+    // The feathers keep a face turned to the chase camera (a wing flapped about its
+    // front-back hinge is edge-on from straight behind at any flap angle; its tilt about
+    // the span is what shows it). In level flight the camera sits about level with the
+    // brim, and raised trailing edges show it the grey undersides. Climbing, it looks down
+    // on the hat from behind: the feathers twist with the beat, leading edges up at the
+    // bottom (the white tops face back) and trailing edges up at the top.
+    out.attack = 0.45 - 0.45 * climb - 0.25 * dive;
+    out.twist = 0.4 * climb;
+    out.scale = 1.25 + 0.05 * climb - 0.2 * dive;
     return out;
   }
   const s = AIR_ANIMS.has(rs.anim) ? AIR
@@ -312,6 +327,7 @@ function styleFor(rs, out) {
   out.lift = s.lift;
   out.sweep = s.sweep;
   out.attack = s.attack;
+  out.twist = s.twist;
   out.scale = s.scale;
   if (s === GROUND) {
     // A quicker, bigger flutter at a run, a little swept back by the wind.
@@ -338,7 +354,7 @@ export function buildWingedHat() {
   group.add(buildHatMesh(material));
   const pair = new WingPair(material);
   group.add(pair.mesh);
-  const w = { lift: AIR.lift, amp: 0, phase: 0, sweep: 0.1, attack: AIR.attack, scale: 1 };
+  const w = { lift: AIR.lift, amp: 0, phase: 0, sweep: 0.1, attack: AIR.attack, twist: 0, scale: 1 };
   pair.pose(w);
   group.userData.flap = (time, strength = 1) => {
     w.amp = AIR.amp * clamp(Number.isFinite(strength) ? strength : 1, 0, 1.5);

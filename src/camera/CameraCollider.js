@@ -51,6 +51,12 @@
 //    A covered swimmer (`hero.covered`: a low deck overhead) counts as submerged here.
 //  * Crest (crest.js): over a hill crest that hides the hero's legs but not the look point the
 //    camera rises until the line to his shins passes over it (dry land only).
+//  * Tolerant (`tolerant`, set by the controller for the winged-hat flight camera): a flying hero
+//    passes things quickly, so a blocked view is answered by any lift up to LIFT_MAX_PITCH before
+//    a dolly, a dolly never brings the camera closer than max(TOLERANT_MIN_DIST, TOLERANT_MIN_FRACTION
+//    x distance), and it pulls in gently (TOLERANT_OMEGA, at most TOLERANT_PULL_SPEED per tick).
+//    The reach limit, the path, the wall push and the height limit apply as ever; `slid` reports
+//    a tick the path or the wall push moved the camera sideways (the flight camera then rises).
 //
 // Runs every tick: all working points, directions and sight-line records are per-instance
 // scratch objects reused each tick (no per-tick garbage). Values read from a raycast hit are
@@ -107,6 +113,10 @@ const STANDING_SPEED = 2; // partHidden: the hero moves slower than this (units/
 const HERO_SIDE = 30; // heroInView: points this far left/right of the chest (across the view)...
 const HERO_POINTS = [30, 80, 125]; // ...and on his centre line this high above the feet
 const STEP_MARGIN = 40; // speed limit: this much more than the orbit position or the hero moved
+const TOLERANT_MIN_DIST = 600; // tolerant (see top): the dolly stops this far from the hero...
+const TOLERANT_MIN_FRACTION = 0.5; // ...or at this fraction of the orbit distance...
+const TOLERANT_OMEGA = 0.3; // ...on a softer spring...
+const TOLERANT_PULL_SPEED = 30; // ...at most this many units per tick
 const SLIDE_SKIN = 25; // a camera sliding along a wall keeps this far off it
 const RESET_YAW_DEG = 30; // yaw steps a reset tries when the spot behind the hero is walled in
 const BODY_CLEARANCE = 180; // minimum distance from the hero's chest-to-head segment...
@@ -139,8 +149,9 @@ const vec = () => ({ x: 0, y: 0, z: 0 });
 // Scalar eased state (copyState); `last` and the crest are copied separately.
 const STATE_KEYS = [
   'ratio', 'ratioFresh', 'ratioVel', 'clearTicks', 'lift', 'liftGoal', 'liftVel', 'liftClearTicks',
-  'adjustY', 'adjustVel', 'heightLift', 'wasUnderwater', 'offRay', 'hardRatio', 'viewRatio', 'blocker',
+  'adjustY', 'adjustVel', 'heightLift', 'wasUnderwater', 'offRay', 'slid', 'hardRatio', 'viewRatio', 'blocker',
   'occluded', 'pullingIn', 'insideHero', 'hidden', 'stuck', 'partHidden', 'chestHidden', 'trapped', 'jumped', 'stepValid',
+  'tolerant',
 ];
 // Line-of-sight sample: free fraction (1 = nothing in the way), the surface it hit, the hit
 // point (valid while free < 1) and the ray's start.
@@ -215,6 +226,7 @@ export class CameraCollider {
     this.wasUnderwater = false;
     this.last = null; // last resolved camera position...
     this.offRay = false; // ...and whether corrections moved it off its orbit ray
+    this.slid = false; // this tick a wall stopped or pushed the camera sideways (path slide, wall push)
     this.hardRatio = 1; // limit that must not be crossed this tick (applied immediately)
     this.viewRatio = 1; // free fraction of the current line of sight to the hero (fan)
     this.blocker = null; // last surface that hid the hero or pulled the camera in
@@ -228,6 +240,7 @@ export class CameraCollider {
     this.trapped = false; // the camera is stuck behind something (see top)
     this.jumped = false; // this tick cut the camera in front of the blocker (do not interpolate)
     this.stepValid = false; // _lastDesired / _lastHero hold last tick's (speed limit)
+    this.tolerant = false; // flight camera: lift first, dolly gently (see top; the controller sets it every tick)
   }
 
   // Copies the eased state of another collider (the controller's probe runs a C-button
@@ -322,10 +335,11 @@ export class CameraCollider {
       const sx = eye.x + dir.x * d - chest.x;
       const sy = eye.y + dir.y * d - chest.y;
       const sz = eye.z + dir.z * d - chest.z;
-      const canDolly = Math.sqrt(sx * sx + sy * sy + sz * sz) >= softMin(len);
+      const canDolly = Math.sqrt(sx * sx + sy * sy + sz * sz) >= (this.tolerant ? tolerantMin(len) : softMin(len));
       // (A lift already in place stays the remedy while it is enough, or while the camera sees
-      // the hero from it: switching to a dolly then would pull the camera in on top of the lift.)
-      const maxLift = canDolly ? Math.max(SMALL_LIFT, Math.min(this.lift + LIFT_KEEP, LIFT_MAX_PITCH)) : LIFT_MAX_PITCH;
+      // the hero from it: switching to a dolly then would pull the camera in on top of the lift.
+      // Tolerant: any lift before a dolly.)
+      const maxLift = canDolly && !this.tolerant ? Math.max(SMALL_LIFT, Math.min(this.lift + LIFT_KEEP, LIFT_MAX_PITCH)) : LIFT_MAX_PITCH;
       liftGoal = this._clearingLift(eye, origins, desired, tight, maxLift);
       if (!liftGoal && canDolly && this.lift > 0 && this._fansClear(cam)) liftGoal = this.lift;
       if (!liftGoal && canDolly) soft = dolly;
@@ -351,6 +365,10 @@ export class CameraCollider {
       if (last && this.lineClear(eye, last) && this.lineClear(chest, last)) {
         maxPull = Math.max(SEEN_PULL_MIN, SEEN_PULL_SPEED * heroSpeed(hero));
       } else if (this.viewRatio < 1) omega = OMEGA_HIDDEN;
+      if (this.tolerant) {
+        omega = Math.min(omega, TOLERANT_OMEGA);
+        maxPull = Math.min(maxPull, TOLERANT_PULL_SPEED);
+      }
     }
     this._ease(soft, omega, len, maxPull);
     this.occluded = !!tight && !liftGoal && soft === 1;
@@ -394,6 +412,7 @@ export class CameraCollider {
       out.z = flat.z;
     }
     this._pushFromWalls(out);
+    this.slid = Math.abs(out.x - rx) + Math.abs(out.z - rz) > 1;
     this._limitHeight(out, hero);
     this._clearBody(out, hero);
     if (!cut && this._limitStep(out, desired, hero)) this._clearBody(out, hero);
@@ -1031,9 +1050,14 @@ function dist3(a, b) {
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-// Occlusion alone never brings the camera closer than this to the hero.
+// Occlusion alone never brings the camera closer than this to the hero...
 function softMin(len) {
   return Math.max(SOFT_MIN_DIST, SOFT_MIN_FRACTION * len);
+}
+
+// ...or than this while tolerant (the flight camera).
+function tolerantMin(len) {
+  return Math.max(TOLERANT_MIN_DIST, TOLERANT_MIN_FRACTION * len);
 }
 
 // Horizontal speed of the hero record (units/tick).

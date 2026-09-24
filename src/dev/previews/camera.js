@@ -5,7 +5,10 @@
 //
 // URL params:
 //   s=<scenario>   circle | toward | jump | wall | pillar | swim | ledge | plank | post |
-//                  lowwall | pier | tower | fp | buttons | mouse | intro | title | play
+//                  lowwall | pier | tower | fp | buttons | mouse | intro | title | play |
+//                  fly (winged-hat flight: take-off, glide, banked turns by the castle block
+//                  and the pillar, a dive into the ground and the hand-back) |
+//                  airace (AI RACE mode: the look-up at a stand-in beast on the castle block)
 //   t=<seconds>    simulate up to that time and freeze
 //   strip=a,b,...  render the listed moments (seconds) as a grid plus a top-down trail map
 //   map=0          hide the live mini-map
@@ -15,6 +18,7 @@ import { CollisionWorld } from '../../collision/CollisionWorld.js';
 import { CameraController } from '../../camera/CameraController.js';
 import { NO_WATER } from '../../core/constants.js';
 import { Input, neutralController } from '../../core/input.js';
+import { Events } from '../../core/events.js';
 import { approach, approachAngle, stickToWorldYaw } from '../../core/math.js';
 import { canvasTexture } from '../../render/texgen.js';
 import * as layout from '../../world/layout.js';
@@ -36,7 +40,9 @@ const MAP_LAYER = 1;
 
 // ---------------------------------------------------------------- scenarios
 // Segments run in order: { ticks, stick:[x,y], goto:[[x,z]...], jump:vy, dive:depth, press:{CL..},
-// mouse:[dx,dy], sweep:[amplitude, periodTicks] (sinusoidal mouse x), hold (hero frozen) }.
+// mouse:[dx,dy], sweep:[amplitude, periodTicks] (sinusoidal mouse x), hold (hero frozen),
+// fly:{ speed, pitch, bank } (winged-hat flight; pitch > 0 nose down, bank > 0 turns right; it
+// ends on touching the ground), dark:true|false (emits 'darkMode' on the segment's first tick) }.
 const SCENARIOS = {
   circle: { start: [-600, 4000, Math.PI], segs: [{ ticks: 15 }, { ticks: 330, stick: [1, 0.15] }] },
   toward: { start: [0, 3000, Math.PI], segs: [{ ticks: 15 }, { ticks: 170, stick: [0, -1] }] },
@@ -86,6 +92,27 @@ const SCENARIOS = {
   fp: { start: [0, 3000, Math.PI], segs: [{ ticks: 10 }, { ticks: 30, press: { CU: true } }, { ticks: 40, stick: [0.7, 0.25] }, { ticks: 40, press: { B: true } }] },
   intro: { start: [layout.SPAWN.x, layout.SPAWN.z, layout.SPAWN.yaw], dropFrom: 1400, intro: true, segs: [{ ticks: 45, hold: true }, { ticks: 150 }] },
   title: { start: [layout.SPAWN.x, layout.SPAWN.z, layout.SPAWN.yaw], title: true, segs: [{ ticks: 3600 }] },
+  // Take off, climb, glide toward the castle block, bank left then round to the right past the
+  // pillar (it passes between the camera and the hero), dive into the ground (a belly slide) and
+  // stand while the camera hands back to the follow camera.
+  fly: {
+    start: [1400, 5900, Math.PI],
+    segs: [
+      { ticks: 15 }, { ticks: 30, fly: { speed: 40, pitch: -0.6 } }, { ticks: 25, fly: { speed: 45, pitch: 0.02 } },
+      { ticks: 40, fly: { speed: 45, pitch: 0.02, bank: -0.75 } }, { ticks: 80, fly: { speed: 45, pitch: 0.02, bank: 0.75 } },
+      { ticks: 20, fly: { speed: 45, pitch: 0.05 } }, { ticks: 50, fly: { speed: 55, pitch: 0.8 } }, { ticks: 60 },
+    ],
+  },
+  // AI RACE mode switched on in front of the castle block (the stand-in beast on its roof rises):
+  // the view tilts up; running away down the lawn and turning round eases it out, coming back in.
+  airace: {
+    start: [900, 2600, Math.PI],
+    beast: true,
+    segs: [
+      { ticks: 30 }, { ticks: 120, dark: true }, { ticks: 150, goto: [[900, 6500]] }, { ticks: 190, goto: [[900, 2400]] },
+      { ticks: 60 }, { ticks: 90, dark: false },
+    ],
+  },
   play: { start: [0, 3000, Math.PI], segs: [] },
 };
 
@@ -100,7 +127,7 @@ function scriptAt(scn, tick) {
       if (seg.mouse) [c.mouseDX, c.mouseDY] = seg.mouse;
       if (seg.sweep) c.mouseDX = seg.sweep[0] * Math.sin((2 * Math.PI * t) / seg.sweep[1]);
       if (t === 0) for (const b of Object.keys(seg.press || {})) c[b] = { down: true, pressed: true, released: false };
-      return { c, goto: seg.goto, jump: t === 0 ? seg.jump : 0, dive: seg.dive || 0, hold: seg.hold };
+      return { c, goto: seg.goto, jump: t === 0 ? seg.jump : 0, dive: seg.dive || 0, hold: seg.hold, fly: seg.fly, dark: t === 0 ? seg.dark : undefined };
     }
     t -= seg.ticks;
   }
@@ -118,17 +145,25 @@ class FakeHero {
     this.vel = { x: 0, y: 0, z: 0 };
     this.forwardVel = 0;
     this.faceYaw = yaw;
+    this.pitch = 0; // flight attitude (pitch > 0 nose down, roll > 0 right side down)
+    this.roll = 0;
     this.action = 'idle';
     this.inWater = false;
     this.floor = collision.findFloor(x, y + 100, z);
     this.waypoint = 0;
   }
 
-  step({ c, goto, jump = 0, dive = 0, hold = false }, camYaw) {
+  step({ c, goto, jump = 0, dive = 0, hold = false, fly = null }, camYaw) {
     const col = this.collision;
     const p = this.pos;
     this.prev = { ...p };
     if (hold) return;
+    if (fly && this.action !== 'belly_slide') {
+      this.flyStep(fly);
+      return;
+    }
+    this.pitch = this.roll = 0;
+    if (this.action === 'flying') this.action = 'fall'; // the flight ended in the air
     let want = null;
     let mag = 0;
     if (goto) {
@@ -178,6 +213,33 @@ class FakeHero {
     }
     this.vel.x = Math.sin(this.faceYaw) * this.forwardVel;
     this.vel.z = Math.cos(this.faceYaw) * this.forwardVel;
+  }
+
+  // Winged-hat flight, like the Player's (air speed along heading and pitch, the bank turns the
+  // heading); touching the ground ends it in a belly slide.
+  flyStep({ speed = 40, pitch = 0.1, bank = 0 }) {
+    const p = this.pos;
+    if (this.action !== 'flying') {
+      this.action = 'flying';
+      this.pitch = pitch;
+      this.roll = 0;
+    }
+    this.pitch = approach(this.pitch, pitch, 0.08);
+    this.roll = approach(this.roll, bank, 0.07);
+    this.faceYaw -= this.roll * 0.08;
+    this.forwardVel = speed * Math.cos(this.pitch);
+    this.vel.x = Math.sin(this.faceYaw) * this.forwardVel;
+    this.vel.z = Math.cos(this.faceYaw) * this.forwardVel;
+    this.vel.y = -speed * Math.sin(this.pitch);
+    p.x += this.vel.x;
+    p.y += this.vel.y;
+    p.z += this.vel.z;
+    this.floor = this.collision.findFloor(p.x, p.y + 100, p.z);
+    if (p.y <= this.floor.y) {
+      p.y = this.floor.y;
+      this.vel.y = 0;
+      this.action = 'belly_slide';
+    }
   }
 }
 
@@ -327,6 +389,32 @@ function buildRoom(THREE) {
   return { group, collision };
 }
 
+// Stand-in for the AI RACE beast: a block sprawled on the castle block's roof with a head hanging
+// out over the front (roughly where objects/RobotBeast.js puts the real one), sunk out of sight
+// while the mode is off.
+const BEAST_SINK = 3200;
+function buildBeast(THREE) {
+  const C = layout.CASTLE;
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color: 0x6b7280 });
+  const eye = new THREE.MeshBasicMaterial({ color: 0xff3020 });
+  const top = C.baseY + C.mainHeight;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1100, 800, 2600), mat);
+  body.position.set(C.x, top + 400, C.frontZ - 1600);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(450, 450, 1200), mat);
+  neck.position.set(C.x, top + 900, C.frontZ - 200);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(600, 500, 800), mat);
+  head.position.set(C.x, top + 700, C.frontZ + 500);
+  for (const s of [-1, 1]) {
+    const e = new THREE.Mesh(new THREE.BoxGeometry(60, 80, 120), eye);
+    e.position.set(C.x + s * 310, top + 780, C.frontZ + 700);
+    g.add(e);
+  }
+  g.add(body, neck, head);
+  g.position.y = -BEAST_SINK;
+  return g;
+}
+
 function buildHeroMesh(THREE) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(50, 60, 4, 10), new THREE.MeshLambertMaterial({ color: 0xe07b24 }));
@@ -360,7 +448,10 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
   scene.add(heroMesh.group, heroMesh.shadow);
 
   const sfxLog = [];
-  const events = { emit: (n, d) => n === 'sfx' && sfxLog.push(d.name) };
+  const events = new Events();
+  events.on('sfx', (d) => sfxLog.push(d.name));
+  const beast = scn.beast ? buildBeast(THREE) : null;
+  if (beast) scene.add(beast);
   const cam = new CameraController({ collision: room.collision, camera, events });
   const [sx, sz, syaw] = scn.start;
   const hero = new FakeHero(room.collision, sx, sz, syaw, scn.dropFrom || 0);
@@ -386,12 +477,18 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
   window.__camPreview = { cam, trails }; // for scripted inspection (tools/shot.mjs eval)
 
   let tick = 0;
+  let darkOn = false;
   function simTick() {
     if (scn.title) {
       cam.titleOrbit(tick * TICK);
     } else {
       const s = input ? { c: input.poll(), jump: 0 } : scriptAt(scn, tick);
       if (input && s.c.A.pressed) s.jump = 52;
+      if (s.dark !== undefined) {
+        events.emit('darkMode', { on: s.dark });
+        darkOn = s.dark;
+      }
+      if (beast) beast.position.y += ((darkOn ? 0 : -BEAST_SINK) - beast.position.y) * 0.08; // rises / sinks
       // Like main.js: the hero gets the controller the camera leaves it (first-person look
       // keeps the stick and buttons), and a scripted route pauses meanwhile.
       const c = cam.playerInput(s.c);
@@ -407,7 +504,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     const p = hero.prev;
     const c = hero.pos;
     heroMesh.group.position.set(p.x + (c.x - p.x) * alpha, p.y + (c.y - p.y) * alpha, p.z + (c.z - p.z) * alpha);
-    heroMesh.group.rotation.y = hero.faceYaw;
+    heroMesh.group.rotation.set(hero.pitch, hero.faceYaw, hero.roll, 'YXZ');
     heroMesh.group.visible = !cam.hideHero;
     heroMesh.shadow.position.set(heroMesh.group.position.x, hero.floor.y + 2, heroMesh.group.position.z);
   }
@@ -455,6 +552,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     `ratio=${(cam.collider.ratio ?? 1).toFixed(2)} view=${cam.collider.viewRatio.toFixed(2)} ` +
     `lift=${((cam.collider.lift * 180) / Math.PI).toFixed(0)}${cam.collider.occluded ? ' occluded' : ''}${cam.collider.trapped ? ' trapped' : ''} ` +
     `crest=${cam.collider.crestRise.toFixed(0)}${cam.hero.covered ? ' covered' : ''}${cam.sight.goal !== null ? ' sight-swing' : ''}${cam.celebration ? ' celebrating' : ''} ` +
+    `flight=${cam.flight.w.toFixed(2)} rise=${((cam.flight.rise * 180) / Math.PI).toFixed(1)} lookup=${cam.lookUp.w.toFixed(2)}${darkOn ? ' AI-RACE' : ''}\n` +
     `sfx: ${sfxLog.slice(-4).join(' ')}`;
 
   const W = renderer.domElement.width;
@@ -480,6 +578,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
         shadowY: heroMesh.shadow.position.y,
         underwater: cam.underwater,
         hidden: cam.hideHero,
+        beastY: beast ? beast.position.y : 0,
         text: describe(),
       });
     }
@@ -513,6 +612,7 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
           heroMesh.group.visible = !s.hidden;
           heroMesh.shadow.position.set(s.hero.x, s.shadowY, s.hero.z);
           cam.underwater = s.underwater;
+          if (beast) beast.position.y = s.beastY;
           renderView((i % cols) * cw, H - (Math.floor(i / cols) + 1) * ch, cw - 2, ch - 2);
         });
         const i = shots.length;

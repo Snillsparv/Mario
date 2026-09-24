@@ -5,7 +5,10 @@
 // the way their design says (swish before impact, one step per combo hit, springy rise);
 // text_blip, which plays every few characters, is a single cheap oscillator with a varying
 // pitch; footsteps and landings get softer (quieter and duller) the gentler they are; the AI
-// RACE sounds exist, fit the level budget and are shaped as designed (thunder by strength).
+// RACE sounds exist, fit the level budget and are shaped as designed (thunder by strength);
+// so do the winged hat's, the mystery box's, the minions' and the locked castle's (the laugh
+// is formant synthesis through an echo and a hall that die out within its length, and uses
+// the engine's shared hall instead of making a convolver of its own when given one).
 // Measured levels (offline renders) are in src/dev/previews/audio.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -86,6 +89,14 @@ class RecordingContext {
     return new Node(this, 'shaper');
   }
 
+  createConvolver() {
+    return new Node(this, 'convolver');
+  }
+
+  createDelay() {
+    return new Node(this, 'delay', ['delayTime']);
+  }
+
   createBuffer(channels, length) {
     const data = Array.from({ length: channels }, () => new Float32Array(length));
     return { length, getChannelData: (c) => data[c] };
@@ -156,10 +167,11 @@ const GAMEPLAY_HITS = ['punch', 'punch1', 'punch2', 'kick', 'jump_kick'];
 const JUMPS = ['jump', 'double_jump', 'triple_jump'];
 const DIALOG = ['dialog_open', 'text_blip', 'dialog_next', 'dialog_close'];
 const AI_RACE = ['button_press', 'alarm', 'kaiju_roar', 'fireball_charge', 'fireball_launch', 'fireball_explode', 'burn', 'fire_crackle', 'steam', 'thunder'];
-const LONG = { thunder: 4.1 }; // the rolling thunder may run past the usual 3 s
+const HAT_AND_MINIONS = ['box_hit', 'powerup', 'wing_flap', 'stomp', 'minion_emerge', 'minion_bite', 'minion_wreck', 'minions_stinger', 'evil_laugh'];
+const LONG = { thunder: 4.1, evil_laugh: 3.5 }; // the rolling thunder and the echoing laugh may run past the usual 3 s
 
 test('the combo, flying-kick, sign-dialog and AI RACE sounds exist', () => {
-  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE]) assert.equal(typeof SFX[n], 'function', n);
+  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE, ...HAT_AND_MINIONS]) assert.equal(typeof SFX[n], 'function', n);
   for (const n of Object.keys(SFX_INFO)) assert.equal(typeof SFX[n], 'function', `SFX_INFO names a real sound: ${n}`);
 });
 
@@ -345,4 +357,123 @@ test('thunder: stronger strikes roll longer and louder, and only strong ones cra
   const roll = strong.voices.find((v) => v.src.type === 'lowpass' && v.src.ins[0]?.kind === 'noise' && v.src.frequency.events.length === 2);
   const ramps = roll.src.outs[0].gain.events.filter(([m]) => m === 'linearRampToValueAtTime');
   assert.ok(ramps.length >= 4, `roll swells ${ramps.length}`);
+});
+
+test('winged hat, box, stomp and minion sounds: sane budgets, lengths and rate limits', () => {
+  const budget = Object.fromEntries(HAT_AND_MINIONS.map((n) => [n, run(n).budget]));
+  for (const [n, b] of Object.entries(budget)) assert.ok(b > 0.1 && b * LEVELS.sfx < 0.95, `${n} budget ${b.toFixed(2)}`);
+  // The wing beat repeats all through a climb: soft, well under a jump, and spaced out.
+  assert.ok(budget.wing_flap < run('jump').budget * 0.5, `wing_flap budget ${budget.wing_flap}`);
+  assert.ok(SFX_INFO.wing_flap.gap >= 0.15 && SFX_INFO.wing_flap.max <= 2);
+  // Bursty minion sounds (several minions at once) are capped; the laugh never stacks.
+  for (const n of ['minion_emerge', 'minion_bite', 'minion_wreck']) assert.ok(SFX_INFO[n].max <= 3 && SFX_INFO[n].gap > 0, n);
+  assert.equal(SFX_INFO.evil_laugh.max, 1);
+  assert.ok(SFX_INFO.evil_laugh.gap >= 2);
+  // Stings that must be heard over the beds duck them for about their length.
+  for (const n of ['powerup', 'evil_laugh', 'minions_stinger']) {
+    const d = SFX_INFO[n].duck;
+    assert.ok(d && d.music < 1 && d.amb <= 1 && d.seconds > 0.5 && d.seconds <= run(n).dur, `${n} duck`);
+  }
+  const len = (n) => run(n).dur;
+  assert.ok(len('wing_flap') <= 0.4 && len('minion_bite') <= 0.3 && len('stomp') <= 0.4 && len('box_hit') <= 0.8);
+  assert.ok(len('powerup') >= 1 && len('powerup') <= 2);
+  assert.ok(len('minion_emerge') <= 1 && len('minion_wreck') <= 1.2);
+});
+
+test('box_hit is a bright crystal clink over a low bump; stomp a thunk that springs back up', () => {
+  const box = run('box_hit');
+  const sines = box.voices.filter((v) => !v.noise && v.src.type === 'sine');
+  assert.ok(sines.some((v) => firstFreq(v.src) >= 1500), 'crystal clink');
+  assert.ok(sines.some((v) => firstFreq(v.src) <= 300 && v.src.frequency.events.at(-1)[1] < firstFreq(v.src)), 'dropping bump');
+  const stomp = run('stomp');
+  const thunk = stomp.voices.find((v) => !v.noise && v.src.type === 'sine');
+  assert.ok(thunk.src.frequency.events.at(-1)[1] < firstFreq(thunk.src) * 0.5, 'thunk drops');
+  const spring = stomp.voices.find((v) => v.src.type === 'triangle');
+  const f = spring.src.frequency.events.map((e) => e[1]);
+  assert.ok(f[1] > f[0] * 2 && f[2] < f[1], `spring bends up and settles: ${f}`);
+});
+
+test('powerup: a rising run into a held D major chord (the flying theme\'s key)', () => {
+  const { ctx } = run('powerup');
+  const tri = ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'triangle').sort((a, b) => a.startAt - b.startAt);
+  const run1 = tri.map((o) => firstFreq(o));
+  assert.ok(run1.length >= 6);
+  for (let i = 1; i < run1.length; i++) assert.ok(run1[i] > run1[i - 1], 'the run rises');
+  // The last chord: every sawtooth that starts last is a D, F# or A.
+  const saws = ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sawtooth');
+  const last = Math.max(...saws.map((o) => o.startAt));
+  const pcs = new Set(saws.filter((o) => o.startAt === last).map((o) => Math.round(12 * Math.log2(o.frequency.value / 440) + 69) % 12));
+  assert.deepEqual([...pcs].sort((a, b) => a - b), [2, 6, 9]);
+});
+
+test('minion sounds: a dirt burst with servo chitter, a steel jaw snap, a crunch with a spark fizz', () => {
+  const emerge = run('minion_emerge');
+  assert.ok(emerge.voices.some((v) => v.noise && v.src.type === 'lowpass'), 'dirt burst');
+  const chirps = emerge.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'custom' && n.startAt > T0 + 0.2);
+  assert.ok(chirps.length >= 4, `servo chitter ${chirps.length}`);
+  const bite = run('minion_bite');
+  const metal = bite.voices.filter((v) => !v.noise && firstFreq(v.src) > 1000 && v.at > T0 + 0.05);
+  assert.ok(metal.length >= 4, 'steel clack partials after the zip');
+  const wreck = run('minion_wreck');
+  assert.ok(wreck.voices.some((v) => v.noise && v.src.type === 'highpass' && firstFreq(v.src) >= 4000 && v.gainAt(T0 + 0.3) > 0.03), 'spark fizz rings on');
+  assert.ok(wreck.count('shaper') === 0 && wreck.dur <= 1);
+  // Chitter and crackles vary from one minion to the next.
+  const pitches = new Set(Array.from({ length: 6 }, () => Math.round(firstFreq(run('minion_emerge').ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'custom').at(-1)))));
+  assert.ok(pitches.size > 1);
+});
+
+test('evil_laugh: formant-filtered voiced bursts dropping in pitch, through an echo and a big hall', () => {
+  const { ctx, dur, voices } = run('evil_laugh', { p: 1 });
+  assert.ok(dur >= 2.5 && dur <= 3.5, `length ${dur}`);
+  // A glottal buzz (a custom wave) and a growl an octave under it feed a bank of 4 band-pass
+  // formants through one voiced envelope.
+  const glottis = ctx.nodes.find((n) => n.kind === 'osc' && n.type === 'custom');
+  const voiced = voices.find((v) => v.src === glottis);
+  assert.ok(voiced, 'voiced envelope');
+  const formants = voiced.src.outs[0].outs.filter((n) => n.kind === 'filter' && n.type === 'bandpass');
+  assert.equal(formants.length, 4, 'four formants');
+  // Five syllables ('mwa-ha-ha-ha-haaw'), each starting a burst of the voiced envelope.
+  const g = voiced.src.outs[0].gain.events;
+  const onsets = g.filter(([m, v], i) => m === 'setValueAtTime' && v === 0 && g[i + 1]?.[0] === 'linearRampToValueAtTime' && g[i + 1][1] > 0).map(([, , t]) => t);
+  assert.equal(onsets.length, 5, `syllables at ${onsets}`);
+  const voicedEnd = g.at(-1)[2] - T0;
+  assert.ok(voicedEnd >= 1.5 && voicedEnd <= 2.2, `about 2 s of laughing: ${voicedEnd}`);
+  // Deep, and every 'ha' starts lower than the one before and falls within itself.
+  const f = glottis.frequency.events;
+  const starts = f.filter(([m]) => m === 'setValueAtTime').map(([, v]) => v);
+  assert.equal(starts.length, 5);
+  for (let i = 2; i < starts.length; i++) assert.ok(starts[i] < starts[i - 1], `ha ${i} starts lower`);
+  assert.ok(Math.max(...f.map(([, v]) => v)) < 130 && Math.min(...f.map(([, v]) => v)) >= 50, 'a deep voice');
+  const syllableEnds = f.filter((e, i) => f[i + 1]?.[0] === 'setValueAtTime' || i === f.length - 1).map(([, v]) => v);
+  syllableEnds.forEach((end, i) => assert.ok(end < starts[i], `syllable ${i} falls`));
+  // The 'h' of each 'ha': a breath through the formants just before the voice.
+  const breath = voices.find((v) => v.src.kind === 'noise' && v.src.outs[0].outs.some((n) => formants.includes(n)));
+  assert.ok(breath, 'aspiration');
+  // Big reverb and echo, both dying out within the reported length: a hall impulse of at most
+  // 2 s after the voice ends, and a slapback delay whose feedback decays fast.
+  const hall = ctx.nodes.find((n) => n.kind === 'convolver');
+  assert.ok(hall?.buffer.length / ctx.sampleRate <= 2 && voicedEnd + hall.buffer.length / ctx.sampleRate <= dur + 0.3, 'hall rings out');
+  const delay = ctx.nodes.find((n) => n.kind === 'delay');
+  const loop = ctx.nodes.find((n) => n.kind === 'gain' && n.outs.includes(delay) && n.ins.some((x) => x.kind === 'filter'));
+  assert.ok(loop && loop.gain.value <= 0.4, 'echo feedback');
+  assert.ok(delay.delayTime.value >= 0.15 && delay.delayTime.value <= 0.35);
+  const repeats = Math.log(1e-3) / Math.log(loop.gain.value); // to -60 dB
+  assert.ok(voicedEnd + repeats * delay.delayTime.value <= dur + 0.5, 'echo dies within the voice slot');
+});
+
+test('evil_laugh: with the engine\'s shared hall it makes no convolver of its own and sends at its own volume', () => {
+  const bare = run('evil_laugh', { p: 1 });
+  const ownHall = bare.ctx.nodes.find((n) => n.kind === 'convolver');
+  const bareSend = ownHall.ins[0];
+  assert.equal(bareSend.kind, 'gain');
+  assert.ok(ownHall.outs.includes(bare.ctx.nodes[1]), 'a bare render\'s own hall plays into its output'); // [0] is the destination
+  const ctx = new RecordingContext();
+  const hall = ctx.createConvolver();
+  const nodes = ctx.nodes.length;
+  const out = ctx.createGain();
+  SFX.evil_laugh(ctx, out, T0, { ...OPTS, hall, outGain: 0.5 });
+  assert.equal(ctx.nodes.slice(nodes).filter((n) => n.kind === 'convolver').length, 0, 'no convolver per laugh');
+  assert.equal(hall.ins.length, 1, 'one send into the shared hall');
+  assert.ok(Math.abs(hall.ins[0].gain.value - bareSend.gain.value * 0.5) < 1e-9, 'the send carries the voice\'s volume');
+  assert.equal(hall.outs.length, 0, 'the shared hall is not routed through this voice');
 });

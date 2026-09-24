@@ -3,7 +3,7 @@
 // (the engine adds a little random variation) plus event data: terrain, big, index.
 
 import { mtof } from './theory.js';
-import { bell, envelope, harmonicWave, lfo, noise, noiseSource, overdrive, silentGain, sweep, tone } from './synth.js';
+import { bell, envelope, hallImpulse, harmonicWave, lfo, noise, noiseSource, overdrive, prepareNoise, silentGain, sweep, tone } from './synth.js';
 import { clamp } from '../core/math.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -207,6 +207,161 @@ function klaxon(ctx, out, t, f, dur, gain, fall = 1) {
     o.stop(t + dur + 0.05);
   }
   tone(ctx, out, t, { freq: f / 2, dur, gain: gain * 0.5, attack: 0.02, hold: dur - 0.08 });
+}
+
+// ---- Winged hat, mystery box, minions and the locked castle (all original synthesis)
+
+// Glassy crystal: bright inharmonic partials [ratio, relative gain, relative decay] that die
+// away quickly, the upper ones first.
+const CRYSTAL = [
+  [1, 1, 1],
+  [2.32, 0.5, 0.6],
+  [4.25, 0.26, 0.35],
+  [6.8, 0.12, 0.2],
+];
+
+// The minions' servo whine (the same gear timbre as the floor button's servo).
+const servoWave = (ctx) => harmonicWave(ctx, 'servo', [1, 0.5, 0.35, 0.2, 0.12]);
+
+// Band-passed noise riding a frequency point list, its level fluttering at `rate` Hz (the
+// flutter dying away with time constant `settle`): air through feathers.
+function feathers(ctx, out, t, { freq, q = 1.1, dur, gain, attack, rate = 34, depth = 0.35, settle = 0.12 }) {
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.Q.value = q;
+  sweep(f.frequency, t, freq);
+  const flutter = ctx.createGain();
+  flutter.gain.value = 1 - depth;
+  lfo(ctx, flutter.gain, t, dur, { rate, depth, decay: settle });
+  noiseSource(ctx, t, dur + 0.02).connect(f);
+  f.connect(flutter).connect(envelope(ctx, out, t, { peak: gain, dur, attack }));
+  return f;
+}
+
+// A formant voice for the locked castle's laugh. The source is a deep glottal buzz (its
+// harmonics falling off a little faster than a sawtooth's) with a triangle an octave under
+// it (a growl), shaped by four band-pass formants. Formants [centre Hz, Q, level] of a big,
+// dark 'ah' (each a little under an adult's, as from a huge chest) and of the closed hum it
+// opens from ('m').
+const GLOTTAL = Array.from({ length: 40 }, (_, i) => 1 / (i + 1) ** 1.3);
+const LAUGH_AH = [[590, 5, 1], [980, 8, 0.6], [2250, 12, 0.24], [3050, 14, 0.12]];
+const LAUGH_HUM = [[240, 3, 1], [820, 8, 0.12], [2100, 12, 0.05], [2900, 14, 0.03]];
+// Syllables [start s, length s, pitch points [s from start, Hz], onset, formant scale]: 'mwa'
+// hums and opens, then each 'ha' breathes first and drops in pitch, a little lower each
+// time, and the last is held and sinks away, darker ('haaw').
+const LAUGH = [
+  [0, 0.38, [[0, 92], [0.13, 110], [0.38, 90]], 'm', 1],
+  [0.48, 0.17, [[0, 114], [0.17, 94]], 'h', 1],
+  [0.7, 0.17, [[0, 108], [0.17, 88]], 'h', 0.98],
+  [0.92, 0.18, [[0, 102], [0.18, 82]], 'h', 0.96],
+  [1.16, 0.58, [[0, 98], [0.2, 88], [0.58, 60]], 'h', 0.9],
+];
+const LAUGH_PEAK = 0.5; // voiced level per syllable (before the makeup)
+const LAUGH_BREATH = 0.3; // an 'h'
+// The formants pass only a few harmonics of the buzz each, so the bank is brought back up
+// to a speaking level after them (measured with the preview's offline render).
+const LAUGH_MAKEUP = 3.2;
+const LAUGH_ECHO = { delay: 0.24, feedback: 0.34, send: 0.35, tone: 1600 }; // slapback off the walls
+const LAUGH_HALL = 0.6; // send into the hall reverb
+
+function laughVoice(ctx, out, t, { p, hall, outGain = 1 }) {
+  // Output: the dry voice, a slapback echo (a feedback delay, darker each pass) and a big
+  // hall, both of which have died away well within the sound's reported length. The hall is
+  // the engine's shared one when it passes it (opts.hall, on the sfx bus: the send then
+  // carries the voice's own volume, outGain); only a bare render makes one of its own
+  // (making a convolver its impulse costs several ms, too long to do on every laugh).
+  const voice = ctx.createGain();
+  voice.gain.value = LAUGH_MAKEUP;
+  voice.connect(out);
+  const hallSend = ctx.createGain();
+  hallSend.gain.value = LAUGH_HALL * (hall ? outGain : 1);
+  if (!hall) {
+    hall = ctx.createConvolver();
+    hall.buffer = hallImpulse(ctx);
+    hall.connect(out);
+  }
+  hallSend.connect(hall);
+  voice.connect(hallSend);
+  const echo = ctx.createDelay(1);
+  echo.delayTime.value = LAUGH_ECHO.delay;
+  const echoTone = ctx.createBiquadFilter();
+  echoTone.type = 'lowpass';
+  echoTone.frequency.value = LAUGH_ECHO.tone;
+  const feedback = ctx.createGain();
+  feedback.gain.value = LAUGH_ECHO.feedback;
+  const echoSend = ctx.createGain();
+  echoSend.gain.value = LAUGH_ECHO.send;
+  voice.connect(echoSend).connect(echo).connect(echoTone);
+  echoTone.connect(feedback).connect(echo);
+  echoTone.connect(out);
+  echoTone.connect(hallSend);
+
+  const bank = LAUGH_AH.map(([, q, level]) => {
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = level;
+    bp.connect(g).connect(voice);
+    return bp;
+  });
+  const voiced = silentGain(ctx);
+  const breath = silentGain(ctx);
+  for (const bp of bank) {
+    voiced.connect(bp);
+    breath.connect(bp);
+  }
+  const end = LAUGH.at(-1)[0] + LAUGH.at(-1)[1] + 0.15;
+  const glottis = ctx.createOscillator();
+  glottis.setPeriodicWave(harmonicWave(ctx, 'glottal', GLOTTAL));
+  const growl = ctx.createOscillator();
+  growl.type = 'triangle';
+  const growlLevel = ctx.createGain();
+  growlLevel.gain.value = 0.35;
+  glottis.connect(voiced);
+  growl.connect(growlLevel).connect(voiced);
+  lfo(ctx, [glottis.detune, growl.detune], t, end, { rate: 5.2, depth: 22 });
+  noiseSource(ctx, t, end).connect(breath);
+  for (const osc of [glottis, growl]) {
+    osc.start(t);
+    osc.stop(t + end);
+  }
+
+  const g = voiced.gain;
+  const b = breath.gain;
+  LAUGH.forEach(([start, len, pitch, onset, scale], i) => {
+    const a = t + start;
+    const pts = pitch.map(([dt, hz]) => [dt, hz * p]);
+    sweep(glottis.frequency, a, pts);
+    sweep(growl.frequency, a, pts.map(([dt, hz]) => [dt, hz / 2]));
+    bank.forEach((bp, k) => {
+      const ah = LAUGH_AH[k][0] * scale;
+      if (onset === 'm') sweep(bp.frequency, a, [[0, LAUGH_HUM[k][0]], [0.1, LAUGH_HUM[k][0]], [0.2, ah]]);
+      else bp.frequency.setValueAtTime(ah, a);
+    });
+    if (onset === 'm') {
+      // A hum that swells as the mouth opens.
+      g.setValueAtTime(0, a);
+      g.linearRampToValueAtTime(LAUGH_PEAK * 0.5, a + 0.04);
+      g.linearRampToValueAtTime(LAUGH_PEAK * 0.45, a + 0.1);
+      g.linearRampToValueAtTime(LAUGH_PEAK, a + 0.19);
+    } else {
+      // A breath through the open mouth, the voice catching just after it.
+      b.setValueAtTime(0, a);
+      b.linearRampToValueAtTime(LAUGH_BREATH, a + 0.015);
+      b.linearRampToValueAtTime(0, a + 0.07);
+      g.setValueAtTime(0, a + 0.035);
+      g.linearRampToValueAtTime(LAUGH_PEAK, a + 0.075);
+    }
+    g.linearRampToValueAtTime(LAUGH_PEAK * 0.75, a + len - 0.05);
+    g.linearRampToValueAtTime(0, a + len);
+    if (i === LAUGH.length - 1) {
+      // The last one trails off into a breath.
+      b.setValueAtTime(0, a + len - 0.12);
+      b.linearRampToValueAtTime(LAUGH_BREATH * 0.4, a + len);
+      b.linearRampToValueAtTime(0, a + len + 0.14);
+    }
+  });
 }
 
 // F major scale from F5 up an octave: red coins 1..8 climb it.
@@ -650,13 +805,142 @@ export const SFX = {
     }
     return dur + 0.05;
   },
+  // ---- Winged hat, mystery box, minions, locked castle
+
+  // Bumping the crystal box: a bright glassy clink (two struck crystal tones a fifth apart),
+  // the hollow bump of the box jolting in its frame under it, and a brief shimmer.
+  box_hit(ctx, out, t, { p }) {
+    thud(ctx, out, t, { freq: 250 * p, to: 115 * p, dur: 0.11, gain: 0.3, click: 0.6 });
+    tone(ctx, out, t, { wave: 'triangle', freq: 520 * p, to: 440 * p, dur: 0.09, gain: 0.1, attack: 0.001 });
+    bell(ctx, out, t, { freq: 1760 * p, dur: 0.55, gain: 0.15, partials: CRYSTAL });
+    bell(ctx, out, t + 0.014, { freq: 2637 * p, dur: 0.45, gain: 0.09, partials: CRYSTAL });
+    const shimmer = noise(ctx, out, t + 0.01, { filter: 'highpass', freq: 6500, dur: 0.4, gain: 0.035, attack: 0.03 });
+    lfo(ctx, shimmer.frequency, t + 0.01, 0.4, { rate: 13, depth: 900 });
+    return 0.6;
+  },
+
+  // Winning the winged hat (original, in the flying theme's D major): a harp-like run
+  // sweeping up the scale as the wings unfurl, a brass 'ta-DAA' from A major to a held D
+  // major chord, bells sparkling up over it and a feathery flutter.
+  powerup(ctx, out, t) {
+    [62, 64, 66, 67, 69, 71, 73, 74, 76, 78].forEach((m, i) => {
+      tone(ctx, out, t + i * 0.028, { wave: 'triangle', freq: mtof(m), dur: 0.2, gain: 0.08 + i * 0.006, attack: 0.003 });
+    });
+    for (const m of [69, 73, 76]) brass(ctx, out, t + 0.3, m, 0.12, 0.1);
+    for (const m of [74, 78, 81, 86]) brass(ctx, out, t + 0.46, m, 0.78, 0.09);
+    brass(ctx, out, t + 0.46, 50, 0.78, 0.12);
+    [86, 90, 93, 98].forEach((m, i) => bell(ctx, out, t + 0.5 + i * 0.06, { freq: mtof(m), dur: 0.8, gain: 0.07 }));
+    feathers(ctx, out, t + 0.02, { freq: [[0, 700], [0.35, 2400], [0.9, 1200]], dur: 0.9, gain: 0.1, attack: 0.3, rate: 30, settle: 0.4 });
+    return 1.5;
+  },
+
+  // A wing beat: a soft, feathery downstroke of air (band-passed noise swelling and falling
+  // back, fluttering as the feathers ride it) over a faint low push. Soft: it repeats.
+  wing_flap(ctx, out, t, { p }) {
+    feathers(ctx, out, t, { freq: [[0, 650 * p], [0.1, 1700 * p], [0.27, 800 * p]], dur: 0.28, gain: 0.3, attack: 0.09 });
+    noise(ctx, out, t + 0.03, { filter: 'lowpass', freq: 320, dur: 0.16, gain: 0.2, attack: 0.04, kind: 'brown' });
+    return 0.3;
+  },
+
+  // Landing on an enemy: a squashy thunk (a low body dropping fast under a muffled squish)
+  // and the springy rebound twanging up and settling.
+  stomp(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 190 * p, to: 58 * p, glide: 0.06, dur: 0.15, gain: 0.42, attack: 0.001 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 900, to: 280, dur: 0.07, gain: 0.3, attack: 0.001 });
+    noise(ctx, out, t + 0.004, { freq: 1300, q: 2.5, dur: 0.05, gain: 0.14, attack: 0.002 });
+    const spring = tone(ctx, out, t + 0.03, { wave: 'triangle', freq: [[0, 250 * p], [0.08, 720 * p], [0.24, 640 * p]], dur: 0.25, gain: 0.2, attack: 0.004 });
+    lfo(ctx, spring.detune, t + 0.03, 0.25, { rate: 28, depth: 80, decay: 0.08 });
+    return 0.3;
+  },
+
+  // A minion bursting out of the ground: a dull thump and a burst of earth (a low rush, clods
+  // pattering down), then its servos chittering as it shakes itself off.
+  minion_emerge(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 110 * p, to: 45 * p, glide: 0.12, dur: 0.22, gain: 0.32, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 900], [0.38, 170]], dur: 0.4, gain: 0.34, attack: 0.004, kind: 'brown' });
+    noise(ctx, out, t, { freq: 1300, to: 600, q: 0.8, dur: 0.18, gain: 0.15, attack: 0.002 });
+    crackles(ctx, out, t + 0.04, { count: 12, span: 0.45, gain: 0.09, lo: 500, hi: 2200, front: 1.6 });
+    const servo = servoWave(ctx);
+    for (let i = 0; i < 5; i++) {
+      const f = rand(1100, 1600) * p;
+      const up = i % 2 === 0;
+      const chirp = tone(ctx, out, t + 0.3 + i * 0.055, { wave: servo, freq: up ? f * 0.7 : f, to: up ? f : f * 0.7, dur: 0.045, gain: 0.065, attack: 0.004 });
+      lfo(ctx, chirp.detune, t + 0.3 + i * 0.055, 0.05, { rate: 90, depth: 60 });
+    }
+    return 0.65;
+  },
+
+  // A minion's jaw snapping shut: a servo zipping it closed and the dry clack of steel teeth
+  // (two plates meeting a hair apart) over a small knock.
+  minion_bite(ctx, out, t, { p }) {
+    tone(ctx, out, t, { wave: servoWave(ctx), freq: 500 * p, to: 1600 * p, glide: 0.06, dur: 0.07, gain: 0.07, attack: 0.01 });
+    for (const [dt, f, gain] of [[0.06, 1250, 0.13], [0.072, 1650, 0.1]]) {
+      bell(ctx, out, t + dt, { freq: f * p, dur: 0.14, gain, partials: METAL });
+      noise(ctx, out, t + dt, { filter: 'highpass', freq: 3500, dur: 0.012, gain: 0.2, attack: 0.0008 });
+    }
+    tone(ctx, out, t + 0.06, { freq: 420 * p, to: 200 * p, dur: 0.05, gain: 0.2, attack: 0.001 });
+    return 0.25;
+  },
+
+  // A minion wrecked: a small metallic crunch (a short blast, grinding scrap and two clanks),
+  // a fizz of sparks crackling on, and its servo whining down as it dies.
+  minion_wreck(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 150 * p, to: 50 * p, glide: 0.15, dur: 0.3, gain: 0.32, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 2200, to: 400, dur: 0.22, gain: 0.28, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2500, dur: 0.03, gain: 0.16, attack: 0.001 });
+    grind(ctx, out, t + 0.01, { freq: 1900, q: 3, dur: 0.24, gain: 0.13, rate: 70, attack: 0.005 });
+    bell(ctx, out, t + 0.02, { freq: 610 * p, dur: 0.35, gain: 0.07, partials: METAL });
+    bell(ctx, out, t + 0.09, { freq: 930 * p, dur: 0.28, gain: 0.055, partials: METAL });
+    const fizz = noise(ctx, out, t + 0.05, { filter: 'highpass', freq: 4200, to: 6500, dur: 0.6, gain: 0.08, attack: 0.02, hold: 0.2 });
+    lfo(ctx, fizz.frequency, t + 0.05, 0.6, { rate: 29, depth: 1100 });
+    crackles(ctx, out, t + 0.05, { count: 14, span: 0.65, gain: 0.065, lo: 2500, hi: 6500, front: 1.4 });
+    tone(ctx, out, t + 0.08, { wave: servoWave(ctx), freq: [[0, 900 * p], [0.5, 110 * p]], dur: 0.5, gain: 0.045, attack: 0.02 });
+    return 0.8;
+  },
+
+  // The minions surfacing for the first time (AI RACE mode; the engine plays it once per
+  // storm, non-positional): an ominous stinger in the dark track's D minor. Two low
+  // synth-brass stabs on open D, then the flat-two chord (Eb major) held over a D pedal (the
+  // dark track's Phrygian colour) under a rising metallic swell and a strike of steel.
+  minions_stinger(ctx, out, t) {
+    for (const dt of [0, 0.24]) for (const m of [38, 50, 57]) brass(ctx, out, t + dt, m, 0.15, 0.075);
+    for (const m of [38, 51, 55, 58]) brass(ctx, out, t + 0.52, m, 1.3, 0.062);
+    tone(ctx, out, t + 0.52, { freq: 73.4, dur: 1.6, gain: 0.16, attack: 0.02 });
+    const swell = noise(ctx, out, t + 0.3, { filter: 'highpass', freq: 1200, to: 5000, dur: 1.4, gain: 0.07, attack: 1.1 });
+    lfo(ctx, swell.frequency, t + 0.3, 1.4, { rate: 7, depth: 400 });
+    bell(ctx, out, t + 0.52, { freq: 146.8, dur: 1.6, gain: 0.1, partials: METAL });
+    tone(ctx, out, t, { freq: 90, to: 40, glide: 0.2, dur: 0.4, gain: 0.25, attack: 0.002 });
+    return 2.2;
+  },
+
+  // Trying the locked castle door: an original villain's laugh ('mwa-ha-ha-haaa', formant
+  // synthesis: see laughVoice) booming out of a big stone hall with a slapback echo, over a
+  // low rumble swelling up from the castle's depths.
+  evil_laugh(ctx, out, t, opts) {
+    laughVoice(ctx, out, t, opts);
+    noise(ctx, out, t, { filter: 'lowpass', freq: 140, dur: 2.4, gain: 0.14, attack: 0.5, kind: 'brown' });
+    return 3.4;
+  },
 };
+
+// The cached buffers and waves the rarer sounds would otherwise make on their first play (a
+// few ms at once, as the laugh starts or the first minion surfaces): the noise buffers and
+// the glottal and servo waves. The engine calls this at an idle moment (AudioEngine.prepare);
+// the laugh's hall impulse is prepared separately.
+export function prepareSfx(ctx) {
+  prepareNoise(ctx);
+  harmonicWave(ctx, 'glottal', GLOTTAL);
+  servoWave(ctx);
+}
 
 // Playback rules for some sounds, read by the engine:
 //   range: distance multiplier for positional attenuation (huge sounds carry farther)
 //   gap:   minimum seconds between two plays of the name (sounds that may be requested in
 //          bursts, or by two modules for the same moment)
 //   max:   at most this many sounding at once
+//   duck:  { music, amb, seconds }: the music and ambience buses drop to these levels while
+//          the sound plays (a sting that must be heard over them)
+//   hall:  the recipe gets the engine's shared hall reverb (opts.hall; AudioEngine.hallReverb)
 export const SFX_INFO = {
   kaiju_roar: { range: 3, gap: 0.5, max: 2 },
   fireball_charge: { range: 3, gap: 0.2, max: 2 },
@@ -670,4 +954,13 @@ export const SFX_INFO = {
   button_press: { gap: 0.3 },
   alarm: { gap: 1.2 },
   thunder: { max: 2 },
+  box_hit: { gap: 0.15 },
+  powerup: { gap: 0.5, duck: { music: 0.3, amb: 0.7, seconds: 1.3 } },
+  wing_flap: { gap: 0.2, max: 2 },
+  stomp: { gap: 0.08 },
+  minion_emerge: { range: 1.5, gap: 0.1, max: 3 }, // a warning: heard across the ~2000 they surface at
+  minion_bite: { gap: 0.06, max: 3 },
+  minion_wreck: { gap: 0.05, max: 3 },
+  minions_stinger: { gap: 4, duck: { music: 0.45, amb: 1, seconds: 1.8 } },
+  evil_laugh: { range: 2, gap: 3, max: 1, hall: true, duck: { music: 0.4, amb: 0.45, seconds: 2.4 } },
 };

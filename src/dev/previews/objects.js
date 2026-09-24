@@ -22,7 +22,8 @@
 //                                     winged hat; hit=N: the fake hero bumps it N ticks before the
 //                                     first frame (hit=40: the hat hovers over it, hit=120: beside it)
 //   minions=N                         N robot lizard minions burst out of the lawn around the fake
-//                                     hero (view=minion: one close up, view=minions: the pack);
+//                                     hero (view=minion: the first one close up, the camera
+//                                     following it as it runs; view=minions: the pack);
 //                                     wreck=N wrecks the first one N ticks before the first frame
 // Flat lawn with a round hill (for slope shadows), built into a small CollisionWorld, plus a
 // stone block standing in for the castle roof under the beast.
@@ -311,6 +312,19 @@ async function setupLawn({ THREE, scene, params, camera }) {
   for (let i = 0; i < ticks0; i++) tick();
 
   const view = VIEWS[params.get('view')] ?? VIEWS.close;
+  // view=minion: the camera keeps the first minion framed from the preset's angle as it runs.
+  const follow = params.get('view') === 'minion' && !params.has('cam') && objects.minions ? VIEWS.minion : null;
+  const followMinion = (alpha) => {
+    const m = objects.minions.list.find((r) => r.state !== 'free');
+    if (!m) return;
+    const x = m.px + (m.x - m.px) * alpha;
+    const y = m.py + (m.y - m.py) * alpha;
+    const z = m.pz + (m.z - m.pz) * alpha;
+    const [cx, cy, cz] = follow.pos;
+    const [lx, ly, lz] = follow.look;
+    camera.position.set(x + cx - lx, y + cy, z + cz - lz);
+    camera.lookAt(x, y + ly, z);
+  };
   const walk = params.has('walk');
   const freeze = params.has('freeze');
   let acc = 0;
@@ -329,7 +343,9 @@ async function setupLawn({ THREE, scene, params, camera }) {
         tick();
         ticks++;
       }
-      objects.animate(t, freeze ? 1 : (acc / FRAME_DT) % 1, camera);
+      const alpha = freeze ? 1 : (acc / FRAME_DT) % 1;
+      if (follow) followMinion(alpha);
+      objects.animate(t, alpha, camera);
       const beast = objects.beast ? `  beast:${objects.beast.state}  hp ${player.health}  minions ${objects.minions.alive}` : '';
       hud.textContent = `coins ${player.coins}  stars ${player.stars}  star:${objects.star.state}${beast}  ${log.slice(-3).join(', ')}`;
     },

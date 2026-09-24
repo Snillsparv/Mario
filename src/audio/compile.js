@@ -4,8 +4,9 @@
 // chord chart per section style: voice-led pad, patterned bass, harp stabs or arpeggios,
 // and percussion. A song may swap the accompaniment's instruments (roles: { pad, bass,
 // comp }; default strings, bass, harp), name its lead instrument (lead, default flute), be
-// in a minor mode (mode: 'minor'), move its bass register (bassLow) and ask to be faded in
-// (fadeIn seconds).
+// in a minor mode (mode: 'minor'), move its bass register (bassLow), ask to be faded in
+// (fadeIn seconds) and trim instruments' channel levels for its own balance (mix: { inst:
+// factor }, applied by the sequencer on top of CHANNELS).
 
 import { parseBar, parseChordBar, modeScale, notesInRange, pitchClass } from './theory.js';
 
@@ -39,6 +40,12 @@ const BASS_PATTERNS = {
     2: [[0, 1.8, 'R']],
     1: [[0, 0.9, 'R']],
   },
+  // Driving 8ths for the flying theme's climax: the root under a fifth and an octave on the
+  // beats (no approach notes, so borrowed chords never get a clashing passing tone).
+  gallop: {
+    4: [[0, 0.45, 'R', 0.95], [0.5, 0.4, 'R', 0.6], [1, 0.45, '5', 0.75], [1.5, 0.4, 'R', 0.6], [2, 0.45, '8', 0.85], [2.5, 0.4, 'R', 0.6], [3, 0.45, '5', 0.75], [3.5, 0.4, 'R', 0.65]],
+    2: [[0, 0.45, 'R', 0.95], [0.5, 0.4, 'R', 0.6], [1, 0.45, '5', 0.75], [1.5, 0.4, 'R', 0.6]],
+  },
   // Throbbing 8ths on the root, leaning on beats 1 and 3, lifting an octave on beat 4.
   pulse: {
     4: [[0, 0.42, 'R', 0.95], [0.5, 0.3, 'R', 0.5], [1, 0.42, 'R', 0.7], [1.5, 0.3, 'R', 0.5], [2, 0.42, 'R', 0.85], [2.5, 0.3, 'R', 0.5], [3, 0.42, '8', 0.7], [3.5, 0.3, 'R', 0.6]],
@@ -54,6 +61,9 @@ const DRUM_PATTERNS = {
   // Dark track: a slow clock ticking over heavy, lurching thumps.
   industrial: { thump: 'X..x....', tick: 'x.x.x.xX' },
   sparse: { thump: 'X.......', tick: 'x...x...' },
+  // Flying: a driving kick across the bar under busy shakers; its storm variant on metal.
+  soar: { kick: 'x..x..x.', shaker: 'xxXxxxXx' },
+  rush: { thump: 'X..x..x.', tick: 'xxXxxxXx' },
   none: {},
 };
 const DRUM_VEL = { kick: [0.75, 0.9], shaker: [0.3, 0.55], thump: [0.7, 0.95], tick: [0.3, 0.5] };
@@ -241,6 +251,7 @@ export function compileSong(song) {
     menu: !!song.menu,
     jingle: !!song.jingle,
     fadeIn: song.fadeIn ?? 0,
+    mix: song.mix ?? {},
     roles,
     lead: song.lead ?? 'flute',
     beatsPerBar: bpb,

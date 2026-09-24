@@ -135,6 +135,32 @@ test('the same in AI RACE mode; reset() re-arms it', () => {
   assert.equal(log.length, 4);
 });
 
+test('nothing hurts Pip while the door message is up (he is frozen); fireballs do again once it closes', () => {
+  const { objects, player, log, step, events } = setup({ KAIJU: { x: 0, z: -3000, yaw: 0 } });
+  const hits = [];
+  player.takeDamage = (n, from, opts) => hits.push({ n, opts });
+  events.emit('darkMode', { on: true });
+  objects.setDarkness(1);
+  player.pos = { x: 0, y: PORCH, z: FACE + 100 };
+  step();
+  assert.equal(log[1].sign.id, 'castle_locked');
+  assert.equal(objects.dialogOpen, true);
+  const balls = objects.fireballs;
+  // A ball already in flight comes straight down on him, another one lands beside him.
+  const drop = (dx) => balls.launch(player.pos.x + dx, player.pos.y + 600, player.pos.z, 0, 0, 0);
+  drop(0);
+  drop(120);
+  step(45);
+  assert.equal(balls.inFlight, 0, 'both burst');
+  assert.ok(balls.impacts >= 2);
+  assert.equal(hits.length, 0, 'no direct hit, blast or fire-zone damage while the message is up');
+  // The box is closed: the flames he is standing in burn him again.
+  events.emit('dialogClosed', { sign: log[1].sign });
+  step();
+  assert.equal(hits.length, 1);
+  assert.deepEqual(hits[0].opts, { fire: true });
+});
+
 test('the dialog opened by the door carries a fresh sign each time', () => {
   const { player, log, step } = setup();
   player.pos = { x: 0, y: PORCH, z: FACE + 80 };

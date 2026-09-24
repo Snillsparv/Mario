@@ -85,15 +85,17 @@ export function dpadVector(dx, dy, half, out = { x: 0, y: 0, mag: 0, up: false, 
 // right edge (R) and the middle column centred (C).
 export const PORTRAIT_SHARE = 0.42;
 export const PORTRAIT_REF = { w: 390, h: 320 };
+// START and CAM sit high in the middle column, well clear of ATTACK (B): a thumb drifting off
+// B must not reach START (it would pause mid-fight).
 const PORTRAIT = {
   dpad: { a: 'L', x: 62, y: 72, size: 84 },
   stick: { a: 'L', x: 108, y: 206, well: 64, knob: 30, travel: 38 },
   emblem: { a: 'C', x: 0, y: 26 },
-  R: { a: 'C', x: 0, y: 92, w: 50, h: 22 },
-  START: { a: 'C', x: 0, y: 146, w: 58, h: 24 },
+  R: { a: 'C', x: 0, y: 84, w: 50, h: 22 },
+  START: { a: 'C', x: 0, y: 130, w: 58, h: 24 },
   C: { a: 'R', x: 302, y: 76, r: 16, spread: 32 },
-  B: { a: 'R', x: 252, y: 184, r: 30 },
-  A: { a: 'R', x: 326, y: 226, r: 38 },
+  B: { a: 'R', x: 256, y: 184, r: 30 },
+  A: { a: 'R', x: 330, y: 230, r: 38 },
   Z: { a: 'R', x: 238, y: 258, w: 74, h: 32, rot: -20 },
 };
 
@@ -275,8 +277,21 @@ export function hitSlack(b, k = 1) {
   return Math.max(8 * k, b.r * 0.35);
 }
 
-// The button under (x, y): the one whose edge is nearest among those within their hit slack,
-// or null. Allocation-free.
+// System buttons (pause, camera mode): pressed only by a touch that starts on them, never by
+// a thumb sliding onto them (the rolling thumb is for Z -> A and the like), and they lose a
+// near tie against a play button.
+export const SYSTEM_BUTTONS = ['START', 'R'];
+const SYSTEM_BIAS = 6; // px (x k) added to a system button's edge distance when ranking
+export const isSystemButton = (name) => name === 'START' || name === 'R';
+
+// Whether a touch that started as `origin` (a button name, or null for one that started
+// between the controls) presses `name` when it slides onto it.
+export function slidePresses(origin, name) {
+  return name === origin || !isSystemButton(name);
+}
+
+// The button under (x, y): the one whose edge is nearest among those within their hit slack
+// (system buttons ranked a few px farther), or null. Allocation-free.
 export function buttonAt(layout, x, y) {
   let best = null;
   let bestD = Infinity;
@@ -285,8 +300,10 @@ export function buttonAt(layout, x, y) {
     const name = TOUCH_BUTTONS[i];
     const b = bs[name];
     const d = shapeDistance(b, x, y);
-    if (d <= hitSlack(b, layout.k) && d < bestD) {
-      bestD = d;
+    if (d > hitSlack(b, layout.k)) continue;
+    const rank = isSystemButton(name) ? d + SYSTEM_BIAS * layout.k : d;
+    if (rank < bestD) {
+      bestD = rank;
       best = name;
     }
   }

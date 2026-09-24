@@ -6,14 +6,16 @@
 // proportion to the bank. The air speed p.flySpeed runs along the heading and pitch
 // (p.flyPitch, > 0 nose down; p.flyBank, > 0 right side down), shown by RenderState.pitch /
 // roll. Endings: too slow (a stall), Z, or the hat running out -> freefall; a wall ahead ->
-// bonk; the ground -> a belly-slide landing (shallow) or a normal one (steep); water -> a
-// dive into swimming (enterWater). Falls that start in a flight never hurt (p.flightFall).
-// The edge of the world (no ground at all ahead, past the cliffs) turns the flight for home.
+// bonk; the ground -> a belly-slide landing (shallow) or a normal one (steep); water deep
+// enough to swim in -> a dive into swimming (enterWater) as soon as the feet dip under its
+// surface. Falls that start in a flight never hurt (p.flightFall). The rim of the level (the
+// extent of its floors, see worldBounds) holds the flight in and turns it for home.
 
 import { angleDiff, approach, approachAngle, clamp, wrapAngle } from '../../core/math.js';
 import * as T from '../physics/tuning.js';
 import { airStep, STEP_LANDED } from '../physics/step.js';
 import { landFromAir } from './common.js';
+import { enterWater } from './submerged.js';
 
 // Sub-steps per tick at air speed s: each moves at most ~10 units (the classic quarter steps
 // move up to ~19 at the fastest fall), so walls, floors and ceilings can't be skipped at 70.
@@ -22,37 +24,81 @@ function subSteps(s) {
   return clamp(Math.ceil(s / MAX_SUB_STEP), 4, 8);
 }
 
-// The edge of the world: with no ground at all EDGE_LOOKAHEAD ahead the flight is turned
-// toward the spawn (EDGE_TURN per tick, banking into the turn), and a step that would leave the
-// ground behind altogether is undone horizontally (and turns for home at once), so Pip never
-// flies out of the level. "Ground" is any floor or wall (steep hill facets are walls) straight
-// below or above the spot.
+// The rim of the level: the XZ extent of its floors (a rectangle; holes and ragged bits of
+// the mesh inside it are left to the air step, see step.js overHole). With the rim
+// EDGE_LOOKAHEAD ahead the flight is turned toward the spawn (EDGE_TURN per tick, banking into
+// the turn), and a step past it is held EDGE_MARGIN inside (sliding along it), so Pip never
+// flies out of the level.
 const EDGE_LOOKAHEAD = 1500;
 const EDGE_TURN = 0.08;
-const SKY = 1e5;
-const rayFrom = { x: 0, y: SKY, z: 0 };
-const RAY_DOWN = { x: 0, y: -1, z: 0 };
-const RAY_GROUND = { floors: true, walls: true, ceilings: false };
+const EDGE_MARGIN = 5;
 // The body's shown pitch / bank change at most this much per tick (smooths the take-off).
 const TILT_RATE = 0.2;
 
-function groundUnder(p, x, z) {
-  if (p.collision.findFloor(x, SKY, z, 0).surface) return true;
-  rayFrom.x = x;
-  rayFrom.z = z;
-  return p.collision.raycast(rayFrom, RAY_DOWN, 2 * SKY, RAY_GROUND) !== null;
+// Cached per collision world (rebuilt if surfaces were added); null without floors.
+const boundsCache = new WeakMap();
+function worldBounds(col) {
+  const n = col.surfaces?.length ?? 0;
+  const cached = boundsCache.get(col);
+  if (cached && cached.n === n) return cached.b;
+  let b = null;
+  for (let i = 0; i < n; i++) {
+    const s = col.surfaces[i];
+    if (s.kind !== 'floor') continue;
+    b ??= { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+    for (const v of [s.a, s.b, s.c]) {
+      b.minX = Math.min(b.minX, v[0]);
+      b.maxX = Math.max(b.maxX, v[0]);
+      b.minZ = Math.min(b.minZ, v[2]);
+      b.maxZ = Math.max(b.maxZ, v[2]);
+    }
+  }
+  boundsCache.set(col, { n, b });
+  return b;
 }
 
-// `force`: turn even when there is ground ahead (the last step was undone at the edge).
+const outside = (b, x, z) => x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ;
+
+// `force`: turn even when the rim is not ahead (a step was just held at it).
 function turnForHome(p, force = false) {
+  const b = worldBounds(p.collision);
+  if (!b) return;
   const x = p.pos.x + Math.sin(p.faceYaw) * EDGE_LOOKAHEAD;
   const z = p.pos.z + Math.cos(p.faceYaw) * EDGE_LOOKAHEAD;
-  if (!force && groundUnder(p, x, z)) return;
+  if (!force && !outside(b, x, z)) return;
   const home = Math.atan2(p.spawn.x - p.pos.x, p.spawn.z - p.pos.z);
   const d = angleDiff(p.faceYaw, home);
   p.faceYaw = approachAngle(p.faceYaw, home, EDGE_TURN);
   // Turning left (yaw growing) banks left (roll < 0).
   p.flyBank = approach(p.flyBank, -Math.sign(d) * T.FLY_MAX_BANK, T.FLY_BANK_RATE);
+}
+
+// A step that ended past the rim (no floor under it there) is held just inside, turning for
+// home. Returns true when the feet are at or below the floor there (from `y0`, the height
+// before the step): Pip is placed on it and lands.
+function holdInside(p, y0) {
+  const b = worldBounds(p.collision);
+  if (!b) return false;
+  const x = clamp(p.pos.x, b.minX + EDGE_MARGIN, b.maxX - EDGE_MARGIN);
+  const z = clamp(p.pos.z, b.minZ + EDGE_MARGIN, b.maxZ - EDGE_MARGIN);
+  if (x === p.pos.x && z === p.pos.z) return false;
+  p.pos.x = x;
+  p.pos.z = z;
+  turnForHome(p, true);
+  p.floor = p.collision.findFloor(x, Math.max(y0, p.pos.y), z);
+  if (!p.floor.surface || p.pos.y > p.floor.y) return false;
+  p.pos.y = p.floor.y;
+  p.grounded = true;
+  return true;
+}
+
+// Deep enough water under the feet (swimming depth over the floor there): dive in.
+function divesIn(p) {
+  const level = p.collision.waterLevelAt(p.pos.x, p.pos.z);
+  if (!(p.pos.y < level) || (p.floor.surface && p.floor.y >= level - T.WATER_ENTER_DEPTH)) return false;
+  p.waterLevel = level;
+  enterWater(p);
+  return true;
 }
 
 // Velocity from the air speed, heading and pitch.
@@ -148,16 +194,10 @@ const flying = {
     }
 
     applyFlightVelocity(p);
-    const x0 = p.pos.x;
-    const z0 = p.pos.z;
+    const y0 = p.pos.y;
     const r = airStep(p, subSteps(p.flySpeed));
-    if (r.result === STEP_LANDED) return landFromFlight(p);
-    if (!p.floor.surface && !groundUnder(p, p.pos.x, p.pos.z)) {
-      p.pos.x = x0;
-      p.pos.z = z0;
-      p.floor = p.collision.findFloor(x0, p.pos.y, z0);
-      turnForHome(p, true);
-    }
+    if (r.result === STEP_LANDED || (!p.floor.surface && holdInside(p, y0))) return landFromFlight(p);
+    if (divesIn(p)) return false;
     // A wall ahead, or no room at the spot ahead (a low ceiling over it): crash.
     const w = r.wall;
     if (r.blocked || (w && headOn(p, w))) return endFlight(p, 'bonk', true);

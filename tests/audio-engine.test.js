@@ -8,6 +8,11 @@
 // AI RACE mode: darkMode swaps the birds and pastoral bed for the storm and fades the dark
 // track in (and back, also after a game over), lightning thunders after a delay, footsteps
 // and landings scale with speed and air time, and bursty sounds are rate-limited.
+// Winged hat: 'wingHat' puts the flying theme (its storm variant in AI RACE mode) in the
+// music slot and gives the grounds their music back when it comes off; stings duck the beds;
+// the first minion of a storm brings the minions' stinger. A hat grabbed again while its
+// theme is still fading out brings that same theme back (no second copy starts over it).
+// The locked castle's laugh shares one hall reverb, made ahead at idle time.
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
@@ -42,7 +47,7 @@ const fakeNode = () =>
     get: (node, key) => (key in node ? node[key] : (node[key] = fakeParam())),
   });
 
-const NODE_TYPES = ['Gain', 'Oscillator', 'BiquadFilter', 'BufferSource', 'Convolver', 'DynamicsCompressor', 'WaveShaper', 'StereoPanner', 'PeriodicWave'];
+const NODE_TYPES = ['Gain', 'Oscillator', 'BiquadFilter', 'BufferSource', 'Convolver', 'Delay', 'DynamicsCompressor', 'WaveShaper', 'StereoPanner', 'PeriodicWave'];
 
 class FakeAudioContext {
   constructor() {
@@ -772,4 +777,344 @@ test('smoothRamp glides from the current value along an S-curve to the target', 
   for (let i = 1; i < ramps.length; i++) assert.ok(ramps[i][1] > ramps[i - 1][1] && ramps[i][2] > ramps[i - 1][2]);
   // Slow at the ends: the first step covers far less than an even share.
   assert.ok(ramps[0][1] - 0.2 < 0.8 / ramps.length / 2);
+});
+
+const busLevel = (audio, bus) => audio.mix[bus].gain.calls.findLast(([m]) => m === 'setTargetAtTime')[1];
+
+test('winged hat: the flying theme fades in under the power-up (which ducks the beds), and fades out when the hat comes off', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['powerup'], 1.5);
+  try {
+    audio.ctx.currentTime = 20; // the arrival cue has long ended: the grounds have no music
+    events.emit('wingHat', { on: true });
+    events.emit('sfx', { name: 'powerup', pos: { ...audio.listener } });
+    assert.equal(log.powerup.length, 1);
+    assert.equal(audio.track?.name, 'fly');
+    const fly = audio.track;
+    const fadeIn = lastRamp(fly.gain.gain);
+    assert.ok(fadeIn[1] > 0 && fadeIn[2] - 20 >= 1 && fadeIn[2] - 20 <= 2, `fades in: ${fadeIn}`);
+    assert.ok(busLevel(audio, 'music') < LEVELS.music * 0.5, 'the fanfare is heard over the music');
+    assert.ok(busLevel(audio, 'amb') < LEVELS.amb);
+    run(audio, 1.2);
+    assert.ok(busLevel(audio, 'music') < LEVELS.music * 0.5, 'still ducked');
+    run(audio, 0.2);
+    assert.equal(busLevel(audio, 'music'), LEVELS.music, 'duck released on the audio clock');
+    assert.equal(busLevel(audio, 'amb'), LEVELS.amb);
+    // A second pickup while flying changes nothing.
+    events.emit('wingHat', { on: true });
+    assert.equal(audio.track, fly);
+    // Off: the theme fades out and nothing replaces it.
+    audio.ctx.currentTime = 60;
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track, null);
+    assert.equal(audio.wantMusic, null);
+    const out = lastRamp(fly.gain.gain);
+    assert.ok(out[1] === 0 && out[2] - 60 >= 2 && out[2] - 60 <= 3, `fades out: ${out}`);
+    events.emit('wingHat', { on: false }); // repeated: nothing
+    assert.equal(audio.track, null);
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('winged hat in the storm: the storm variant plays and the dark track returns; the storm switching mid-flight swaps the themes', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['alarm']);
+  try {
+    events.emit('darkMode', { on: true });
+    audio.ctx.currentTime = 10;
+    events.emit('wingHat', { on: true });
+    assert.equal(audio.track.name, 'fly_dark');
+    assert.ok(audio.storm.active, 'the storm beds play on under it');
+    audio.ctx.currentTime = 30;
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track.name, 'dark', 'the dark track comes back');
+    assert.ok(lastRamp(audio.track.gain.gain)[2] - 30 >= 2, 'fading in');
+    // The storm switching on and off during a flight.
+    audio.ctx.currentTime = 40;
+    events.emit('darkMode', { on: false });
+    events.emit('wingHat', { on: true });
+    assert.equal(audio.track.name, 'fly');
+    audio.ctx.currentTime = 50;
+    events.emit('darkMode', { on: true });
+    assert.equal(audio.track.name, 'fly_dark');
+    assert.equal(log.alarm.length, 2, 'the alarm still stings');
+    audio.ctx.currentTime = 60;
+    events.emit('darkMode', { on: false });
+    assert.equal(audio.track.name, 'fly');
+    audio.ctx.currentTime = 70;
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track, null);
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('winged hat: a game over takes the slot for good, a new game starts without it, and no audio means nothing is left queued', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  events.emit('wingHat', { on: true }); // before audio exists: the loop waits...
+  assert.equal(audio.wantMusic, 'fly');
+  events.emit('wingHat', { on: false }); // ...and is forgotten when the hat comes off
+  assert.equal(audio.wantMusic, null);
+  await audio.unlock();
+  mock.timers.tick(1000);
+  assert.equal(audio.track, null);
+  events.emit('wingHat', { on: true });
+  audio.ctx.currentTime = 10;
+  events.emit('gameOver');
+  assert.equal(audio.track.name, 'game_over');
+  events.emit('wingHat', { on: false }); // the player takes the hat off at the respawn
+  assert.equal(audio.track.name, 'game_over', 'the jingle is not touched');
+  mock.timers.tick(3300);
+  audio.ctx.currentTime = 20;
+  audio.playMusic('title');
+  events.emit('wingHat', { on: false });
+  assert.equal(audio.track.name, 'title');
+  events.emit('gameStart');
+  assert.equal(audio.flying, false);
+  // Flying when a new game starts straight away (?skipTitle): the theme stops.
+  events.emit('wingHat', { on: true });
+  assert.equal(audio.wantMusic, 'fly');
+  events.emit('gameStart');
+  assert.equal(audio.wantMusic, null);
+  assert.equal(audio.flying, false);
+  audio.stopMusic();
+  mock.timers.tick(5000);
+});
+
+test('the first minion of a storm brings the minions\' stinger, once per storm (never in sunny weather)', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['minions_stinger', 'minion_emerge', 'alarm']);
+  try {
+    const emerge = (t) => {
+      audio.ctx.currentTime = t;
+      events.emit('sfx', { name: 'minion_emerge', pos: { ...audio.listener } });
+    };
+    emerge(1);
+    assert.equal(log.minions_stinger.length, 0, 'not while sunny');
+    events.emit('darkMode', { on: true });
+    emerge(12);
+    emerge(17);
+    emerge(22);
+    assert.equal(log.minion_emerge.length, 4);
+    assert.equal(log.minions_stinger.length, 1);
+    assert.ok(busLevel(audio, 'music') < LEVELS.music, 'the stinger ducks the dark track');
+    events.emit('darkMode', { on: false });
+    events.emit('darkMode', { on: true });
+    emerge(40);
+    assert.equal(log.minions_stinger.length, 2, 'a new storm');
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('stings duck the beds for their length; overlapping stings keep the deeper duck until the last ends', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { restore } = recordSfx(['evil_laugh', 'powerup'], 2);
+  try {
+    audio.ctx.currentTime = 5;
+    events.emit('sfx', { name: 'evil_laugh', pos: { ...audio.listener } });
+    const laughAmb = busLevel(audio, 'amb');
+    assert.ok(laughAmb < LEVELS.amb * 0.6, `the grounds hush for the laugh: ${laughAmb}`);
+    events.emit('sfx', { name: 'evil_laugh' }); // repeated at once: plays once, no second duck
+    run(audio, 0.5);
+    events.emit('sfx', { name: 'powerup' }); // a shallower ambience duck, a deeper music one
+    assert.equal(busLevel(audio, 'amb'), laughAmb, 'the deeper duck holds');
+    assert.ok(busLevel(audio, 'music') <= LEVELS.music * 0.3 + 1e-9);
+    run(audio, 1.5); // the powerup has ended, the laugh has not
+    assert.equal(busLevel(audio, 'amb'), laughAmb);
+    mock.timers.tick(5000); // wall-clock time alone releases nothing
+    assert.equal(busLevel(audio, 'amb'), laughAmb);
+    run(audio, 0.5);
+    assert.equal(busLevel(audio, 'amb'), LEVELS.amb);
+    assert.equal(busLevel(audio, 'music'), LEVELS.music);
+    // A game over clears a sting duck at once.
+    audio.ctx.currentTime = 20;
+    events.emit('sfx', { name: 'evil_laugh' });
+    events.emit('gameOver');
+    assert.equal(busLevel(audio, 'music'), LEVELS.music);
+    assert.equal(audio.stingEnd, 0);
+    mock.timers.tick(3300);
+    assert.equal(busLevel(audio, 'amb'), LEVELS.amb);
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('the new sounds play through the engine against the fake context without errors', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    let t = 1;
+    for (const name of ['box_hit', 'powerup', 'wing_flap', 'stomp', 'minion_emerge', 'minion_bite', 'minion_wreck', 'minions_stinger', 'evil_laugh']) {
+      audio.ctx.currentTime = t += 5;
+      assert.equal(audio.play(name, { pos: { ...audio.listener } }), true, name);
+    }
+    assert.equal(warn.mock.callCount(), 0);
+    assert.ok(audio.ctx.created.Convolver >= 2 && audio.ctx.created.Delay >= 1, 'the laugh has its hall and echo');
+  } finally {
+    warn.mock.restore();
+    mock.timers.tick(5000);
+  }
+});
+
+// Sequencers still scheduling notes (a stopped one has no timer).
+const running = (tracks) => tracks.filter((tr) => tr.seq.timer !== null).map((tr) => tr.name);
+
+test('winged hat grabbed again while its theme fades out: the same theme comes back, in time, not a second copy', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  try {
+    audio.ctx.currentTime = 20;
+    events.emit('wingHat', { on: true });
+    const fly = audio.track;
+    audio.ctx.currentTime = 60;
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track, null);
+    mock.timers.tick(1000); // 1 s into the 2.5 s fade-out
+    audio.ctx.currentTime = 61;
+    fly.gain.gain.value = 0.6 * compileSong(SONGS.fly).level; // where the fade has got to
+    events.emit('wingHat', { on: true });
+    assert.equal(audio.track, fly, 'the fading theme is back in the slot');
+    assert.deepEqual(audio.fading, []);
+    const up = lastRamp(fly.gain.gain);
+    assert.equal(up[1], compileSong(SONGS.fly).level, 'back up to its level');
+    assert.ok(up[2] > 61 && up[2] - 61 <= 0.5 * 1.2 + 1e-9, `quickly, from where it was: ${up}`);
+    mock.timers.tick(5000); // the fade-out's stop never comes
+    assert.deepEqual(running([fly]), ['fly']);
+    // Off again, and back only after the fade has finished: a fresh start then.
+    audio.ctx.currentTime = 80;
+    events.emit('wingHat', { on: false });
+    mock.timers.tick(2900);
+    assert.deepEqual(running([fly]), []);
+    audio.ctx.currentTime = 83;
+    events.emit('wingHat', { on: true });
+    assert.notEqual(audio.track, fly);
+    assert.equal(audio.track.name, 'fly');
+  } finally {
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('in the storm, the hat grabbed again as the dark track fades back in: one flying theme, the dark track cut', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { restore } = recordSfx(['alarm']);
+  const tracks = [];
+  const note = () => audio.track && !tracks.includes(audio.track) && tracks.push(audio.track);
+  try {
+    events.emit('darkMode', { on: true });
+    audio.ctx.currentTime = 10;
+    events.emit('wingHat', { on: true });
+    note();
+    const fly = audio.track;
+    audio.ctx.currentTime = 30;
+    events.emit('wingHat', { on: false }); // the dark track fades back in over it (3 s)
+    note();
+    assert.equal(audio.track.name, 'dark');
+    audio.ctx.currentTime = 30.5;
+    mock.timers.tick(500);
+    events.emit('wingHat', { on: true });
+    note();
+    assert.equal(audio.track, fly);
+    mock.timers.tick(1000);
+    assert.deepEqual(running(tracks), ['fly_dark'], 'only the one flying theme plays on');
+    // The same the other way: the dark track, just faded out by a pickup, comes back itself.
+    audio.ctx.currentTime = 50;
+    events.emit('wingHat', { on: false });
+    const dark = audio.track;
+    audio.ctx.currentTime = 55;
+    mock.timers.tick(5000);
+    events.emit('wingHat', { on: true });
+    note();
+    audio.ctx.currentTime = 56;
+    mock.timers.tick(500);
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track, dark);
+    mock.timers.tick(5000);
+    note();
+    assert.deepEqual(running(tracks).sort(), ['dark']);
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('the castle hall reverb (and the stings\' waves) are made ahead at idle time; the hall is shared by every laugh', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const convolvers = () => audio.ctx.created.Convolver;
+    assert.equal(convolvers(), 1, 'the mixer\'s room reverb only, at first');
+    assert.equal(audio.hall, null);
+    mock.timers.tick(1500); // the impulse...
+    assert.equal(convolvers(), 1);
+    mock.timers.tick(1500); // ...then, in an idle moment of its own, the convolver
+    assert.equal(convolvers(), 2);
+    const hall = audio.hall;
+    assert.ok(hall?.buffer?.length > 0, 'its impulse is loaded');
+    // Then, in a third idle moment, the waves the laugh and the minions would make on their
+    // first play.
+    const waves = () => audio.ctx.created.PeriodicWave ?? 0;
+    const before = waves();
+    mock.timers.tick(1500);
+    assert.equal(waves(), before + 2, 'glottal and servo waves');
+    let t = 5;
+    for (let i = 0; i < 3; i++) {
+      audio.ctx.currentTime = t += 5;
+      assert.equal(audio.play('evil_laugh', { pos: { ...audio.listener } }), true);
+    }
+    assert.equal(convolvers(), 2, 'no convolver per laugh');
+    assert.equal(audio.hall, hall);
+    assert.equal(warn.mock.callCount(), 0);
+  } finally {
+    warn.mock.restore();
+    mock.timers.tick(5000);
+  }
+});
+
+test('a laugh before the idle moment makes the shared hall on the spot; the idle step then makes no second one', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const { log, restore } = recordSfx(['evil_laugh']);
+  try {
+    audio.ctx.currentTime = 1;
+    events.emit('sfx', { name: 'evil_laugh', pos: { ...audio.listener } });
+    assert.ok(audio.hall, 'made for the laugh');
+    assert.equal(log.evil_laugh[0].o.hall, audio.hall, 'and handed to it');
+    assert.ok(Math.abs(log.evil_laugh[0].o.outGain - log.evil_laugh[0].volume) < 1e-9, 'with the voice\'s volume');
+    mock.timers.tick(5000);
+    assert.equal(audio.ctx.created.Convolver, 2);
+    events.emit('sfx', { name: 'jump' }); // other sounds get no hall
+    assert.equal(log.evil_laugh.length, 1);
+  } finally {
+    restore();
+    mock.timers.tick(5000);
+  }
 });

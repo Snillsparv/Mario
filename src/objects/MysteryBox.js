@@ -2,13 +2,20 @@
 //
 // The box: a floating cube of translucent blue crystal (edge = spot.size) in a brass frame,
 // with a glowing white-gold "?" on each side face, bobbing gently; `spot.y` is the height of
-// its underside above the ground. A static collider (walls, a floor on top, a ceiling below) so
-// Pip's head stops at its underside. When Pip bumps it from below while rising (his head within
-// BUMP_REACH of the underside, his feet axis over its footprint) or an attack of his
-// (player.getAttack()) overlaps it, the box jolts up, flashes, emits sfx 'box_hit' and releases
-// the hat. The hat pops out of the top and hovers above the box, spinning, then glides down
-// beside it (the side toward the camera, so it stays in view) to hover at chest height, where
-// Pip can walk into it (above the box it could only be reached with a triple jump). Touching it calls
+// its underside above the ground. A collider (walls, a floor on top, a ceiling below) so Pip's
+// head stops at its underside and he can stand on it; it moves with the box's bob and jolt (the
+// surfaces are shifted in place, like the AI RACE button's cap), one tick ahead of the picture:
+// the physics step that uses it is the one drawn at that pose, so Pip standing on top rides the
+// box exactly and a head bump meets the visible underside. When Pip bumps it from below while
+// rising (his head within BUMP_REACH of the underside, his feet axis over its footprint) or an
+// attack of his (player.getAttack()) overlaps it, the box jolts (up; down when he pounds or
+// kicks it from on top), flashes, emits sfx 'box_hit' and releases the hat. The underside is
+// spot.y (340) up, out of reach of a punch or kick from the ground by design (the classic way
+// in is a jump into it from below); the attacks that reach it are the jump kick near the top of
+// a jump, a dive or flight into it, and a ground pound on its top.
+// The hat pops out of the top and hovers above the box, spinning, then glides down beside it
+// (the side toward the camera, so it stays in view) to hover at chest height, where Pip can
+// walk into it (above the box it could only be reached with a triple jump). Touching it calls
 // player.giveWingHat(HAT_SECONDS) (the player plays 'powerup'). The empty box shows dim and
 // without its "?"; RESPAWN_TICKS after the hat was taken it lights up again and can be hit
 // once more.
@@ -26,7 +33,8 @@
 //   reset()                      lit, hat inside
 //
 // Draw calls: frame, crystal back faces, crystal front faces; the hat (3) only while it is out.
-// No allocation per tick or frame beyond event payloads.
+// No allocation per tick or frame beyond event payloads (moving the collider writes the 12
+// surfaces' fields in place).
 
 import * as THREE from 'three';
 import { PLAYER_HEIGHT, PLAYER_RADIUS, FRAME_DT } from '../core/constants.js';
@@ -44,6 +52,7 @@ export const BOX = {
   BUMP_REACH: 25, // head this close below the underside (or touching it) bumps it
   BUMP_MARGIN: 30, // the feet axis may be this far outside the footprint (the head is round)
   JOLT: 30, // how far it jumps up when hit
+  POUND_JOLT: -16, // ... or dips when hit from on top
   JOLT_TICKS: 9,
   FLASH_TICKS: 12,
   RESPAWN_TICKS: 900, // 30 s after the hat was taken
@@ -77,8 +86,11 @@ export class MysteryBox {
     this.sparkles = sparkles;
     this.shadows = shadows;
     this.shadowSlots = shadowSlots;
-    const f = collision.findFloor(this.x, 1e5, this.z);
-    this.groundY = f.surface ? f.y : groundAt(this.x, this.z);
+    // The floor at the ground there (not whatever is highest: another box's top in a shared
+    // test world, a canopy).
+    const g = groundAt(this.x, this.z);
+    const f = collision.findFloor(this.x, Number.isFinite(g) ? g + 100 : 1e5, this.z);
+    this.groundY = f.surface ? f.y : g;
     this.groundNormal = f.surface ? { ...f.surface.normal } : { x: 0, y: 1, z: 0 };
     this.bottomY = this.groundY + (spot.y ?? 340);
     this.topY = this.bottomY + this.size;
@@ -89,9 +101,11 @@ export class MysteryBox {
     this.timer = 0;
     this.hits = 0;
     this.tick = 0;
-    this.jolt = 0; // ticks since the last hit (JOLT_TICKS+: at rest)
+    this.jolt = BOX.JOLT_TICKS; // ticks since the last hit (JOLT_TICKS: at rest)
     this.offset = 0; // jolt offset (units) this tick / the previous one
     this.prevOffset = 0;
+    this.joltSize = BOX.JOLT; // BOX.JOLT from below or the side, BOX.POUND_JOLT from on top
+    this.lift = 0; // where the collider stands now (bob + jolt), relative to the rest pose
     this.flash = 0;
     this.darkT = 0;
 
@@ -105,7 +119,16 @@ export class MysteryBox {
     this.hatMesh.visible = false;
     this.hatScale = buildHat || !heroWings.buildWingedHat ? 1 : BOX.HERO_HAT_SCALE;
     this.mesh.add(this.hatMesh);
-    this._addCollider();
+    this._surfaces = this._addCollider();
+    // Rest heights of the collider's vertices (a, b, c per surface).
+    this._restY = new Float64Array(this._surfaces.length * 3);
+    for (let i = 0; i < this._surfaces.length; i++) {
+      const f = this._surfaces[i];
+      this._restY[i * 3] = f.a[1];
+      this._restY[i * 3 + 1] = f.b[1];
+      this._restY[i * 3 + 2] = f.c[1];
+    }
+    this._setLift(this._liftAt(1, BOX.JOLT_TICKS)); // the first tick's pose (see update)
     if (shadows && shadowSlots) {
       const n = this.groundNormal;
       shadows.place(shadowSlots[0], this.x, this.groundY, this.z, n, shadowSize(this.size * 1.25, this.bottomY - this.groundY));
@@ -200,11 +223,11 @@ export class MysteryBox {
     this.mesh.add(this.boxGroup);
   }
 
-  // Static collider at the rest position: four walls, the top (a floor) and the underside (a
-  // ceiling), each wound to face outward.
+  // Collider at the rest position: four walls, the top (a floor) and the underside (a ceiling),
+  // each wound to face outward. Returns its surfaces (moved by _setLift).
   _addCollider() {
     const col = this.collision;
-    if (!col.addTriangles) return;
+    if (!col.addTriangles) return [];
     const h = this.half;
     const x0 = this.x - h;
     const x1 = this.x + h;
@@ -223,7 +246,46 @@ export class MysteryBox {
     quad([x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], -1, 0, 0);
     quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], 0, 0, 1);
     quad([x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], 0, 0, -1);
+    const list = col.surfaces;
+    const first = list ? list.length : 0;
     col.addTriangles(out, { terrain: 'stone' });
+    return list ? list.slice(first) : [];
+  }
+
+  // Box height offset (bob + jolt) drawn at the end of tick `t` (the render clock t * FRAME_DT,
+  // alpha 1), for jolt counter `j` (see update).
+  _liftAt(t, j) {
+    const bob = BOX.BOB * Math.sin(t * FRAME_DT * BOX.BOB_RATE);
+    if (j >= BOX.JOLT_TICKS) return bob;
+    const u = j / BOX.JOLT_TICKS;
+    return bob + this.joltSize * Math.sin(Math.PI * u) * (1 - 0.5 * u);
+  }
+
+  // Moves the collider's surfaces to `lift` above their rest heights (the documented Surface
+  // fields a/b/c, d, minY/maxY and, on walls, ys). The grid cells are x/z only, so they stay.
+  _setLift(lift) {
+    if (lift === this.lift) return;
+    this.lift = lift;
+    const list = this._surfaces;
+    const rest = this._restY;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      const ya = rest[i * 3] + lift;
+      const yb = rest[i * 3 + 1] + lift;
+      const yc = rest[i * 3 + 2] + lift;
+      f.a[1] = ya;
+      f.b[1] = yb;
+      f.c[1] = yc;
+      f.minY = ya < yb ? (ya < yc ? ya : yc) : yb < yc ? yb : yc;
+      f.maxY = ya > yb ? (ya > yc ? ya : yc) : yb > yc ? yb : yc;
+      f.d = -(f.normal.x * f.a[0] + f.normal.y * ya + f.normal.z * f.a[2]);
+      const ys = f.ys;
+      if (ys) {
+        ys[0] = ya;
+        ys[1] = yb;
+        ys[2] = yc;
+      }
+    }
   }
 
   // Would the hero bump the underside this tick? His head is within BUMP_REACH below it (or
@@ -238,7 +300,8 @@ export class MysteryBox {
     const dz = p.z - this.z;
     if (dx > m || dx < -m || dz > m || dz < -m) return false;
     const head = p.y + PLAYER_HEIGHT;
-    return p.y < this.bottomY && head >= this.bottomY - BOX.BUMP_REACH;
+    const bottom = this.bottomY + this.lift;
+    return p.y < bottom && head >= bottom - BOX.BUMP_REACH;
   }
 
   // Does an attack sphere { x, y, z, radius } overlap the box?
@@ -246,7 +309,7 @@ export class MysteryBox {
     if (!atk) return false;
     const h = this.half;
     let dx = atk.x - this.x;
-    let dy = atk.y - this.centerY;
+    let dy = atk.y - (this.centerY + this.lift);
     let dz = atk.z - this.z;
     dx = dx > h ? dx - h : dx < -h ? dx + h : 0;
     dy = dy > h ? dy - h : dy < -h ? dy + h : 0;
@@ -261,7 +324,7 @@ export class MysteryBox {
     if (this.jolt < BOX.JOLT_TICKS) {
       this.jolt++;
       const u = this.jolt / BOX.JOLT_TICKS;
-      this.offset = u >= 1 ? 0 : BOX.JOLT * Math.sin(Math.PI * u) * (1 - 0.5 * u);
+      this.offset = u >= 1 ? 0 : this.joltSize * Math.sin(Math.PI * u) * (1 - 0.5 * u);
     }
     if (this.flash > 0) this.flash--;
 
@@ -277,12 +340,17 @@ export class MysteryBox {
       }
     }
     this._updateHat(player, tick);
+    // The collider leads the picture by a tick: the next physics step is drawn at that pose.
+    this._setLift(this._liftAt(tick + 1, this.jolt + 1));
   }
 
   _hit(player) {
     this.state = 'empty';
     this.hits++;
     this.jolt = 0;
+    // Pounded or kicked from on top (his feet at its top): it dips under him; else it jumps up.
+    const onTop = player.pos && player.pos.y >= this.topY + this.lift - 20;
+    this.joltSize = onTop ? BOX.POUND_JOLT : BOX.JOLT;
     this.flash = BOX.FLASH_TICKS;
     this.frontMat.map = this.textures.empty;
     const t0 = this.tick * FRAME_DT;
@@ -414,6 +482,7 @@ export class MysteryBox {
     this.offset = this.prevOffset = 0;
     this.flash = 0;
     this.frontMat.map = this.textures.full;
+    this._setLift(this._liftAt(this.tick + 1, BOX.JOLT_TICKS));
   }
 
   animate(alpha, clock) {

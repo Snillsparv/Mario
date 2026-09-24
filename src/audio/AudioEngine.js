@@ -16,15 +16,26 @@
 // fade out and the storm (rain, wind, drone; storm.js) fades in, the dark track takes the
 // music slot, and an alarm stings once; switching off (or a game over) crossfades back.
 // 'lightning' { strength } schedules thunder a moment later (sooner for a close strike).
+//
+// Winged hat ('wingHat' { on }): its flying theme takes the music slot while the hat is on
+// ('fly', or 'fly_dark' in AI RACE mode, over the storm beds), fading in under the power-up
+// fanfare; when the hat comes off the grounds get their own music back (the dark track in
+// the storm, otherwise silence). Switching the storm on or off mid-flight swaps the two
+// flying themes, and a hat grabbed again while its theme is still fading out brings that
+// theme back rather than starting a second copy over it. Some stings (power-up, the locked
+// castle's laugh, the minions' stinger) duck the music and ambience while they play
+// (SFX_INFO duck). The first minion to surface in a storm ('minion_emerge') brings the
+// minions' stinger, once per storm. The locked castle's laugh rings in one shared hall
+// reverb, made ahead at idle time (see prepare).
 
 import { SONGS } from './songs.js';
 import { compileSong } from './compile.js';
 import { createMixer, LEVELS } from './mixer.js';
 import { Sequencer } from './Sequencer.js';
-import { SFX, SFX_INFO, footstepLevel, landLevel } from './sfx.js';
+import { SFX, SFX_INFO, footstepLevel, landLevel, prepareSfx } from './sfx.js';
 import { Ambience } from './ambience.js';
 import { Storm } from './storm.js';
-import { smoothRamp } from './synth.js';
+import { hallImpulse, smoothRamp } from './synth.js';
 import { SPAWN, LAWN_BASE } from '../world/layout.js';
 import { clamp } from '../core/math.js';
 import { GAME_OVER_SECONDS } from '../core/constants.js';
@@ -48,6 +59,9 @@ const PAUSE_DUCK = 0.35;
 const FANFARE_SECONDS = 2.8;
 const GAME_OVER_AMB_DUCK = 0.3; // the frozen world's ambience drops back under the jingle
 const DARK_FADE = 3; // AI RACE mode crossfade, as long as the picture's
+const FLY_TRACKS = new Set(['fly', 'fly_dark']); // the winged hat's themes (sunny, storm)
+const FLY_OUT_FADE = 2.5; // the flying theme fading out as the hat comes off in sunny weather
+const PREPARE_IDLE_MS = 3000; // each step of prepare() runs within this long of the one before
 // Sounds that mark Pip leaving the ground: a landing's weight follows the air time since.
 const TAKEOFFS = new Set(['jump', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'long_jump', 'wallkick', 'water_exit']);
 const NO_INFO = {};
@@ -72,19 +86,24 @@ export class AudioEngine {
     this.ambience = null;
     this.storm = null;
     this.dark = false; // AI RACE mode (kept while there is no context, applied when one is made)
+    this.flying = false; // the winged hat is on (its theme has the music slot)
+    this.minionsHeard = false; // the minions' stinger has played in this storm
     this.groundedAt = -Infinity; // context time Pip was last known on the ground
     this.failed = false; // context setup failed once; stay silent from then on
     this.warned = false;
-    this.track = null; // { name, gain, seq, started }
+    this.track = null; // { name, gain, seq, started, fadeEnd, stopTimer }
+    this.fading = []; // tracks fading out, until their sequencer stops (see startMusic)
+    this.hall = null; // the castle hall's reverb, shared by every laugh (see hallReverb)
     this.wantMusic = null; // latest requested track (also before the context exists)
     this.unlockPress = null; // key code or 'pointer' of the press that created the context, while held
     this.active = []; // sounding one-shots: { end (context time), node }
     this.lastPlayed = new Map();
     this.jab = { name: null, at: -Infinity }; // last jab played for a plain 'punch'
     this.terrain = 'grass'; // last terrain seen in footstep/land events
-    this.duck = { pause: 1, fanfare: 1, gameOver: 1 };
+    this.duck = { pause: 1, fanfare: 1, gameOver: 1, sting: 1, stingAmb: 1 };
     this.fanfareTimer = 0;
     this.gameOverTimer = 0;
+    this.stingEnd = 0; // context time the current sting duck ends (0: none)
     this.suspendTimer = 0;
     this._muted = false;
     this.listener = { x: SPAWN.x, y: LAWN_BASE + 500, z: SPAWN.z + 1200, yaw: SPAWN.yaw };
@@ -137,7 +156,7 @@ export class AudioEngine {
       mix.master.gain.value = 1;
       this.attach(ctx, mix);
     } catch (err) {
-      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null });
+      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null, hall: null });
       this.failed = true;
       this.warnOnce(err);
       Promise.resolve()
@@ -157,13 +176,48 @@ export class AudioEngine {
       spatial: (pos) => this.spatial(pos),
     });
     const storm = new Storm(ctx, mix.amb);
-    Object.assign(this, { ctx, mix, ambience, storm });
+    Object.assign(this, { ctx, mix, ambience, storm, hall: null });
     if (this.dark) {
       ambience.setDark(true, 0);
       ambience.birds = 0;
       storm.set(true, 1);
     }
     this.applyLevels();
+    this.prepare(ctx);
+  }
+
+  // Work done ahead, each step in an idle moment of its own after the context is made: the
+  // castle hall's impulse, the convolver taking it (hallReverb), and the buffers and waves
+  // the rarer sounds use (prepareSfx). Each takes several ms, too long for a frame mid-game
+  // (the laugh starts on the frame the door's dialog opens). A sound that needs one of them
+  // sooner makes it on the spot.
+  prepare(ctx) {
+    const steps = [() => hallImpulse(ctx), () => this.hallReverb(), () => prepareSfx(ctx)];
+    const idle = (fn) =>
+      typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: PREPARE_IDLE_MS }) : setTimeout(fn, PREPARE_IDLE_MS / 3);
+    const next = () => {
+      if (this.ctx !== ctx || ctx.state === 'closed' || !steps.length) return;
+      this.guard(steps.shift());
+      idle(next);
+    };
+    idle(next);
+  }
+
+  // The castle hall's reverb (SFX_INFO hall: the locked door's laugh): one convolver on the
+  // sfx bus, shared by every laugh (made by prepare(), or by the first laugh if that comes
+  // sooner). Null if it cannot be made (the laugh then brings its own).
+  hallReverb() {
+    if (!this.hall && this.ctx) {
+      try {
+        const hall = this.ctx.createConvolver();
+        hall.buffer = hallImpulse(this.ctx);
+        hall.connect(this.mix.sfx);
+        this.hall = hall;
+      } catch (err) {
+        this.warnOnce(err);
+      }
+    }
+    return this.hall;
   }
 
   // Play a named sound effect. opts: { pos, volume, pitch, terrain, big, index, ... }.
@@ -179,25 +233,72 @@ export class AudioEngine {
     if (info.max && this.countActive(name) >= info.max) return false;
     if (name === 'punch') recipe = SFX[this.comboJab(now)];
     const o = { ...opts, terrain: opts.terrain || this.terrain, range: info.range ?? 1 };
+    if (info.hall) o.hall = this.hallReverb();
     if (!this.voice(recipe, o, this.mix.sfx, name)) return false;
     this.lastPlayed.set(name, now);
+    if (info.duck) this.sting(info.duck);
     return true;
+  }
+
+  // A sting that must be heard over the beds (SFX_INFO duck { music, amb, seconds }): the
+  // music and ambience drop to its levels while it plays. Overlapping stings keep the
+  // deeper duck until the last of them has ended. Released by update() on the audio clock,
+  // like the voices (so a suspended context holds it).
+  sting({ music = 1, amb = 1, seconds = 1 }) {
+    const now = this.ctx.currentTime;
+    const d = this.duck;
+    const active = now < this.stingEnd;
+    d.sting = Math.min(active ? d.sting : 1, music);
+    d.stingAmb = Math.min(active ? d.stingAmb : 1, amb);
+    this.stingEnd = Math.max(active ? this.stingEnd : 0, now + seconds);
+    this.applyLevels();
+  }
+
+  endSting() {
+    this.stingEnd = 0;
+    this.duck.sting = 1;
+    this.duck.stingAmb = 1;
+    this.applyLevels();
   }
 
   // AI RACE mode on/off: the storm replaces the pastoral ambience and the dark track takes
   // the music slot, both over DARK_FADE (the picture's crossfade); an alarm stings as it
   // starts. Off fades the dark track out (nothing replaces it: the grounds have no music)
-  // and the birds back in.
+  // and the birds back in. In flight, the flying theme swaps to its other variant instead.
   setDark(on) {
     on = !!on;
     if (on === this.dark) return;
     this.dark = on;
+    this.minionsHeard = false;
     if (on) {
       this.play('alarm');
-      this.playMusic('dark');
+      this.playMusic(this.flying ? 'fly_dark' : 'dark');
     } else if (this.wantMusic === 'dark') this.stopMusic(DARK_FADE);
+    else if (this.wantMusic === 'fly_dark') this.playMusic('fly');
     this.ambience?.setDark(on, DARK_FADE);
     this.storm?.set(on, DARK_FADE);
+  }
+
+  // The winged hat on/off: its flying theme (the storm variant in AI RACE mode) takes the
+  // music slot while it is on. Off gives the grounds their own music back, the dark track in
+  // the storm, or fades to none, but only if a flying theme still has the slot (a game-over
+  // jingle or the title that took over since stays).
+  setFlying(on) {
+    on = !!on;
+    if (on === this.flying) return;
+    this.flying = on;
+    if (on) this.playMusic(this.dark ? 'fly_dark' : 'fly');
+    else if (FLY_TRACKS.has(this.wantMusic)) {
+      if (this.dark) this.playMusic('dark');
+      else this.stopMusic(FLY_OUT_FADE);
+    }
+  }
+
+  // The first minion to surface in a storm brings the minions' stinger (once per storm).
+  minionsSurfaced() {
+    if (!this.dark || this.minionsHeard) return;
+    this.minionsHeard = true;
+    this.play('minions_stinger');
   }
 
   // Thunder for a lightning flash of `strength` (0..1): a close, strong strike is heard
@@ -263,6 +364,7 @@ export class AudioEngine {
     if (this.ctx?.state !== 'running' || this._muted) return;
     this.guard(() => {
       this.releaseVoices();
+      if (this.stingEnd && this.ctx.currentTime >= this.stingEnd) this.endSting();
       if (this.track && this.ctx.currentTime >= this.track.seq.endTime) this.endTrack();
       this.ambience.update(dt, this.listener);
       this.storm.update(dt);
@@ -278,6 +380,7 @@ export class AudioEngine {
     on('sfx', (e) => {
       if (TAKEOFFS.has(e.name)) this.groundedAt = now();
       this.play(e.name, e);
+      if (e.name === 'minion_emerge') this.minionsSurfaced();
     });
     // Footsteps: tiptoe soft, walk clearly under a run (level and brightness by speed).
     on('footstep', (e) => {
@@ -315,6 +418,8 @@ export class AudioEngine {
     // and then the first key/pointer press unlocks instead (no autoplay warning).
     on('gameStart', () => {
       if (this.wantMusic && own(SONGS, this.wantMusic).menu) this.stopMusic();
+      this.flying = false; // nor flying (Pip starts without the winged hat)
+      if (FLY_TRACKS.has(this.wantMusic)) this.stopMusic();
       this.clearDucks(); // a new game is never paused, fanfaring or over
       this.setDark(false); // nor stormy (main resets it after a game over; this is a backstop)
       if (hasUserActivation()) this.unlock();
@@ -328,6 +433,7 @@ export class AudioEngine {
     // card over the frozen dark world and crossfades back to the sunny ambience after it.
     on('gameOver', () => {
       this.clearDucks();
+      this.flying = false; // the jingle takes the slot from a flying theme too
       this.playMusic('game_over');
       this.setDuck('gameOver', GAME_OVER_AMB_DUCK);
       this.gameOverTimer = setTimeout(() => {
@@ -340,6 +446,8 @@ export class AudioEngine {
     on('lightning', (e) => this.thunder(e.strength));
     on('kaijuRoar', (e) => this.play('kaiju_roar', e));
     on('aiRaceButton', (e) => this.play('button_press', e)); // deduped with an sfx of it
+    // The winged hat (emitted by the player): its flying theme while it is on.
+    on('wingHat', (e) => this.setFlying(e.on));
   }
 
   installBrowserHooks() {
@@ -410,8 +518,9 @@ export class AudioEngine {
 
   // Run a one-shot recipe through its own gain + panner into a bus. opts: pos (and range),
   // volume, pitch, pan (overrides the position's), delay (seconds, on the audio clock), plus
-  // whatever the recipe reads; the recipe also gets `dist` from the listener. `tag` names
-  // the voice for countActive(). Returns whether it played.
+  // whatever the recipe reads; the recipe also gets `dist` from the listener and `outGain`,
+  // the gain of its output (volume x distance: for sends that bypass it, like the hall's).
+  // `tag` names the voice for countActive(). Returns whether it played.
   voice(recipe, opts, bus, tag = null) {
     const ctx = this.ctx;
     if (ctx?.state !== 'running' || this._muted) return false;
@@ -430,7 +539,7 @@ export class AudioEngine {
       panner = ctx.createStereoPanner();
       panner.pan.value = opts.pan ?? pan;
       out.connect(panner).connect(bus);
-      dur = recipe(ctx, out, ctx.currentTime + 0.005 + delay, { ...opts, p, dist });
+      dur = recipe(ctx, out, ctx.currentTime + 0.005 + delay, { ...opts, p, dist, outGain: volume });
     } catch (err) {
       this.warnOnce(err);
     }
@@ -461,6 +570,9 @@ export class AudioEngine {
   // Crossfade from the current track, or cut it quickly if it has only just started
   // (then the new track comes in at full level instead of overlapping a clashing key).
   // A jingle always cuts in: fading in would swallow half of it.
+  // A loop asked for again while it is still fading out (the winged hat grabbed again just
+  // after the last one ran out; the storm's dark track back after a short flight) comes back
+  // up from where its fade has got to, in time, instead of a second copy starting over it.
   startMusic(name) {
     const ctx = this.ctx;
     const now = ctx.currentTime;
@@ -470,6 +582,17 @@ export class AudioEngine {
     // A song with its own fadeIn (the dark track) always fades in over it.
     const fadeIn = song.fadeIn || (crossfade ? MUSIC_FADE : 0);
     if (old) this.fadeOutTrack(old, crossfade ? Math.max(MUSIC_FADE, fadeIn) : QUICK_CUT);
+    const back = song.endBeat === null ? this.fading.find((tr) => tr.name === name && now < tr.fadeEnd) : null;
+    if (back) {
+      this.unfade(back);
+      const g = back.gain.gain;
+      const left = clamp(1 - g.value / song.level, 0, 1); // the share of the level it has lost
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(song.level, now + Math.max(QUICK_CUT, (song.fadeIn || MUSIC_FADE) * left));
+      this.track = back;
+      return;
+    }
     const gain = ctx.createGain();
     gain.connect(this.mix.music);
     gain.gain.value = 0;
@@ -491,16 +614,28 @@ export class AudioEngine {
     this.wantMusic = null;
   }
 
+  // Fade a track out and stop it once silent; until then startMusic() may bring it back.
   fadeOutTrack(track, seconds) {
     const now = this.ctx.currentTime;
     const g = track.gain.gain;
     g.cancelScheduledValues(now);
     g.setValueAtTime(g.value, now);
     g.linearRampToValueAtTime(0, now + seconds);
-    setTimeout(() => {
+    this.unfade(track);
+    this.fading.push(track);
+    track.fadeEnd = now + seconds;
+    track.stopTimer = setTimeout(() => {
+      this.unfade(track);
       track.seq.stop();
       track.gain.disconnect();
     }, seconds * 1000 + 300);
+  }
+
+  // Take a track off the fading list, cancelling its stop.
+  unfade(track) {
+    clearTimeout(track.stopTimer);
+    const i = this.fading.indexOf(track);
+    if (i >= 0) this.fading.splice(i, 1);
   }
 
   // Music drops out for the fanfare, then comes back.
@@ -520,6 +655,7 @@ export class AudioEngine {
   clearDucks() {
     clearTimeout(this.fanfareTimer);
     clearTimeout(this.gameOverTimer);
+    this.stingEnd = 0;
     for (const key of Object.keys(this.duck)) this.duck[key] = 1;
     this.applyLevels();
   }
@@ -527,8 +663,8 @@ export class AudioEngine {
   applyLevels() {
     if (!this.mix) return;
     const t = this.ctx.currentTime;
-    const { pause, fanfare, gameOver } = this.duck;
-    this.mix.music.gain.setTargetAtTime(LEVELS.music * pause * fanfare, t, 0.12);
-    this.mix.amb.gain.setTargetAtTime(LEVELS.amb * pause * gameOver, t, 0.12);
+    const { pause, fanfare, gameOver, sting, stingAmb } = this.duck;
+    this.mix.music.gain.setTargetAtTime(LEVELS.music * pause * fanfare * sting, t, 0.12);
+    this.mix.amb.gain.setTargetAtTime(LEVELS.amb * pause * gameOver * stingAmb, t, 0.12);
   }
 }

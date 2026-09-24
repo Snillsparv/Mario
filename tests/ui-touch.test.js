@@ -12,6 +12,7 @@ import {
   touchLayout,
   touchRole,
   buttonAt,
+  slidePresses,
   inWell,
   shapeDistance,
   wantTouchUi,
@@ -232,6 +233,47 @@ describe('layout', () => {
     }
   });
 
+  test('portrait: START and CAM keep well clear of the play buttons (no pause by a drifting thumb)', () => {
+    for (const [W, H] of [[320, 568], ...PORTRAITS]) {
+      for (const safe of [{}, { bottom: 34 }]) {
+        const L = touchLayout(W, H, safe);
+        const k = L.k;
+        for (const sys of ['START', 'R']) {
+          for (const play of ['A', 'B', 'Z']) {
+            const a = L.buttons[sys];
+            const b = L.buttons[play];
+            // Edge-to-edge gap wider than both hit slacks together.
+            const gap = 22 * k;
+            assert.ok(!overlaps(a, b, gap), `${sys}-${play} under ${gap.toFixed(1)} px apart (${W}x${H})`);
+          }
+        }
+        // A thumb landing just off ATTACK's rim toward START still reads ATTACK.
+        const { B, START } = L.buttons;
+        const d = Math.hypot(START.x - B.x, START.y - B.y);
+        for (const off of [2, 7]) {
+          const x = B.x + ((START.x - B.x) / d) * (B.r + off * k);
+          const y = B.y + ((START.y - B.y) / d) * (B.r + off * k);
+          assert.equal(buttonAt(L, x, y), 'B', `${off}px off B toward START (${W}x${H})`);
+        }
+      }
+    }
+  });
+
+  test('system buttons lose a near tie against a play button', () => {
+    const L = touchLayout(390, 844, {});
+    // Squeeze START next to B: a point equally far from both edges goes to B.
+    const B = L.buttons.B;
+    const S = { ...L.buttons.START, x: B.x - B.r - 6 - L.buttons.START.w / 2, y: B.y };
+    const squeezed = { ...L, buttons: { ...L.buttons, START: S } };
+    // 4 px off B's rim, 2 px off START's: B wins (START ranks 6 px farther).
+    assert.equal(buttonAt(squeezed, B.x - B.r - 4, B.y), 'B');
+    assert.equal(buttonAt(squeezed, S.x, S.y), 'START', 'START itself still hits');
+    assert.equal(slidePresses('B', 'START'), false);
+    assert.equal(slidePresses(null, 'R'), false);
+    assert.equal(slidePresses('START', 'START'), true);
+    assert.equal(slidePresses('Z', 'A'), true);
+  });
+
   test('hit slack: a near miss still presses the button; far away nothing', () => {
     const L = touchLayout(390, 844, {});
     const A = L.buttons.A;
@@ -328,6 +370,35 @@ describe('touch controller logic', () => {
     assert.equal(last().A, false);
     tc._pointer('end', 1, 0, 0);
     assert.equal(last().Z, false);
+  });
+
+  test('sliding onto START or CAM presses nothing; only a touch that starts there does', () => {
+    for (const [W, H] of [[390, 844], [844, 390]]) {
+      const { tc, L, last } = rig(W, H);
+      const { B, START, R, A } = L.buttons;
+      tc._pointer('start', 1, B.x, B.y);
+      for (let i = 1; i <= 8; i++) tc._pointer('move', 1, B.x + ((START.x - B.x) * i) / 8, B.y + ((START.y - B.y) * i) / 8);
+      assert.equal(last().START, false, `B slid onto START (${W}x${H})`);
+      assert.equal(last().B, true, 'B held until the thumb lifts');
+      for (let i = 1; i <= 8; i++) tc._pointer('move', 1, START.x + ((R.x - START.x) * i) / 8, START.y + ((R.y - START.y) * i) / 8);
+      assert.equal(last().R, false, 'slid on to CAM');
+      tc._pointer('end', 1, 0, 0);
+      // A touch that starts on START presses it.
+      tc._pointer('start', 2, START.x, START.y);
+      assert.equal(last().START, true);
+      tc._pointer('move', 2, START.x + 3, START.y + 2);
+      assert.equal(last().START, true, 'a little wobble keeps it');
+      tc._pointer('end', 2, 0, 0);
+      assert.equal(last().START, false);
+      tc._pointer('start', 3, R.x, R.y);
+      assert.equal(last().R, true);
+      tc._pointer('end', 3, 0, 0);
+      // A thumb rolling from A onto START does not pause either.
+      tc._pointer('start', 4, A.x, A.y);
+      tc._pointer('move', 4, START.x, START.y);
+      assert.equal(last().START, false);
+      tc._pointer('end', 4, 0, 0);
+    }
   });
 
   test('D-pad: full push in its direction while the stick is idle', () => {
@@ -486,6 +557,29 @@ test('portrait phone: the controller shows below the picture and moves Pip', { s
   await touch('touchEnd', []);
   await step(40);
   assert.equal(await page.evaluate(() => window.__game.input.touch.stickY), 0, 'released');
+
+  // A browser toolbar showing or hiding (same orientation) keeps a held thumb working.
+  const held = () => page.evaluate(() => ({ x: window.__game.input.touch.stickX, y: window.__game.input.touch.stickY, n: window.__game.touch.touches.length }));
+  await touch('touchStart', [[stick.x, stick.y, 3]]);
+  await touch('touchMove', [[stick.x, stick.y - stick.travel, 3]]);
+  await page.setViewportSize({ width: 390, height: 804 });
+  await page.waitForFunction(() => window.__game.touch.layout.height === 804, null, { timeout: 10000 });
+  let h = await held();
+  assert.deepEqual([h.y, h.n], [1, 1], 'the held stick survives the resize');
+  await touch('touchMove', [[stick.x + stick.travel, stick.y, 3]]);
+  h = await held();
+  assert.ok(h.x > 0.99 && Math.abs(h.y) < 0.02, `the finger still steers after the resize: ${h.x}, ${h.y}`);
+  await touch('touchEnd', []);
+  h = await held();
+  assert.deepEqual([h.x, h.y, h.n], [0, 0, 0], 'and lets go');
+  // Rotating lets go of the fingers that are down (the controls move elsewhere).
+  await touch('touchStart', [[stick.x, stick.y - 40, 4]]);
+  await touch('touchMove', [[stick.x, stick.y - 40 - stick.travel, 4]]);
+  await page.setViewportSize({ width: 804, height: 390 });
+  await page.waitForFunction(() => window.__game.touch.layout.mode === 'landscape', null, { timeout: 10000 });
+  h = await held();
+  assert.deepEqual([h.y, h.n], [0, 0], 'rotated: released');
+  await touch('touchEnd', []);
   assert.deepEqual(errors, []);
   await context.close();
 });

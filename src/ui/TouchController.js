@@ -20,7 +20,10 @@
 //
 // Touch handling: every touch keeps its identifier's role from where it started (stick,
 // D-pad or a button). A button touch holds the button it started on and also the one it slides
-// onto (a rolling thumb: Z then A for a backflip or long jump). A drag on the picture itself
+// onto (a rolling thumb: Z then A for a backflip or long jump); START and CAM only react to a
+// touch that starts on them, so a drifting thumb never pauses the game. A resize that keeps the
+// orientation (a browser toolbar showing or hiding) keeps the fingers that are down; a new
+// orientation lets go of them. A drag on the picture itself
 // orbits the camera (input.addLookDelta). Presses vibrate briefly where supported. The page
 // cannot scroll, zoom or open long-press menus while the controller is shown.
 //
@@ -38,6 +41,7 @@ import {
   dpadVector,
   wantTouchUi,
   touchUi,
+  slidePresses,
   TOUCH_BUTTONS,
 } from './touchLogic.js';
 
@@ -60,8 +64,8 @@ html.cg-touch-on #game { touch-action:none; }
 .cg-touch * { box-sizing:border-box; pointer-events:none; }
 .cg-touch .cg-tc-zone { position:absolute; pointer-events:auto; touch-action:none; }
 .cg-tc-body { position:absolute; left:0; top:0; overflow:visible; }
-.cg-touch.cg-land .cg-tc-body, .cg-touch.cg-land .cg-tc-socket, .cg-touch.cg-land .cg-tc-label,
-.cg-touch.cg-land .cg-tc-emblem { display:none; }
+.cg-touch.cg-land .cg-tc-body, .cg-touch.cg-land .cg-tc-socket, .cg-touch.cg-land .cg-tc-emblem,
+.cg-touch.cg-land .cg-tc-label-R, .cg-touch.cg-land .cg-tc-label-START { display:none; }
 
 .cg-tc-socket { position:absolute; border-radius:50%; background:#15161d;
   box-shadow: inset 0 3px 5px rgba(0,0,0,0.75), 0 1px 0 rgba(255,255,255,0.10); }
@@ -139,8 +143,15 @@ html.cg-touch-on #game { touch-action:none; }
   background: radial-gradient(circle at 50% 45%, #1b1c24 0, #191a21 60%, #22242e 100%);
   box-shadow: inset 0 3px 7px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.08); }
 
-.cg-touch.cg-land .cg-tc-btn { opacity:0.55; }
-.cg-touch.cg-land .cg-tc-btn.cg-down { opacity:0.9; }
+/* Landscape: translucent, but the letters keep a dark outline so they read over bright grass
+   and sky, and the action names sit under A, B and Z. */
+.cg-touch.cg-land .cg-tc-btn { opacity:0.7;
+  text-shadow: 0 0 1px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.75), 0 1px 1px rgba(0,0,0,0.8); }
+.cg-touch.cg-land .cg-tc-btn:not(.cg-tc-C) { outline:1.5px solid rgba(20,22,30,0.35); outline-offset:-1px; }
+.cg-touch.cg-land .cg-tc-Z { color:#3b2a05; text-shadow: 0 1px 0 rgba(255,240,190,0.7), 0 0 2px rgba(255,236,170,0.6); }
+.cg-touch.cg-land .cg-tc-btn.cg-down { opacity:0.92; }
+.cg-touch.cg-land .cg-tc-label { color:rgba(255,255,255,0.92); opacity:0.85; letter-spacing:0.1em;
+  text-shadow: 0 0 2px rgba(0,0,0,0.95), 0 0 4px rgba(0,0,0,0.7), 0 1px 1px rgba(0,0,0,0.9); }
 .cg-touch.cg-land .cg-tc-R, .cg-touch.cg-land .cg-tc-START { color:rgba(255,255,255,0.9); font-size:10px; }
 .cg-touch.cg-land .cg-tc-well { background: radial-gradient(circle, rgba(10,12,20,0.18) 0, rgba(10,12,20,0.34) 100%);
   box-shadow: 0 0 0 2px rgba(255,255,255,0.22), inset 0 2px 8px rgba(0,0,0,0.35); opacity:0.8; }
@@ -196,16 +207,17 @@ export function bodySvg(layout) {
     `Q0,${top} ${r},${top}`,
     'Z',
   ].join(' ');
-  // The centre plate holds CAM and START (with their labels) and a small grille below.
+  // The centre plate holds CAM and START (with their labels), ending just under START's
+  // label (clear of ATTACK), with a small speaker grille below it.
   const { R, START } = layout.buttons;
-  const plateW = 96 * k;
+  const plateW = 76 * k;
   const plateX = W / 2 - plateW / 2;
-  const plateY = R.y - R.h / 2 - layout.body.y - 16 * k;
-  const plateH = Math.min(notch - 10 * k, START.y + START.h / 2 - layout.body.y + 50 * k) - plateY;
+  const plateY = R.y - R.h / 2 - layout.body.y - 14 * k;
+  const plateH = Math.min(notch - 10 * k, START.y + START.h / 2 - layout.body.y + 23 * k) - plateY;
   const seamY = top + 7;
   const grille = [];
   for (let i = 0; i < 3; i++) {
-    const y = plateY + plateH - 20 * k + i * 5 * k;
+    const y = plateY + plateH + 9 * k + i * 5 * k;
     grille.push(`<rect x="${W / 2 - 14 * k}" y="${y}" width="${28 * k}" height="${2 * k}" rx="${k}" fill="#15161c" opacity="0.8"/>`);
   }
   return `
@@ -328,7 +340,7 @@ export class TouchController {
       this.buttons[b] = el;
       this.lit[b] = false;
       if (LABELS[b]) {
-        this.labels[b] = div('cg-tc-label');
+        this.labels[b] = div(`cg-tc-label cg-tc-label-${b}`);
         this.labels[b].textContent = LABELS[b];
       }
     }
@@ -377,7 +389,7 @@ export class TouchController {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        if (this.shown) this._layout();
+        if (this.shown) this._layout(false);
       });
     };
     on(window, 'resize', relayout);
@@ -399,7 +411,7 @@ export class TouchController {
     touchUi.active = on;
     this.root.classList.toggle('cg-on', on);
     document.documentElement.classList.toggle('cg-touch-on', on);
-    if (on) this._layout();
+    if (on) this._layout(true);
     else {
       this.releaseAll();
       this._setPictureBottom(0);
@@ -439,10 +451,19 @@ export class TouchController {
     return { top: n(cs.paddingTop), right: n(cs.paddingRight), bottom: n(cs.paddingBottom), left: n(cs.paddingLeft) };
   }
 
-  _layout() {
+  // Lay the controller out for the window. `force`: even when nothing it depends on changed
+  // (the controller was just shown). Fingers that are down survive a relayout of the same
+  // orientation (their records keep their roles; a stick keeps its origin on the screen, so a
+  // still thumb keeps its push); a new orientation lets go of them.
+  _layout(force = false) {
     const W = window.innerWidth;
     const H = window.innerHeight;
-    const L = (this.layout = touchLayout(W, H, this._safeArea()));
+    const safe = this._safeArea();
+    const key = `${W}x${H}:${safe.top},${safe.right},${safe.bottom},${safe.left}`;
+    if (!force && key === this._layoutKey && this.layout) return;
+    this._layoutKey = key;
+    const prevMode = this.layout?.mode;
+    const L = (this.layout = touchLayout(W, H, safe));
     const land = L.mode === 'landscape';
     this.root.classList.toggle('cg-land', land);
     this._setPictureBottom(L.pictureBottom);
@@ -458,13 +479,18 @@ export class TouchController {
       this.emblem.style.fontSize = px(7.5 * k);
     }
 
-    // Zones that capture touches.
-    this.zoneLayer.textContent = '';
-    for (const z of L.zones) {
+    // Zones that capture touches. The divs are reused (a touch's events go to the element it
+    // started on: removing it would cut a finger that is still down off from the controller).
+    const zoneEls = this.zoneLayer.children;
+    while (zoneEls.length > L.zones.length) zoneEls[zoneEls.length - 1].remove();
+    while (zoneEls.length < L.zones.length) {
       const d = document.createElement('div');
       d.className = 'cg-tc-zone';
-      place(d, z.x, z.y, z.w, z.h);
       this.zoneLayer.appendChild(d);
+    }
+    for (let i = 0; i < L.zones.length; i++) {
+      const z = L.zones[i];
+      place(zoneEls[i], z.x, z.y, z.w, z.h);
     }
 
     // Stick, D-pad.
@@ -520,7 +546,7 @@ export class TouchController {
         const extra = b === 'Z' ? 10 * k : 0;
         label.style.left = px(shape.x + (b === 'Z' ? -8 * k : 0));
         label.style.top = px(shape.y + below + 7 * k + extra);
-        label.style.fontSize = px(9 * k);
+        label.style.fontSize = px((land ? 8 : 9) * k);
       }
     }
     const cu = L.buttons.CU;
@@ -536,7 +562,8 @@ export class TouchController {
     this.cLabel.style.top = px(rcy + rockR + 8 * k);
     this.cLabel.style.fontSize = px(8.5 * k);
     this.cLabel.style.display = land ? 'none' : '';
-    this.releaseAll(); // touches from the old layout end; repaints
+    if (prevMode && prevMode !== L.mode) this.releaseAll(); // rotated: touches from the old layout end
+    else this._update(); // repaint (the fingers that are down stay)
   }
 
   _placeWell(x, y) {
@@ -611,7 +638,10 @@ export class TouchController {
     if (r.role === 'stick') stickVector(x - r.ox, y - r.oy, L.stick.travel, r.stick);
     else if (r.role === 'dpad') {
       dpadVector(x - L.dpad.x, y - L.dpad.y, L.dpad.size / 2, r.stick);
-    } else r.over = buttonAt(L, x, y);
+    } else {
+      const b = buttonAt(L, x, y);
+      r.over = b && slidePresses(r.origin, b) ? b : null;
+    }
   }
 
   // Index of the record with this touch identifier, or -1 (no closure: runs per touchmove).

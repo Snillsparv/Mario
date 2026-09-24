@@ -20,6 +20,16 @@
 //                                                      engine (ambience, storm, music, alarm)
 //   __renderSteps(speeds?, terrain?) / __renderLandings() -> footstep / landing levels through
 //                                                      the engine's event handlers
+//   __renderEvents(plan, seconds, { spot, dark })  -> timed game events [[t, event, payload]]
+//                                                      through the engine's handlers (music,
+//                                                      ducks, stingers), ambience at a spot
+//   __renderFlight(dark?, hatSeconds?, regrab?)     -> the winged hat through the engine:
+//                                                      power-up, flying theme, wing flaps, off
+//                                                      (and on again `regrab` s later)
+//   __renderMinions() / __renderLaugh(spot?)        -> minions in a storm (emerge, stinger,
+//                                                      bites, stomp, wrecks) / the castle door
+//   __stressFly()                                   -> the new loud sounds at once over the
+//                                                      storm flying theme and the storm beds
 // Renders mimic the live engine: music is scheduled in 0.1 s steps (like the lookahead
 // timer) and every sound starts after PRE_ROLL seconds, once the master compressor has
 // settled (it starts out in gain reduction). Analysis covers only the part after PRE_ROLL.
@@ -52,6 +62,8 @@ const INST_COLORS = {
   clang: '#c08bff',
   thump: '#888',
   tick: '#555',
+  brass: '#ffb347',
+  synarp: '#4cd9a0',
 };
 
 const PRE_ROLL = 1.5;
@@ -112,20 +124,24 @@ function offlineEngine(ctx, mix, events = null) {
 
 // The engine's music tracks run on a wall-clock lookahead timer, which an offline render
 // outruns; this takes over each track the engine starts and schedules it on the render's
-// steps instead (tracks it has faded out keep going for a few seconds, as live).
+// steps instead (tracks it has faded out keep going for a few seconds, as live, and play on
+// if the engine brings one back meanwhile).
 function trackDriver(engine) {
   const driven = [];
-  return (t) => {
+  const drive = (t) => {
     const tr = engine.track;
     if (tr && !driven.some((d) => d.track === tr)) {
       tr.seq.stop();
       driven.push({ track: tr, until: Infinity });
     }
     for (const d of driven) {
-      if (d.track !== engine.track && d.until === Infinity) d.until = t + 4;
+      if (d.track === engine.track) d.until = Infinity;
+      else if (d.until === Infinity) d.until = t + 4;
       if (t < d.until) d.track.seq.scheduleUntil(t + 0.15);
     }
   };
+  drive.driven = driven; // every track the engine started, in order
+  return drive;
 }
 
 const db = (x) => Math.round(20 * Math.log10(Math.max(x, 1e-9)) * 10) / 10;
@@ -235,7 +251,7 @@ function drawRoll(g, name) {
     label(g, inst, lx, 14, color);
     lx += inst.length * 8 + 16;
   }
-  label(g, `${song.title} - ${song.bpm} bpm, ${((song.loopBeats * 60) / song.bpm).toFixed(1)} s loop`, W - 330, 14);
+  label(g, `${song.title} - ${song.bpm} bpm, ${((song.loopBeats * 60) / song.bpm).toFixed(1)} s loop`, W - 330, H - 6);
 }
 
 // In-place radix-2 FFT magnitude of a real frame (Hann windowed).
@@ -352,6 +368,8 @@ const SPOTS = {
 
 // Sounds for the headroom stress test: the loudest ones, all at once.
 const STRESS = ['star_get', 'star_appear', 'ground_pound_land', 'land_hard', 'triple_jump', 'hurt', 'coin', 'red_coin', 'one_up', 'bonk', 'splash', 'wallkick', 'kick', 'jump_kick', 'jump'];
+// ...and the winged hat's, the minions' and the castle door's.
+const FLY_STRESS = ['powerup', 'evil_laugh', 'minions_stinger', 'box_hit', 'stomp', 'minion_wreck', 'minion_emerge', 'minion_bite', 'wing_flap', 'land_hard', 'hurt', 'jump', 'coin'];
 // ...and the AI RACE mode's, over the dark track (a blast, a roar and thunder at once).
 const DARK_STRESS = ['fireball_explode', 'kaiju_roar', 'thunder', 'fireball_launch', 'burn', 'button_press', 'alarm', 'land_hard', 'hurt', 'steam', 'fire_crackle', 'jump'];
 
@@ -382,6 +400,17 @@ export async function setup({ scene, THREE, ui, params }) {
       [5, 12, 30].forEach((speed, i) => setTimeout(() => audio.play('footstep', { terrain, ...footstepLevel(speed) }), i * 450));
     }));
   }
+  section(panel, 'Winged hat');
+  button(panel, 'hat on', withAudio(() => {
+    audio.setFlying(true);
+    audio.play('powerup');
+  }));
+  button(panel, 'hat off', withAudio(() => audio.setFlying(false)));
+  button(panel, 'first minion (storm)', withAudio(() => {
+    audio.setDark(true);
+    audio.play('minion_emerge');
+    audio.minionsSurfaced();
+  }));
   section(panel, 'AI RACE mode');
   button(panel, 'dark on', withAudio(() => audio.setDark(true)));
   button(panel, 'dark off', withAudio(() => audio.setDark(false)));
@@ -677,6 +706,125 @@ export async function setup({ scene, THREE, ui, params }) {
       };
     });
     drawRender(g, buf, `dark stress: ${names.length} sounds over storm + dark track`);
+    const { peak, clipped } = analyze(buf);
+    return publish({ status: 'done', peak, clipped });
+  };
+
+  // ---- Winged hat, minions, locked castle
+
+  // A point `d` ahead of the engine's listener (where Pip is, seen from the camera).
+  const ahead = (engine, d = 1000, side = 0) => {
+    const L = engine.listener;
+    return { x: L.x + Math.sin(L.yaw) * d - Math.cos(L.yaw) * side, y: L.y - 300, z: L.z + Math.cos(L.yaw) * d + Math.sin(L.yaw) * side };
+  };
+
+  // Timed game events through the engine's own handlers, as main, the player and the objects
+  // emit them: [[t, eventName, payload]], a payload function gets the engine (for positions).
+  // `dark` starts in steady AI RACE mode (storm beds, no dark track). Music tracks the engine
+  // starts are driven on the render's steps. Returns the analysis (0.5 s windows), the most
+  // voices at once, the music/ambience bus levels over time ([t, music, amb] each second) and
+  // the names of the tracks the engine started (a track it brought back is listed once).
+  window.__renderEvents = async (plan, seconds, { spot = 'spawn', dark = false } = {}) => {
+    publish({ status: 'running' });
+    let voicesMax = 0;
+    const levels = [];
+    let drive = null;
+    const buf = await renderOffline(seconds, (ctx, mix, t0) => {
+      const events = new Events();
+      const engine = offlineEngine(ctx, mix, events);
+      engine.setListener(...SPOTS[spot]);
+      if (dark) {
+        engine.dark = true;
+        engine.ambience.setDark(true, 0.01);
+        engine.ambience.birds = 0;
+        engine.storm.set(true, 0.01);
+      }
+      const pending = plan.map(([t, name, payload]) => ({ at: t0 + t, name, payload })).sort((a, b) => a.at - b.at);
+      drive = trackDriver(engine);
+      return (t) => {
+        while (pending.length && pending[0].at <= t + 1e-6) {
+          const e = pending.shift();
+          events.emit(e.name, typeof e.payload === 'function' ? e.payload(engine) : (e.payload ?? {}));
+        }
+        if (t >= t0) engine.update(STEP);
+        drive(t);
+        voicesMax = Math.max(voicesMax, engine.active.length);
+        const k = Math.round((t - t0) * 10);
+        if (k >= 0 && k % 10 === 0) levels.push([k / 10, Math.round(mix.music.gain.value * 100) / 100, Math.round(mix.amb.gain.value * 100) / 100]);
+      };
+    });
+    drawRender(g, buf, `events at ${spot}${dark ? ' (storm)' : ''}: ${plan.map(([t, n, p]) => `${n}${p?.name ? ':' + p.name : ''}@${t}`).join(' ').slice(0, 150)}`);
+    const { windowsDb, ...a } = analyze(buf, 0.5);
+    const tracks = drive.driven.map((d) => d.track.name);
+    return publish({ status: 'done', voicesMax, ...a, windowsDb, levels, tracks });
+  };
+
+  // The winged hat: picked up at 2 s (wingHat + the power-up), a climb flapping every 0.5 s
+  // from 6 to 12 s (the player's rate), the hat off after `hatSeconds`; 6 s after that. With
+  // `regrab`, a new hat is grabbed that many seconds after the first came off (and worn 6 s).
+  window.__renderFlight = (dark = false, hatSeconds = 24, regrab = null) => {
+    const off = 2 + hatSeconds;
+    const plan = [
+      [2, 'wingHat', { on: true }],
+      [2, 'sfx', (e) => ({ name: 'powerup', pos: ahead(e) })],
+      [off, 'wingHat', { on: false }],
+    ];
+    for (let t = 6; t <= 12; t += 0.5) plan.push([t, 'sfx', (e) => ({ name: 'wing_flap', pos: ahead(e, 1000) })]);
+    if (regrab !== null) {
+      plan.push([off + regrab, 'wingHat', { on: true }], [off + regrab, 'sfx', (e) => ({ name: 'powerup', pos: ahead(e) })]);
+    }
+    return window.__renderEvents(plan, hatSeconds + 8 + (regrab ?? 0), { dark });
+  };
+
+  // Minions in the storm: three surfacing around Pip (the first brings the stinger), bites,
+  // a stomp that wrecks one, a punch that wrecks another.
+  window.__renderMinions = () =>
+    window.__renderEvents(
+      [
+        [1, 'sfx', (e) => ({ name: 'minion_emerge', pos: ahead(e, 1500, 700) })],
+        [3, 'sfx', (e) => ({ name: 'minion_emerge', pos: ahead(e, 1800, -900) })],
+        [4.5, 'sfx', (e) => ({ name: 'minion_emerge', pos: ahead(e, 1200, 300) })],
+        [6.5, 'sfx', (e) => ({ name: 'minion_bite', pos: ahead(e, 1050) })],
+        [6.5, 'hurt', (e) => ({ pos: ahead(e), amount: 1 })],
+        [7.6, 'sfx', (e) => ({ name: 'minion_bite', pos: ahead(e, 1080, 60) })],
+        [8.5, 'sfx', (e) => ({ name: 'stomp', pos: ahead(e) })],
+        [8.5, 'sfx', (e) => ({ name: 'minion_wreck', pos: ahead(e, 1000) })],
+        [10, 'sfx', (e) => ({ name: 'punch1', pos: ahead(e) })],
+        [10.05, 'sfx', (e) => ({ name: 'minion_wreck', pos: ahead(e, 1080) })],
+      ],
+      13,
+      { dark: true },
+    );
+
+  // Walking up to the locked castle door: the laugh (and the dialog opening), heard with the
+  // grounds' ambience from `spot`.
+  window.__renderLaugh = (spot = 'courtyard') =>
+    window.__renderEvents(
+      [
+        [1, 'sfx', (e) => ({ name: 'evil_laugh', pos: ahead(e) })],
+        [1, 'sfx', { name: 'dialog_open' }],
+      ],
+      6,
+      { spot },
+    );
+
+  // Headroom: the new loud sounds all at once over the storm flying theme and the storm.
+  window.__stressFly = async (names = FLY_STRESS) => {
+    publish({ status: 'running' });
+    const buf = await renderOffline(6, (ctx, mix, t0) => {
+      const engine = offlineEngine(ctx, mix);
+      engine.dark = true;
+      engine.ambience.setDark(true, 0.01);
+      engine.ambience.birds = 0;
+      engine.storm.set(true, 0.01);
+      names.forEach((n, i) => SFX[n](ctx, mix.sfx, t0 + 0.5 + i * 0.012, { p: 1, big: true, terrain: 'stone' }));
+      const song = songPlayer(ctx, mix, t0, compileSong(SONGS.fly_dark), 76);
+      return (t) => {
+        engine.update(STEP);
+        song(t);
+      };
+    });
+    drawRender(g, buf, `fly stress: ${names.length} sounds over storm + fly_dark`);
     const { peak, clipped } = analyze(buf);
     return publish({ status: 'done', peak, clipped });
   };

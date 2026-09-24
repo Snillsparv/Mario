@@ -259,6 +259,27 @@ test('no bites while he blinks after a hit, reads a sign or drops in', () => {
   assert.equal(heroInvincible({ invincible: false, tick: 3, invincibleUntil: 10 }), false);
 });
 
+test('while a dialog is up (Pip frozen) they neither bite nor close in; the beast holds its fire', () => {
+  const events = new Events();
+  const player = fakePlayer(0, 0, 0);
+  const objects = new ObjectManager({ scene: new THREE.Scene(), collision: world(), events, layout: { KAIJU: { x: 0, z: -9000, yaw: 0 }, groundHeight: () => 0 }, player, fx: fakeFx(), level: { trees: [] } });
+  const m = objects.minions.spawnAt(0, -500, 0);
+  events.emit('signRead', { sign: { id: 'castle_locked', pages: ['x'] } });
+  for (let t = 0; t < 200; t++) {
+    player.tick++;
+    objects.update({ player });
+  }
+  assert.equal(player.hits.length, 0);
+  assert.ok(Math.hypot(m.x, m.z) >= MINION.HOLD_OFF - 20, `kept its distance: ${Math.hypot(m.x, m.z)}`);
+  assert.ok(objects.beast.grace > 0);
+  events.emit('dialogClosed', { sign: { id: 'castle_locked' } });
+  for (let t = 0; t < 200 && player.hits.length === 0; t++) {
+    player.tick++;
+    objects.update({ player });
+  }
+  assert.equal(player.hits.length, 1, 'back on the attack');
+});
+
 test('an attack touching one wrecks it: flip, blast (fx.explode radius 120), sfx, then gone', () => {
   const { minions, step, log, fx } = swarm();
   const player = fakePlayer(0, 0, 0);

@@ -284,4 +284,197 @@ const dark = {
   ],
 };
 
-export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver, dark };
+// "Updraft" - the winged hat's flying theme. D major, 4/4, 120 bpm, 24 bars (48 s loop).
+// Bright and soaring: a synth-brass lead with wide leaps and long high notes over flowing
+// harp arpeggios, strings and a bouncing bass. The engine plays it itself while the winged
+// hat is on ('wingHat' events), fading in under the power-up fanfare, whose held D major
+// chord it takes over. Intro (1-2): the lead holds a high D over a lydian lift (E/D) while
+// the arpeggios start. A (3-10): the tune springs up a sixth to a held B (the added sixth
+// over D) and floats back down, then reaches up through the major II (E, the sharp fourth's
+// lift) to a cadence. A' (11-18): the tune again
+// an octave-doubled by the glockenspiel, climbing higher, with a horn counter-line. B
+// (19-24): driving bass and kick as the lead climbs to its peak, then the borrowed bVI-bVII
+// (Bb - C) swings the loop back up into the high D.
+const fly = {
+  title: 'Updraft',
+  level: 0.6,
+  fadeIn: 1.2,
+  key: 'D',
+  bpm: 120,
+  beatsPerBar: 4,
+  swing: 0,
+  lead: 'brass',
+  mix: { harp: 1.4, glock: 1.6 }, // the flowing arpeggios and the doubling a little forward
+  chords: [
+    // intro
+    'D', 'E/D',
+    // A
+    'D', 'A/C#', 'Bm', 'G', 'Em7', 'E', 'G A', 'D',
+    // A'
+    'D', 'A/C#', 'Bm', 'G', 'Em7', 'E', 'G A', 'D',
+    // B
+    'Bm', 'G', 'Em7 A', 'F#m', 'G A', 'Bb C',
+  ],
+  sections: [
+    { from: 1, to: 2, pad: 0.4, bass: 'lilt', comp: 'arp', drums: 'soft' },
+    { from: 3, to: 10, pad: 0.3, bass: 'bounce', comp: 'arp', drums: 'soft' },
+    { from: 11, to: 18, pad: 0.34, bass: 'bounce', comp: 'arp', drums: 'march' },
+    { from: 19, to: 24, pad: 0.4, bass: 'gallop', comp: 'arp', drums: 'soar' },
+  ],
+  parts: [
+    {
+      inst: 'brass',
+      vel: 0.9,
+      bars: {
+        1: 'D6:4',
+        2: 'r:2 B4:1 C#5:1',
+        3: 'D5:.5 F#5:.5 B5:1.5 A5:.5 F#5:1',
+        4: 'E5:1.5 F#5:.5 A5:2',
+        5: 'B5:1 F#5:1.5 E5:.5 D5:1',
+        6: 'D5:.5 E5:.5 G5:1 B5:2',
+        7: 'A5:1 G5:.5 E5:.5 D5:1 E5:1',
+        8: 'G#5:1 A5:.5 B5:.5 C#6:2',
+        9: 'D6:1.5 C#6:.5 B5:1 A5:1',
+        10: 'A5:3 F#5:.5 A4:.5',
+        11: 'D5:.5 F#5:.5 B5:1.5 A5:.5 F#5:1',
+        12: 'E5:1.5 F#5:.5 A5:1 C#6:1',
+        13: 'D6:1 C#6:.5 B5:.5 F#5:2',
+        14: 'G5:.5 A5:.5 B5:1 D6:2',
+        15: 'E6:1.5 D6:.5 B5:1 G5:1',
+        16: 'G#5:1 B5:1 E6:2',
+        17: 'D6:1 B5:.5 D6:.5 E6:1 C#6:1',
+        18: 'D6:4',
+        19: 'F#5:1.5 G5:.5 A5:1 B5:1',
+        20: 'D6:2 B5:1 G5:1',
+        21: 'A5:1.5 B5:.5 C#6:1 E6:1',
+        22: 'C#6:3 A5:1',
+        23: 'B5:1 D6:1 C#6:1 E6:1',
+        24: 'F5:1 Bb5:1 C6:1 E6:1',
+      },
+    },
+    {
+      // Horn counter-line from the tune's return on, moving against it.
+      inst: 'horn',
+      vel: 0.55,
+      bars: {
+        11: 'F#4:2 A4:2',
+        12: 'E4:2 C#4:2',
+        13: 'D4:2 F#4:2',
+        14: 'G4:2 B4:2',
+        15: 'G4:2 E4:2',
+        16: 'G#4:2 B4:2',
+        17: 'B4:2 A4:2',
+        18: 'F#4:4',
+        19: 'D4:4',
+        20: 'B3:2 D4:2',
+        21: 'E4:2 C#4:2',
+        22: 'A4:2 F#4:2',
+        23: 'G4:2 E4:2',
+        24: 'F4:2 G4:2',
+      },
+    },
+    {
+      // Glockenspiel doubles the returning tune an octave up.
+      inst: 'glock',
+      vel: 0.35,
+      transpose: 12,
+      copyBars: { from: 'brass', bars: [11, 12, 13, 14, 15, 16, 17, 18] },
+    },
+    {
+      inst: 'timpani',
+      vel: 0.65,
+      bars: {
+        1: 'D3!:4',
+        2: 'r:2 A2~:2',
+        3: 'D3:4',
+        10: 'r:2 A2~:2',
+        11: 'D3!:4',
+        18: 'r:2 A2~:2',
+        19: 'B2!:4',
+        24: 'r:2 C3~:2',
+      },
+    },
+  ],
+};
+
+// "Updraft in the Storm" - the flying theme in AI RACE mode. The same tune and form as
+// "Updraft" turned to D minor (the storm drone's and "Signal Lost"'s key) over the dark
+// track's sounds: breathing synth pad, a throbbing low pulse, a snapping synth arpeggio,
+// metal percussion and struck steel. The E major lift becomes the flat two (Eb), and the
+// dominant keeps its raised third (A major) for the pull home; the opening leap goes up a
+// full octave (the sixth would grind against the minor chord's fifth).
+const flyDark = {
+  title: 'Updraft in the Storm',
+  level: 0.55,
+  fadeIn: 1.2,
+  key: 'D',
+  mode: 'minor',
+  bpm: 120,
+  beatsPerBar: 4,
+  swing: 0,
+  roles: { pad: 'darkpad', bass: 'pulse', comp: 'synarp' },
+  lead: 'brass',
+  bassLow: 33,
+  mix: { synarp: 1.5, clang: 1.6 },
+  chords: [
+    // intro
+    'Dm', 'Eb/D',
+    // A
+    'Dm', 'C', 'Bb', 'Gm', 'Am', 'Eb', 'Gm A', 'Dm',
+    // A'
+    'Dm', 'C', 'Bb', 'Gm', 'Am', 'Eb', 'Gm A', 'Dm',
+    // B
+    'Bb', 'Gm', 'C A', 'F', 'Gm A', 'Bb C',
+  ],
+  sections: [
+    { from: 1, to: 2, pad: 0.7, bass: 'pulse', comp: 'arp', drums: 'sparse' },
+    { from: 3, to: 10, pad: 0.6, bass: 'pulse', comp: 'arp', drums: 'industrial' },
+    { from: 11, to: 18, pad: 0.65, bass: 'pulse', comp: 'arp', drums: 'rush' },
+    { from: 19, to: 24, pad: 0.75, bass: 'pulse', comp: 'arp', drums: 'rush' },
+  ],
+  parts: [
+    {
+      inst: 'brass',
+      vel: 0.85,
+      bars: {
+        1: 'D6:4',
+        2: 'r:2 G4:1 Bb4:1',
+        3: 'D5:.5 F5:.5 D6:1.5 A5:.5 F5:1',
+        4: 'E5:1.5 F5:.5 A5:2',
+        5: 'Bb5:1 F5:1.5 E5:.5 D5:1',
+        6: 'D5:.5 E5:.5 G5:1 Bb5:2',
+        7: 'A5:1 G5:.5 E5:.5 D5:1 E5:1',
+        8: 'G5:1 A5:.5 Bb5:.5 C6:2',
+        9: 'D6:1.5 Bb5:.5 C#6:1 A5:1',
+        10: 'A5:3 F5:.5 A4:.5',
+        11: 'D5:.5 F5:.5 D6:1.5 A5:.5 F5:1',
+        12: 'E5:1.5 F5:.5 A5:1 C6:1',
+        13: 'D6:1 C6:.5 Bb5:.5 F5:2',
+        14: 'G5:.5 A5:.5 Bb5:1 D6:2',
+        15: 'E6:1.5 D6:.5 C6:1 A5:1',
+        16: 'G5:1 Bb5:1 Eb6:2',
+        17: 'D6:1 Bb5:.5 D6:.5 E6:1 C#6:1',
+        18: 'D6:4',
+        19: 'F5:1.5 G5:.5 A5:1 Bb5:1',
+        20: 'D6:2 Bb5:1 G5:1',
+        21: 'G5:1.5 A5:.5 C#6:1 E6:1',
+        22: 'C6:3 A5:1',
+        23: 'Bb5:1 D6:1 C#6:1 E6:1',
+        24: 'F5:1 Bb5:1 C6:1 E6:1',
+      },
+    },
+    {
+      // Struck steel on the phrase downbeats.
+      inst: 'clang',
+      vel: 0.7,
+      bars: {
+        3: 'D3:4',
+        11: 'D3:4',
+        19: 'Bb2:4',
+        24: 'r:2 C3:2',
+      },
+    },
+  ],
+};
+
+export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver, dark, fly, fly_dark: flyDark };

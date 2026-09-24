@@ -281,7 +281,9 @@ export class CollisionWorld {
     const walls = opts.walls !== false;
     const ceilings = opts.ceilings !== false;
     const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    if (len < 1e-9) return null;
+    // A degenerate or non-finite ray (NaN from a bad caller) would walk the grid forever.
+    if (!(len >= 1e-9) || !Number.isFinite(len) || !Number.isFinite(maxDist)) return null;
+    if (!Number.isFinite(origin.x) || !Number.isFinite(origin.y) || !Number.isFinite(origin.z)) return null;
     const dx = dir.x / len;
     const dy = dir.y / len;
     const dz = dir.z / len;

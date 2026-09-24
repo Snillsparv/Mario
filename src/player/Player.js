@@ -100,6 +100,7 @@ export class Player {
     this.grabCooldownUntil = 0;
     this.letGoPole = null; // trunk let go of with Z: not grabbed again before landing
     this.walkOff = null; // walked off a ledge: where the air steps drift him clear of it (step.js)
+    this.rim = { x: 0, z: 0, y: -Infinity }; // the last spot an air step had a floor under (step.js overHole)
 
     // Winged hat (giveWingHat): ticks left, and the flight's state (actions/flying.js).
     this.wingHat = 0;
@@ -318,6 +319,9 @@ export class Player {
     this.fallCeiling = Infinity;
     this.floor = this.collision.findFloor(x, y + 10, z);
     this.grounded = !!this.floor.surface && y - this.floor.y < 1;
+    this.rim.x = x;
+    this.rim.z = z;
+    this.rim.y = this.floor.surface ? this.floor.y : -Infinity;
     this.waterLevel = this.collision.waterLevelAt(x, z);
   }
 
@@ -395,7 +399,8 @@ export class Player {
 
   // Bounce up off an enemy Pip landed on (called by objects after the tick): action 'jump'
   // rising at vy (BOUNCE_HELD_VY or more while A is held), keeping the forward speed, with
-  // sfx 'stomp'. In flight it noses the flight up instead. Ignored while swimming, on a tree
+  // sfx 'stomp'; the stomp ends the fall (fall damage counts from the bounce's own peak). In
+  // flight it noses the flight up instead. Ignored while swimming, on a tree
   // or ledge (automatic actions), reading and during the spawn drop. Returns whether it bounced.
   bounce(vy = T.BOUNCE_VY) {
     const group = ACTIONS[this.action].group;

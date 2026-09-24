@@ -40,35 +40,39 @@ const limb = (r0, r1, len, segs = 7) => new THREE.CylinderGeometry(r0, r1, len, 
 // ---- body parts --------------------------------------------------------------------------
 
 // Pip is a little round in the middle: the tunic swells into a soft belly over the belt.
-// Extra forward bulge of the upper tunic at height y (torso space), times cos^2 of the
-// angle from straight ahead.
+// Forward bulge of the upper tunic's front at height y (torso space).
 const BELLY = 4;
 const bellyBulge = (y) => BELLY * Math.exp(-(((y - 8) / 7.5) ** 2));
 
-// Pushes the front of a lathe (around +Y) forward by bulge(y) (see BELLY).
+// Swells the front of a round lathe (around +Y) forward by bulge(y) (see BELLY). Each ring
+// is stretched forward about its back: z -> z + bulge * (1 + z / r) / 2, so the front moves
+// by the full bulge, the sides by half and the back not at all. The ring stays a smooth
+// ellipse (a push weighted toward the front alone would pinch a vertical ridge down the
+// middle of the belly that the low-poly shading shows as a crease).
 function swellFront(geo, bulge) {
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
     const r = Math.hypot(x, z);
-    if (z <= 0 || r < 1e-3) continue;
-    const k = bulge(pos.getY(i)) * (z / r) ** 2;
-    pos.setZ(i, z + k);
-    pos.setX(i, x * (1 + (0.25 * k) / r)); // a touch wider at the front corners too
+    if (r < 1e-3) continue;
+    pos.setZ(i, z + bulge(pos.getY(i)) * 0.5 * (1 + z / r));
   }
   geo.computeVertexNormals();
   return smoothSeam(geo);
 }
 
 // Averages the normals of vertices that share a position (a lathe's seam column), so a
-// recomputed lathe keeps its smooth Gouraud shading across the seam.
+// recomputed lathe keeps its smooth Gouraud shading across the seam. (Keys are rounded
+// integers: the seam's x is +-1e-15 either side, and toFixed would key "0.000" apart from
+// "-0.000", leaving a crease down the seam.)
+const posKey = (v) => Math.round(v * 1000);
 function smoothSeam(geo) {
   const pos = geo.attributes.position;
   const nrm = geo.attributes.normal;
   const byKey = new Map();
   for (let i = 0; i < pos.count; i++) {
-    const key = `${pos.getX(i).toFixed(3)},${pos.getY(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
+    const key = `${posKey(pos.getX(i))},${posKey(pos.getY(i))},${posKey(pos.getZ(i))}`;
     const list = byKey.get(key);
     if (list) list.push(i);
     else byKey.set(key, [i]);
@@ -99,7 +103,7 @@ function buildTorso() {
   // Upper tunic. Its hem reaches ~10 units down inside the skirt so the waist never opens
   // up when the spine bends or twists (up to ~0.45 rad).
   const tunic = [[20.5, -10], [22, 0], [23, 6], [22.8, 12], [21.2, 19], [17.8, 27], [11, 33], [0.1, 35]];
-  torso.add(mesh(swellFront(lathe(tunic, 12).scale(1, 1, 0.9), bellyBulge), 'tunic'));
+  torso.add(mesh(swellFront(lathe(tunic, 12), (y) => bellyBulge(y) / 0.9).scale(1, 1, 0.9), 'tunic'));
   torso.add(mesh(new THREE.CylinderGeometry(7, 8, 8, 8, 1, true), 'skin', 0, 36, 0));
   // Scarf wrapped around the neck, dipping slightly at the front, knotted at the back.
   const ring = mesh(new THREE.TorusGeometry(12, 4.8, 5, 12).rotateX(Math.PI / 2), 'scarf', 0, 34, 0);

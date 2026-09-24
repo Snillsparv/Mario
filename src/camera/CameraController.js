@@ -24,6 +24,10 @@
 // turns it along the moat, and a camera trapped behind something it swung round (a corner tower)
 // turns back to a clear view (sight.js); a C-button rotation that would trap it is refused with a
 // buzz. The star celebration swings round to the hero's front (celebration.js).
+// Winged-hat flight (flight.js): while the hero flies, the orbit blends into a flight-follow
+// camera (straight behind his heading, pitched partly with his flight pitch, no C-left/right
+// steps) and back out once the flight ends. AI RACE mode (lookup.js, 'darkMode' events): near the
+// castle front the view tilts up so the robot beast on the roof is in the picture.
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
@@ -44,6 +48,8 @@ import { CameraCollider } from './CameraCollider.js';
 import { Celebration } from './celebration.js';
 import { Cover } from './cover.js';
 import { Sight } from './sight.js';
+import { FlightCam } from './flight.js';
+import { LookUp } from './lookup.js';
 import { introPose, makeIntroPath, smootherstep, titleOrbitPose } from './cinematics.js';
 import * as layout from '../world/layout.js';
 import * as K from './cameraConfig.js';
@@ -90,13 +96,15 @@ export class CameraController {
     this.cover = new Cover(collision, this.collider); // swimmer under a low deck (cover.js)
     this.star = new Celebration(this.collider); // star celebration swing (celebration.js)
     this.sight = new Sight(collision, this.collider); // swimmer round a corner, trapped camera (sight.js)
+    this.flight = new FlightCam(collision); // winged-hat flight camera blend (flight.js)
+    this.lookUp = new LookUp(events); // AI RACE mode: tilt up at the beast on the roof (lookup.js)
     this._probe = null; // collider copy that runs a C-button rotation ahead (_rotationTraps)
     this._probeAnchor = new THREE.Vector3();
     this._probeOut = new THREE.Vector3();
     this.titleShot = false; // the title orbit is on screen (no hero)
 
     this.hero = {
-      x: 0, y: 0, z: 0, velX: 0, velY: 0, velZ: 0, speed: 0, faceYaw: 0, action: '',
+      x: 0, y: 0, z: 0, velX: 0, velY: 0, velZ: 0, speed: 0, faceYaw: 0, pitch: 0, action: '',
       grounded: true, onPole: false, inWater: false, submerged: false, covered: false,
     };
     // Hero feet last tick and this tick (the published focus is interpolated between them).
@@ -148,6 +156,7 @@ export class CameraController {
     this.cover.reset(hero.covered);
     this.star.reset();
     this.sight.reset();
+    this.lookUp.reset();
     this.titleShot = false;
     this.mode = this.orbitMode;
     this.zoom = 0;
@@ -161,9 +170,19 @@ export class CameraController {
     this.dist = cfg.dist[0];
     this.basePitch = cfg.pitch[0];
     this.aimPitch = cfg.aim[0];
+    const flying = K.FLY_ACTION.test(hero.action);
+    this.flight.reset(flying, this.basePitch, hero.pitch);
+    if (flying) {
+      this.dist = K.FLY_DIST[0];
+      this.basePitch = this.flight.pitch;
+      this.aimPitch = K.FLY_AIM;
+    }
     this.restTicks = K.REST_DELAY; // a hero placed standing starts in the resting view
     this.restAim = this._resting(hero) ? K.REST_AIM : 0;
     this.focusY = hero.y;
+    // AI RACE look-up set outright (a reset is a cut), for the view behind him.
+    this.lookUp.update(hero, hero.faceYaw + Math.PI, this.dist, this.focusY, this.flight.w);
+    this.dist += this.lookUp.dist;
     this._snapToHero(hero);
     this.cover.updateCap(hero, this.look.y, this.dist);
     this.collider.reset();
@@ -271,8 +290,13 @@ export class CameraController {
       this.orbitMode = this.mode = this.mode === 'follow' ? 'hero' : 'follow';
       this._sfx('camera_move');
     }
-    if (c.CL.pressed) this._rotate(-1);
-    if (c.CR.pressed) this._rotate(1);
+    // (No 45 deg steps in flight: the flight camera keeps behind the hero's heading.)
+    const flying = K.FLY_ACTION.test(hero.action);
+    for (let dir = -1; dir <= 1; dir += 2) {
+      if (!(dir < 0 ? c.CL : c.CR).pressed) continue;
+      if (flying) this._sfx('camera_buzz');
+      else this._rotate(dir);
+    }
     if (c.CD.pressed) {
       if (this.zoom < K.ORBIT_MODES[this.mode].dist.length - 1) {
         this.zoom++;
@@ -357,7 +381,12 @@ export class CameraController {
 
   _updateOrbit(c, hero) {
     const cfg = K.ORBIT_MODES[this.mode] || K.ORBIT_MODES[this.orbitMode];
-    this._updateFocus(hero);
+    // Flight camera blend (flight.js): a C-button swing under way stops at take-off.
+    const fl = this.flight;
+    if (fl.update(hero, this.basePitch, this.collider)) this.tween = null;
+    const fw = fl.w;
+    this.collider.tolerant = fw >= 0.5;
+    this._updateFocus(hero, fw);
     this._followHero(hero);
 
     // Leash: keep the yaw of where the camera already is relative to the orbit centre.
@@ -374,8 +403,9 @@ export class CameraController {
       this.yaw += turn;
       this.slideRate = 0;
     } else {
-      this._swingBehind(cfg, hero);
-      this._slideAlongWall(hero);
+      this._swingBehind(cfg, hero, 1 - fw);
+      this._slideAlongWall(hero, 1 - fw);
+      this.yaw += fl.swing(hero, this.yaw, this.pivot, this._orbitPitch(), this.dist);
     }
     if (this.tween) {
       const t0 = tweenEase(this.tween.t);
@@ -393,10 +423,15 @@ export class CameraController {
     const dancing = this.star.closeUp;
     if (dancing) this.tween = null;
 
+    // (AI RACE look-up, lookup.js: its pitch drop, aim and feet limit apply in _orbitPitch and
+    // _aimTarget.)
+    const up = this.lookUp;
+    up.update(hero, this.yaw, this.dist, this.focusY, fw);
     const zoom = Math.min(this.zoom, cfg.dist.length - 1);
-    this.dist += ((dancing ? Math.min(cfg.dist[zoom], this.star.state.dist) : cfg.dist[zoom]) - this.dist) * K.ZOOM_RATE;
-    this.basePitch += ((dancing ? K.CELEBRATE_PITCH : cfg.pitch[zoom]) - this.basePitch) * K.ZOOM_RATE;
-    this.aimPitch += ((dancing ? K.CELEBRATE_AIM : cfg.aim[zoom]) - this.aimPitch) * K.ZOOM_RATE;
+    const flyDist = K.FLY_DIST[Math.min(zoom, K.FLY_DIST.length - 1)];
+    this.dist += ((dancing ? Math.min(cfg.dist[zoom], this.star.state.dist) : fl.mix(cfg.dist[zoom], flyDist) + up.dist) - this.dist) * K.ZOOM_RATE;
+    this.basePitch += ((dancing ? K.CELEBRATE_PITCH : fl.mix(cfg.pitch[zoom], fl.orbitPitch)) - this.basePitch) * K.ZOOM_RATE;
+    this.aimPitch += ((dancing ? K.CELEBRATE_AIM : fl.mix(cfg.aim[zoom], K.FLY_AIM)) - this.aimPitch) * K.ZOOM_RATE;
     this._updateRest(hero);
     // (Under cover the camera stays low, below the deck: no tilt over the walls.)
     const squeeze = hero.covered ? 0 : 1 - smoothstep(K.SQUEEZE_RANGE[0], K.SQUEEZE_RANGE[1], this.collider.ratio ?? 1);
@@ -442,15 +477,16 @@ export class CameraController {
     const fz = hero.z - pos.z;
     const toFeet = Math.atan2(pos.y - hero.y, Math.max(1, Math.sqrt(fx * fx + fz * fz)));
     const feetRoom = toLook - toFeet; // rise that would put the feet on the view axis
+    const up = this.lookUp; // (AI RACE look-up: more aim, the feet allowed lower)
     const goal = Math.min(
-      (this.aimPitch + this.restAim + toLook - orbit) * (1 - smoothstep(K.AIM_FADE[0], K.AIM_FADE[1], orbit)),
-      feetRoom + K.FEET_MAX_BELOW,
+      (this.aimPitch + this.restAim + up.aim + toLook - orbit) * (1 - smoothstep(K.AIM_FADE[0], K.AIM_FADE[1], orbit)),
+      feetRoom + up.feetBelow,
     );
     // Eased (the lift and the feet limit switch in with kinks), hard-limited so the feet stay in frame.
     if (this.aimFresh) this.aimRise = goal;
     else this.aimRise += (goal - this.aimRise) * K.AIM_RATE;
     this.aimFresh = false;
-    const rise = Math.min(this.aimRise, feetRoom + K.FEET_HARD_BELOW);
+    const rise = Math.min(this.aimRise, feetRoom + up.feetHardBelow);
     if (rise === 0) return;
     this.target.y = pos.y - h * Math.tan(clamp(toLook - rise, -K.AIM_MAX_UP, K.AIM_MAX_DOWN));
   }
@@ -490,26 +526,34 @@ export class CameraController {
   }
 
   _orbitPitch() {
-    return this.cover.pitch(clamp(this.basePitch + this.pitchOffset + this.squeezePitch, K.PITCH_MIN, K.PITCH_MAX));
+    return this.cover.pitch(clamp(this.basePitch + this.pitchOffset + this.squeezePitch - this.lookUp.drop, K.PITCH_MIN, K.PITCH_MAX));
   }
 
-  // Vertical framing with a jump band (see cameraConfig).
-  _updateFocus(hero) {
+  // Vertical framing with a jump band (see cameraConfig), blended by the flight camera's weight
+  // `fw` toward following the flying hero's height closely.
+  _updateFocus(hero, fw = 0) {
     const dy = hero.y - this.focusY;
-    if (Math.abs(dy) > K.FOCUS_SNAP_DIST) this.focusY = hero.y;
-    else if (hero.grounded || hero.inWater) this.focusY += dy * K.FOCUS_CATCHUP;
-    else if (dy > K.JUMP_BAND_UP) this.focusY += (dy - K.JUMP_BAND_UP) * K.BAND_FOLLOW_UP;
-    else if (dy < -K.JUMP_BAND_DOWN) {
-      this.focusY += (dy + K.JUMP_BAND_DOWN) * K.BAND_FOLLOW_DOWN;
-      this.focusY = Math.min(this.focusY, hero.y + K.FALL_MAX_LAG);
+    if (Math.abs(dy) > K.FOCUS_SNAP_DIST) {
+      this.focusY = hero.y;
+      return;
     }
+    let step = 0;
+    const falling = !hero.grounded && !hero.inWater && dy < -K.JUMP_BAND_DOWN;
+    if (hero.grounded || hero.inWater) step = dy * K.FOCUS_CATCHUP;
+    else if (dy > K.JUMP_BAND_UP) step = (dy - K.JUMP_BAND_UP) * K.BAND_FOLLOW_UP;
+    else if (falling) step = (dy + K.JUMP_BAND_DOWN) * K.BAND_FOLLOW_DOWN;
+    if (fw > 0) step += (dy * K.FLY_FOCUS_RATE - step) * fw;
+    this.focusY += step;
+    if (falling) this.focusY = Math.min(this.focusY, hero.y + K.FALL_MAX_LAG);
   }
 
-  // Ease the orbit toward the hero's back while it moves (or holds a pole).
-  _swingBehind(cfg, hero) {
+  // Ease the orbit toward the hero's back while it moves (or holds a pole); `scale` fades it out
+  // for the flight camera.
+  _swingBehind(cfg, hero, scale = 1) {
+    if (scale <= 0) return;
     const d = angleDiff(this.yaw, hero.faceYaw + Math.PI);
     if (hero.onPole) {
-      this.yaw += clamp(d * K.POLE_SWING_GAIN, -K.POLE_SWING_MAX, K.POLE_SWING_MAX);
+      this.yaw += clamp(d * K.POLE_SWING_GAIN, -K.POLE_SWING_MAX, K.POLE_SWING_MAX) * scale;
       return;
     }
     if (hero.speed < K.MOVING_SPEED) return;
@@ -517,13 +561,13 @@ export class CameraController {
     const speed = Math.min(hero.speed / K.RUN_SPEED, 1.2);
     const air = hero.grounded || hero.inWater ? 1 : K.AIR_SWING_SCALE;
     const max = cfg.swingMax * speed * air;
-    this.yaw += clamp(d * cfg.swingGain * speed * air * facing, -max, max);
+    this.yaw += clamp(d * cfg.swingGain * speed * air * facing, -max, max) * scale;
   }
 
   // When a wall squeezes the camera in or hides the hero, slide the orbit along the wall
   // (while the hero moves, or always once badly squeezed). The rate is eased so it does not
-  // switch on and off with the ray hits.
-  _slideAlongWall(hero) {
+  // switch on and off with the ray hits. `scale` fades it out for the flight camera.
+  _slideAlongWall(hero, scale = 1) {
     const wall = this.collider.blocker;
     const ratio = this.collider.ratio ?? 1;
     const pressure = Math.max(1 - ratio / K.WALL_SLIDE_START, this.collider.occluded ? K.OCCLUDED_SLIDE : 0);
@@ -539,7 +583,7 @@ export class CameraController {
       }
       const d = angleDiff(this.yaw, Math.atan2(tx, tz));
       const max = K.WALL_SLIDE_MAX * pressure;
-      goal = clamp(d * K.WALL_SLIDE_GAIN, -max, max);
+      goal = clamp(d * K.WALL_SLIDE_GAIN, -max, max) * scale;
     }
     this.slideRate += (goal - this.slideRate) * K.WALL_SLIDE_EASE;
     this.yaw += this.slideRate;
@@ -643,6 +687,8 @@ export class CameraController {
       h.velZ = Math.cos(h.faceYaw) * player.forwardVel;
     }
     h.speed = Math.max(Math.abs(player.forwardVel || 0), Math.hypot(h.velX, h.velZ));
+    // Flight pitch (> 0 nose down): the body's (Player / RenderState pitch), else the climb angle.
+    h.pitch = Number.isFinite(player.pitch) ? player.pitch : Math.atan2(-h.velY, Math.max(1, Math.hypot(h.velX, h.velZ)));
     h.action = player.action || '';
     const water = this.collision.waterLevelAt(p.x, p.z);
     const below = water !== NO_WATER && p.y < water;

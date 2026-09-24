@@ -13,18 +13,26 @@ import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { MINION } from '../src/objects/Minions.js';
 import { BOX } from '../src/objects/MysteryBox.js';
+import { PLAYER_HEIGHT } from '../src/core/constants.js';
 
 const level = buildLevel(new THREE.Scene());
 const col = level.collision;
 const layout = level.layout;
 
+// One ObjectManager for the whole file: each one adds its colliders (the box, the button) to
+// the level's collision world, and stale copies of the moving box would stay behind in it.
+// Every test gets it reset, a fresh hero and a fresh log.
+const events = new Events();
+const log = [];
+events.on('sfx', (e) => log.push(e.name));
+events.on('signRead', (e) => log.push('sign:' + e.sign.id));
+let objects = null;
+
 function setup() {
-  const events = new Events();
-  const log = [];
-  events.on('sfx', (e) => log.push(e.name));
-  events.on('signRead', (e) => log.push('sign:' + e.sign.id));
+  log.length = 0;
   const player = new Player({ collision: col, events, spawn: level.spawn });
-  const objects = new ObjectManager({ scene: new THREE.Scene(), collision: col, events, layout, player, level });
+  objects ??= new ObjectManager({ scene: new THREE.Scene(), collision: col, events, layout, player, level });
+  objects.reset();
   const ctl = new ScriptedController();
   const tick = (input = {}, yaw = Math.PI) => {
     player.update(ctl.next(input), yaw);
@@ -66,6 +74,73 @@ test('the real hero bumps the box with a standing jump and walks into the hat', 
   }
   assert.ok(got, 'took the hat');
   assert.ok(!player.giveWingHat || player.wingHat > 0, 'wearing it');
+});
+
+// The box as drawn at the end of the latest tick (animate at alpha 1).
+function drawnBox(objects) {
+  objects.animate(0, 1, null);
+  const box = objects.box;
+  const y = box.boxGroup.position.y;
+  return { top: y + box.half, bottom: y - box.half };
+}
+
+test('the real hero standing on the box rides its bob and the dip of a ground pound, feet on its top', () => {
+  const { player, objects, tick } = setup();
+  const box = objects.box;
+  const hits0 = box.hits;
+  player.teleport(box.x, box.topY + 300, box.z, Math.PI);
+  player.setAction('freefall');
+  for (let t = 0; t < 30; t++) tick();
+  assert.equal(player.action, 'idle', 'landed on it');
+  let worst = 0;
+  for (let t = 0; t < 60; t++) {
+    tick();
+    worst = Math.max(worst, Math.abs(player.pos.y - drawnBox(objects).top));
+  }
+  // Jump and ground-pound its top: it dips under him, he stays on it.
+  tick({ A: true });
+  for (let t = 0; t < 8; t++) tick();
+  tick({ Z: true });
+  let dipped = false;
+  for (let t = 0; t < 40; t++) {
+    tick();
+    if (player.action === 'ground_pound_land' || player.action === 'idle') worst = Math.max(worst, Math.abs(player.pos.y - drawnBox(objects).top));
+    dipped ||= box.offset < -5;
+  }
+  assert.equal(box.hits, hits0 + 1, 'the pound hit it');
+  assert.ok(dipped, 'it dipped');
+  assert.ok(worst < 0.01, `feet off the drawn top by ${worst}`);
+});
+
+test("the real hero's head stops at the drawn underside; a jump kick beside the box knocks the hat out", () => {
+  const { player, objects, tick } = setup();
+  const box = objects.box;
+  const hits0 = box.hits;
+  player.teleport(box.x, col.findFloor(box.x, box.groundY + 50, box.z).y, box.z + 20, Math.PI);
+  player.setAction('idle');
+  tick();
+  let closest = -Infinity;
+  for (let t = 0; t < 30; t++) {
+    tick({ A: true });
+    closest = Math.max(closest, player.pos.y + PLAYER_HEIGHT - drawnBox(objects).bottom);
+  }
+  assert.equal(box.hits, hits0 + 1);
+  assert.ok(Math.abs(closest) < 0.01, `head vs drawn underside: ${closest}`);
+  // A grounded punch cannot reach the underside (340 up); a jump kick beside it does.
+  objects.reset();
+  const z = box.z + box.half + 60;
+  player.teleport(box.x, col.findFloor(box.x, box.groundY + 50, z).y, z, Math.PI);
+  player.setAction('idle');
+  tick();
+  tick({ B: true });
+  for (let t = 0; t < 15; t++) tick();
+  assert.equal(box.state, 'ready', 'a punch from the ground is out of reach');
+  tick({ A: true });
+  for (let t = 0; t < 6; t++) tick({ A: true });
+  tick({ B: true });
+  for (let t = 0; t < 15 && box.state === 'ready'; t++) tick();
+  assert.equal(box.state, 'empty', 'jump kick');
+  assert.equal(box.hits, hits0 + 2);
 });
 
 test('walking up the steps to the castle door: evil laugh and the locked message', () => {

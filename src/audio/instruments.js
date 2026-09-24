@@ -246,7 +246,60 @@ function tick(ctx, out, t, dur, midi, vel) {
   tone(ctx, out, t, { wave: 'square', freq: 3900, dur: 0.02, gain: 0.025 * vel, attack: 0.001 });
 }
 
-export const INSTRUMENTS = { flute, strings, horn, bass, harp, glock, timpani, kick, shaker, darkpad, pulse, glass, clang, thump, tick };
+// ---- Flying themes ("Updraft" and "Updraft in the Storm"): a soaring lead and a synth arp.
+
+// Bright synth-brass lead: two slightly detuned sawtooths through a low-pass that blooms open
+// on the attack (wider for harder notes) and settles, a small scoop up into the pitch, and a
+// vibrato growing on held notes.
+function brass(ctx, out, t, dur, midi, vel) {
+  const f = mtof(midi);
+  const peak = 0.26 * vel;
+  const release = t + Math.max(dur - 0.04, 0.08);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 1.2;
+  lp.frequency.setValueAtTime(f * 1.4, t);
+  lp.frequency.linearRampToValueAtTime(f * (3 + 3 * vel), t + 0.06);
+  lp.frequency.setTargetAtTime(f * 2.8, t + 0.06, 0.35);
+  const g = silentGain(ctx);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.035);
+  g.gain.setTargetAtTime(peak * 0.75, t + 0.035, 0.3);
+  g.gain.setTargetAtTime(0, release, 0.06);
+  lp.connect(g).connect(out);
+  const oscs = [-6, 6].map((detune) => {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.detune.value = detune;
+    osc.frequency.setValueAtTime(f * 0.97, t);
+    osc.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+    osc.connect(lp);
+    osc.start(t);
+    osc.stop(release + 0.4);
+    return osc;
+  });
+  if (dur > 0.45) lfo(ctx, oscs.map((o) => o.detune), t, release + 0.4 - t, { rate: 5.4, depth: 11, fadeIn: 0.35 });
+}
+
+// Synth arpeggio pluck (the storm variant's comping): a square through a resonant low-pass
+// that snaps shut, short and percussive.
+function synarp(ctx, out, t, dur, midi, vel) {
+  const f = mtof(midi);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 4;
+  lp.frequency.setValueAtTime(Math.min(f * 8, 6000), t);
+  lp.frequency.exponentialRampToValueAtTime(f * 1.6, t + 0.2);
+  lp.connect(envelope(ctx, out, t, { peak: 0.3 * vel, dur: Math.min(dur + 0.12, 0.4), attack: 0.003 }));
+  const osc = ctx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.value = f;
+  osc.connect(lp);
+  osc.start(t);
+  osc.stop(t + 0.45);
+}
+
+export const INSTRUMENTS = { flute, strings, horn, bass, harp, glock, timpani, kick, shaker, darkpad, pulse, glass, clang, thump, tick, brass, synarp };
 
 // Mix per instrument: level and stereo position, like an orchestra seen from the front.
 export const CHANNELS = {
@@ -265,4 +318,6 @@ export const CHANNELS = {
   clang: { gain: 0.7, pan: -0.3 },
   thump: { gain: 0.8, pan: 0 },
   tick: { gain: 0.7, pan: 0.35 },
+  brass: { gain: 0.9, pan: 0.05 },
+  synarp: { gain: 0.6, pan: 0.3 },
 };

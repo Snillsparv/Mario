@@ -20,14 +20,14 @@ export class Sequencer {
     this.endBeat = Infinity;
     this.endTime = Infinity; // context time a cue has faded out by
     // Song output (faded at the end of a cue), fed by one channel strip (level + pan) per
-    // instrument in the song.
+    // instrument in the song (the song's own mix trims the level).
     this.out = ctx.createGain();
     this.out.connect(out);
     this.channels = {};
     for (const { inst } of song.events) {
       if (this.channels[inst]) continue;
       const g = ctx.createGain();
-      g.gain.value = CHANNELS[inst].gain;
+      g.gain.value = CHANNELS[inst].gain * (song.mix?.[inst] ?? 1);
       const pan = ctx.createStereoPanner();
       pan.pan.value = CHANNELS[inst].pan;
       g.connect(pan).connect(this.out);

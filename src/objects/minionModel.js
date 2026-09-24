@@ -75,7 +75,7 @@ const BODY_R = [
 const BACK_TOP = BODY_PTS.map((p, i) => [p[2], p[1] + BODY_R[i][1]]);
 
 // Head wedge half-width, bottom and top at z (from the neck at 46 to the snout at 100).
-const headHalf = (z) => 19 + ((8 - 19) * (z - 46)) / 54;
+const headHalf = (z) => 20.5 + ((9.5 - 20.5) * (z - 46)) / 54;
 const headTop = (z) => 51 + ((36 - 51) * (z - 46)) / 54;
 const headBottom = (z) => 21 + ((24 - 21) * (z - 46)) / 54;
 
@@ -130,10 +130,10 @@ function buildJaw() {
 function buildLeg(s, front) {
   const b = new PartBuilder(310 + (front ? 0 : 2) + (s > 0 ? 1 : 0));
   const fz = front ? 1 : -1;
-  const top = [s * 22, 33, front ? 30 : -34];
-  const mid = [s * 55, 44, front ? 37 : -43];
-  const low = [s * 66, 9, front ? 46 : -48];
-  const foot = [s * 68, 3, front ? 51 : -45];
+  const top = [s * 22, 32, front ? 30 : -34];
+  const mid = [s * 50, 36, front ? 38 : -44];
+  const low = [s * 60, 8, front ? 46 : -48];
+  const foot = [s * 62, 3, front ? 51 : -45];
   b.ball(top, 10, RUST, E_JOINT, 1);
   b.cyl(top, mid, 8, 7, 6, GUN);
   b.bonePlate(top, mid, [0, 1, 0], 6, 11, 4, GUN_LIGHT);

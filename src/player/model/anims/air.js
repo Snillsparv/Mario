@@ -336,9 +336,16 @@ function burn(p, c) {
 
 // Flying with the winged hat, the classic superhero way: stretched out flat along the flight
 // path (the Player's pitch and roll tilt and bank the whole body about the belly), the right
-// fist punched ahead beside the brim, the left arm swept back along the side, legs together
-// behind with the toes pointed, head up to see ahead. A slow glide wobble on top; a dive
-// (nose down) streamlines him, a climb (nose up) spreads the arms and works the legs.
+// fist thrust straight ahead, the left arm swept back along the side, legs together behind
+// with the toes pointed, head up to see ahead. A slow glide wobble on top; a dive (nose
+// down) streamlines him, a climb (nose up) spreads the trailing arm and works the legs.
+// Pip's short arm cannot reach past his big head from the shoulder, so the chest rolls
+// toward his left (LEAD_ROLL, the head rolled back upright): the right shoulder leads and
+// the head moves aside, and the fist reaches level with the nose, under it and just off
+// the centre line (ahead of the face from the side; beside the jaw from behind).
+const LEAD_ROLL = -0.25;
+const LEAD_SWING = 2.8; // nearly straight ahead along the body, a little below the face
+const LEAD_RAISE = 0.5; // out just enough to clear the jaw
 function flight(p, c) {
   const dive = clamp(c.pitch / 0.6, 0, 1);
   const climb = clamp(-c.pitch / 0.5, 0, 1);
@@ -350,13 +357,12 @@ function flight(p, c) {
   p.squash = 0.04 + 0.03 * dive;
   p.spinePitch = -0.16 - 0.06 * climb;
   p.spineYaw = 0.05 * wob;
+  p.spineRoll = LEAD_ROLL;
   p.headPitch = -1.0 + 0.2 * dive;
-  p.headRoll = -0.06 * wob;
-  // The lead fist ahead beside the hat; the other arm back along the side (in a dive both
-  // tuck in; climbing, the trailing arm swings out for balance).
+  p.headRoll = -LEAD_ROLL - 0.06 * wob;
   const reach = Math.sin(w * 1.9);
-  arm(p, 'R', 2.62 + 0.05 * reach, 0.85 - 0.15 * dive + 0.15 * climb, 0.12, 0.1);
-  arm(p, 'L', -0.35 + 0.35 * climb - 0.2 * dive, 0.45 + 0.5 * climb - 0.15 * dive, 0.35 + 0.2 * climb);
+  arm(p, 'R', LEAD_SWING + 0.04 * reach, LEAD_RAISE - 0.08 * dive + 0.1 * climb, 0.05, 0);
+  arm(p, 'L', -0.3 + 0.35 * climb - 0.2 * dive, 0.3 + 0.5 * climb - 0.1 * dive, 0.35 + 0.2 * climb);
   // Legs together behind, a lazy flutter (a working kick when climbing).
   const kick = (0.06 + 0.16 * climb) * Math.sin(w * (4 + 5 * climb));
   leg(p, 'L', -0.1 + kick, 0.15 + 0.25 * climb + 0.1 * Math.max(0, kick), 0.85, 0.02);

@@ -133,3 +133,12 @@ test('raycast filters by surface kind and allows repeated calls', () => {
   assert.equal(again.distance, floor.distance);
   assert.notEqual(again, floor, 'results are fresh objects callers may keep');
 });
+
+test('raycast rejects non-finite rays instead of looping', () => {
+  const w = new CollisionWorld();
+  w.addTriangles(quad([-100, 0, 100], [100, 0, 100], [100, 0, -100], [-100, 0, -100]));
+  w.finalize();
+  assert.equal(w.raycast({ x: NaN, y: 10, z: 0 }, { x: 0, y: -1, z: 0 }, 100), null);
+  assert.equal(w.raycast({ x: 0, y: 10, z: 0 }, { x: NaN, y: -1, z: 0 }, 100), null);
+  assert.equal(w.raycast({ x: 0, y: 10, z: 0 }, { x: 0, y: -1, z: 0 }, Infinity), null);
+});

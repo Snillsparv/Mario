@@ -114,6 +114,7 @@ function rememberTakeOff(p) {
 
 // arg.bounce (player.bounce: stomped on an enemy): rises at that speed keeping the forward
 // speed and drift, with no jump cut on releasing A (p.stompBounce, cleared on the next action).
+// Like a landing, the stomp ends the fall: fall damage counts from the bounce's own peak.
 const jump = airAction(
   (p, arg) => {
     if (arg?.bounce) {
@@ -121,6 +122,8 @@ const jump = airAction(
       p.vel.y = arg.bounce;
       p.grounded = false;
       p.stompBounce = true;
+      p.peakY = p.pos.y;
+      p.fallCeiling = Infinity;
       p.sfx('stomp');
       return;
     }

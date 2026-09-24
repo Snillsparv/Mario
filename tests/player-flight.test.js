@@ -9,6 +9,7 @@ import { Events } from '../src/core/events.js';
 import { angleDiff } from '../src/core/math.js';
 import * as T from '../src/player/physics/tuning.js';
 import { buildLevel } from '../src/world/level.js';
+import { PlayerModel } from '../src/player/PlayerModel.js';
 
 const flat = (b) => b.ground(90000);
 
@@ -236,6 +237,39 @@ describe('winged hat: flight endings', () => {
     s.run(30, { stickY: -1 }, (p) => assert.ok(p.pos.y + 160 <= 1200 + 1e-6, `head in the ceiling at ${p.pos.y}`));
   });
 
+  test('a shallow glide into the water dives in as soon as the feet dip under', () => {
+    const pool = (b) => {
+      b.ground(30000, 0, { x0: -2000, z0: 1000, x1: 2000, z1: 6000 });
+      b.pool({ x0: -2000, z0: 1000, x1: 2000, z1: 6000, y0: -2000, level: -60, bank: 1000 });
+    };
+    const s = cruising(pool, { y: 0, z: 1200, speed: 40 });
+    let prevY = s.p.pos.y;
+    s.until(80, {}, (p) => {
+      if (p.action === 'flying') {
+        assert.ok(p.pos.y >= -60, `flying on with the feet ${-60 - p.pos.y} under`);
+        prevY = p.pos.y;
+      }
+      return p.action !== 'flying';
+    });
+    assert.equal(s.p.action, 'swim_idle');
+    assert.ok(prevY - s.p.pos.y < 15 && s.p.pos.y < -60, `in at the surface (${s.p.pos.y})`);
+    const splash = s.events('splash');
+    assert.equal(splash.length, 1);
+    assert.ok(Math.abs(splash[0].pos.z - s.p.pos.z) < 1, 'the splash is where he went in');
+    s.run(30, {});
+    assert.ok(s.p.inWater, 'swims on');
+
+    // Water too shallow to swim in: the flight touches down on its bed instead.
+    const shallow = (b) => {
+      b.ground(30000, -50, { x0: -2000, z0: 1000, x1: 2000, z1: 6000 });
+      b.pool({ x0: -2000, z0: 1000, x1: 2000, z1: 6000, y0: -100, groundY: -50, bank: 10, level: -30 });
+    };
+    const w = cruising(shallow, { y: 0, z: 1200, speed: 40 });
+    w.until(80, {}, (p) => p.action !== 'flying');
+    assert.equal(w.p.action, 'belly_slide');
+    assert.equal(w.events('splash').length, 0);
+  });
+
   test('diving into water carries on as a swim dive', () => {
     const pool = (b) => {
       b.ground(30000, 0, { x0: -2000, z0: 1000, x1: 2000, z1: 6000 });
@@ -265,6 +299,57 @@ describe('winged hat: the edge of the world', () => {
       });
       assert.ok(turned || s.p.action !== 'flying', 'turned round');
     }
+  });
+
+  test('diving at the rim never sinks below the ground: it touches down on the rim', () => {
+    const island = (b) => b.ground(3000);
+    for (const [x, z, yaw] of [[2900, 0, Math.PI / 2], [0, -2800, Math.PI], [-2950, 2950, -2.4]]) {
+      const s = cruising(island, { x, y: 150, z, yaw, speed: 50, pitch: 0.6 });
+      s.until(40, { stickY: 1 }, (p) => {
+        assert.ok(Math.abs(p.pos.x) <= 3000 && Math.abs(p.pos.z) <= 3000, `left the ground at ${p.pos.x}, ${p.pos.z}`);
+        assert.ok(p.pos.y >= 0, `below the rim (${p.pos.y})`);
+        return p.grounded;
+      });
+      assert.ok(s.p.grounded && s.p.pos.y === 0, `landed on the rim (${s.p.action})`);
+    }
+  });
+
+  test('a hole in the collision mesh is no invisible wall aloft and no way out of the level', () => {
+    // A 100-wide gap with nothing under it and no walls (like a seam between terrain pieces).
+    const seam = (b) => b.ground(20000, 0, { x0: 1000, z0: -20000, x1: 1100, z1: 20000 });
+    // Gliding over it high up: straight on, no stall of the motion or yank of the heading.
+    const g = cruising(seam, { x: 800, y: 2000, z: 0, yaw: Math.PI / 2, speed: 40, pitch: 0 });
+    let prevX = g.p.pos.x;
+    g.run(12, {}, (p) => {
+      assert.ok(p.pos.x - prevX > 30, `held up at x ${p.pos.x}`);
+      assert.ok(Math.abs(angleDiff(p.faceYaw, Math.PI / 2)) < 1e-9, 'heading kept');
+      prevX = p.pos.x;
+    });
+    assert.ok(g.p.pos.x > 1200);
+    // Diving into it from all sorts of angles and speeds: lands on its rim, never below it.
+    for (const [x0, speed, pitch, yaw] of [[900, 20, 0.9, Math.PI / 2], [980, 14, 0.9, Math.PI / 2], [1200, 25, 0.8, -Math.PI / 2], [900, 66, 0.5, 1.8]]) {
+      const s = cruising(seam, { x: x0, y: 80, z: 0, yaw, speed, pitch });
+      s.until(60, { stickY: 1 }, (p) => {
+        const inGap = p.pos.x > 1000 && p.pos.x < 1100;
+        assert.ok(p.pos.y >= (inGap ? 0 : -1e-9), `fell into the gap at ${p.pos.x}, ${p.pos.y}`);
+        return p.grounded;
+      });
+      assert.ok(s.p.grounded && s.p.pos.y === 0, `landed (${s.p.action} at ${s.p.pos.x}, ${s.p.pos.y})`);
+      assert.equal(s.events('lifeLost').length, 0);
+    }
+    // A hop into it on foot lands on its rim too.
+    for (const ticks of [2, 4, 6]) {
+      const h = sim(seam, { x: 990, y: 0, z: 0, yaw: Math.PI / 2 });
+      h.run(1, {});
+      h.run(1 + ticks, { A: true, stickX: -1 });
+      h.until(60, {}, (p) => p.grounded);
+      assert.ok(h.p.grounded && h.p.pos.y === 0 && h.events('lifeLost').length === 0, `hop ${ticks}: ${h.p.action} at ${h.p.pos.x}, ${h.p.pos.y}`);
+    }
+    // A real edge (floor on one side only) is still a way down.
+    const edge = sim((b) => b.floor(-500, -500, 500, 500, 0), { x: 0, y: 0, z: 0, yaw: 0 });
+    edge.run(30, { stickY: 1 });
+    edge.run(40, { stickY: 1, A: true });
+    assert.ok(edge.p.pos.z > 500 && edge.p.pos.y < 0 && !edge.p.grounded, 'fell off the edge');
   });
 
   test('a fall out of a flight eases out of its tilt', () => {
@@ -370,10 +455,14 @@ describe('attacks for enemies (getAttack)', () => {
       first ??= a;
       assert.equal(a, first, 'the same object every call');
       if (kinds.at(-1) !== a.kind) kinds.push(a.kind);
+      // Facing +Z, his right is -X: the jab (right mitten) and the kick (right boot) sit to
+      // the right, the cross (left mitten) to the left.
       const ahead = a.z - s.p.pos.z;
-      assert.ok(ahead > 40 && Math.abs(a.x - s.p.pos.x) < 1e-6, `in front (${ahead})`);
-      if (a.kind === 'kick') assert.equal(a.radius, 80);
-      else assert.ok(a.radius === 70 && Math.abs(a.y - s.p.pos.y - 90) < 1e-6);
+      const right = s.p.pos.x - a.x;
+      assert.ok(ahead > 40 && ahead + a.radius <= 105, `in front, not far past the limb (${ahead} + ${a.radius})`);
+      assert.ok(a.kind === 'punch2' ? right < -10 : right > 10, `${a.kind} on the striking side (${right})`);
+      if (a.kind === 'kick') assert.ok(a.radius === 60 && a.y - s.p.pos.y < 60, 'kick: low, around the boot');
+      else assert.ok(a.radius === 55 && Math.abs(a.y - s.p.pos.y - 80) < 1e-6);
     }
     assert.deepEqual(kinds, ['punch1', 'punch2', 'kick']);
     const t = sim(flat);
@@ -382,6 +471,44 @@ describe('attacks for enemies (getAttack)', () => {
     assert.equal(t.p.getAttack()?.kind, 'punch1', 'the first tick strikes');
     t.run(5, {});
     assert.equal(t.p.getAttack(), null, 'the arm pulls back');
+  });
+
+  test('the punch and kick spheres hold the posed mitten / boot and reach little past it', () => {
+    const s = sim(flat, { x: 300, y: 0, z: -200, yaw: 2.2 });
+    const model = new PlayerModel();
+    const limb = new THREE.Vector3();
+    const vert = new THREE.Vector3();
+    s.run(2, {});
+    const seen = new Set();
+    for (let i = 0; i < 26; i++) {
+      s.run(1, { B: i === 0 || i === 4 || i === 10 });
+      const rs = s.p.getRenderState(1);
+      for (let k = 0; k < 2; k++) model.update(rs, 1 / 60); // 60 fps frames of this tick
+      model.object3D.updateMatrixWorld(true);
+      const a = s.p.getAttack();
+      if (!a) continue;
+      seen.add(a.kind);
+      const { rig } = model;
+      const [centre, part] = { punch1: [rig.armR.hand, rig.armR.wrist], punch2: [rig.armL.hand, rig.armL.wrist], kick: [rig.legR.boot, rig.legR.boot] }[a.kind];
+      centre.getWorldPosition(limb);
+      const d = Math.hypot(limb.x - a.x, limb.y - a.y, limb.z - a.z);
+      assert.ok(d < a.radius - 10, `${a.kind} tick ${i}: limb ${d.toFixed(0)} from the centre`);
+      // How far the sphere reaches ahead of the limb's front (its farthest vertex) along the facing.
+      const fx = Math.sin(s.p.faceYaw);
+      const fz = Math.cos(s.p.faceYaw);
+      let front = -Infinity;
+      part.traverse((o) => {
+        if (!o.isMesh) return;
+        const pos = o.geometry.attributes.position;
+        for (let v = 0; v < pos.count; v++) {
+          vert.fromBufferAttribute(pos, v).applyMatrix4(o.matrixWorld);
+          front = Math.max(front, vert.x * fx + vert.z * fz);
+        }
+      });
+      const past = a.x * fx + a.z * fz + a.radius - front;
+      assert.ok(past < 60, `${a.kind} tick ${i}: reaches ${past.toFixed(0)} past the limb`);
+    }
+    assert.deepEqual([...seen], ['punch1', 'punch2', 'kick']);
   });
 
   test('jump kick, dive, belly slide at speed and the ground-pound landing', () => {
@@ -455,6 +582,19 @@ describe('stomp bounces (bounce)', () => {
     h.run(8, { A: true });
     h.p.bounce();
     assert.equal(h.p.vel.y, T.BOUNCE_HELD_VY);
+  });
+
+  test('a stomp ends the fall: landing after the bounce never hurts, however long the drop', () => {
+    for (const [h, A] of [[1500, false], [1500, true], [1300, true], [4000, false]]) {
+      const s = sim(flat, { x: 0, y: h, z: 0, yaw: 0 });
+      s.p.setAction('freefall');
+      s.until(200, A ? { A: true } : {}, (p) => p.pos.y <= 70);
+      assert.equal(s.p.bounce(), true);
+      s.until(120, A ? { A: true } : {}, (p) => p.grounded);
+      assert.equal(s.p.action, 'land', `from ${h}: ${s.p.action}`);
+      assert.equal(s.p.health, T.MAX_HEALTH);
+      assert.equal(s.events('hurt').length, 0);
+    }
   });
 
   test('ignored while swimming, on a tree or reading; keeps a flight flying', () => {

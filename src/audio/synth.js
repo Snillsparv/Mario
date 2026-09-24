@@ -46,6 +46,12 @@ function brownBuffer(ctx) {
   return buf;
 }
 
+// Make the noise buffers now (they take a few ms: see AudioEngine.prepare).
+export function prepareNoise(ctx) {
+  noiseBuffer(ctx);
+  brownBuffer(ctx);
+}
+
 // Looping noise source starting at a random offset (so repeats never sound identical).
 // kind 'brown' gives the low rumble buffer instead of white noise.
 export function noiseSource(ctx, t, dur, kind = 'white') {
@@ -198,4 +204,39 @@ export function harmonicWave(ctx, key, amps) {
     map.set(key, ctx.createPeriodicWave(real, imag));
   }
   return map.get(key);
+}
+
+const hallCache = new WeakMap();
+
+// Impulse response of a big stone hall (the castle's inside, heard through its door): a few
+// early reflections off the walls, then decorrelated stereo noise decaying exponentially to
+// -60 dB over HALL_SECONDS and darkening as it goes. Cached per context (made on first use;
+// the engine makes it at an idle moment, as it takes several ms).
+const HALL_SECONDS = 1.8;
+const HALL_REFLECTIONS = [[23, 0.5], [41, 0.36], [67, 0.28], [97, 0.2]]; // [ms, level]
+export function hallImpulse(ctx) {
+  let buf = hallCache.get(ctx);
+  if (!buf) {
+    const sr = ctx.sampleRate;
+    const n = Math.floor(sr * HALL_SECONDS);
+    buf = ctx.createBuffer(2, n, sr);
+    const swell = Math.max(1, Math.floor(sr * 0.02));
+    const decay = Math.exp(-6.9 / n); // per sample: exp(-6.9 i / n) as a running product
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let lp = 0;
+      let env = 1 / swell;
+      for (let i = 0; i < n; i++) {
+        lp += (Math.random() * 2 - 1 - lp) * (0.7 - (0.6 * i) / n); // the cutoff falls along the tail
+        d[i] = lp * env * (i < swell ? i : swell);
+        env *= decay;
+      }
+      for (const [ms, level] of HALL_REFLECTIONS) {
+        const k = Math.floor((sr * (ms + ch * 3)) / 1000);
+        if (k < n) d[k] += ch ? -level : level;
+      }
+    }
+    hallCache.set(ctx, buf);
+  }
+  return buf;
 }

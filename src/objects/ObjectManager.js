@@ -161,6 +161,12 @@ export class ObjectManager {
       this.fire = this.fireballs = this.beast = this.minions = null;
     }
     events.on?.('darkMode', (e) => this._setMode(!!e?.on));
+    // A dialog box is up (a sign, the locked door): Pip is frozen, so the minions and the beast
+    // hold off until it closes, and fireballs already in flight (their blasts, fire zones) spare
+    // him: nothing can hurt him while he cannot move.
+    this.dialogOpen = false;
+    events.on?.('signRead', () => (this.dialogOpen = true));
+    events.on?.('dialogClosed', () => (this.dialogOpen = false));
     events.on?.('lightning', (e) => this.beast?.flash(e?.strength ?? 1));
 
     this.group = new THREE.Group();
@@ -246,6 +252,7 @@ export class ObjectManager {
     this.box?.reset();
     this.door?.reset();
     this.hero.valid = false;
+    this.dialogOpen = false;
     this.setDarkness(0);
     this.started = false;
     this._backdropStart = null;
@@ -289,8 +296,9 @@ export class ObjectManager {
     if (this.door !== null) this.door.update(player);
     if (this.beast !== null) {
       this.beast.update(player, this.tick);
-      this.fireballs.update(player, this.tick);
-      this.minions.update(player, hero, this.tick, this.modeOn && this.beast.state === 'active');
+      this.fireballs.update(player, this.tick, this.dialogOpen);
+      if (this.dialogOpen && this.beast.grace < 45) this.beast.grace = 45;
+      this.minions.update(player, hero, this.tick, this.modeOn && this.beast.state === 'active', this.dialogOpen);
     }
     this._rememberHero(player);
   }
