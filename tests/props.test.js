@@ -594,10 +594,11 @@ test('foliage beside or behind the hero stays solid; inside a canopy it is gone;
   // Hero just beside the canopy: not hidden, not faded.
   const beside = foliageFades([-1981, 450, 5622], [-2600, 437, 4550], heroAt(-2600, 4550));
   assert.equal(beside(tree), 1);
-  // Camera inside the canopy: gone (canopy and nothing else).
-  const inside = foliageFades([t.centre.x + 60, t.centre.y, t.centre.z], [-2600, 437, 4000], null);
+  // Camera inside the canopy, clear of the bark that runs up its middle: the canopy is gone
+  // and nothing else (right beside the inner trunk, that bark fades too).
+  const inside = foliageFades([t.centre.x + 160, t.centre.y, t.centre.z], [-2600, 437, 4000], null);
   assert.equal(inside(tree), 0);
-  assert.equal(inside(`trunk:${i}`), 1, 'the trunk below is not in the way');
+  assert.equal(inside(`trunk:${i}`), 1, 'the trunk is not in the way');
   // First-person look up from beside the trunk (his eyes ~140 up, 95 from the axis, where
   // the trunk's collider stops him): the canopy's underside and the trunk are solid.
   const up = foliageFades([t.x + 95, t.ground + 140, t.z], [t.x, t.ground + 1500, t.z], null);

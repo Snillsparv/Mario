@@ -1,6 +1,8 @@
 // Turns a RenderState into a pose: evaluates the current anim's pose function and
 // cross-fades from whatever was on screen when the anim changed (or restarted), over the
-// anim's blend time. Unknown anims fall back to idle.
+// anim's blend time (at least the previous anim's blendOut). Unknown anims fall back to
+// idle. Switches between anims that move rs.pos to a new anchor (carryFrom, e.g. onto a
+// pole tip) keep the body where it was on screen (see carry()).
 //
 // Gait anims (walk, run, tiptoe, crawl) get their own phase: the Player's cyclePhase counts
 // cycles of its STRIDE, so each increment is converted to distance and divided by the

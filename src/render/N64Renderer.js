@@ -128,6 +128,7 @@ export class N64Renderer {
     this.gradePass = new GradePass();
     this.gradeWarm = ''; // native: '' | 'pending' | 'ready' (programs for the grade target)
     this.drawSize = new THREE.Vector2();
+    this.keyDir = new THREE.Vector3();
     this.warmList = []; // objects to compile ahead of their first visible frame (prewarm)
     this.warmed = { n64: 0, native: 0, grade: 0 }; // how many of them each setup has compiled
     this.day = {
@@ -243,7 +244,25 @@ export class N64Renderer {
     this.sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z).multiplyScalar(10000);
     this.ambient = new THREE.HemisphereLight(AMBIENT_SKY_COLOR, AMBIENT_GROUND_COLOR, AMBIENT_INTENSITY);
     this.ambient.name = 'ambient';
-    this.scene.add(this.sun, this.ambient);
+    // AI RACE mode: a cool light from the camera's side keeps the lit actors readable in the
+    // storm (post/storm.js STORM_LIGHTS). Always present (intensity 0 in the sun), so switching
+    // the storm on never changes the actors' shader programs.
+    this.stormKey = new THREE.DirectionalLight(STORM_LIGHTS.keyColor, 0);
+    this.stormKey.name = 'stormKey';
+    this.scene.add(this.sun, this.ambient, this.stormKey);
+  }
+
+  // Aims the storm key light from the camera's side (above and a little to the left of the
+  // view direction) and sets its strength for darkness t and the current lightning flash.
+  updateStormKey(flash) {
+    const key = this.stormKey;
+    if (!key) return;
+    const intensity = this.darkness * STORM_LIGHTS.keyIntensity + flash * STORM_LIGHTS.keyFlashIntensity;
+    key.intensity = intensity;
+    if (intensity <= 0) return;
+    const q = this.camera.quaternion;
+    const d = this.keyDir.set(-0.35, 0.55, 1).applyQuaternion(q); // camera space: left, up, back
+    key.position.copy(d).normalize().multiplyScalar(1000); // shines toward the target at the origin
   }
 
   // fn(x, z) -> water surface height or NO_WATER (e.g. collision.waterLevelAt).
@@ -353,6 +372,7 @@ export class N64Renderer {
 
     const flash = this.updateFlash(performance.now() / 1000);
     const graded = this.darkness > 0 || flash > 0;
+    this.updateStormKey(flash);
 
     renderer.info.reset();
     if (this.n64) {

@@ -110,3 +110,65 @@ test('every coin hangs clear of ceilings and walls', () => {
     assert.equal(collision.findWalls(c.x, c.y, c.z, 0, 45).walls.length, 0, `${where}: wall`);
   }
 });
+
+// AI RACE mode on the real castle: the beast stands on the roof in front of the keep (layout.KAIJU),
+// and while it rises through the roof (or sinks back) nothing of it shows in front of the front
+// facade below the roof line (its neck and arms are tucked back until they clear it).
+test('the beast stands on the castle roof and never pokes out through the front facade', () => {
+  const events = new Events();
+  const player = { pos: { x: 0, y: 100, z: 5700 }, vel: { x: 0, y: 0, z: 0 }, action: 'idle', takeDamage() {}, collectCoin() {}, collectStar() {} };
+  const objects = new ObjectManager({ scene: new THREE.Scene(), collision, events, layout: level.layout, player, fx: null, level });
+  const beast = objects.beast;
+  const { CASTLE, KAIJU } = level.layout;
+  const roofLine = CASTLE.baseY + CASTLE.mainHeight;
+  assert.ok(beast.baseY > roofLine - 400 && beast.baseY < roofLine + 200, `stands on the roof (${beast.baseY.toFixed(0)})`);
+  assert.ok(beast.z > KAIJU.z && beast.z < CASTLE.frontZ, 'in front of the keep, behind the facade');
+  const v = new THREE.Vector3();
+  let worst = -Infinity;
+  const check = () => {
+    beast.root.updateMatrixWorld(true);
+    for (const part of beast.parts) {
+      const p = part.geometry.attributes.position;
+      for (let i = 0; i < p.count; i += 3) {
+        v.fromBufferAttribute(p, i).applyMatrix4(part.matrixWorld);
+        if (v.y < roofLine && v.z > worst) worst = v.z;
+      }
+    }
+  };
+  events.emit('darkMode', { on: true });
+  for (let t = 0; t < 100; t++) {
+    objects.update({ player });
+    objects.animate(0, 1, null);
+    check();
+  }
+  // Standing: the beast towers well over the roof line (~1600-2200 units tall).
+  beast.root.updateMatrixWorld(true);
+  let top = -Infinity;
+  for (const part of beast.parts) {
+    const p = part.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) top = Math.max(top, v.fromBufferAttribute(p, i).applyMatrix4(part.matrixWorld).y);
+  }
+  assert.ok(top - beast.baseY > 1600 && top - beast.baseY < 2200, `height ${(top - beast.baseY).toFixed(0)}`);
+  events.emit('darkMode', { on: false });
+  for (let t = 0; t < 80; t++) {
+    objects.update({ player });
+    objects.animate(0, 1, null);
+    check();
+  }
+  assert.equal(beast.state, 'hidden');
+  assert.ok(worst < CASTLE.frontZ, `a part below the roof line reaches z ${worst.toFixed(0)} (facade at ${CASTLE.frontZ})`);
+});
+
+test('the AI RACE button sits on the lawn by the path, clear of props, with its collider', () => {
+  const { objects } = makeObjects();
+  const b = objects.button;
+  const { AI_BUTTON } = level.layout;
+  assert.equal(b.x, AI_BUTTON.x);
+  assert.ok(Math.abs(collision.findFloor(b.x, 1e4, b.z).y - b.capTop0) < 1e-6, 'its cap is the floor there');
+  assert.ok(b.baseTop - b.groundLow <= 30, 'low enough to walk onto');
+  for (let a = 0; a < 8; a++) {
+    const x = b.x + Math.cos(a) * (AI_BUTTON.radius + 60);
+    const z = b.z + Math.sin(a) * (AI_BUTTON.radius + 60);
+    assert.ok(collision.findFloor(x, 1e4, z).y < b.baseTop, 'nothing built right next to it');
+  }
+});

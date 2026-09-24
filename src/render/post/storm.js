@@ -5,18 +5,29 @@
 // and the grade's uniform branches are skipped.
 
 import { clamp } from '../../core/math.js';
+import * as sky from '../../world/sky.js';
 
-// Storm fog: dark blue-grey, much shorter range than the sunny haze (8000..30000).
-export const STORM_FOG = Object.freeze({ color: 0x2a323c, near: 1200, far: 15000 });
+// Storm fog: dark blue-grey, much shorter range than the sunny haze (8000..30000). Its colour
+// is the storm sky's horizon (world/sky.js), so the fogged grounds melt into the storm sky.
+export const STORM_FOG = Object.freeze({ color: sky.SKY_STORM_HORIZON_COLOR ?? 0x2a323c, near: 1200, far: 15000 });
 // Underwater in the storm: murky black-teal.
 export const STORM_UNDERWATER_FOG = Object.freeze({ color: 0x2a5864, near: -700, far: 3600 });
-// Lights for dynamic actors (hero, coins) at t = 1: a weak cold key and a grey ambient.
+// Lights for the lit actors (hero, coins, star, the monster) at t = 1. The world is unlit
+// (baked colours, darkened by its own storm palette and the grade); the actors keep most of
+// their light, turned cold, so they stay readable against it:
+//   sun      the sky's dim cold light from the sun's direction
+//   ambient  cold grey hemisphere, only a little below the sunny level
+//   key      a cool light from the camera's side (above and to the left of the view), so the
+//            side of the hero the player sees is always lit; lightning flashes it up brightly.
 export const STORM_LIGHTS = Object.freeze({
-  sunColor: 0x9aa6b8,
-  sunIntensity: 0.3 * Math.PI,
-  skyColor: 0x8494a4,
-  groundColor: 0x363c36,
-  ambientIntensity: 0.56 * Math.PI,
+  sunColor: 0x9aa8c0,
+  sunIntensity: 0.34 * Math.PI,
+  skyColor: 0x9aaabb,
+  groundColor: 0x3c4440,
+  ambientIntensity: 0.55 * Math.PI,
+  keyColor: 0xc4d6ff,
+  keyIntensity: 1.0 * Math.PI,
+  keyFlashIntensity: 2.6 * Math.PI, // added at flash strength 1
 });
 
 // Grade strengths at t = 1 (the shader interpolates from the untouched image at t = 0).

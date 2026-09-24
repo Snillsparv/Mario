@@ -114,7 +114,7 @@ export function buildTrees(layout, kit) {
   const trees = [];
   treeShapes(layout).forEach((tree, i) => {
     const { x, z, ground, scale } = tree;
-    kit.bark.fadeGroup = kit.fade.addTrunk({ x, z, y0: ground - 50, y1: tree.trunkTop, r: trunkRadius(100, scale) }, `trunk:${i}`);
+    kit.bark.fadeGroup = kit.fade.addTrunk({ x, z, y0: ground - 50, y1: innerTrunkTop(tree), r: trunkRadius(100, scale) }, `trunk:${i}`);
     addTrunk(kit.bark, layout, tree, i);
     kit.leaves.fadeGroup = kit.fade.addCanopy(fadeBlobs(tree.blobs), `tree:${i}`);
     const first = kit.leaves.pos.length;
@@ -166,6 +166,11 @@ export function topOfLeaves(pos, first, x, z) {
   return top;
 }
 
+// Top of the bark inside the canopy: just under the crown, where the climb ends.
+function innerTrunkTop(tree) {
+  return Math.max(tree.trunkTop, tree.top - 40);
+}
+
 // Tapered trunk: rings of TRUNK_SIDES corners from below the lowest ground around its foot
 // up into the canopy, a little irregular, lit by the sun, dark at the foot (grass occlusion)
 // and in the canopy's shade.
@@ -178,7 +183,13 @@ function addTrunk(builder, layout, tree, index) {
     foot = Math.min(foot, layout.groundHeight(x + Math.cos(a) * 60, z + Math.sin(a) * 60));
   }
   const upper = tree.base - ground - 60;
-  const heights = [foot - 40 - ground, 0, 22, 60, 130, 230, (230 + upper) / 2, upper, tree.trunkTop - ground];
+  // Above the canopy's underside the trunk carries on inside the leaves up to just under the
+  // crown, so a climber seen through a faded canopy still hugs visible bark all the way up.
+  const inner = innerTrunkTop(tree);
+  const heights = [
+    foot - 40 - ground, 0, 22, 60, 130, 230, (230 + upper) / 2, upper,
+    tree.trunkTop - ground, (tree.trunkTop + inner) / 2 - ground, inner - ground,
+  ];
   const jitter = Array.from({ length: TRUNK_SIDES }, () => 0.94 + 0.12 * rng());
   const twist = rng() * Math.PI * 2;
   const rings = heights.map((h, r) =>

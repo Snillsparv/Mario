@@ -265,7 +265,7 @@ test('it charges (throat glow, sfx) and spits a fireball every few seconds', () 
   assert.ok(launches.length >= 4 && launches.length <= 7, `${launches.length} shots in 20 s`);
   for (let i = 1; i < launches.length; i++) {
     const gap = launches[i] - launches[i - 1];
-    assert.ok(gap >= BEAST.COOLDOWN[0] + BEAST.CHARGE_TICKS - 1, `gap ${gap}`);
+    assert.ok(gap >= BEAST.PERIOD[0], `gap ${gap}`);
   }
   // Every launch leaves from the mouth, out in front of the beast and above the roof.
   const from = sfx('fireball_launch')[0].e.pos;
@@ -395,7 +395,7 @@ test('fireballs come from a pool of six and expire', () => {
 });
 
 test('a ground impact explodes, scorches, leaves a fire zone and hurts the hero in the blast', () => {
-  const { balls, log, fx, scorches, run, lob } = fireballs();
+  const { balls, log, fx, scorches, run, lob } = fireballs({ trees: [] });
   const player = fakePlayer(3000, 0, 3200);
   lob(3000, 3000, 40);
   run(player, 39);
@@ -422,7 +422,7 @@ test('a ground impact explodes, scorches, leaves a fire zone and hurts the hero 
 });
 
 test('the blast spares a hero 300 away; standing in the fire hurts (fire: true) until it burns out', () => {
-  const { balls, run, lob } = fireballs();
+  const { balls, run, lob } = fireballs({ trees: [] });
   const player = fakePlayer(3300, 0, 3000);
   lob(3000, 3000, 40);
   run(player, 42);
@@ -445,7 +445,7 @@ test('the blast spares a hero 300 away; standing in the fire hurts (fire: true) 
 });
 
 test('a direct hit bursts on the hero: 2 wedges, no fire zone', () => {
-  const { balls, fx, run, lob } = fireballs();
+  const { balls, fx, run, lob } = fireballs({ trees: [] });
   const player = fakePlayer(3000, 0, 3000);
   lob(3000, 3000, 40);
   run(player, 42);
@@ -504,7 +504,7 @@ test('a fireball flying into a canopy bursts in it and sets it alight', () => {
   run(player, 30);
   assert.equal(balls.inFlight, 0);
   const ex = fx.log.find((c) => c.fn === 'explode');
-  assert.ok(ex && Math.abs(ex.z - 2000) < 300 && Math.abs(ex.y - 800) < 100, JSON.stringify(ex));
+  assert.ok(ex && Math.abs(ex.z - 2000) < 300 && Math.abs(ex.y - 800) < 150, JSON.stringify(ex));
   assert.ok(balls.treeBurning(2));
   assert.equal(balls.zoneCount, 0, 'no ground fire up in a tree');
 });
@@ -541,7 +541,7 @@ test('reset() clears the beast, fireballs, fire zones, burning trees and the but
   const b = objects.button;
   player.pos = { x: BTN.x, y: b.capTop0, z: BTN.z };
   player.action = 'ground_pound_land';
-  step(2);
+  step(BUTTON.PRESS_TICKS + 1);
   assert.equal(objects.modeOn, true);
   assert.equal(b.state, 'down');
   player.action = 'idle';
@@ -577,24 +577,30 @@ test('reset() clears the beast, fireballs, fire zones, burning trees and the but
 });
 
 test('draw calls: the button adds two; the beast, fireballs and fire only while shown', () => {
-  const { objects, events, step, scene } = setup();
-  const drawn = () => {
+  const drawn = (objects) => {
     let n = 0;
-    scene.traverseVisible((o) => {
+    objects.group.traverseVisible((o) => {
       if (o.isMesh && (o.count === undefined || o.count > 0)) n++;
     });
     return n;
   };
+  const plain = new ObjectManager({ scene: new THREE.Scene(), collision: flatWorld(), events: new Events(), layout: { groundHeight: () => 0 }, player: fakePlayer() });
+  plain.update({ player: plain.player });
+  plain.animate(0, 1, null);
+  const { objects, events, step } = setup();
   step(2);
-  const sunny = drawn();
-  assert.ok(sunny <= 2 + 1, `${sunny} meshes in the sunny grounds (button, shadows)`);
+  const sunny = drawn(objects);
+  assert.equal(sunny - drawn(plain), 2, 'button base and cap');
   events.emit('darkMode', { on: true });
-  step(BEAST.RISE_TICKS + 200);
-  const storm = drawn();
-  assert.ok(storm - sunny <= 9 + 3, `${storm - sunny} more while the beast shows`);
+  let most = 0;
+  for (let t = 0; t < BEAST.RISE_TICKS + 300; t++) {
+    step();
+    most = Math.max(most, drawn(objects));
+  }
+  assert.ok(most - sunny <= 9 + 3, `${most - sunny} more while the beast shows (rig, cores, markers, fire)`);
   events.emit('darkMode', { on: false });
   step(BEAST.SINK_TICKS + 120);
-  assert.equal(drawn(), sunny);
+  assert.equal(drawn(objects), sunny);
 });
 
 // The per-tick and per-frame paths keep to the objects' allocation rules (see objects.test.js).

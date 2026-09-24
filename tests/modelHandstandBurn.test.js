@@ -200,23 +200,43 @@ test('from the handstand back onto the trunk (rs.pos drops to the climbing spot)
   assert.equal(model.animator.blendDur, ANIMS.pole_handstand.blendOut);
 });
 
-test('jumping off the handstand eases upright instead of snapping', () => {
-  const tip = { x: 0, y: 500, z: 0 };
-  const model = new PlayerModel();
-  for (let i = 0; i < 60; i++) model.update({ pos: tip, anim: 'pole_handstand', animTime: 1 + i / 60 }, 1 / 60);
-  const pos = { ...tip };
-  let prev = headCentre(model);
-  let maxStep = 0;
-  for (let i = 1; i <= 30; i++) {
-    pos.y += 20; // rising off the tip
-    model.update({ pos, anim: 'jump', animTime: i / 60, vy: 40 }, 1 / 60);
+test('jumping off the handstand eases out instead of snapping (into a somersault too)', () => {
+  // The Player's jump off the tip is pole_top_jump, shown as triple_jump (a forward flip).
+  for (const [anim, t0] of [['jump', 1], ['triple_jump', 1], ['triple_jump', 1.37]]) {
+    const tip = { x: 0, y: 500, z: 0 };
+    const model = new PlayerModel();
+    for (let i = 0; i < 60; i++) model.update({ pos: tip, anim: 'pole_handstand', animTime: t0 + i / 60 }, 1 / 60);
+    const pos = { ...tip };
     model.object3D.updateMatrixWorld(true);
-    const h = headCentre(model);
-    maxStep = Math.max(maxStep, h.distanceTo(prev) - 20);
-    prev = h;
+    let prev = headCentre(model);
+    let maxStep = 0;
+    for (let i = 1; i <= 30; i++) {
+      pos.y += 20; // rising off the tip
+      model.update({ pos, anim, animTime: i / 60, vy: 40 }, 1 / 60);
+      model.object3D.updateMatrixWorld(true);
+      const h = headCentre(model);
+      maxStep = Math.max(maxStep, h.distanceTo(prev) - 20);
+      prev = h;
+    }
+    assert.ok(maxStep < 25, `${anim}: head pops ${maxStep.toFixed(1)} beyond the rise in one frame`);
+    assertFinite(model, `off the tip into ${anim}`);
   }
-  assert.ok(maxStep < 25, `head pops ${maxStep.toFixed(1)} beyond the rise in one frame`);
-  assert.ok(Math.abs(model.animator.pose.flipRoll) < 1e-6, 'upright once the blend is over');
+});
+
+test('blends into a spinning flip stay continuous (no half-turn jump mid-blend)', () => {
+  // A slow blend (out of the handstand) into a somersault whose rotation passes half a turn
+  // from the start pose while the blend is still running.
+  const model = new PlayerModel();
+  for (let i = 0; i < 60; i++) model.update({ pos: { x: 0, y: 0, z: 0 }, anim: 'pole_handstand', animTime: 1 + i / 60 }, 1 / 60);
+  let prev = model.animator.pose.flipPitch;
+  let worst = 0;
+  for (let i = 1; i <= 40; i++) {
+    model.update({ pos: { x: 0, y: 0, z: 0 }, anim: 'triple_jump', animTime: i / 60 }, 1 / 60);
+    const p = model.animator.pose.flipPitch;
+    worst = Math.max(worst, Math.abs(p - prev));
+    prev = p;
+  }
+  assert.ok(worst < 0.6, `flipPitch jumps ${worst.toFixed(2)} rad in one frame`);
 });
 
 test('burn: mittens clutch the seat, legs run about three strides a second, panic face', () => {

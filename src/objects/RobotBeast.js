@@ -32,12 +32,12 @@ export const BEAST = {
   HIDDEN_DEPTH: 2400, // below its standing height when hidden inside the castle
   RISE_TICKS: 90, // ~3 s
   SINK_TICKS: 75,
-  ROAR_AT: 50, // rise tick the roar starts
+  ROAR_AT: 56, // rise tick the roar starts
   ROAR_TICKS: 72,
   CHARGE_TICKS: 33, // ~1.1 s of glowing throat before the shot
   RECOVER_TICKS: 15,
   FIRST_SHOT: 60, // ticks after the rise's roar before the first shot
-  COOLDOWN: [75, 120], // ticks between shots (2.5..4 s)
+  PERIOD: [75, 120], // ticks from one charge to the next (2.5..4 s)
   ROAR_EVERY: [360, 600], // ticks between idle roars (12..20 s)
   RANGE: 11000, // horizontal reach of its shots
   MIN_RANGE: 500,
@@ -335,10 +335,9 @@ export class RobotBeast {
       const u = this.t / B.RISE_TICKS;
       const e = 1 - (1 - smooth(u)) * (1 - smooth(u));
       P[CH.RISE] = this.fromRise * (1 - e);
-      crouch = 1 - smooth((u - 0.45) / 0.55);
+      crouch = 1 - smooth((u - 0.5) / 0.4);
       shake = u < 0.85 ? 1 - u : 0;
       power = this.t < 30 ? 0 : this.t < 44 ? ((this.t >> 1) % 3 === 0 ? 1 : 0.15) : 1;
-      headPitch = 0.5 * (1 - u) + headPitch * u;
       if (this.t === B.ROAR_AT) this._roar();
       if (this.t >= B.RISE_TICKS) {
         P[CH.RISE] = 0;
@@ -351,10 +350,9 @@ export class RobotBeast {
       const u = this.t / B.SINK_TICKS;
       const e = smooth(u) * smooth(u);
       P[CH.RISE] = this.fromRise + (-B.HIDDEN_DEPTH - this.fromRise) * e;
-      crouch = smooth(u / 0.6);
+      crouch = smooth(u / 0.3);
       shake = 0.6 * u;
       power = u < 0.4 ? 1 : (this.t >> 1) % 2 ? 0.2 : u < 0.7 ? 0.8 : 0;
-      headPitch = headPitch * (1 - u) + 0.6 * u;
       charge = 0;
       this.roarT = -1;
       if (this.t >= B.SINK_TICKS) {
@@ -377,9 +375,11 @@ export class RobotBeast {
         } else if (this.attackIn <= 0 && this.roarT < 0 && canTarget) {
           this.mode = 'charge';
           this.modeT = 0;
+          this.attackIn = this._rand(B.PERIOD); // counts on through the charge and recovery
           this.events.emit('sfx', { name: 'fireball_charge', pos: this.mouthPos() });
         }
       } else if (this.mode === 'charge') {
+        this.attackIn--;
         const u = this.modeT / B.CHARGE_TICKS;
         charge = u * Math.sqrt(u);
         jaw = 0.05 + 0.3 * u;
@@ -390,9 +390,9 @@ export class RobotBeast {
           if (canTarget) this._shoot(player);
           this.mode = 'recover';
           this.modeT = 0;
-          this.attackIn = this._rand(B.COOLDOWN);
         }
       } else {
+        this.attackIn--;
         const u = this.modeT / B.RECOVER_TICKS;
         charge = u < 0.4 ? 1 - u / 0.4 : 0;
         jaw = 0.85 * (1 - smooth(u)) + 0.04;
@@ -548,7 +548,9 @@ export class RobotBeast {
     }
   }
 
-  // Poses the rig from channels P at clock time `clock` (seconds).
+  // Poses the rig from channels P at clock time `clock` (seconds). While crouched (rising or
+  // sinking through the roof) the neck points up and the arms are drawn back, so nothing that
+  // juts out past the front facade shows below the roof line.
   _pose(P, clock) {
     const B = BEAST;
     const breath = Math.sin(clock * 1.7);
@@ -562,17 +564,18 @@ export class RobotBeast {
       this.z + shake * 10 * Math.sin(clock * 37),
     );
     const W = RIG.WAIST;
-    this.torso.position.set(W[0], W[1] - crouch * 260 + breath * 10, W[2] - crouch * 40);
-    this.torso.rotation.set(B.BASE_LEAN + P[CH.LEAN] + crouch * 0.3 + breath * 0.012, P[CH.TWIST] + sway * 0.03, sway * 0.015);
-    this.neck.rotation.set(B.NECK_ARCH + P[CH.NECK_PITCH] - breath * 0.01, P[CH.NECK_YAW], 0);
+    this.torso.position.set(W[0], W[1] - crouch * 200 + breath * 10, W[2] - crouch * 60);
+    this.torso.rotation.set(B.BASE_LEAN + P[CH.LEAN] - crouch * 0.2 + breath * 0.012, P[CH.TWIST] + sway * 0.03, sway * 0.015);
+    this.neck.rotation.set(B.NECK_ARCH + P[CH.NECK_PITCH] - crouch * 1.15 - breath * 0.01, P[CH.NECK_YAW] * (1 - crouch), 0);
     const N = RIG.NECK_PTS[RIG.NECK_PTS.length - 1];
     this.head.position.set(N[0], N[1], N[2] + P[CH.LUNGE] * 70);
-    this.head.rotation.set(P[CH.HEAD_PITCH], 0, sway * 0.02);
+    this.head.rotation.set(P[CH.HEAD_PITCH] - crouch * 0.2, 0, sway * 0.02);
     this.jaw.rotation.x = P[CH.JAW] * 0.72;
-    const arms = P[CH.ARMS];
+    const arms = P[CH.ARMS] * (1 - crouch); // no arm waving until they clear the roof
     const swing = Math.sin(clock * 1.1) * 0.04;
-    this.armL.rotation.set(-arms * 0.9 + swing - crouch * 0.3, 0, -arms * 0.55 - 0.05);
-    this.armR.rotation.set(-arms * 0.9 - swing - crouch * 0.3, 0, arms * 0.55 + 0.05);
+    const tuck = crouch * 0.45;
+    this.armL.rotation.set(-arms * 0.9 + swing + tuck, 0, -arms * 0.55 - 0.05);
+    this.armR.rotation.set(-arms * 0.9 - swing + tuck, 0, arms * 0.55 + 0.05);
     const tail = clock * 0.9;
     this.tailA.rotation.set(0.04 * Math.sin(tail * 0.7), 0.12 * Math.sin(tail), 0);
     this.tailB.rotation.set(0, 0.2 * Math.sin(tail - 0.9), 0.05 * Math.sin(tail - 0.4));

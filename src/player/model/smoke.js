@@ -54,6 +54,7 @@ export class SeatSmoke {
       }
     } else {
       this.emitIn = 0;
+      if (!this.mesh.visible) return; // nothing smoking: the usual case, no work
     }
     let live = 0;
     inv.copy(root.matrixWorld).invert();

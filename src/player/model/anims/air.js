@@ -326,10 +326,10 @@ function burn(p, c) {
     leg(p, i ? 'R' : 'L', k * (0.55 + 1.0 * Math.sin(a)), 0.1 + k * (1.05 + 0.95 * Math.cos(a)), 0.2 + 0.35 * k * Math.sin(a), 0.08);
   }
   arms(p, 0.25, 0.4 + 1.5 * jolt, 0.3);
-  for (const s of ['L', 'R']) {
-    hipsPointAt(p, s === 'L' ? SEAT.x : -SEAT.x, SEAT.y, SEAT.z, seat);
-    reachArm(p, s, seat.x, seat.y, seat.z, k, 0.55);
-  }
+  hipsPointAt(p, SEAT.x, SEAT.y, SEAT.z, seat);
+  reachArm(p, 'L', seat.x, seat.y, seat.z, k, 0.55);
+  hipsPointAt(p, -SEAT.x, SEAT.y, SEAT.z, seat);
+  reachArm(p, 'R', seat.x, seat.y, seat.z, k, 0.55);
   p.face = jolt > 0.5 ? 'hurt' : 'panic';
 }
 

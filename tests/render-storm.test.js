@@ -19,6 +19,7 @@ function stormRenderer() {
   r.scene = scene;
   N64Renderer.prototype.addLights.call(r);
   r.underwater = new UnderwaterFog(scene);
+  r.camera = new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000);
   r.initStorm();
   return r;
 }
@@ -147,4 +148,32 @@ test('F1 overlay marks the storm', () => {
   const base = { internal: { width: 427, height: 240 }, viewport: { width: 1280, height: 720 }, pixelRatio: 1, n64: true, pillarbox: false, isUnderwater: false };
   assert.equal(describe({ ...base, darkness: 0.4 }), 'Retro 427x240 storm');
   assert.equal(describe({ ...base, darkness: 0 }), 'Retro 427x240');
+});
+
+test('storm key light: off in the sun, a cool light from the camera side in the storm, flashes with lightning', () => {
+  const r = stormRenderer();
+  const lights = [];
+  r.scene.traverse((o) => o.isDirectionalLight && lights.push(o.name));
+  assert.deepEqual(lights.sort(), ['stormKey', 'sun'], 'present from the start: no program change later');
+  r.updateStormKey(0);
+  assert.equal(r.stormKey.intensity, 0);
+  r.setDarkness(1);
+  r.camera.position.set(0, 700, 7000);
+  r.camera.lookAt(0, 300, 0); // looking toward -z
+  r.updateStormKey(0);
+  assert.ok(Math.abs(r.stormKey.intensity - STORM_LIGHTS.keyIntensity) < 1e-9);
+  const dir = r.stormKey.position.clone().normalize();
+  assert.ok(dir.z > 0.5 && dir.y > 0.2 && dir.x < 0, 'from behind the camera, above, a little left');
+  r.updateStormKey(1);
+  assert.ok(r.stormKey.intensity > STORM_LIGHTS.keyIntensity * 3, 'lightning lights the hero too');
+  r.setDarkness(0);
+  r.updateStormKey(0);
+  assert.equal(r.stormKey.intensity, 0);
+  assert.ok(STORM_LIGHTS.ambientIntensity > 0.8 * AMBIENT_INTENSITY, 'actors keep most of their light');
+});
+
+test('storm fog colour is the storm sky horizon (world/sky.js)', async () => {
+  const sky = await import('../src/world/sky.js');
+  if (sky.SKY_STORM_HORIZON_COLOR === undefined) return;
+  assert.equal(STORM_FOG.color, sky.SKY_STORM_HORIZON_COLOR);
 });
