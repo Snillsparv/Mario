@@ -8,6 +8,7 @@
 //                  lowwall | pier | tower | fp | buttons | mouse | intro | title | play |
 //                  fly (winged-hat flight: take-off, glide, banked turns by the castle block
 //                  and the pillar, a dive into the ground and the hand-back) |
+//                  facade (flight: a hard turn away from the block's front below its roof) |
 //                  airace (AI RACE mode: the look-up at a stand-in beast on the castle block)
 //   t=<seconds>    simulate up to that time and freeze
 //   strip=a,b,...  render the listed moments (seconds) as a grid plus a top-down trail map
@@ -101,6 +102,16 @@ const SCENARIOS = {
       { ticks: 15 }, { ticks: 30, fly: { speed: 40, pitch: -0.6 } }, { ticks: 25, fly: { speed: 45, pitch: 0.02 } },
       { ticks: 40, fly: { speed: 45, pitch: 0.02, bank: -0.75 } }, { ticks: 80, fly: { speed: 45, pitch: 0.02, bank: 0.75 } },
       { ticks: 20, fly: { speed: 45, pitch: 0.05 } }, { ticks: 50, fly: { speed: 55, pitch: 0.8 } }, { ticks: 60 },
+    ],
+  },
+  // Fly at the castle block's front below its roof, bank hard left 900 in front of it and on round
+  // (the camera must not be swung into the facade: it keeps beside him in the open until it has
+  // room behind him again), then straight on.
+  facade: {
+    start: [0, 3600, Math.PI],
+    segs: [
+      { ticks: 10 }, { ticks: 25, fly: { speed: 40, pitch: -0.6 } }, { ticks: 62, fly: { speed: 40, pitch: 0.02 } },
+      { ticks: 110, fly: { speed: 36, pitch: 0.02, bank: -0.75 } }, { ticks: 40, fly: { speed: 40, pitch: 0.02 } },
     ],
   },
   // AI RACE mode switched on in front of the castle block (the stand-in beast on its roof rises):
@@ -552,7 +563,8 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     `ratio=${(cam.collider.ratio ?? 1).toFixed(2)} view=${cam.collider.viewRatio.toFixed(2)} ` +
     `lift=${((cam.collider.lift * 180) / Math.PI).toFixed(0)}${cam.collider.occluded ? ' occluded' : ''}${cam.collider.trapped ? ' trapped' : ''} ` +
     `crest=${cam.collider.crestRise.toFixed(0)}${cam.hero.covered ? ' covered' : ''}${cam.sight.goal !== null ? ' sight-swing' : ''}${cam.celebration ? ' celebrating' : ''} ` +
-    `flight=${cam.flight.w.toFixed(2)} rise=${((cam.flight.rise * 180) / Math.PI).toFixed(1)} lookup=${cam.lookUp.w.toFixed(2)}${darkOn ? ' AI-RACE' : ''}\n` +
+    `flight=${cam.flight.w.toFixed(2)} rise=${((cam.flight.rise * 180) / Math.PI).toFixed(1)}${cam.flight.w > 0 && !cam.flight.roomy ? ' room-limited' : ''} ` +
+    `lookup=${cam.lookUp.w.toFixed(2)} spread=${cam.lookUp.u.toFixed(2)} fov=${cam.fov.toFixed(1)}${darkOn ? ' AI-RACE' : ''}\n` +
     `sfx: ${sfxLog.slice(-4).join(' ')}`;
 
   const W = renderer.domElement.width;

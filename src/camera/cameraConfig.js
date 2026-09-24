@@ -4,6 +4,7 @@
 const DEG = Math.PI / 180;
 
 export const FOV = 45;
+export const FOV_RATE = 0.3; // field of view easing per tick (the AI RACE look-up widens it)
 export const LOOK_HEIGHT = 150; // the orbit centre (look point) is this far above the hero's feet
 
 // Orbit modes. 'follow' is the default trailing camera, 'hero' the tighter R-button camera.
@@ -213,7 +214,7 @@ export const FLY_PITCH_MAX = 38 * DEG; // ...or steeper than this in a dive
 export const FLY_PITCH_RATE = 0.12; // that pitch eases by this fraction of the gap per tick
 export const FLY_AIM = 5 * DEG; // the view aims this far above the look point (fades out in a dive)
 export const FLY_SWING_GAIN = 0.22; // turn rate toward straight behind: this fraction of the angle...
-export const FLY_SWING_MAX = 6 * DEG; // ...at most this per tick...
+export const FLY_SWING_MAX = 5 * DEG; // ...at most this per tick...
 export const FLY_SWING_EASE = 0.3; // ...eased toward by this fraction per tick...
 export const FLY_SWING_ACCEL = 0.5 * DEG; // ...speeding up by at most this per tick (a long swing starts gently)...
 export const FLY_SWING_BRAKE = 1.2 * DEG; // ...and slowing down by at most this (it ends gently, but in time)
@@ -228,48 +229,55 @@ export const FLY_RISE_IN = 0.12;
 export const FLY_RISE_OUT = 0.04;
 export const FLY_RISE_HOLD = 20;
 // Room (flight.js): the swing behind him goes only as far round as the camera has room: it stops
-// FLY_ROOM_MARGIN short of the first yaw (probed every FLY_ROOM_STEP or finer, at most
-// FLY_ROOM_PROBES, the edge narrowed down to FLY_ROOM_EDGE by bisection) whose orbit ray a blocker cuts
-// short of the distance plus FLY_ROOM_PAD or whose orbit position is closer than FLY_ROOM_CLEAR to
-// a wall, unless that holds once lifted FLY_ROOM_LIFT, or a ray FLY_ROOM_SIDE to either side is
-// clear (a trunk). When that leaves it more than FLY_ROOM_LONG from behind him and going the other
-// way round gets it FLY_ROOM_BETTER closer, it goes that way. An orbit position with no room turns
-// (up to FLY_ROOM_ESCAPE) to the nearest yaw that has. A swing under way faster than
-// FLY_ROOM_KEEP_RATE keeps its direction while that way round has room and is at most
-// FLY_ROOM_KEEP longer than the other.
+// FLY_ROOM_MARGIN short of the first orbit position (probed every FLY_ROOM_STEP or finer, at most
+// FLY_ROOM_PROBES, the edge narrowed down to FLY_ROOM_EDGE by bisection) that is closer than
+// FLY_ROOM_CLEAR to a wall (at least FLY_ROOM_FLOOR over the floor), has a floor that would lift it
+// more than FLY_ROOM_BUMP, or whose view ray a blocker cuts short of the distance plus
+// FLY_ROOM_PAD, unless a ray FLY_ROOM_SIDE to either side is clear (a trunk); a position with room
+// only once lifted FLY_RISE counts (the flight camera then rises). When that leaves it more than
+// FLY_ROOM_LONG from behind him and going the other way round gets it FLY_ROOM_BETTER closer, it
+// goes that way; a swing under way faster than FLY_ROOM_KEEP_RATE keeps its direction while that
+// way has room and is at most FLY_ROOM_KEEP longer than the other. An orbit position with no room
+// turns (FLY_ROOM_ESCAPE_STEP steps, up to FLY_ROOM_ESCAPE) to the nearest one that has, if any.
 export const FLY_ROOM_MARGIN = 12 * DEG;
 export const FLY_ROOM_STEP = 10 * DEG;
 export const FLY_ROOM_PROBES = 8;
 export const FLY_ROOM_EDGE = 1.5 * DEG;
 export const FLY_ROOM_PAD = 250;
-export const FLY_ROOM_CLEAR = 250;
+export const FLY_ROOM_CLEAR = 200; // (at most the collision grid's wall margin)
+export const FLY_ROOM_FLOOR = 150; // (the collider's floor clearance)
+export const FLY_ROOM_BUMP = 60;
 export const FLY_ROOM_LONG = 60 * DEG;
 export const FLY_ROOM_BETTER = 45 * DEG;
-export const FLY_ROOM_ESCAPE = 90 * DEG;
+export const FLY_ROOM_ESCAPE = 60 * DEG;
+export const FLY_ROOM_ESCAPE_STEP = 15 * DEG;
 export const FLY_ROOM_KEEP_RATE = 1 * DEG;
 export const FLY_ROOM_KEEP = 90 * DEG;
-export const FLY_ROOM_LIFT = 20 * DEG;
 export const FLY_ROOM_SIDE = 120;
 
 // AI RACE look-up (lookup.js): while AI RACE mode is on ('darkMode' { on }) and the robot beast
 // has risen onto the castle's front roof, a hero near the castle front with the camera facing the
-// castle gets a view tilted up by ~10-14 deg, so the beast sprawled over the roof is in the
-// picture: the orbit drops to about the hero's head height (LOOKUP_PITCH_DROP off the orbit
-// pitch), moves LOOKUP_DIST further out (LOOKUP_DIST_NEAR more close to the facade, where the
-// beast towers right overhead) and aims LOOKUP_AIM higher, and the hero's feet may sit
-// down to LOOKUP_FEET_BELOW under the view axis (near the bottom edge; the half-height of the view
-// is 22.5 deg). The look-up starts LOOKUP_DELAY ticks after the mode switches on (the beast heaves
+// castle gets a view framed to take in the beast's head as well as himself: the orbit drops to
+// about the hero's head height (LOOKUP_PITCH_DROP off the orbit pitch) and the view tilts up just
+// enough to bring the head (LOOKUP_HEAD_UP over the island, LOOKUP_HEAD_OUT in front of the
+// facade: where it lies on the roof, reaching out over the courtyard) down to LOOKUP_HEAD_NDC of
+// the picture's height, with his feet down to LOOKUP_FEET_NDC (LOOKUP_FEET_HARD_NDC at most);
+// where that is not enough the camera moves out (up to LOOKUP_DIST_MAX more) and the view widens
+// (up to LOOKUP_FOV_MAX) just enough (LOOKUP_CAM_UP: the camera's height over his feet the fit
+// assumes). The look-up starts LOOKUP_DELAY ticks after the mode switches on (the beast heaves
 // itself up) and eases in and out as the hero enters or leaves the zone, the camera turns toward
-// or away from the castle, he climbs high (the roofs) or flies, or the mode ends. Without AI RACE
-// mode nothing changes.
+// or away from the castle, he climbs high (the roofs), flies or dances for a star, or the mode
+// ends. Without AI RACE mode nothing changes.
 export const LOOKUP_DELAY = 15;
 export const LOOKUP_PITCH_DROP = 8 * DEG;
-export const LOOKUP_DIST = 300;
-export const LOOKUP_DIST_NEAR = 400;
-export const LOOKUP_NEAR = [800, 2400]; // all of LOOKUP_DIST_NEAR up to [0] from the front, none from [1]
-export const LOOKUP_AIM = 7 * DEG;
-export const LOOKUP_FEET_BELOW = 20 * DEG;
-export const LOOKUP_FEET_HARD_BELOW = 21 * DEG;
+export const LOOKUP_HEAD_UP = 3240;
+export const LOOKUP_HEAD_OUT = 545;
+export const LOOKUP_HEAD_NDC = 0.86;
+export const LOOKUP_FEET_NDC = 0.88;
+export const LOOKUP_FEET_HARD_NDC = 0.94;
+export const LOOKUP_DIST_MAX = 800;
+export const LOOKUP_FOV_MAX = 58;
+export const LOOKUP_CAM_UP = 180;
 // Zone: horizontal distance from the front of the castle (layout.CASTLE: x, frontZ; a hero beside
 // the castle counts his distance across only) full up to [0], none beyond [1].
 export const LOOKUP_ZONE = [3500, 4500];
@@ -278,4 +286,5 @@ export const LOOKUP_TARGET_BACK = 200; // the camera faces a point this far behi
 export const LOOKUP_FACING = [22 * DEG, 42 * DEG]; // ...within [0] of its view yaw fully, [1] not at all
 export const LOOKUP_IN_RATE = 0.04; // easing per tick in (~2 s)...
 export const LOOKUP_OUT_RATE = 0.05; // ...and out...
-export const LOOKUP_MIN_STEP = 0.002; // ...by at least this much of the weight per tick (it arrives)
+export const LOOKUP_MIN_STEP = 0.002; // ...by at least this much of the weight per tick (it arrives)...
+export const LOOKUP_ACCEL = 0.004; // ...its speed changing by at most this per tick (it sets off gently)

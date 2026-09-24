@@ -262,7 +262,7 @@ jump, fall, land, double_jump, triple_jump, backflip, sideflip, long_jump, dive,
 belly_slide, butt_slide, ground_pound_spin, ground_pound_fall, ground_pound_land,
 wallkick, bonk, hurt, fall_damage, ledge_hang, ledge_climb, pole_hold, pole_climb,
 pole_jump, punch1, punch2, kick, jump_kick, swim_idle, swim_stroke, swim_flutter,
-water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn`.
+water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn, fly`.
 
 Tree tops: climbing past the top of a tree's pole enters action `pole_top` (anim
 `pole_handstand`, a handstand on the crown). During it `RenderState.pos` is the pole tip
@@ -494,10 +494,15 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   (anim `'fly'`): stick up = nose down (dive, gains speed), stick down = nose up (climbs,
   loses speed), left/right banks and turns (`RenderState.pitch/roll` show it), a stall
   drops into a fall; Z ends the flight; landing skids to a stop; walls bonk. Taking the hat
-  off mid-flight turns the flight into a fall. sfx `wing_flap`, `powerup`.
+  off mid-flight turns the flight into a fall. sfx `wing_flap`, `powerup`. Landing from a
+  flight (or a fall right after one) never does fall damage; near the level's outer edge the
+  flight turns back instead of leaving. Camera: while flying the orbit swings behind Pip's
+  heading (only as far round as there is room), following his pitch; R buzzes. In AI RACE
+  mode near the castle the view tilts up (and may widen `camera.fov` up to 58°) to keep
+  Rustmaw's head in frame; anything that needs the field of view reads `camera.fov`.
 * **Attacks and stomps** (player): `player.getAttack()` -> `null` or `{ x, y, z, radius,
-  kind }` while a punch, kick, jump kick, dive, slide or ground-pound landing can hit
-  something this tick. `player.bounce(vy = 50)`: bounce up off an enemy Pip landed on
+  kind }` while a punch, kick, jump kick, dive, belly slide (while fast), ground-pound
+  landing or flight can hit something this tick (`kind` is the action name). `player.bounce(vy = 50)`: bounce up off an enemy Pip landed on
   (action `'jump'`, sfx `stomp`).
 * **Minions** (objects): 10 s after Rustmaw has risen, small original robot lizards burrow
   out of the ground (dust burst) around Pip (700-1600 away, on land), up to 5 at a time,
@@ -573,6 +578,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `darkMode` | `{ on }` | main; audio, UI banner and objects react |
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
+| `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
 | `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,

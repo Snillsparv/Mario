@@ -1,6 +1,8 @@
 // Winged-hat flight camera (src/camera/flight.js, cameraConfig FLY_*): a scripted fake flying
 // hero (high-speed arcs, dives toward the ground, banking turns round a corner tower of the
-// castle) and the real Player's flight over the real grounds, plus the collider's tolerant mode.
+// castle) and the real Player's flight over the real grounds (turning away from the castle door
+// below the roof, circling in front of it: the swing limited to the room it has), plus the
+// collider's tolerant mode.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -20,6 +22,7 @@ const scene = new THREE.Scene();
 const level = buildLevel(scene);
 scene.updateMatrixWorld(true);
 const col = level.collision;
+const L = level.layout;
 
 function makeCam(collision = col) {
   const sfx = [];
@@ -235,8 +238,8 @@ test('circling a corner tower at rooftop height (stress): he stays in the pictur
   }
   assert.ok(minRatio > 0.75, `the dolly stayed out (ratio ${minRatio.toFixed(2)})`);
   assert.ok(rose > 5 * DEG, `rose over the roofs (${(rose / DEG).toFixed(1)} deg)`);
-  // Grazing the towers and roofs costs a hitch now and then, never a lurch.
-  assert.ok(m.maxJerk < 150, `camera jerk ${m.maxJerk.toFixed(1)}`);
+  // (Its swing keeps clear of the towers and the pointed roofs, rising over them.)
+  assert.ok(m.maxJerk < 60, `camera jerk ${m.maxJerk.toFixed(1)}`);
 });
 
 test('a dive into the ground: looking down on him, above the ground, and a smooth hand-back to the follow camera', () => {
@@ -352,6 +355,106 @@ test("the real Player's flight over the grounds: take-off from a triple jump, th
   const flying = m.rows.filter((r) => r.label === 'flying');
   assert.ok(flying.length > 100, `${flying.length} ticks in flight`);
   assert.ok(m.maxJerk < 30, `camera jerk ${m.maxJerk.toFixed(1)}`);
+});
+
+// The real Player on the winged hat: takes off from a triple jump at (x, z) heading for the castle
+// and returns { p, cam, m, tick, keep } (keep(stickX, height): hold about that height).
+function realFlight(x, z) {
+  const events = new Events();
+  const sfx = [];
+  events.on('sfx', (e) => sfx.push(e.name));
+  const camera = new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000);
+  const cam = new CameraController({ collision: col, camera, events });
+  const p = new Player({ collision: col, events, spawn: level.spawn });
+  const y = col.findFloor(x, 5000, z).y;
+  p.pos.x = x;
+  p.pos.y = y;
+  p.pos.z = z;
+  if (p.prevPos) Object.assign(p.prevPos, p.pos);
+  p.faceYaw = Math.PI;
+  p.floor = col.findFloor(x, y + 100, z);
+  p.giveWingHat(40);
+  cam.reset(p);
+  const pad = new ScriptedController();
+  const m = watch(cam, camera, p);
+  const tick = (input = {}, label = p.action) => {
+    const c = pad.next(input);
+    p.update(cam.playerInput(c), cam.getYaw());
+    cam.update(c, p);
+    const r = m.sample(label);
+    // Scraping a wall: the camera within 100 of one.
+    r.scrape = col.findWalls(cam.pos.x, cam.pos.y, cam.pos.z, 0, 100).walls.length > 0;
+    return r;
+  };
+  for (let i = 0; i < 30; i++) tick({ stickY: 1 });
+  for (let k = 0; k < 3; k++) {
+    tick({ stickY: 1 });
+    tick({ stickY: 1, A: true });
+    for (let n = 0; k < 2 && !p.grounded && n < 100; n++) tick({ stickY: 1, A: true });
+  }
+  const keep = (stickX, h) => ({ stickX, stickY: p.flySpeed < 25 ? 0.6 : p.pos.y < h - 100 ? -0.7 : p.pos.y > h + 100 ? 0.5 : 0 });
+  return { p, cam, m, tick, keep, sfx };
+}
+
+test('flying at the castle door and turning away below the roof: the camera keeps out of the facade, sees him all the way and comes round behind him smoothly', () => {
+  // (The case that used to swing the camera into the facade: pinned against it, scraped along it
+  // and lifted into the door balcony, with the hero out of sight.)
+  for (const [gap, side] of [[900, -1], [900, 1], [1100, -1], [1300, 1]]) {
+    const { p, cam, m, tick, keep } = realFlight(0, 3200);
+    assert.equal(p.action, 'flying', 'took off');
+    while (p.action === 'flying' && p.pos.z > L.CASTLE.frontZ + gap) tick(keep(0, 800), 'approach');
+    const from = m.rows.length;
+    m.maxJerk = m.maxTurnAccel = m.maxTurn = 0;
+    let limited = 0;
+    for (let i = 0; i < 110 && p.action === 'flying'; i++) {
+      tick(keep(side, 800), 'turn');
+      if (!cam.flight.roomy) limited++;
+    }
+    for (let i = 0; i < 40 && p.action === 'flying'; i++) tick(keep(0, 800), 'out');
+    const rows = m.rows.slice(from);
+    const label = `gap ${gap} side ${side}`;
+    assert.ok(rows.length > 100, `${label}: flew the turn (${rows.length} ticks, ${p.action})`);
+    assert.ok(limited > 5, `${label}: the room limited the swing (${limited} ticks)`);
+    for (const r of rows) {
+      assert.ok(!r.hidden, `${label}: his chest in sight (${r.label})`);
+      assert.ok(!r.scrape, `${label}: the camera off the walls`);
+      assert.ok(Math.abs(r.ndcX) < 0.6 && Math.abs(r.ndcY) < 0.6, `${label}: in frame (${r.ndcX.toFixed(2)}, ${r.ndcY.toFixed(2)})`);
+      assert.ok(r.d > 800, `${label}: not pulled in (${r.d.toFixed(0)})`);
+    }
+    assert.ok(m.maxJerk < 35, `${label}: camera jerk ${m.maxJerk.toFixed(1)}`);
+    assert.ok(m.maxTurnAccel < 1.6, `${label}: view turn acceleration ${m.maxTurnAccel.toFixed(2)} deg/tick^2`);
+    assert.ok(m.maxTurn < 7, `${label}: view turn ${m.maxTurn.toFixed(2)} deg/tick`);
+    const end = rows.at(-1);
+    if (p.action === 'flying') assert.ok(Math.abs(end.lag) < 25, `${label}: back behind him (${end.lag.toFixed(0)} deg)`);
+  }
+});
+
+test('full-bank circles in front of the castle below the roofs: always in sight, off the walls, no lurches', () => {
+  for (const [h, side] of [[500, -1], [900, 1]]) {
+    const { p, m, tick, keep } = realFlight(0, 3000);
+    while (p.action === 'flying' && p.pos.z > 600) tick(keep(0, h), 'approach');
+    const from = m.rows.length;
+    m.maxJerk = m.maxTurnAccel = 0;
+    for (let i = 0; i < 240 && p.action === 'flying'; i++) tick(keep(side * 0.8, h), 'circle');
+    const rows = m.rows.slice(from);
+    const label = `height ${h} side ${side}`;
+    assert.ok(rows.length > 200, `${label}: circled (${p.action})`);
+    assert.equal(rows.filter((r) => r.hidden).length, 0, `${label}: his chest in sight`);
+    assert.equal(rows.filter((r) => r.scrape).length, 0, `${label}: the camera off the walls`);
+    assert.ok(m.maxJerk < 35, `${label}: camera jerk ${m.maxJerk.toFixed(1)}`);
+    assert.ok(m.maxTurnAccel < 1.6, `${label}: view turn acceleration ${m.maxTurnAccel.toFixed(2)} deg/tick^2`);
+  }
+});
+
+test('in flight R buzzes and leaves the camera mode alone (it would only show after landing)', () => {
+  const { p, cam, tick, sfx } = realFlight(0, 4200);
+  assert.equal(p.action, 'flying');
+  for (let i = 0; i < 10; i++) tick();
+  const n = sfx.length;
+  tick({ R: true });
+  assert.deepEqual(sfx.slice(n), ['camera_buzz']);
+  assert.equal(cam.mode, 'follow');
+  assert.equal(cam.orbitMode, 'follow');
 });
 
 // Flat ground with a wall across the view `z0` south of the hero (x -2000..2000), `height` tall.

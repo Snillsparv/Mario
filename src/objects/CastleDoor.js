@@ -68,7 +68,8 @@ export class CastleDoor {
     if (dx > w || dx < -w) return false;
     if (p.y < this.porchY - DOOR.BELOW || p.y > this.porchY + DOOR.ABOVE) return false;
     const a = player.action;
-    if (a === 'death' || a === 'spawn' || a === 'reading') return false;
+    // Not while flying past: the message is for walking up to the door.
+    if (a === 'death' || a === 'spawn' || a === 'reading' || a === 'flying') return false;
     // Facing the door: forward (sin yaw, cos yaw) toward -Z.
     const yaw = player.faceYaw ?? Math.PI;
     return -Math.cos(yaw) >= DOOR.FACING || a === 'push';

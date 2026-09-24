@@ -7,13 +7,17 @@
 // back out over FLY_OUT_TICKS once the flight ends, so the hand-back never pops; its vertical
 // framing follows him closely meanwhile (no jump band), and its collider is `tolerant`. A flight
 // camera a wall stops or pulls in rises over it (`rise`, FLY_RISE_*: an eased extra pitch).
-// Room (FLY_ROOM_*): the swing only goes as far round as the camera has room. Probing its orbit
-// ray at yaws from where it is toward straight behind him, it stops FLY_ROOM_MARGIN short of the
-// first one a tall, wide blocker cuts short (the castle facade, a tower, a cliff: not a trunk or
-// anything a lift clears), so a hero turning away from the castle close to it keeps the camera
-// beside him, out in the open, and it comes round behind him as he flies clear (instead of being
-// swung into the facade, scraped along it and lifted into the balcony). An orbit position that
-// has no room already turns to the nearest yaw that has.
+// Room (FLY_ROOM_*): the swing only goes as far round as the camera has room. Probing orbit
+// positions from where it is toward straight behind him, it stops FLY_ROOM_MARGIN short of the
+// first one without room: a wall within FLY_ROOM_CLEAR of it, a roof or a slope right under it,
+// or its view ray cut short by a tall, wide blocker (the castle facade, a tower, a cliff; not a
+// trunk). One that has room only with the orbit risen FLY_RISE (a rooftop tower, a crest) counts,
+// and the rise comes up ahead of it. So a hero turning away from the castle close to it keeps the
+// camera beside him, out in the open, and it comes round behind him as he flies clear (instead of
+// being swung into the facade, scraped along it and lifted into the balcony); when the way round
+// toward behind him stays shut and the other way is open, it goes that way. A swing under way
+// keeps its direction while its way has room, speeds up gently (FLY_SWING_ACCEL) and slows down
+// in time (FLY_SWING_BRAKE). An orbit position without room turns to the nearest one that has.
 //
 // State for CameraController (numbers only: no per-tick garbage).
 
@@ -22,6 +26,7 @@ import { smootherstep } from './cinematics.js';
 import * as K from './cameraConfig.js';
 
 const NO_FLOORS = Object.freeze({ floors: false }); // (the height limit carries the camera over floors)
+const FLOOR_TOL = 1000; // (a roof or a slope this far over an orbit position counts)
 
 export class FlightCam {
   // `collision` (optional): the level, for the room probes (none: the swing is not limited).
@@ -29,7 +34,7 @@ export class FlightCam {
     this.collision = collision;
     this._from = { x: 0, y: 0, z: 0 }; // room probe scratch
     this._dir = { x: 0, y: 0, z: 0 };
-    this.probes = 0; // rays the room probes cast this tick (diagnostics)
+    this.probes = 0; // room queries (spots and rays) this tick (diagnostics)
     this.reset(false, K.ORBIT_MODES.follow.pitch[0], 0);
   }
 
@@ -44,6 +49,8 @@ export class FlightCam {
     this.rise = 0; // eased extra pitch over an obstacle...
     this.clearTicks = 0; // ...held this many ticks after it is clear
     this.roomy = true; // the swing went all the way round to behind him (no room limit this tick)
+    this.liftAhead = false; // the way it swings has room only once risen (the rise comes up)
+    this.reachLift = false; // (_reach scratch: the way it walked needed the rise)
   }
 
   // Advances one tick (before the orbit uses mix / swing). `collider` holds last tick's
@@ -59,7 +66,8 @@ export class FlightCam {
     if (this.w === 0) this.pitch = orbitPitch;
     else if (flying) this.pitch += (flightPitch(hero.pitch) - this.pitch) * K.FLY_PITCH_RATE;
     // Rising over an obstacle while flying (see top).
-    const blocked = flying && (collider.slid || collider.ratio < K.FLY_RISE_RATIO);
+    const blocked = flying && (collider.slid || collider.ratio < K.FLY_RISE_RATIO || this.liftAhead);
+    this.liftAhead = false; // (consumed: set again by this tick's swing, if the swing runs)
     this.clearTicks = blocked ? 0 : this.clearTicks + 1;
     if (blocked) this.rise += (K.FLY_RISE - this.rise) * K.FLY_RISE_IN;
     else if (this.clearTicks > K.FLY_RISE_HOLD || !flying) this.rise -= this.rise * K.FLY_RISE_OUT;
@@ -80,11 +88,13 @@ export class FlightCam {
   // Yaw turn this tick toward straight behind the hero's heading from the orbit yaw `yaw` (an
   // eased rate, weighted by w), as far as the camera has room (see top: `centre` is the orbit
   // centre, `pitch` and `dist` the orbit's; without them the room is not checked). Once the flight
-  // is over the rate eases out. Past FLY_SWING_KEEP (he turned to face the camera) a swing under
-  // way keeps its direction, so it does not dither about which way round to go.
+  // is over the rate eases out. A swing under way keeps its direction past FLY_SWING_KEEP (he
+  // turned to face the camera), or while the way it goes has room and is not much longer
+  // (FLY_ROOM_KEEP), so it does not dither about which way round to go or turn back half way.
   swing(hero, yaw, centre = null, pitch = 0, dist = 0) {
     this.probes = 0;
     this.roomy = true;
+    this.liftAhead = false;
     if (this.w === 0) {
       this.rate = 0;
       return 0;
@@ -94,8 +104,6 @@ export class FlightCam {
       const room = !!(centre && this.collision);
       let d = angleDiff(yaw, hero.faceYaw + Math.PI);
       if (this.rate * d < 0) {
-        // (The swing under way goes the other way round: it keeps going while that way is not much
-        // longer and has room all the way, so it does not turn back half way.)
         const other = d - Math.sign(d) * 2 * Math.PI;
         if (Math.abs(d) > K.FLY_SWING_KEEP) d = other;
         else if (room && Math.abs(this.rate) > K.FLY_ROOM_KEEP_RATE && Math.abs(other) < Math.abs(d) + K.FLY_ROOM_KEEP) {
@@ -109,8 +117,9 @@ export class FlightCam {
     // gently) and slowing down by at most FLY_SWING_BRAKE (it ends gently, yet stops in time).
     const want = this.rate + (goal - this.rate) * K.FLY_SWING_EASE;
     const r = this.rate;
-    if (want * r < 0) this.rate = Math.abs(r) > K.FLY_SWING_BRAKE ? r - Math.sign(r) * K.FLY_SWING_BRAKE : clamp(want, -K.FLY_SWING_ACCEL, K.FLY_SWING_ACCEL);
-    else if (Math.abs(want) > Math.abs(r)) this.rate = r + clamp(want - r, -K.FLY_SWING_ACCEL, K.FLY_SWING_ACCEL);
+    if (want * r < 0) {
+      this.rate = Math.abs(r) > K.FLY_SWING_BRAKE ? r - Math.sign(r) * K.FLY_SWING_BRAKE : clamp(want, -K.FLY_SWING_ACCEL, K.FLY_SWING_ACCEL);
+    } else if (Math.abs(want) > Math.abs(r)) this.rate = r + clamp(want - r, -K.FLY_SWING_ACCEL, K.FLY_SWING_ACCEL);
     else this.rate = r + clamp(want - r, -K.FLY_SWING_BRAKE, K.FLY_SWING_BRAKE);
     return this.rate * this.w;
   }
@@ -121,21 +130,31 @@ export class FlightCam {
   // moves smoothly with the hero, so the swing does too. When that leaves the camera far from
   // behind him (FLY_ROOM_LONG) and the other way round gets it much closer (FLY_ROOM_BETTER: he
   // turned away from the wall and on round, and the open side is behind him now), it goes that
-  // way. An orbit position without room turns to the nearest yaw that has (_escape).
+  // way. An orbit position without room turns to the nearest yaw that has (_escape), if any.
   _room(yaw, d, centre, pitch, dist) {
     const s = d < 0 ? -1 : 1;
     const a = Math.abs(d);
     const near = this._reach(yaw, s, a, centre, pitch, dist);
+    this.liftAhead = this.reachLift;
     if (near === Infinity) return d;
     this.roomy = false;
-    if (near < 0) return this._escape(yaw, s, centre, pitch, dist);
+    if (near < 0) {
+      const e = this._escape(yaw, s, centre, pitch, dist);
+      this.liftAhead = e !== null && this.reachLift;
+      return e ?? d;
+    }
     const nearGo = Math.min(a, near - K.FLY_ROOM_MARGIN);
     const nearLeft = a - nearGo;
     if (nearLeft > K.FLY_ROOM_LONG) {
+      const nearLift = this.liftAhead;
       const b = 2 * Math.PI - a;
       const far = this._reach(yaw, -s, b, centre, pitch, dist);
       const farGo = far === Infinity ? b : Math.min(b, far - K.FLY_ROOM_MARGIN);
-      if (b - farGo < nearLeft - K.FLY_ROOM_BETTER) return -s * farGo;
+      if (b - farGo < nearLeft - K.FLY_ROOM_BETTER) {
+        this.liftAhead = this.reachLift;
+        return -s * farGo;
+      }
+      this.liftAhead = nearLift;
     }
     return s * nearGo;
   }
@@ -149,54 +168,87 @@ export class FlightCam {
     const n = Math.min(K.FLY_ROOM_PROBES, Math.ceil(span / K.FLY_ROOM_STEP));
     let open = 0;
     let shut = -1;
+    let lift = false;
     for (let k = n <= 2 ? n : 0; k <= n; k++) {
       const t = (span * k) / n;
-      if (!this._open(yaw, s * t, centre, pitch, dist)) {
+      const room = this._open(yaw, s * t, centre, pitch, dist);
+      if (!room) {
         shut = t;
         break;
       }
+      if (room === 2) lift = true;
       open = t;
     }
+    this.reachLift = lift;
     if (shut < 0) return Infinity;
     if (shut === 0) return -1;
     for (let i = 0; i < 8 && shut - open > K.FLY_ROOM_EDGE; i++) {
       const mid = (open + shut) / 2;
-      if (this._open(yaw, s * mid, centre, pitch, dist)) open = mid;
+      const room = this._open(yaw, s * mid, centre, pitch, dist);
+      if (room === 2) this.reachLift = true;
+      if (room) open = mid;
       else shut = mid;
     }
     return open;
   }
 
   // The orbit position has no room (his motion carried it into a wall, or it was dollied in
-  // front of one): the swing to the nearest yaw that has (FLY_ROOM_STEP steps either way, the side
-  // `s` toward the goal first, up to FLY_ROOM_ESCAPE; no margin, so it cannot overshoot into the
-  // next blocker), or none (the collider copes).
+  // front of one): the swing to the nearest yaw that has (FLY_ROOM_ESCAPE_STEP steps either way,
+  // the side `s` toward the goal first, up to FLY_ROOM_ESCAPE; no margin, so it cannot overshoot
+  // into the next blocker), or null where there is none (in among the towers on the roofs: the
+  // swing then goes behind him as ever, and the collider copes).
   _escape(yaw, s, centre, pitch, dist) {
-    for (let t = K.FLY_ROOM_STEP; t <= K.FLY_ROOM_ESCAPE + 1e-6; t += K.FLY_ROOM_STEP) {
-      if (this._open(yaw, s * t, centre, pitch, dist)) return s * t;
-      if (this._open(yaw, -s * t, centre, pitch, dist)) return -s * t;
+    for (let t = K.FLY_ROOM_ESCAPE_STEP; t <= K.FLY_ROOM_ESCAPE + 1e-6; t += K.FLY_ROOM_ESCAPE_STEP) {
+      for (let k = s; k === s || k === -s; k = k === s ? -s : 0) {
+        const room = this._open(yaw, k * t, centre, pitch, dist);
+        if (room) {
+          this.reachLift = room === 2;
+          return k * t;
+        }
+      }
     }
-    return 0;
+    return null;
   }
 
-  // Whether the orbit ray at yaw + `off` (pitch, dist from `centre`) has room for the camera: its
-  // ray is clear for the whole distance (plus FLY_ROOM_PAD) and the orbit position on it is
-  // FLY_ROOM_CLEAR from any wall (it would graze a tower it passes), or that holds once lifted
-  // FLY_ROOM_LIFT (a blocker the rise and the collider's lift clear), or a ray FLY_ROOM_SIDE to
-  // either side is clear (the centre one hit a trunk or a post, which the collider lets pass).
+  // Whether the orbit position at yaw + `off` (pitch, dist from `centre`) has room for the camera:
+  // 1 when it is clear of walls and floors (_spot: not grazing a tower it passes, over a pointed
+  // roof or inside a building) and its ray is clear for the whole distance (plus FLY_ROOM_PAD), or
+  // a ray FLY_ROOM_SIDE to either side is (the centre one hit a trunk or a post, which the collider
+  // lets pass); 2 when that holds only with the orbit lifted FLY_RISE (a rooftop tower, a wall or
+  // a crest the flight camera rises over); 0 when it has no room.
   _open(yaw, off, centre, pitch, dist) {
     const a = yaw + off;
-    if (this._clear(centre, a, pitch, 0, dist, true)) return true;
-    if (this._clear(centre, a, pitch + K.FLY_ROOM_LIFT, 0, dist, true)) return true;
-    return this._clear(centre, a, pitch, -K.FLY_ROOM_SIDE, dist, false) || this._clear(centre, a, pitch, K.FLY_ROOM_SIDE, dist, false);
-  }
-
-  // One room probe: the ray along yaw `a` / `pitch` from `centre` moved `side` across it, and
-  // (`end`) the wall clearance of the point `dist` out along it.
-  _clear(centre, a, pitch, side, dist, end) {
-    this.probes++;
     const sa = Math.sin(a);
     const ca = Math.cos(a);
+    const reach = dist + K.FLY_ROOM_PAD;
+    if (this._spot(centre, sa, ca, pitch, dist)) {
+      if (this._clear(centre, sa, ca, pitch, 0, reach)) return 1;
+      if (this._clear(centre, sa, ca, pitch, -K.FLY_ROOM_SIDE, reach) || this._clear(centre, sa, ca, pitch, K.FLY_ROOM_SIDE, reach)) return 1;
+    }
+    const lifted = pitch + K.FLY_RISE;
+    return this._spot(centre, sa, ca, lifted, dist) && this._clear(centre, sa, ca, lifted, 0, reach) ? 2 : 0;
+  }
+
+  // Whether the orbit position along the yaw with sine `sa` / cosine `ca` and `pitch`, `dist` from
+  // `centre`, is FLY_ROOM_CLEAR from any wall, at least FLY_ROOM_FLOOR over the floor there (where
+  // the height limit puts it), and the floor there would not lift it more than FLY_ROOM_BUMP (a
+  // roof, a tower's cone or a slope right there, or it is inside a building).
+  _spot(centre, sa, ca, pitch, dist) {
+    this.probes++;
+    const col = this.collision;
+    const cp = Math.cos(pitch);
+    const x = centre.x + sa * cp * dist;
+    const z = centre.z + ca * cp * dist;
+    const y = centre.y + Math.sin(pitch) * dist;
+    const lift = col.findFloor(x, y, z, FLOOR_TOL).y + K.FLY_ROOM_FLOOR - y;
+    if (lift > K.FLY_ROOM_BUMP) return false;
+    return col.findWalls(x, y + Math.max(0, lift), z, 0, K.FLY_ROOM_CLEAR).walls.length === 0;
+  }
+
+  // One room ray: along the yaw with sine `sa` / cosine `ca` and `pitch` from `centre` moved
+  // `side` across it, clear (of walls and ceilings) for `reach`.
+  _clear(centre, sa, ca, pitch, side, reach) {
+    this.probes++;
     const from = this._from;
     from.x = centre.x + ca * side;
     from.y = centre.y;
@@ -206,12 +258,7 @@ export class FlightCam {
     dir.x = sa * cp;
     dir.y = Math.sin(pitch);
     dir.z = ca * cp;
-    if (this.collision.raycast(from, dir, dist + K.FLY_ROOM_PAD, NO_FLOORS)) return false;
-    if (!end) return true;
-    const x = from.x + dir.x * dist;
-    const z = from.z + dir.z * dist;
-    const pushed = this.collision.findWalls(x, from.y + dir.y * dist, z, 0, K.FLY_ROOM_CLEAR);
-    return pushed.walls.length === 0;
+    return !this.collision.raycast(from, dir, reach, NO_FLOORS);
   }
 }
 

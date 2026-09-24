@@ -3,7 +3,10 @@
 // was once the dance is over (unless the player moves the hero or turns the camera first).
 //
 // `state` is null or { yaw0, from, delta, t, ticks, dist, returning }: yaw0 the orbit yaw to
-// return to, from/delta the swing, dist the close-up distance.
+// return to, from/delta the swing, dist the close-up distance. `blend` (0..1) is how far the
+// framing is into the close-up (distance, pitch, aim): it follows the swing's own smooth curve in
+// and back out, so the camera sets off and arrives gently whatever it was framing before (the
+// AI RACE look-up's pull-back, say).
 
 import { angleDiff, wrapAngle } from '../core/math.js';
 import { smootherstep } from './cinematics.js';
@@ -14,12 +17,14 @@ export class Celebration {
     this.collider = collider;
     this.state = null;
     this.closeUp = false; // this tick's framing is the dance close-up (not the swing back)
+    this.blend = 0; // how far the framing is into the close-up (see top)
     this._look = { x: 0, y: 0, z: 0 };
   }
 
   reset() {
     this.state = null;
     this.closeUp = false;
+    this.blend = 0;
   }
 
   // The camera buttons wait for the dance...
@@ -43,15 +48,21 @@ export class Celebration {
       cel = this.state = { yaw0, from: yaw, delta: 0, t: 0, ticks: K.CELEBRATE_TICKS, dist: K.CELEBRATE_DIST, returning: false };
       this._shot(hero, yaw, cel);
     } else if (!dancing && cel && !cel.returning) {
-      cel = this.state = { yaw0: cel.yaw0, from: yaw, delta: angleDiff(yaw, cel.yaw0), t: 0, ticks: K.CELEBRATE_RETURN_TICKS, dist: 0, returning: true };
+      cel = this.state = { yaw0: cel.yaw0, from: yaw, delta: angleDiff(yaw, cel.yaw0), t: 0, ticks: K.CELEBRATE_RETURN_TICKS, dist: cel.dist, returning: true };
     }
-    if (!cel) return null;
+    if (!cel) {
+      this.blend = 0;
+      return null;
+    }
     if (cel.returning && hero.speed >= K.MOVING_SPEED) {
       this.state = null; // the player has taken over
+      this.blend = 0;
       return null;
     }
     cel.t = Math.min(cel.t + 1, cel.ticks);
-    const out = wrapAngle(cel.from + cel.delta * smootherstep(cel.t / cel.ticks));
+    const k = smootherstep(cel.t / cel.ticks);
+    const out = wrapAngle(cel.from + cel.delta * k);
+    this.blend = cel.returning ? 1 - k : k;
     if (cel.returning && cel.t >= cel.ticks) this.state = null;
     this.closeUp = !cel.returning;
     return out;

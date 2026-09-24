@@ -1,15 +1,19 @@
 // AI RACE look-up (src/camera/lookup.js, cameraConfig LOOKUP_*): in AI RACE mode ('darkMode'
-// { on }) the default follow view near the castle front tilts up so the robot beast on the front
-// roof is in the picture while the hero stays at the bottom; the sunny framing is unchanged.
+// { on }) the default follow view near the castle front tilts up (and, closer in, moves out and
+// widens) so the robot beast's head on the front roof is in the picture while the hero stays at
+// the bottom; the sunny framing is unchanged. The beast is the real one (objects/RobotBeast.js)
+// risen on the real roof, its pose read from the model.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildLevel } from '../src/world/level.js';
 import { CameraController } from '../src/camera/CameraController.js';
+import { BEAST_HEAD } from '../src/camera/lookup.js';
 import * as K from '../src/camera/cameraConfig.js';
 import { Events } from '../src/core/events.js';
 import { neutralController } from '../src/core/input.js';
-import { angleDiff } from '../src/core/math.js';
+import { angleDiff, makeRng } from '../src/core/math.js';
+import { RobotBeast } from '../src/objects/RobotBeast.js';
 
 const DEG = Math.PI / 180;
 const scene = new THREE.Scene();
@@ -19,14 +23,18 @@ const col = level.collision;
 const L = level.layout;
 const NEUTRAL = neutralController();
 
-// Landmarks of the risen beast (objects/RobotBeast.js: sprawled along the front hall's ridge, its
-// head out over the courtyard): hips, chest, neck, head.
-const BEAST = [
-  [0, 2770, -1650],
-  [0, 3040, -1150],
-  [0, 3150, -480],
-  [0, 2770, 160],
-].map((p) => new THREE.Vector3(...p));
+// The real beast risen onto the roof, having looked at the hero for a while (its neck and head
+// track him); its landmarks: the head (pivot), the top of its head (crown) and the neck.
+function risenBeast(hero) {
+  const beast = new RobotBeast({ anchor: L.KAIJU, collision: col, events: new Events(), fire: null, rng: makeRng(5), launch() {} });
+  beast.setMode(true);
+  for (let t = 0; t < 160; t++) beast.update(hero, t);
+  beast.animate(1, 160 / 30);
+  const at = (o) => o.getWorldPosition(new THREE.Vector3());
+  const head = at(beast.head);
+  const crown = new THREE.Vector3(head.x, new THREE.Box3().setFromObject(beast.head).max.y, head.z);
+  return { beast, head, crown, neck: at(beast.neck) };
+}
 
 function makeCam() {
   const events = new Events();
@@ -39,18 +47,21 @@ function makeHero(x, z, faceYaw = Math.PI) {
   return { pos: { x, y, z }, vel: { x: 0, y: 0, z: 0 }, forwardVel: 0, faceYaw, action: 'idle', floor: { y, surface: null } };
 }
 
-// Pitch of the rendered view axis (deg, > 0 looking up), the hero's feet and head and the beast's
-// landmarks on screen (NDC y, +1 = top edge).
-function framing({ cam, camera }, hero) {
+// Pitch of the rendered view axis (deg, > 0 looking up), the field of view, and the hero's feet
+// and head and the beast's landmarks on screen (NDC y, +1 = top edge).
+function framing({ cam, camera }, hero, beast) {
   cam.apply(1);
   camera.updateMatrixWorld();
   const d = cam.target.clone().sub(cam.pos);
-  const ndc = (x, y, z) => new THREE.Vector3(x, y, z).project(camera).y;
+  const ndc = (v) => v.clone().project(camera).y;
   return {
     axis: Math.atan2(d.y, Math.hypot(d.x, d.z)) / DEG,
-    feet: ndc(hero.pos.x, hero.pos.y, hero.pos.z),
-    head: ndc(hero.pos.x, hero.pos.y + 175, hero.pos.z),
-    beast: BEAST.map((p) => p.clone().project(camera).y),
+    fov: camera.fov,
+    feet: ndc(new THREE.Vector3(hero.pos.x, hero.pos.y, hero.pos.z)),
+    head: ndc(new THREE.Vector3(hero.pos.x, hero.pos.y + 175, hero.pos.z)),
+    beastHead: beast ? ndc(beast.head) : 0,
+    crown: beast ? ndc(beast.crown) : 0,
+    neck: beast ? ndc(beast.neck) : 0,
   };
 }
 
@@ -81,9 +92,12 @@ function runner(hero, path) {
   };
 }
 
-test('in AI RACE mode near the castle front the view tilts up 10-18 deg: the beast comes into the picture, the hero stays at the bottom', () => {
-  for (const z of [3000, 2200, 1500, 900, 0]) {
+test("in AI RACE mode the beast's head comes into the picture with the hero at the bottom: tilted up 10-20 deg, moved out and widened closer in", () => {
+  // Lawn (z 1300 on), bridge and the island's edge: the whole head; the courtyard (right under
+  // it): its neck.
+  for (const z of [2800, 2200, 1500, 900, 600, 0]) {
     const hero = makeHero(0, z);
+    const beast = risenBeast(hero);
     const sunny = makeCam();
     const dark = makeCam();
     sunny.cam.reset(hero);
@@ -93,20 +107,35 @@ test('in AI RACE mode near the castle front the view tilts up 10-18 deg: the bea
       sunny.cam.update(NEUTRAL, hero);
       dark.cam.update(NEUTRAL, hero);
     }
-    const a = framing(sunny, hero);
-    const b = framing(dark, hero);
+    const a = framing(sunny, hero, beast);
+    const b = framing(dark, hero, beast);
     const tilt = b.axis - a.axis;
     const label = `z ${z}`;
-    assert.ok(tilt > 10 && tilt < 18, `${label}: tilted up ${tilt.toFixed(1)} deg`);
+    assert.equal(a.fov, K.FOV, `${label}: sunny field of view`);
+    assert.ok(tilt > 10 && tilt < 20.5, `${label}: tilted up ${tilt.toFixed(1)} deg`);
+    assert.ok(b.fov >= K.FOV && b.fov <= K.LOOKUP_FOV_MAX, `${label}: field of view ${b.fov.toFixed(1)}`);
     assert.ok(b.feet > -0.95 && b.feet < -0.8, `${label}: feet at ${b.feet.toFixed(2)}`);
-    assert.ok(b.head < -0.4, `${label}: head at ${b.head.toFixed(2)}`);
+    assert.ok(b.head < -0.4, `${label}: his head at ${b.head.toFixed(2)}`);
     assert.ok(Math.abs(angleDiff(sunny.cam.getYaw(), dark.cam.getYaw())) < 0.01 * DEG, `${label}: same heading`);
-    // The beast: out of the sunny picture (all but its hips from the lawn), in the dark one from
-    // the lawn, its body at least from the bridge, the lower body right under it.
-    const inFrame = (v) => v < 0.98;
-    assert.ok(!inFrame(a.beast[2]) && !inFrame(a.beast[3]), `${label}: sunny view misses the beast's neck and head`);
-    const shown = z >= 2200 ? 4 : z >= 900 ? 2 : 1;
-    for (let k = 0; k < shown; k++) assert.ok(inFrame(b.beast[k]), `${label}: beast landmark ${k} at ${b.beast[k].toFixed(2)}`);
+    // The sunny view misses the beast's head (and from the bridge in, its neck).
+    assert.ok(a.beastHead > 1, `${label}: sunny view misses the head (${a.beastHead.toFixed(2)})`);
+    if (z <= 1500) assert.ok(a.neck > 1, `${label}: sunny view misses the neck (${a.neck.toFixed(2)})`);
+    assert.ok(b.neck < 0.95, `${label}: the neck in the picture (${b.neck.toFixed(2)})`);
+    if (z >= 600) {
+      assert.ok(b.beastHead < 0.85, `${label}: the head in the picture (${b.beastHead.toFixed(2)})`);
+      assert.ok(b.crown < 0.95, `${label}: the top of the head in the picture (${b.crown.toFixed(2)})`);
+    }
+    // (Pulled out and widened only as far as it takes: from the far lawn a tilt nearly does.)
+    if (z === 2800) assert.ok(dark.cam.lookUp.u < 0.4 && b.fov < 49, `${label}: barely widened (${b.fov.toFixed(1)})`);
+  }
+});
+
+test("the look-up's framing target is where the model's head is", () => {
+  for (const z of [2800, 1500, 900]) {
+    const { head, crown } = risenBeast(makeHero(0, z));
+    assert.ok(Math.abs(head.x - BEAST_HEAD.x) < 100, `head x ${head.x.toFixed(0)} vs ${BEAST_HEAD.x}`);
+    assert.ok(BEAST_HEAD.y > head.y - 50 && BEAST_HEAD.y < crown.y, `head ${head.y.toFixed(0)}..${crown.y.toFixed(0)} vs ${BEAST_HEAD.y}`);
+    assert.ok(Math.abs(head.z - BEAST_HEAD.z) < 150, `head z ${head.z.toFixed(0)} vs ${BEAST_HEAD.z}`);
   }
 });
 
@@ -146,6 +175,7 @@ test('the look-up waits for the beast to rise, eases in, and eases back out exac
   // The sunny framing is back: the same pose as a camera that never saw AI RACE mode.
   assert.ok(dark.cam.pos.distanceTo(sunny.cam.pos) < 0.5, `pose ${dark.cam.pos.distanceTo(sunny.cam.pos).toFixed(3)} apart`);
   assert.ok(dark.cam.target.distanceTo(sunny.cam.target) < 0.5, 'target');
+  assert.equal(framing(dark, hero).fov, K.FOV, 'field of view');
 });
 
 test('leaving the zone, turning away from the castle, climbing high or flying eases the look-up out', () => {
@@ -224,4 +254,36 @@ test('the zone and the mode survive a respawn: a reset in the zone starts in the
   cam.update(NEUTRAL, atSpawn);
   assert.equal(cam.lookUp.w, 0, 'the spawn is outside the zone');
   assert.ok(L.CASTLE.frontZ < 0);
+});
+
+test('a star celebration in AI RACE mode swings in as gently as in sunny mode: the look-up gives way, no dolly-in jump', () => {
+  const run = (dark) => {
+    const hero = makeHero(0, 300);
+    const { cam, events } = makeCam();
+    cam.reset(hero);
+    if (dark) events.emit('darkMode', { on: true });
+    for (let i = 0; i < 120; i++) cam.update(NEUTRAL, hero);
+    const w0 = cam.lookUp.w;
+    const trail = [cam.pos.clone()];
+    hero.action = 'star_dance';
+    for (let i = 0; i < 100; i++) {
+      cam.update(NEUTRAL, hero);
+      trail.push(cam.pos.clone());
+    }
+    const first = trail[1].distanceTo(trail[0]);
+    let jerk = 0;
+    for (let i = 2; i < trail.length; i++) jerk = Math.max(jerk, trail[i].clone().sub(trail[i - 1].clone().multiplyScalar(2)).add(trail[i - 2]).length());
+    return { w0, w: cam.lookUp.w, first, jerk, dist: cam.dist, fov: cam.fov };
+  };
+  const sunny = run(false);
+  const dark = run(true);
+  assert.ok(dark.w0 > 0.95, `the look-up was on (${dark.w0.toFixed(2)})`);
+  // (It swings round from further out in AI RACE mode, so it travels further, but it sets off
+  // as gently: the first tick barely moves it, and no tick lurches.)
+  assert.ok(sunny.first < 5 && dark.first < 5, `first tick of the swing: ${sunny.first.toFixed(1)} / ${dark.first.toFixed(1)} units`);
+  assert.ok(sunny.jerk < 40 && dark.jerk < 55, `camera jerk ${sunny.jerk.toFixed(1)} / ${dark.jerk.toFixed(1)}`);
+  // It made way for the close-up: the same framing as in sunny mode.
+  assert.equal(dark.w, 0, 'the look-up has eased out');
+  assert.equal(dark.fov, K.FOV, 'field of view');
+  assert.ok(Math.abs(dark.dist - sunny.dist) < 2, `close-up distance ${dark.dist.toFixed(0)} vs ${sunny.dist.toFixed(0)}`);
 });
