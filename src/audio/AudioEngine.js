@@ -19,6 +19,7 @@ import { SFX } from './sfx.js';
 import { Ambience } from './ambience.js';
 import { SPAWN, LAWN_BASE } from '../world/layout.js';
 import { clamp } from '../core/math.js';
+import { GAME_OVER_SECONDS } from '../core/constants.js';
 
 const MUSIC_FADE = 1.2; // crossfade seconds
 const YOUNG_TRACK = 1.5; // a track replaced before this age is cut quickly, not crossfaded
@@ -36,7 +37,6 @@ const FULL_VOLUME_DIST = 1400; // positional sounds are full volume within this 
 const SILENT_DIST = 9000;
 const PAUSE_DUCK = 0.35;
 const FANFARE_SECONDS = 2.8;
-const GAME_OVER_SECONDS = 3.2; // the GAME OVER card (main.js), before the title returns
 const GAME_OVER_AMB_DUCK = 0.3; // the frozen world's ambience drops back under the jingle
 
 // Only a table's own entries count: names like 'toString' or '__proto__' are unknown.
