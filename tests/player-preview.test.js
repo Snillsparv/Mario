@@ -12,6 +12,8 @@ test('every preview demo reaches each of its `until` goals', () => {
   for (const [name, demo] of Object.entries(DEMOS)) {
     const [x, y, z, yaw] = demo.spawn;
     const p = new Player({ collision: world, events: null, spawn: { x, y, z, yaw }, signs });
+    if (demo.hat) p.giveWingHat(demo.hat);
+    const seen = new Set();
     const ctl = new ScriptedController();
     const reached = (until) => (until === 'grounded' ? p.grounded : until === 'airborne' ? !p.grounded && !p.inWater : p.action === until);
     for (const step of demo.script) {
@@ -19,9 +21,14 @@ test('every preview demo reaches each of its `until` goals', () => {
       let i = 0;
       while (i < max && !(step.until && i > 0 && reached(step.until))) {
         p.update(ctl.next(step), yaw);
+        seen.add(p.action);
         i++;
       }
       if (step.until) assert.ok(reached(step.until), `${name}: never reached ${step.until}`);
+    }
+    if (name === 'fly') {
+      assert.ok(seen.has('flying') && seen.has('belly_slide'), `fly: ${[...seen].join(' ')}`);
+      assert.ok(!seen.has('freefall') && !seen.has('bonk'), 'fly: glides down without stalling or crashing');
     }
   }
 });

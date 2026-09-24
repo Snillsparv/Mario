@@ -17,12 +17,35 @@
 // On start: audio.unlock(), an sfx 'menu_select' event, a 0.4 s fade. The promise resolves
 // only once the start key/button has been released too, so the game's own input never sees
 // the same press (which would immediately toggle pause or jump).
+//
+// Touch screens (ui/TouchController.js shown): the prompts name taps and the on-screen START
+// instead of keys, and the controller's START or A, or a touch on the picture, counts as a
+// click on the card ('touchPress' / 'touchRelease' events); its first tap unlocks audio
+// through the same pointer listeners as any tap.
 
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
 import { renderLogoWord } from './logo.js';
-import { hudMetrics, boxStyle, TitleGate, START_PRESS, START_PROMPT, UNLOCK_PRESS, UNLOCK_PROMPT, TITLE_HINT } from './hudLogic.js';
+import {
+  hudMetrics,
+  boxStyle,
+  TitleGate,
+  START_PRESS,
+  START_PROMPT,
+  UNLOCK_PRESS,
+  UNLOCK_PROMPT,
+  TITLE_HINT,
+  TOUCH_START_PROMPT,
+  TOUCH_UNLOCK_PRESS,
+  TOUCH_UNLOCK_PROMPT,
+  TOUCH_TITLE_HINT,
+} from './hudLogic.js';
 import { pixelRatio } from './pixelRatio.js';
+import { touchUi } from './touchLogic.js';
+
+// Touch-controller buttons that start the game like a click on the card (any touch over the
+// picture does too).
+const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 
 // Escape is the in-game Start (pause) key, so it starts the game here too.
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
@@ -280,6 +303,23 @@ export class TitleScreen {
       listen(window, 'touchend', onPointer(false), true);
       listen(this.el, 'click', () => gate.click() === 'begin' && begin(Promise.resolve()));
 
+      // The touch controller: START / A (or a touch over the picture) is a click on the card;
+      // the game starts once that touch has ended. The pointer listeners above have already
+      // seen the same touch (pointer events come first), so the unlocking tap is swallowed.
+      if (this.events) {
+        let touchHeld = null;
+        cleanups.push(
+          this.events.on('touchPress', (e) => {
+            if (!e || !(TOUCH_START_BUTTONS.has(e.button) || e.picture) || gate.starting) return;
+            if (gate.click() === 'begin') begin(new Promise((r) => (touchHeld = { button: e.button, r })));
+          }),
+          this.events.on('touchRelease', (e) => {
+            if (touchHeld && e?.button === touchHeld.button) touchHeld.r();
+          }),
+          this.events.on('touchUi', () => this._setTouch(touchUi.active)),
+        );
+      }
+
       // Gamepad Start/A, polled every frame; waits for release like the keyboard path.
       let padRelease = null;
       const poll = () => {
@@ -360,10 +400,29 @@ export class TitleScreen {
       d.append(...children);
       return d;
     };
+    this.touch = null;
+    this._setTouch(touchUi.active, false);
     const { castle, grounds, pip, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
     this.starringRow = div('cg-starring', [starring.el, pip.el]);
     this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el, this.starringRow])]);
     this.el.append(this.logo, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
+  }
+
+  // Prompts for keys/clicks or for the touch controller; redraws them when that changes.
+  _setTouch(on, relayout = true) {
+    on = !!on;
+    if (!this.pieces || on === this.touch) return;
+    this.touch = on;
+    const { prompt, wake, wakePrompt, hint } = this.pieces;
+    const text = (piece, font, str, scale, style) => {
+      piece.render = (px) => textCanvas(font, str, scale * px, style);
+      piece.px = 0; // redraw at the next fit()
+    };
+    text(prompt, SMALL_FONT, on ? TOUCH_START_PROMPT : START_PROMPT, 1, 'white');
+    text(wake, BIG_FONT, on ? TOUCH_UNLOCK_PRESS : UNLOCK_PRESS, 1.2, 'gold');
+    text(wakePrompt, SMALL_FONT, on ? TOUCH_UNLOCK_PROMPT : UNLOCK_PROMPT, 1, 'white');
+    text(hint, SMALL_FONT, on ? TOUCH_TITLE_HINT : TITLE_HINT, 1, 'white');
+    if (relayout) this._layout();
   }
 
   // Size and place everything for the current box; the layout is in 320x240 logical units.

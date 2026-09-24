@@ -11,7 +11,7 @@ import { scaledFog } from './robotBeastModel.js';
 
 const UV = [fireUV(FIRE.GLOW), fireUV(FIRE.FLAME), fireUV(FIRE.SPARK), fireUV(FIRE.PUFF)];
 export const FIRE_CAPACITY = 420;
-const GLOW_SLOTS = 24; // per-frame glows (fireball halos, eyes, beacon, charge)
+const GLOW_SLOTS = 32; // per-frame glows (fireball halos, the beast's and minions' eyes, charge)
 
 // sRGB (as picked) -> the linear values the sprite shader expects.
 export function lin(c) {

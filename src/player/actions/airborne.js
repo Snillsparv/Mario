@@ -87,7 +87,7 @@ function airTick(p, c, o) {
       stopAgainstWall(p, w);
     }
   }
-  applyGravity(p, o.controlHeight, o.gravity, o.terminal);
+  applyGravity(p, o.controlHeight && !p.stompBounce, o.gravity, o.terminal);
   o.pitch?.(p);
   return false;
 }
@@ -112,8 +112,18 @@ function rememberTakeOff(p) {
   p.comboJump = p.forwardVel >= T.LONG_JUMP_COMBO_SPEED ? { fv: p.forwardVel, y: p.pos.y } : null;
 }
 
+// arg.bounce (player.bounce: stomped on an enemy): rises at that speed keeping the forward
+// speed and drift, with no jump cut on releasing A (p.stompBounce, cleared on the next action).
 const jump = airAction(
-  (p) => {
+  (p, arg) => {
+    if (arg?.bounce) {
+      p.comboJump = null;
+      p.vel.y = arg.bounce;
+      p.grounded = false;
+      p.stompBounce = true;
+      p.sfx('stomp');
+      return;
+    }
     rememberTakeOff(p);
     takeOff(p, T.JUMP_VY + p.forwardVel * T.JUMP_FV_SCALE, p.forwardVel * T.JUMP_KEEP_FV);
     p.sfx('jump');

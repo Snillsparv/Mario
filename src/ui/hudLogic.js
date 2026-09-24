@@ -110,6 +110,17 @@ export const PAD_CONTROLS = [
   ['RB', 'Camera mode'],
   ['Start', 'Pause'],
 ];
+// The on-screen touch controller (ui/TouchController.js); replaces both while it is shown.
+export const TOUCH_CONTROLS = [
+  ['Stick / D-pad', 'Move (tilt to walk)'],
+  ['A', 'Jump'],
+  ['B', 'Attack / Dive / Read'],
+  ['Z', 'Crouch / Ground pound'],
+  ['Camera disc', 'Camera'],
+  ['Drag picture', 'Orbit camera'],
+  ['CAM', 'Camera mode'],
+  ['START', 'Pause'],
+];
 
 // Lay a legend out in two columns when they fit the logical width W, else one.
 // measure(text) returns a width in logical pixels. Each column has its own key width.
@@ -170,6 +181,11 @@ export const START_PROMPT = 'Press Enter, Space or click to start';
 export const UNLOCK_PRESS = 'PRESS ANY KEY';
 export const UNLOCK_PROMPT = 'Click or press any key to turn the sound on';
 export const TITLE_HINT = 'WASD move · Space jump · J attack · Esc pause';
+// The same lines while the touch controller is shown (its first tap unlocks audio too).
+export const TOUCH_START_PROMPT = 'Tap the picture or press START';
+export const TOUCH_UNLOCK_PRESS = 'TAP ANYWHERE';
+export const TOUCH_UNLOCK_PROMPT = 'Tap anywhere to turn the sound on';
+export const TOUCH_TITLE_HINT = 'Stick move · A jump · B attack · START pause';
 
 // Game-over card (GameOverCard.js): the text is drawn at GAME_OVER_SCALE font pixels per
 // logical pixel, the same size as the pause screen's PAUSE.
@@ -181,15 +197,19 @@ export const AI_RACE = 'AI RACE';
 export const AI_RACE_SCALE = 2;
 
 // Every string the UI draws with each font (the glyph-coverage test checks these).
-export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, 'PIP', GAME_OVER, AI_RACE];
+export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, TOUCH_UNLOCK_PRESS, 'PIP', GAME_OVER, AI_RACE];
 export const SMALL_STRINGS = [
   ...KEY_CONTROLS.flat(),
   ...PAD_CONTROLS.flat(),
+  ...TOUCH_CONTROLS.flat(),
   'starring',
   'CONTROLS',
   START_PROMPT,
   UNLOCK_PROMPT,
   TITLE_HINT,
+  TOUCH_START_PROMPT,
+  TOUCH_UNLOCK_PROMPT,
+  TOUCH_TITLE_HINT,
   '×0123456789',
 ];
 

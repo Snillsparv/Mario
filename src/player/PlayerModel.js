@@ -7,8 +7,8 @@
 // object3D sits at the feet (rs.pos) and is yawed to rs.yaw (front faces +Z); during
 // pole_handstand rs.pos is the pole tip under his hands. Everything else (poses, flips,
 // squash, attack swells, physical pitch/roll, blinking, invincibility flicker, the shadow,
-// the hot-foot smoke) is handled inside. No lights are added: the renderer's sun + ambient
-// shade Pip.
+// the hot-foot smoke, the winged hat's flapping wings) is handled inside. No lights are
+// added: the renderer's sun + ambient shade Pip.
 
 import * as THREE from 'three';
 import { angleDiff, clamp } from '../core/math.js';
@@ -22,6 +22,7 @@ import { createFaceTextures, FACES } from './model/faceTexture.js';
 import { COLORS } from './model/palette.js';
 import { physicsStride } from './model/physicsLink.js';
 import { gaitStride } from './model/strides.js';
+import { HatWings } from './model/wings.js';
 
 // Fallback stride length (units per cycle) when the RenderState has no cyclePhase.
 const FALLBACK_STRIDE = 150;
@@ -49,10 +50,13 @@ export class PlayerModel {
     this.object3D.add(this.shadow.mesh);
     this.smoke = new SeatSmoke(); // hot-foot puffs ('burn')
     this.object3D.add(this.smoke.mesh);
+    this.wings = new HatWings(this.rig.material); // the winged hat (RenderState.wingHat)
+    this.rig.hat.add(this.wings.mesh);
 
     this.rs = {
       pos: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, roll: 0, action: '', anim: 'idle', animTime: 0, cyclePhase: 0,
       forwardVel: 0, vy: 0, floorY: FLOOR_LOWER_LIMIT, floorNormal: { x: 0, y: 1, z: 0 }, invincible: false, headYaw: 0,
+      wingHat: false, wingHatEnding: false,
     };
     this.phase = 0;
     this.prevYaw = NaN; // NaN until the first frame (a number keeps the field unboxed)
@@ -83,6 +87,7 @@ export class PlayerModel {
     o.matrixWorld.decompose(this.worldPos, this.worldQuat, this.worldScale); // matrices are current
     this.shadow.update(rs, this.worldQuat);
     this.smoke.update(dt, rs, this.rig.hips, o);
+    this.wings.update(rs, dt, this.animator.time);
 
     // Invincibility: the body flickers at a fixed rate whatever the display refresh; the
     // shadow stays. Not while dying (see NO_FLICKER_ANIMS).
@@ -122,6 +127,8 @@ export class PlayerModel {
     s.floorNormal.z = num(n?.z, 0);
     s.invincible = !!r?.invincible;
     s.headYaw = num(r?.headYaw, 0);
+    s.wingHat = !!r?.wingHat;
+    s.wingHatEnding = s.wingHat && !!r?.wingHatEnding;
     return s;
   }
 

@@ -51,8 +51,9 @@ export const BUTTON = {
 
 const BEVEL = 6;
 
-// Appends triangle (a, b, c) to `out` wound so its normal points along (nx, ny, nz).
-function tri(out, a, b, c, nx, ny, nz) {
+// Appends triangle (a, b, c) to `out` wound so its normal points along (nx, ny, nz) (the
+// mystery box's collider uses it too).
+export function tri(out, a, b, c, nx, ny, nz) {
   const ux = b[0] - a[0];
   const uy = b[1] - a[1];
   const uz = b[2] - a[2];

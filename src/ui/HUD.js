@@ -20,6 +20,7 @@ import { PowerMeterLogic, drawPowerMeter, isLowHealth } from './powerMeter.js';
 import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME } from './hudLogic.js';
 import { drawPauseScreen, gamepadConnected } from './pauseScreen.js';
 import { pixelRatio } from './pixelRatio.js';
+import { touchUi } from './touchLogic.js';
 
 const TICK = 1 / 30;
 const MARGIN = 18; // logical px from the screen edge
@@ -37,6 +38,7 @@ export class HUD {
     this.bumps = { lives: Infinity, coins: Infinity, stars: Infinity }; // seconds since each counter bumped
     this.redPopup = null; // { n, age }
     this.gamepad = false; // pause legend shows pad bindings
+    this.controls = 'keys'; // pause legend: 'touch' (the touch controller is shown) | 'pad' | 'keys'
     this.slide = new MeterSlide();
     this.active = false; // nothing is drawn until the game first feeds state (not over the title)
     this.visible = true; // setVisible(): hidden HUDs skip their repaints
@@ -86,7 +88,10 @@ export class HUD {
 
   setPaused(paused) {
     this.paused = !!paused;
-    if (this.paused) this.gamepad = gamepadConnected();
+    if (this.paused) {
+      this.gamepad = gamepadConnected();
+      this.controls = touchUi.active ? 'touch' : this.gamepad ? 'pad' : 'keys';
+    }
     this.dirty = true;
   }
 
@@ -166,7 +171,7 @@ export class HUD {
     ctx.imageSmoothingEnabled = false;
     if (this.paused) {
       const { coins, stars } = this.state;
-      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, gamepad: this.gamepad });
+      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls });
     }
     this._drawCounters();
     if (!this.paused) this._drawMeter(now);

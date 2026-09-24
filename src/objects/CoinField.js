@@ -1,6 +1,11 @@
 // Yellow and red coins: placement, pickup tests and the spinning sprite batch.
 // Every coin shares one billboard batch (one draw call); the spin is a sequence of
 // pre-painted rotation frames like on the N64.
+//
+// Besides the layout's coins, a few "drop" slots hold yellow coins that appear at run time
+// (spawnCoin: a wrecked minion's coin). They are not part of `coins` (the layout's set), are
+// gone again after reset(), and take their shadows from the slots after the layout coins'
+// (shadow index `dropShadow0 + j`).
 
 import { SpriteBatch } from './SpriteBatch.js';
 import { makeCoinAtlas, coinFrameUV, COIN_FRAMES } from './textures.js';
@@ -22,7 +27,7 @@ const FRAME_UVS = [false, true].map((red) => Array.from({ length: COIN_FRAMES },
 
 export class CoinField {
   // groundAt(x, z) -> ground height; shadows: BlobShadows whose first N slots belong to the coins.
-  constructor({ layout, collision, groundAt, shadows }) {
+  constructor({ layout, collision, groundAt, shadows, drops = 0, dropShadow0 = -1 }) {
     const place = (c, red) => {
       let y = c.y;
       if (y === undefined) {
@@ -49,8 +54,13 @@ export class CoinField {
       return f.surface ? { y: f.y, normal: { ...f.surface.normal }, size: shadowSize(SHADOW_SIZE, c.y - f.y) } : null;
     });
     this._placeShadows();
+    // Run-time coins (spawnCoin), same record shape as the layout's; reused round-robin.
+    this.collision = collision;
+    this.drops = Array.from({ length: drops }, () => ({ x: 0, y: 0, z: 0, red: false, value: 1, alive: false, index: 0 }));
+    this.dropShadow0 = dropShadow0;
+    this.nextDrop = 0;
     this.hits = []; // reused by collect()
-    this.batch = new SpriteBatch(Math.max(1, this.coins.length), { map: makeCoinAtlas(), alphaCut: 0.5 });
+    this.batch = new SpriteBatch(Math.max(1, this.coins.length + drops), { map: makeCoinAtlas(), alphaCut: 0.5 });
     this.mesh = this.batch.mesh;
   }
 
@@ -76,7 +86,39 @@ export class CoinField {
       if (c.red) c.index = ++this.redCollected;
       hits.push(c);
     }
+    const drops = this.drops;
+    for (let j = 0; j < drops.length; j++) {
+      const c = drops[j];
+      if (!c.alive || c.y < lo || c.y > hi) continue;
+      const dx = c.x - px;
+      const dz = c.z - pz;
+      if (dx * dx + dz * dz > r2) continue;
+      c.alive = false;
+      if (this.dropShadow0 >= 0) this.shadows.hide(this.dropShadow0 + j);
+      hits.push(c);
+    }
     return hits;
+  }
+
+  // A yellow coin appears hovering over the floor under (x, y, z) (a wrecked minion's drop);
+  // returns its record, or null without drop slots. When every slot is taken the oldest coin
+  // moves here.
+  spawnCoin(x, y, z) {
+    if (this.drops.length === 0) return null;
+    const j = this.nextDrop;
+    this.nextDrop = (j + 1) % this.drops.length;
+    const c = this.drops[j];
+    const f = this.collision.findFloor(x, y + 60, z);
+    const floorY = f.surface ? f.y : y;
+    c.x = x;
+    c.y = floorY + COIN_HOVER;
+    c.z = z;
+    c.alive = true;
+    if (this.dropShadow0 >= 0) {
+      if (f.surface) this.shadows.place(this.dropShadow0 + j, x, floorY, z, f.surface.normal, shadowSize(SHADOW_SIZE, COIN_HOVER));
+      else this.shadows.hide(this.dropShadow0 + j);
+    }
+    return c;
   }
 
   _placeShadows() {
@@ -94,6 +136,11 @@ export class CoinField {
     }
     this.redCollected = 0;
     this._placeShadows();
+    this.drops.forEach((c, j) => {
+      c.alive = false;
+      if (this.dropShadow0 >= 0) this.shadows.hide(this.dropShadow0 + j);
+    });
+    this.nextDrop = 0;
   }
 
   get allRedCollected() {
@@ -118,6 +165,16 @@ export class CoinField {
       s.y = c.y;
       s.z = c.z;
       s.uv = FRAME_UVS[c.red ? 1 : 0][frame];
+      b.push();
+    }
+    const drops = this.drops;
+    for (let j = 0; j < drops.length; j++) {
+      const c = drops[j];
+      if (!c.alive) continue;
+      s.x = c.x;
+      s.y = c.y;
+      s.z = c.z;
+      s.uv = FRAME_UVS[0][frame];
       b.push();
     }
     b.commit();

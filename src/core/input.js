@@ -28,6 +28,13 @@
 // Short taps are latched: a key (or gamepad button, sampled every render frame via
 // sample()) that goes down and up again between two polls still reads as held for one
 // poll, so it is `pressed` on that poll and `released` on the next.
+//
+// Touch screens (ui/TouchController.js): setTouchState({ stickX, stickY, A, B, Z, R, START,
+// CU, CD, CL, CR }) whenever the on-screen controller changes. It is merged like one more
+// gamepad: buttons OR'ed in, its stick used when pushed further than the keys/pads. Every
+// button seen down is latched until the next poll, so a tap shorter than a tick still reads
+// as a press (like a key). addLookDelta(dx, dy) adds a drag on the picture to the mouse-drag
+// camera orbit (mouseDX / mouseDY).
 
 const BUTTONS = ['A', 'B', 'Z', 'R', 'START', 'CU', 'CD', 'CL', 'CR'];
 
@@ -74,6 +81,11 @@ function browserGamepads() {
   return typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
 }
 
+// A stick axis from outside: -1..1, anything else (undefined, NaN) = 0.
+function unitAxis(v) {
+  return Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0;
+}
+
 function buttonRecord() {
   const r = {};
   for (const b of BUTTONS) r[b] = false;
@@ -96,6 +108,8 @@ export class Input {
     this.keyIdlePolls = Infinity; // polls since a direction key was last held
     this.getGamepads = browserGamepads; // replaceable (tests)
     this._pads = []; // scratch: the pads read this poll/sample
+    this.touch = { stickX: 0, stickY: 0, ...buttonRecord() }; // on-screen controller (setTouchState)
+    this.touchLatch = buttonRecord(); // touch buttons seen down since the last poll
 
     this._onKeyDown = (e) => {
       if (e.code in KEYMAP || /^Key[WASDQ]$/.test(e.code)) e.preventDefault();
@@ -139,6 +153,27 @@ export class Input {
 
   setOverride(state) {
     this.override = state;
+  }
+
+  // The touch controller's current state (null = released). Values are copied: the caller may
+  // reuse its object. Sticks are -1..1 (y up) with the dead zone already applied.
+  setTouchState(state) {
+    const t = this.touch;
+    t.stickX = unitAxis(state?.stickX);
+    t.stickY = unitAxis(state?.stickY);
+    for (let i = 0; i < BUTTONS.length; i++) {
+      const b = BUTTONS[i];
+      const down = !!state?.[b];
+      t[b] = down;
+      if (down && this.enabled) this.touchLatch[b] = true;
+    }
+  }
+
+  // A drag on the game picture (touch), in CSS px: orbits the camera like a mouse drag.
+  addLookDelta(dx, dy) {
+    if (!this.enabled) return;
+    this.mouseDX += dx || 0;
+    this.mouseDY += dy || 0;
   }
 
   // The pads to read (see the header): all connected standard-mapping pads, else the most
@@ -194,13 +229,17 @@ export class Input {
     if (!this.enabled) return;
     const pads = this._gamepads();
     for (let i = 0; i < pads.length; i++) this._padButtons(pads[i], this.padLatch);
+    for (let i = 0; i < BUTTONS.length; i++) if (this.touch[BUTTONS[i]]) this.touchLatch[BUTTONS[i]] = true;
   }
 
   // Forget latched taps and the previous button state (held buttons will not read as
   // freshly pressed). Used when gameplay (re)starts after a menu.
   flush() {
     this.tapped.clear();
-    for (const b of BUTTONS) this.padLatch[b] = false;
+    for (const b of BUTTONS) {
+      this.padLatch[b] = false;
+      this.touchLatch[b] = false;
+    }
     this.poll();
   }
 
@@ -209,6 +248,7 @@ export class Input {
     let sy = 0;
     let raw = 0; // the stick's magnitude before the keyboard ease-in
     const held = this.held;
+    const touch = this.touch;
     for (let i = 0; i < BUTTONS.length; i++) {
       const b = BUTTONS[i];
       held[b] = this.padLatch[b];
@@ -259,10 +299,24 @@ export class Input {
         sy = (py / pm) * scaled;
         raw = scaled;
       }
+
+      // The touch controller: one more pad (its buttons OR'ed in, latched taps included; its
+      // stick, already dead-zoned, wins when pushed further than the keys or pads).
+      for (let i = 0; i < BUTTONS.length; i++) {
+        const b = BUTTONS[i];
+        if (touch[b] || this.touchLatch[b]) held[b] = true;
+      }
+      const tm = Math.hypot(touch.stickX, touch.stickY);
+      if (tm > 0 && tm >= raw) {
+        sx = touch.stickX;
+        sy = touch.stickY;
+        raw = Math.min(1, tm);
+      }
     } else {
       for (const b of BUTTONS) held[b] = false;
       this._keyStick(false);
     }
+    for (let i = 0; i < BUTTONS.length; i++) this.touchLatch[BUTTONS[i]] = false;
     this.tapped.clear();
 
     if (this.override) {

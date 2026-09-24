@@ -8,7 +8,8 @@ import { isSlippery, isSteep } from '../physics/slopes.js';
 import { gaitStride } from '../model/strides.js';
 
 // Single, double or triple jump depending on what was just landed from. A double jump
-// needs no speed (hopping in place works); the triple needs a running start. Z pressed on the
+// needs no speed (hopping in place works); the triple needs a running start (with the winged
+// hat on, the triple jump takes off into flight instead). Z pressed on the
 // same tick as A: a long jump when running (LONG_JUMP_COMBO_SPEED), a backflip when standing
 // (as if crouched first), else the jump just ignores it (never a ground pound on take-off).
 export function jumpFromGround(p) {
@@ -17,7 +18,7 @@ export function jumpFromGround(p) {
     if (p.action === 'idle') return p.setAction('backflip');
   }
   const chain = p.tick - p.jumpChain.landedAt <= T.JUMP_CHAIN_WINDOW ? p.jumpChain.kind : null;
-  if (chain === 'double' && p.forwardVel >= T.TRIPLE_JUMP_MIN_SPEED) return p.setAction('triple_jump');
+  if (chain === 'double' && p.forwardVel >= T.TRIPLE_JUMP_MIN_SPEED) return p.setAction(p.wingHat > 0 ? 'flying' : 'triple_jump');
   if (chain === 'single') return p.setAction('double_jump');
   return p.setAction('jump');
 }
@@ -59,7 +60,8 @@ export function fallOff(p) {
 // Touch-down from the air: fall damage, landing events, jump-chain window, then the
 // landing action. opts: { next = 'land', chain, ticks, safe (no fall damage), pound }.
 // Fast landings from beyond HARD_FALL_HEIGHT hurt (more beyond BIG_FALL_HEIGHT) unless the
-// landing is safe or a ground pound; a slippery floor turns the smaller of those falls into
+// landing is safe, a ground pound or the end of a fall that started in a flight
+// (p.flightFall); a slippery floor turns the smaller of those falls into
 // a harmless hard landing. Returns true (run the landing action now) when a button was
 // pressed on the touchdown tick, so that press still counts (jump chains, punches, slides).
 export function landFromAir(p, opts = {}) {
@@ -67,7 +69,7 @@ export function landFromAir(p, opts = {}) {
   const fast = p.vel.y < -T.FALL_DAMAGE_MIN_VY;
   p.vel.y = 0;
   const surface = p.floor.surface;
-  const safe = opts.safe || opts.pound;
+  const safe = opts.safe || opts.pound || p.flightFall;
   const hardFall = !safe && fast && fall > T.HARD_FALL_HEIGHT;
   const bigFall = fall > T.BIG_FALL_HEIGHT;
   const damage = !hardFall ? 0 : bigFall ? T.BIG_FALL_DAMAGE : isSlippery(p.floor) ? 0 : T.HARD_FALL_DAMAGE;

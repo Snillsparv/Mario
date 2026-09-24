@@ -146,10 +146,11 @@ function paintCoinFace(ctx, R, pal, shade) {
 
 // ---------------------------------------------------------------- sparkles
 
-// Three 32 px cells: a five-pointed sparkle, a four-pointed twinkle and a soft glow. Painted in
-// white/cream so each sprite can be tinted per instance.
-export const SPARKLE = { STAR: 0, TWINKLE: 1, GLOW: 2 };
-const SPARKLE_CELLS = 3;
+// Four 32 px cells: a five-pointed sparkle, a four-pointed twinkle, a soft glow and a lumpy clod
+// (dirt and scrap bits: the minions burrowing, wrecks). Painted in white/cream (the clod in
+// light grey with its own shading) so each sprite can be tinted per instance.
+export const SPARKLE = { STAR: 0, TWINKLE: 1, GLOW: 2, CLOD: 3 };
+const SPARKLE_CELLS = 4;
 
 export function sparkleUV(cell) {
   return [cell / SPARKLE_CELLS, 0, 1 / SPARKLE_CELLS, 1];
@@ -172,9 +173,31 @@ export function makeSparkleAtlas() {
       fillCore(ctx, x, S * 0.5, S * 0.48);
       // Soft glow.
       halo(ctx, S * 2.5, S * 0.5, S * 0.5, 0.9);
+      clod(ctx, S * 3.5, S * 0.5, S * 0.4);
     },
     { repeat: false },
   );
+}
+
+// An irregular lump, lit from the upper left, with a darker rim: tinted brown it reads as a
+// clod of earth, tinted grey as a bit of scrap.
+function clod(ctx, x, y, r) {
+  const lumps = [1, 0.78, 0.95, 0.7, 0.9, 0.82, 1, 0.74, 0.88];
+  ctx.beginPath();
+  for (let i = 0; i < lumps.length; i++) {
+    const a = (i / lumps.length) * TAU;
+    ctx.lineTo(x + Math.cos(a) * r * lumps[i], y + Math.sin(a) * r * lumps[i]);
+  }
+  ctx.closePath();
+  const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  g.addColorStop(0, '#ffffff');
+  g.addColorStop(0.55, '#c8c8c8');
+  g.addColorStop(1, '#6a6a6a');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(40,40,40,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 }
 
 function halo(ctx, x, y, r, alpha) {

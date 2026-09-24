@@ -2,17 +2,20 @@
 // for the Player contract). Actions live in ./actions (one file per group); collision
 // stepping and velocity helpers in ./physics. Velocities are in units/tick.
 
-import { clamp, lerp, lerpAngle, stickToWorldYaw } from '../core/math.js';
-import { FRAME_DT, NO_WATER } from '../core/constants.js';
+import { approach, clamp, lerp, lerpAngle, stickToWorldYaw } from '../core/math.js';
+import { FPS, FRAME_DT, NO_WATER } from '../core/constants.js';
 import { neutralController } from '../core/input.js';
 import { SIGNS, groundHeight } from '../world/layout.js';
 import * as T from './physics/tuning.js';
 import { UP } from './physics/slopes.js';
 import { ACTIONS, enterWater } from './actions/index.js';
+import { attackZone } from './actions/attacks.js';
 
 // Actions during which water entry is not checked (they position the hero themselves).
 const NO_WATER_CHECK = new Set(['death', 'ledge_hang', 'ledge_climb', 'pole', 'pole_top', 'spawn']);
 const ON_TREE = new Set(['pole', 'pole_top']);
+// Actions that ignore bounce() (besides the submerged and automatic groups).
+const NO_BOUNCE = new Set(['reading', 'spawn', 'spawn_land']);
 const FOOTSTEP_ANIMS = new Set(['tiptoe', 'walk', 'run', 'crawl']);
 const MAX_CHAINED_ACTIONS = 8;
 
@@ -98,6 +101,16 @@ export class Player {
     this.letGoPole = null; // trunk let go of with Z: not grabbed again before landing
     this.walkOff = null; // walked off a ledge: where the air steps drift him clear of it (step.js)
 
+    // Winged hat (giveWingHat): ticks left, and the flight's state (actions/flying.js).
+    this.wingHat = 0;
+    this.flySpeed = 0;
+    this.flyPitch = 0; // > 0 nose down
+    this.flyBank = 0; // > 0 right side down
+    this.flapTimer = 0;
+    this.flightFall = false; // airborne since a flight: the landing never hurts (see afterTick)
+    this.stompBounce = false; // the current jump is a bounce() (no jump cut on releasing A)
+    this.attack = { x: 0, y: 0, z: 0, radius: 0, kind: '' }; // getAttack's reused result
+
     this.health = T.MAX_HEALTH;
     this.coins = 0;
     this.stars = 0;
@@ -125,6 +138,7 @@ export class Player {
     this.headYaw = 0;
 
     const c = this.readInput(controller, cameraYaw);
+    this.tickWingHat();
     this.waterLevel = this.collision.waterLevelAt(p.x, p.z);
     const def = ACTIONS[this.action];
     if (def.group !== 'submerged' && !NO_WATER_CHECK.has(this.action) && p.y < this.waterLevel - T.WATER_ENTER_DEPTH) {
@@ -198,6 +212,13 @@ export class Player {
     if (this.grounded || this.inWater || group === 'automatic') this.peakY = this.pos.y;
     else this.peakY = Math.min(this.fallCeiling, Math.max(this.peakY, this.pos.y));
     if ((this.grounded || this.inWater) && this.action !== 'pole') this.letGoPole = null;
+    // After a flight, airborne actions that don't tilt the body ease out of its pitch and bank.
+    if (this.flightFall && group === 'airborne' && this.action !== 'flying') {
+      if (this.pitch === 0) this.pitch = approach(this.prevPitch, 0, T.FLY_TILT_EASE);
+      if (this.roll === 0) this.roll = approach(this.prevRoll, 0, T.FLY_TILT_EASE);
+    }
+    if (this.action === 'flying') this.flightFall = true;
+    else if (this.grounded || this.inWater || group !== 'airborne') this.flightFall = false;
     if (group !== 'airborne') this.walkOff = null;
     this.updateBreath();
     this.emitFootsteps();
@@ -252,6 +273,7 @@ export class Player {
     this.prevAction = this.action;
     this.action = name;
     this.actionTimer = 0;
+    this.stompBounce = false;
     if (def.anim) this.setAnim(def.anim);
     def.enter?.(this, arg);
     return true;
@@ -301,6 +323,7 @@ export class Player {
 
   // Optional drop-in from the sky at the spawn point (also used on respawn).
   beginIntro() {
+    this.removeWingHat();
     const s = this.spawn;
     this.teleport(s.x, s.y + T.INTRO_DROP, s.z, s.yaw);
     this.setAction('spawn');
@@ -340,6 +363,51 @@ export class Player {
     this.readingSign = null;
     this.pressGuard = true;
     this.setAction('idle');
+  }
+
+  // The winged hat: on for `seconds` (a pickup while it is on restarts the time), counting
+  // down only while the game ticks (and not while reading). Emits 'wingHat' { on: true } and
+  // sfx 'powerup'; 'wingHat' { on: false } once it runs out, and when Pip dies or respawns
+  // (also the game-over reset: a new game starts with beginIntro).
+  giveWingHat(seconds = T.WING_HAT_SECONDS) {
+    const s = Number.isFinite(seconds) && seconds > 0 ? seconds : T.WING_HAT_SECONDS;
+    this.wingHat = Math.max(1, Math.round(s * FPS));
+    this.emit('wingHat', { on: true });
+    this.sfx('powerup');
+  }
+
+  removeWingHat() {
+    if (this.wingHat <= 0) return;
+    this.wingHat = 0;
+    this.emit('wingHat', { on: false });
+  }
+
+  tickWingHat() {
+    if (this.wingHat <= 0 || this.action === 'reading') return;
+    if (--this.wingHat === 0) this.emit('wingHat', { on: false });
+  }
+
+  // Where an attack can hit something this tick: { x, y, z, radius, kind } (one reused object,
+  // read it at once) or null. See actions/attacks.js for the moves and their timing.
+  getAttack() {
+    return attackZone(this, this.attack);
+  }
+
+  // Bounce up off an enemy Pip landed on (called by objects after the tick): action 'jump'
+  // rising at vy (BOUNCE_HELD_VY or more while A is held), keeping the forward speed, with
+  // sfx 'stomp'. In flight it noses the flight up instead. Ignored while swimming, on a tree
+  // or ledge (automatic actions), reading and during the spawn drop. Returns whether it bounced.
+  bounce(vy = T.BOUNCE_VY) {
+    const group = ACTIONS[this.action].group;
+    if (group === 'submerged' || group === 'automatic' || NO_BOUNCE.has(this.action)) return false;
+    if (this.action === 'flying') {
+      this.flyPitch = Math.min(this.flyPitch, T.BOUNCE_FLY_PITCH);
+      this.sfx('stomp');
+      return true;
+    }
+    const v = Number.isFinite(vy) ? vy : T.BOUNCE_VY;
+    this.setAction('jump', { bounce: this.input.A.down ? Math.max(v, T.BOUNCE_HELD_VY) : v });
+    return true;
   }
 
   // The celebration plays on the ground: grabbed in mid-air, the hero drops first (star_fall).
@@ -398,6 +466,8 @@ export class Player {
       invincible: this.tick < this.invincibleUntil,
       punchStep: this.punchStep,
       headYaw: this.headYaw,
+      wingHat: this.wingHat > 0,
+      wingHatEnding: this.wingHat > 0 && this.wingHat <= T.WING_HAT_ENDING_SECONDS * FPS,
     };
   }
 }

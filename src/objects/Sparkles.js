@@ -1,12 +1,12 @@
-// Sparkle particles (coin bursts, the star's trail and twinkles, the star's glow halo), all in
-// one blended sprite batch. Particles are evaluated analytically from their spawn time, so the
+// Sparkle particles (coin bursts, the star's trail and twinkles, the star's glow halo, the
+// mystery box's twinkles, clods of earth and scrap), all in one blended sprite batch. Particles are evaluated analytically from their spawn time, so the
 // simulation only has to spawn them; their records come from a fixed pool (no allocation).
 
 import { SpriteBatch } from './SpriteBatch.js';
 import { makeSparkleAtlas, sparkleUV, SPARKLE } from './textures.js';
 import { TAU } from '../core/math.js';
 
-const UV = [sparkleUV(SPARKLE.STAR), sparkleUV(SPARKLE.TWINKLE), sparkleUV(SPARKLE.GLOW)];
+const UV = [sparkleUV(SPARKLE.STAR), sparkleUV(SPARKLE.TWINKLE), sparkleUV(SPARKLE.GLOW), sparkleUV(SPARKLE.CLOD)];
 const CAPACITY = 160;
 
 export const TINT = {
@@ -14,6 +14,10 @@ export const TINT = {
   red: [1, 0.55, 0.45],
   star: [1, 0.95, 0.62],
   life: [0.62, 1, 0.66],
+  box: [0.66, 0.86, 1],
+  hat: [0.62, 1, 0.9],
+  dirt: [0.46, 0.33, 0.2],
+  scrap: [0.5, 0.52, 0.56],
 };
 
 // A particle record; the pool recycles them, so spawning allocates nothing.
@@ -110,6 +114,28 @@ export class Sparkles {
     f.size0 = f.size1 = 110;
     f.cell = 1;
     f.twinkle = true;
+  }
+
+  // Clods (of earth, or scrap with TINT.scrap) thrown up and out from pos, falling back under
+  // gravity: `speed` scales how far they fly.
+  clods(pos, t0, tint, count = 8, speed = 1) {
+    const rng = this.rng;
+    for (let i = 0; i < count; i++) {
+      const p = this._spawn(t0, 0.55 + rng() * 0.35, tint);
+      if (!p) return;
+      const a = rng() * TAU;
+      const out = (60 + rng() * 170) * speed;
+      p.x = pos.x + Math.cos(a) * 25;
+      p.y = pos.y + rng() * 20;
+      p.z = pos.z + Math.sin(a) * 25;
+      p.vx = Math.cos(a) * out;
+      p.vy = (260 + rng() * 260) * speed;
+      p.vz = Math.sin(a) * out;
+      p.gy = -1500;
+      p.size0 = 20 + rng() * 22;
+      p.size1 = p.size0 * 0.7;
+      p.cell = 3;
+    }
   }
 
   // Lingering sparkle left behind by a moving object.

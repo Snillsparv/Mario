@@ -1,0 +1,431 @@
+// The mystery box (layout.MYSTERY_BOX) and the winged hat inside it.
+//
+// The box: a floating cube of translucent blue crystal (edge = spot.size) in a brass frame,
+// with a glowing white-gold "?" on each side face, bobbing gently; `spot.y` is the height of
+// its underside above the ground. A static collider (walls, a floor on top, a ceiling below) so
+// Pip's head stops at its underside. When Pip bumps it from below while rising (his head within
+// BUMP_REACH of the underside, his feet axis over its footprint) or an attack of his
+// (player.getAttack()) overlaps it, the box jolts up, flashes, emits sfx 'box_hit' and releases
+// the hat. The hat pops out of the top and hovers above the box, spinning, then glides down
+// beside it (the side Pip faces) to hover at chest height, where Pip can walk into it (above
+// the box it could only be reached with a triple jump). Touching it calls
+// player.giveWingHat(HAT_SECONDS) (the player plays 'powerup'). The empty box shows dim and
+// without its "?"; RESPAWN_TICKS after the hat was taken it lights up again and can be hit
+// once more.
+//
+//   new MysteryBox({ spot, collision, events, sparkles, shadows, shadowSlots: [box, hat],
+//                    groundAt, buildHat? })
+//   update(player, hero, tick)   30 Hz; hero = { y, vy, air } of the previous tick (ObjectManager)
+//   animate(alpha, clock)        render
+//   setDarkness(t)               the frame dims with the storm, the crystal keeps glowing
+//   reset()                      lit, hat inside
+//
+// Draw calls: frame, crystal back faces, crystal front faces; the hat (3) only while it is out.
+// No allocation per tick or frame beyond event payloads.
+
+import * as THREE from 'three';
+import { PLAYER_HEIGHT, PLAYER_RADIUS, FRAME_DT } from '../core/constants.js';
+import { bakeLighting } from '../render/materials.js';
+import { tri } from './AiButton.js';
+import { makeCrystalTexture, CRYSTAL_CELLS } from './boxTextures.js';
+import { buildPlaceholderWingedHat, flapWings } from './wingedHat.js';
+import { TINT } from './Sparkles.js';
+import { shadowSize } from './BlobShadows.js';
+
+export const BOX = {
+  BOB: 5, // bob amplitude (units) ...
+  BOB_RATE: 1.7, // ... and speed (radians per second)
+  BUMP_REACH: 25, // head this close below the underside (or touching it) bumps it
+  BUMP_MARGIN: 30, // the feet axis may be this far outside the footprint (the head is round)
+  JOLT: 30, // how far it jumps up when hit
+  JOLT_TICKS: 9,
+  FLASH_TICKS: 12,
+  RESPAWN_TICKS: 900, // 30 s after the hat was taken
+  TWINKLE_EVERY: 14,
+  FRAME: 11, // brass bar thickness
+  HAT_SECONDS: 40,
+  HAT_POP_TICKS: 16, // out of the top ...
+  HAT_ABOVE: 95, // ... to this far above the box top
+  HAT_HOLD_TICKS: 24, // hovering above the box
+  HAT_GLIDE_TICKS: 50, // then gliding down beside it ...
+  HAT_OUT: 240, // ... this far from the box centre ...
+  HAT_HEIGHT: 105, // ... to hover this high over the floor (Pip's chest)
+  HAT_RADIUS: 55, // pickup: hat radius (plus Pip's)
+  HAT_LOW: -30, // pickup window relative to the feet
+  HAT_HIGH: PLAYER_HEIGHT + 40,
+};
+
+const _q = new THREE.Quaternion();
+const _e = new THREE.Euler();
+const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+
+export class MysteryBox {
+  constructor({ spot, collision, events, sparkles, shadows, shadowSlots = null, groundAt, buildHat = null }) {
+    this.x = spot.x;
+    this.z = spot.z;
+    this.size = spot.size ?? 130;
+    this.half = this.size / 2;
+    this.collision = collision;
+    this.events = events;
+    this.sparkles = sparkles;
+    this.shadows = shadows;
+    this.shadowSlots = shadowSlots;
+    const f = collision.findFloor(this.x, 1e5, this.z);
+    this.groundY = f.surface ? f.y : groundAt(this.x, this.z);
+    this.groundNormal = f.surface ? { ...f.surface.normal } : { x: 0, y: 1, z: 0 };
+    this.bottomY = this.groundY + (spot.y ?? 340);
+    this.topY = this.bottomY + this.size;
+    this.centerY = this.bottomY + this.half;
+    this.pos = { x: this.x, y: this.centerY, z: this.z }; // sfx position
+
+    this.state = 'ready'; // 'ready' | 'empty' (hat out) | 'recharging' (hat taken)
+    this.timer = 0;
+    this.hits = 0;
+    this.tick = 0;
+    this.jolt = 0; // ticks since the last hit (JOLT_TICKS+: at rest)
+    this.offset = 0; // jolt offset (units) this tick / the previous one
+    this.prevOffset = 0;
+    this.flash = 0;
+    this.darkT = 0;
+
+    // The hat: 'inside' | 'pop' | 'hold' | 'glide' | 'hover'.
+    this.hat = { state: 'inside', t: 0, x: this.x, y: this.centerY, z: this.z, px: this.x, py: this.centerY, pz: this.z, fromX: 0, fromY: 0, fromZ: 0, toX: 0, toY: 0, toZ: 0, floorY: 0, floorN: null };
+
+    this.mesh = new THREE.Group();
+    this.mesh.name = 'mysteryBox';
+    this._buildBox();
+    this.hatMesh = (buildHat ?? buildPlaceholderWingedHat)();
+    this.hatMesh.visible = false;
+    this.mesh.add(this.hatMesh);
+    this._addCollider();
+    if (shadows && shadowSlots) {
+      const n = this.groundNormal;
+      shadows.place(shadowSlots[0], this.x, this.groundY, this.z, n, shadowSize(this.size * 1.25, this.bottomY - this.groundY));
+    }
+  }
+
+  get hatOut() {
+    return this.hat.state !== 'inside';
+  }
+
+  _buildBox() {
+    const s = this.size;
+    const h = this.half;
+    const T = BOX.FRAME;
+    // Crystal: a cube just inside the frame bars; side faces show the "?" cell, top and bottom
+    // the plain cell. Back faces (drawn first) are a deeper blue with no glyph, so the "?" on
+    // the far side never shows mirrored through the near one.
+    const geo = new THREE.BoxGeometry(s - T * 0.6, s - T * 0.6, s - T * 0.6);
+    const uv = geo.attributes.uv;
+    for (let face = 0; face < 6; face++) {
+      const cell = face === 2 || face === 3 ? CRYSTAL_CELLS.cap : CRYSTAL_CELLS.side;
+      for (let k = 0; k < 4; k++) {
+        const i = face * 4 + k;
+        uv.setX(i, cell[0] + uv.getX(i) * (cell[1] - cell[0]));
+      }
+    }
+    this.textures = { full: makeCrystalTexture('full'), empty: makeCrystalTexture('empty') };
+    this.frontMat = new THREE.MeshBasicMaterial({ map: this.textures.full, transparent: true, depthWrite: false, side: THREE.FrontSide });
+    this.backMat = new THREE.MeshBasicMaterial({ map: makeCrystalTexture('back'), transparent: true, depthWrite: false, side: THREE.BackSide });
+    this.crystalBack = new THREE.Mesh(geo, this.backMat);
+    this.crystalBack.name = 'mysteryBoxBack';
+    this.crystalBack.renderOrder = 2;
+    this.crystal = new THREE.Mesh(geo, this.frontMat);
+    this.crystal.name = 'mysteryBoxCrystal';
+    this.crystal.renderOrder = 3;
+
+    // Brass frame: twelve bars along the edges, with chamfered corner blocks where they meet.
+    const parts = [];
+    const bar = (sx, sy, sz, x, y, z) => parts.push(new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z).toNonIndexed());
+    const L = s - T;
+    for (const a of [-h + T / 2, h - T / 2]) {
+      for (const b of [-h + T / 2, h - T / 2]) {
+        bar(L, T, T, 0, a, b); // along x
+        bar(T, L, T, a, 0, b); // along y
+        bar(T, T, L, a, b, 0); // along z
+      }
+    }
+    const C = T * 1.45;
+    for (const cx of [-1, 1]) {
+      for (const cy of [-1, 1]) {
+        for (const cz of [-1, 1]) {
+          const g = new THREE.OctahedronGeometry(C * 0.9, 0).toNonIndexed();
+          g.scale(1, 1, 1);
+          const inset = h - T * 0.35;
+          g.translate(cx * inset, cy * inset, cz * inset);
+          parts.push(g);
+        }
+      }
+    }
+    const n = parts.reduce((k, g) => k + g.attributes.position.count, 0);
+    const pos = new Float32Array(n * 3);
+    let o = 0;
+    for (const g of parts) {
+      pos.set(g.attributes.position.array, o);
+      o += g.attributes.position.array.length;
+      g.dispose();
+    }
+    const frameGeo = new THREE.BufferGeometry();
+    frameGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    frameGeo.computeVertexNormals();
+    // Brass, darker toward the bottom, then sun-baked like the world.
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const y = pos[i * 3 + 1] / s + 0.5;
+      const k = 0.72 + 0.28 * y;
+      col[i * 3] = 0.86 * k;
+      col[i * 3 + 1] = 0.64 * k;
+      col[i * 3 + 2] = 0.26 * k;
+    }
+    frameGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    bakeLighting(frameGeo, { ambient: 0.6, diffuse: 0.55 });
+    this.frameMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.frame = new THREE.Mesh(frameGeo, this.frameMat);
+    this.frame.name = 'mysteryBoxFrame';
+
+    this.boxGroup = new THREE.Group();
+    this.boxGroup.position.set(this.x, this.centerY, this.z);
+    this.boxGroup.add(this.frame, this.crystalBack, this.crystal);
+    this.mesh.add(this.boxGroup);
+  }
+
+  // Static collider at the rest position: four walls, the top (a floor) and the underside (a
+  // ceiling), each wound to face outward.
+  _addCollider() {
+    const col = this.collision;
+    if (!col.addTriangles) return;
+    const h = this.half;
+    const x0 = this.x - h;
+    const x1 = this.x + h;
+    const z0 = this.z - h;
+    const z1 = this.z + h;
+    const y0 = this.bottomY;
+    const y1 = this.topY;
+    const out = [];
+    const quad = (a, b, c, d, nx, ny, nz) => {
+      tri(out, a, b, c, nx, ny, nz);
+      tri(out, a, c, d, nx, ny, nz);
+    };
+    quad([x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1], 0, 1, 0);
+    quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], 0, -1, 0);
+    quad([x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], 1, 0, 0);
+    quad([x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], -1, 0, 0);
+    quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], 0, 0, 1);
+    quad([x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], 0, 0, -1);
+    col.addTriangles(out, { terrain: 'stone' });
+  }
+
+  // Would the hero bump the underside this tick? His head is within BUMP_REACH below it (or
+  // pressed against it: the physics stops him there and zeroes his vy, hence hero.vy, the
+  // previous tick's), he is rising, and his feet axis is over the footprint.
+  bumps(player, hero) {
+    const p = player.pos;
+    const vy = player.vel ? player.vel.y : 0;
+    if (!(vy > 0 || (hero && hero.vy > 0))) return false;
+    const m = this.half + BOX.BUMP_MARGIN;
+    const dx = p.x - this.x;
+    const dz = p.z - this.z;
+    if (dx > m || dx < -m || dz > m || dz < -m) return false;
+    const head = p.y + PLAYER_HEIGHT;
+    return p.y < this.bottomY && head >= this.bottomY - BOX.BUMP_REACH;
+  }
+
+  // Does an attack sphere { x, y, z, radius } overlap the box?
+  struck(atk) {
+    if (!atk) return false;
+    const h = this.half;
+    let dx = atk.x - this.x;
+    let dy = atk.y - this.centerY;
+    let dz = atk.z - this.z;
+    dx = dx > h ? dx - h : dx < -h ? dx + h : 0;
+    dy = dy > h ? dy - h : dy < -h ? dy + h : 0;
+    dz = dz > h ? dz - h : dz < -h ? dz + h : 0;
+    return dx * dx + dy * dy + dz * dz <= atk.radius * atk.radius;
+  }
+
+  update(player, hero, tick) {
+    this.tick = tick;
+    this.prevOffset = this.offset;
+    if (this.jolt < BOX.JOLT_TICKS) {
+      this.jolt++;
+      const u = this.jolt / BOX.JOLT_TICKS;
+      this.offset = u >= 1 ? 0 : BOX.JOLT * Math.sin(Math.PI * u) * (1 - 0.5 * u);
+    }
+    if (this.flash > 0) this.flash--;
+
+    if (this.state === 'ready') {
+      if (tick % BOX.TWINKLE_EVERY === 0) this.sparkles?.twinkle(this.pos, this.size * 0.7, tick * FRAME_DT, TINT.box);
+      if (this.bumps(player, hero) || this.struck(player.getAttack ? player.getAttack() : null)) this._hit(player);
+    } else if (this.state === 'recharging') {
+      if (--this.timer <= 0) {
+        this.state = 'ready';
+        this.frontMat.map = this.textures.full;
+        this.flash = BOX.FLASH_TICKS;
+        this.sparkles?.burst(this.pos, tick * FRAME_DT, TINT.box, 8);
+      }
+    }
+    this._updateHat(player, tick);
+  }
+
+  _hit(player) {
+    this.state = 'empty';
+    this.hits++;
+    this.jolt = 0;
+    this.flash = BOX.FLASH_TICKS;
+    this.frontMat.map = this.textures.empty;
+    const t0 = this.tick * FRAME_DT;
+    this.events.emit('sfx', { name: 'box_hit', pos: { x: this.x, y: this.centerY, z: this.z } });
+    this.sparkles?.burst({ x: this.x, y: this.bottomY, z: this.z }, t0, TINT.box, 9);
+    this._releaseHat(player);
+  }
+
+  // The hat pops out of the top; where it will glide to is chosen now: the side Pip faces, or
+  // the next clear side round the box (a floor, no wall, no water there).
+  _releaseHat(player) {
+    const H = this.hat;
+    H.state = 'pop';
+    H.t = 0;
+    H.x = H.px = this.x;
+    H.y = H.py = this.centerY;
+    H.z = H.pz = this.z;
+    const yaw = player.faceYaw ?? 0;
+    const col = this.collision;
+    let best = null;
+    for (let k = 0; k < 8 && !best; k++) {
+      const a = yaw + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 4);
+      const x = this.x + Math.sin(a) * BOX.HAT_OUT;
+      const z = this.z + Math.cos(a) * BOX.HAT_OUT;
+      const f = col.findFloor(x, this.bottomY, z);
+      if (!f.surface || f.y < this.groundY - 150) continue;
+      const water = col.waterLevelAt ? col.waterLevelAt(x, z) : -Infinity;
+      if (water > f.y) continue;
+      const w = col.findWalls(x, f.y, z, BOX.HAT_HEIGHT, BOX.HAT_RADIUS);
+      if (w.walls.length) continue;
+      best = { x, z, f };
+    }
+    if (!best) best = { x: this.x, z: this.z + BOX.HAT_OUT, f: { y: this.groundY, surface: { normal: this.groundNormal } } };
+    H.toX = best.x;
+    H.toZ = best.z;
+    H.floorY = best.f.y;
+    H.floorN = best.f.surface.normal;
+    H.toY = best.f.y + BOX.HAT_HEIGHT;
+    this.hatMesh.visible = true;
+  }
+
+  _updateHat(player, tick) {
+    const H = this.hat;
+    if (H.state === 'inside') return;
+    H.px = H.x;
+    H.py = H.y;
+    H.pz = H.z;
+    H.t++;
+    const B = BOX;
+    if (H.state === 'pop') {
+      const u = H.t / B.HAT_POP_TICKS;
+      const e = 1 - (1 - u) * (1 - u);
+      H.y = this.centerY + (this.topY + B.HAT_ABOVE - this.centerY) * e;
+      if (H.t >= B.HAT_POP_TICKS) this._hatState('hold');
+    } else if (H.state === 'hold') {
+      H.y = this.topY + B.HAT_ABOVE + 6 * Math.sin(H.t * 0.2);
+      if (H.t >= B.HAT_HOLD_TICKS) {
+        H.fromX = H.x;
+        H.fromY = H.y;
+        H.fromZ = H.z;
+        this._hatState('glide');
+      }
+    } else if (H.state === 'glide') {
+      // Out first, then down, swaying like a falling leaf.
+      const u = H.t / B.HAT_GLIDE_TICKS;
+      const out = smooth(u / 0.7);
+      const down = smooth((u - 0.15) / 0.85);
+      const sway = Math.sin(u * Math.PI * 3) * 22 * (1 - u);
+      const dx = H.toX - H.fromX;
+      const dz = H.toZ - H.fromZ;
+      const len = Math.sqrt(dx * dx + dz * dz) || 1;
+      H.x = H.fromX + dx * out + (dz / len) * sway;
+      H.z = H.fromZ + dz * out - (dx / len) * sway;
+      H.y = H.fromY + (H.toY - H.fromY) * down;
+      if (H.t >= B.HAT_GLIDE_TICKS) this._hatState('hover');
+    } else {
+      H.y = H.toY + 8 * Math.sin(H.t * 0.12);
+      if (this.shadows && this.shadowSlots && H.t === 1) this.shadows.place(this.shadowSlots[1], H.toX, H.floorY, H.toZ, H.floorN, 80);
+    }
+    if (H.state !== 'pop' && this.touchesHat(player.pos)) this._takeHat(player);
+  }
+
+  _hatState(s) {
+    this.hat.state = s;
+    this.hat.t = 0;
+  }
+
+  // Does a hero with feet at `pos` touch the hat?
+  touchesHat(pos) {
+    const H = this.hat;
+    const dx = pos.x - H.x;
+    const dz = pos.z - H.z;
+    const r = BOX.HAT_RADIUS + PLAYER_RADIUS;
+    if (dx * dx + dz * dz > r * r) return false;
+    const dy = H.y - pos.y;
+    return dy >= BOX.HAT_LOW && dy <= BOX.HAT_HIGH;
+  }
+
+  _takeHat(player) {
+    const H = this.hat;
+    player.giveWingHat?.(BOX.HAT_SECONDS);
+    this.sparkles?.burst({ x: H.x, y: H.y, z: H.z }, this.tick * FRAME_DT, TINT.hat, 10);
+    this._stowHat();
+    this.state = 'recharging';
+    this.timer = BOX.RESPAWN_TICKS;
+  }
+
+  _stowHat() {
+    const H = this.hat;
+    H.state = 'inside';
+    H.t = 0;
+    H.x = H.px = this.x;
+    H.y = H.py = this.centerY;
+    H.z = H.pz = this.z;
+    this.hatMesh.visible = false;
+    if (this.shadows && this.shadowSlots) this.shadows.hide(this.shadowSlots[1]);
+  }
+
+  setDarkness(t) {
+    this.darkT = t;
+  }
+
+  reset() {
+    this._stowHat();
+    this.state = 'ready';
+    this.timer = 0;
+    this.jolt = BOX.JOLT_TICKS;
+    this.offset = this.prevOffset = 0;
+    this.flash = 0;
+    this.frontMat.map = this.textures.full;
+  }
+
+  animate(alpha, clock) {
+    const bob = BOX.BOB * Math.sin(clock * BOX.BOB_RATE);
+    const jolt = this.prevOffset + (this.offset - this.prevOffset) * alpha;
+    const g = this.boxGroup;
+    g.position.y = this.centerY + bob + jolt;
+    g.rotation.y = 0.04 * Math.sin(clock * 0.9);
+    const lit = this.state === 'ready';
+    const f = this.flash > 0 ? (this.flash - alpha) / BOX.FLASH_TICKS : 0;
+    const glow = (lit ? 1 + 0.08 * Math.sin(clock * 3.1) : 0.62) + 0.9 * (f > 0 ? f : 0);
+    this.frontMat.color.setScalar(glow);
+    this.backMat.color.setScalar(lit ? 1 : 0.55);
+    this.frameMat.color.setScalar((1 - 0.45 * this.darkT) * (1 + 0.5 * (f > 0 ? f : 0)));
+
+    const H = this.hat;
+    if (H.state === 'inside') return;
+    const hat = this.hatMesh;
+    hat.position.set(H.px + (H.x - H.px) * alpha, H.py + (H.y - H.py) * alpha, H.pz + (H.z - H.pz) * alpha);
+    const fast = H.state === 'pop' || H.state === 'hold';
+    const spin = clock * (fast ? 7 : 2.6);
+    _e.set(H.state === 'glide' ? 0.18 * Math.sin(clock * 5) : 0.08, spin, 0, 'YXZ');
+    hat.quaternion.copy(_q.setFromEuler(_e));
+    const pop = H.state === 'pop' ? 0.4 + 0.6 * smooth((H.t - 1 + alpha) / BOX.HAT_POP_TICKS) : 1;
+    hat.scale.setScalar(pop);
+    flapWings(hat, clock, H.state === 'glide' ? 0.6 : 1);
+  }
+}

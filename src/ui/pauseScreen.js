@@ -1,11 +1,11 @@
 // Pause overlay: dimmed screen, course name with the collected coins/stars, a big PAUSE
-// and a controls legend (gamepad bindings while a pad is connected, else keyboard). Drawn
-// into the HUD canvas (logical coords × s).
+// and a controls legend (the touch controller's while it is shown, else gamepad bindings
+// while a pad is connected, else keyboard). Drawn into the HUD canvas (logical coords × s).
 
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { drawText, drawIcon, textWidth } from './raster.js';
-import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, pauseLayout } from './hudLogic.js';
+import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, TOUCH_CONTROLS, pauseLayout } from './hudLogic.js';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -36,13 +36,18 @@ function counterGroup(ctx, cache, icon, name, value, x, y, s, draw = true) {
   return w;
 }
 
-export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false }) {
+// The legend for the pause screen: 'touch' | 'pad' | 'keys'.
+export function controlsLegend(kind) {
+  return kind === 'touch' ? TOUCH_CONTROLS : kind === 'pad' ? PAD_CONTROLS : KEY_CONTROLS;
+}
+
+export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys' }) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   ctx.fillStyle = 'rgba(0,0,12,0.5)';
   ctx.fillRect(0, 0, cw, ch);
   const cx = cw / 2;
-  const lay = pauseLayout(W, H, (t) => measureText(SMALL_FONT, t), gamepad ? PAD_CONTROLS : KEY_CONTROLS);
+  const lay = pauseLayout(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls));
   const { top, pauseY, panel, padX, padY, headerH, lineH, legend } = lay;
 
   drawText(ctx, cache, BIG_FONT, COURSE_NAME, cx, top * s, { px: s, align: 'center' });

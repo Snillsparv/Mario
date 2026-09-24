@@ -37,6 +37,9 @@ const CARRY_TIME = 0.07;
 const MAX_CARRY = 400;
 
 const release = (shown, target, step) => Math.max(target, shown - step);
+// flipIn anims (see blend) still take the short way back when the start pose is at most
+// this far past the target pitch.
+const FLIP_IN_SLACK = 0.6;
 
 // Whole-body rotations blend along the shortest arc to the target (blendPose). When a
 // spinning target (a somersault) passes half a turn from the start pose mid-blend, that arc
@@ -66,8 +69,9 @@ export class Animator {
     this.lastPos = { x: 0, y: 0, z: 0 };
     this.ctx = {
       t: 0, ph: 0, stride: 0, spd: 0, vy: 0, time: 0, bank: 0, headYaw: 0, externalLook: false,
-      entryX: 0, entryY: 0, entryZ: 0,
+      entryX: 0, entryY: 0, entryZ: 0, pitch: 0, roll: 0,
     };
+    this.flipIn = 0; // the current anim's flipIn (see update)
   }
 
   // rs must be sanitized (finite numbers); dt in seconds; bank = lean into turns (radians).
@@ -91,6 +95,7 @@ export class Animator {
       this.arcPitch = this.arcYaw = this.arcRoll = NaN;
       this.anim = name;
       this.externalLook = false;
+      this.flipIn = prev ? def.flipIn ?? 0 : 0;
     }
     if (this.carrying && rs.animTime <= CARRY_TIME) this.carry(rs);
     else this.carrying = false;
@@ -113,6 +118,8 @@ export class Animator {
     c.bank = bank;
     c.headYaw = rs.headYaw;
     c.externalLook = this.externalLook;
+    c.pitch = rs.pitch;
+    c.roll = rs.roll;
     def.pose(resetPose(this.target), c);
 
     const k = this.blendDur > 0 ? Math.min(1, this.blendTime / this.blendDur) : 1;
@@ -128,6 +135,9 @@ export class Animator {
     const b = this.target;
     const p = blendPose(this.pose, a, b, s);
     let d = wrapAngle(b.flipPitch - a.flipPitch);
+    // flipIn: +1 = the body only ever pitches forward into this anim (a somersault carries
+    // on round instead of unwinding), unless it is just past the target already.
+    if (Number.isNaN(this.arcPitch) && this.flipIn * d < -FLIP_IN_SLACK) this.turnPitch = this.flipIn;
     this.turnPitch += flipWrap(d, this.arcPitch);
     this.arcPitch = d;
     d = wrapAngle(b.flipYaw - a.flipYaw);

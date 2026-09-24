@@ -220,7 +220,8 @@ function wallkick(p, c) {
 function wallBrace(p, c) {
   const hit = 1 - smoothstep(0, 0.1, c.t);
   p.flipPitch = -0.35;
-  p.rootZ = 16;
+  p.rootZ = 12;
+  p.hipsPitch = 0.15; // the flared skirt tucked back off the wall
   p.squash = -0.08 * hit;
   p.spinePitch = -0.1;
   p.headPitch = -0.25;
@@ -333,6 +334,53 @@ function burn(p, c) {
   p.face = jolt > 0.5 ? 'hurt' : 'panic';
 }
 
+// Flying with the winged hat, the classic superhero way: stretched out flat along the flight
+// path (the Player's pitch and roll tilt and bank the whole body about the belly), the right
+// fist punched ahead beside the brim, the left arm swept back along the side, legs together
+// behind with the toes pointed, head up to see ahead. A slow glide wobble on top; a dive
+// (nose down) streamlines him, a climb (nose up) spreads the arms and works the legs.
+function flight(p, c) {
+  const dive = clamp(c.pitch / 0.6, 0, 1);
+  const climb = clamp(-c.pitch / 0.5, 0, 1);
+  const w = c.time;
+  const wob = Math.sin(w * 2.1);
+  p.flipPitch = 1.38 + 0.05 * Math.sin(w * 1.3);
+  p.flipRoll = 0.07 * wob;
+  p.rootY = -6 + 2.5 * Math.sin(w * 1.7 + 0.8);
+  p.squash = 0.04 + 0.03 * dive;
+  p.spinePitch = -0.16 - 0.06 * climb;
+  p.spineYaw = 0.05 * wob;
+  p.headPitch = -1.0 + 0.2 * dive;
+  p.headRoll = -0.06 * wob;
+  // The lead fist ahead beside the hat; the other arm back along the side (in a dive both
+  // tuck in; climbing, the trailing arm swings out for balance).
+  const reach = Math.sin(w * 1.9);
+  arm(p, 'R', 2.62 + 0.05 * reach, 0.85 - 0.15 * dive + 0.15 * climb, 0.12, 0.1);
+  arm(p, 'L', -0.35 + 0.35 * climb - 0.2 * dive, 0.45 + 0.5 * climb - 0.15 * dive, 0.35 + 0.2 * climb);
+  // Legs together behind, a lazy flutter (a working kick when climbing).
+  const kick = (0.06 + 0.16 * climb) * Math.sin(w * (4 + 5 * climb));
+  leg(p, 'L', -0.1 + kick, 0.15 + 0.25 * climb + 0.1 * Math.max(0, kick), 0.85, 0.02);
+  leg(p, 'R', -0.1 - kick, 0.15 + 0.25 * climb + 0.1 * Math.max(0, -kick), 0.85, 0.02);
+  p.face = dive > 0.5 ? 'shout' : 'happy';
+}
+
+// The take-off (the Player turns a triple jump straight into the flight): the triple jump's
+// forward somersault, tucked mid-turn, rolls on round into the flight pose.
+const FLY_FLIP_TIME = 0.6;
+function fly(p, c) {
+  flight(p, c);
+  if (c.t >= FLY_FLIP_TIME) return;
+  const u = c.t / FLY_FLIP_TIME;
+  const end = p.flipPitch;
+  const face = p.face;
+  resetPose(tucked);
+  tuck(tucked);
+  blendPose(p, p, tucked, smoothstep(0, 0.2, u) * (1 - smoothstep(0.5, 0.95, u)));
+  p.flipPitch = (TAU + end) * (1 - (1 - u) ** 2);
+  p.squash += takeoffStretch(c.t, 0.1);
+  p.face = u < 0.7 ? 'happy' : face;
+}
+
 // Flip anims start instantly (tiny blend) so the rotation is never delayed.
 export const AIR_ANIMS = {
   jump: { pose: jump, blend: 0.06 },
@@ -355,4 +403,6 @@ export const AIR_ANIMS = {
   pole_jump: { pose: poleJump },
   water_jump: { pose: waterJump },
   burn: { pose: burn, blend: 0.04 },
+  // The take-off flip starts at once; entered mid-somersault it rolls on forward (flipIn).
+  fly: { pose: fly, blend: 0.08, blendOut: 0.18, flipIn: 1 },
 };

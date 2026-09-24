@@ -8,6 +8,7 @@ import { MOVING_ACTIONS } from './moving.js';
 import { AIRBORNE_ACTIONS } from './airborne.js';
 import { SUBMERGED_ACTIONS } from './submerged.js';
 import { AUTOMATIC_ACTIONS } from './automatic.js';
+import { FLYING_ACTIONS } from './flying.js';
 
 export { enterWater } from './submerged.js';
 
@@ -17,4 +18,5 @@ export const ACTIONS = {
   ...AIRBORNE_ACTIONS,
   ...SUBMERGED_ACTIONS,
   ...AUTOMATIC_ACTIONS,
+  ...FLYING_ACTIONS,
 };

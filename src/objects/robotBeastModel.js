@@ -47,6 +47,9 @@ const EYE = [1, 0.14, 0.06];
 const EMBER = [1, 0.42, 0.1];
 const FURNACE = [1, 0.5, 0.12];
 
+// The palette and emission presets, shared with the minions (minionModel.js).
+export const PALETTE = { GUN, GUN_LIGHT, GUN_DARK, STEEL, STEEL_DARK, RUST, RUST_DARK, CLAW, TOOTH, CABLE, HAZARD, EYE, EMBER };
+
 // Emission: [constant (scaled by the power uniform), charge-driven (scaled by uCharge)].
 const E_NONE = [0, 0];
 const E_EYE = [2.6, 0];
@@ -230,7 +233,8 @@ const _e = new THREE.Euler();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 // Collects flat-shaded primitives into one non-indexed geometry with colour and emission.
-class PartBuilder {
+// (Also used by minionModel.js for the small robot lizards.)
+export class PartBuilder {
   constructor(seed) {
     this.pos = [];
     this.col = [];

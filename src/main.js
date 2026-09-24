@@ -31,6 +31,7 @@ import { TitleScreen } from './ui/TitleScreen.js';
 import { GameOverCard } from './ui/GameOverCard.js';
 import { DialogBox } from './ui/DialogBox.js';
 import { AlertBanner } from './ui/AlertBanner.js';
+import { TouchController } from './ui/TouchController.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
 
@@ -72,6 +73,8 @@ async function start() {
   // until its last page, then Pip is released (the closing press never reaches him).
   const dialog = new DialogBox(uiRoot, { events });
   new AlertBanner(uiRoot, { events }); // flashes 'AI RACE' when the mode switches on
+  // On-screen controller on touch screens (?touch=1 forces it): feeds input.setTouchState.
+  const touch = new TouchController({ input, events, view });
   events.on('dialogClosed', () => {
     player.endReading?.();
     input.flush();
@@ -278,6 +281,7 @@ async function start() {
     model,
     dialog,
     fx,
+    touch,
     // Switch AI RACE mode directly (tests / debugging), as the floor button does.
     setDark(on) {
       events.emit('aiRaceButton', { on });

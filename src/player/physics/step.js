@@ -28,7 +28,7 @@ const FIT_EPS = 4; // a spot fits the hero when walls overlap him there by less 
 
 // Shared result object: { result, wall (the most relevant wall touched), hitCeiling, ... }.
 function makeResult() {
-  return { result: STEP_NONE, wall: null, hitCeiling: false, atSurface: false, onFloor: false, noWater: false };
+  return { result: STEP_NONE, wall: null, hitCeiling: false, atSurface: false, onFloor: false, noWater: false, blocked: false };
 }
 
 function resetResult(r) {
@@ -38,6 +38,7 @@ function resetResult(r) {
   r.atSurface = false;
   r.onFloor = false;
   r.noWater = false;
+  r.blocked = false;
   return r;
 }
 
@@ -239,7 +240,7 @@ function walkOff(p, x, z, floorY) {
 // that way at WALK_OFF_DRIFT per tick counting the hero's own motion (a fast walk-off needs
 // none). Returns the shared { x, z } drift.
 const drift = { x: 0, z: 0 };
-function walkOffDrift(p) {
+function walkOffDrift(p, n = 4) {
   drift.x = drift.z = 0;
   const w = p.walkOff;
   if (!w?.active) return drift;
@@ -248,8 +249,8 @@ function walkOffDrift(p) {
     w.active = false;
     return drift;
   }
-  const own = (p.vel.x * w.ux + p.vel.z * w.uz) / 4;
-  const extra = Math.max(0, Math.min(WALK_OFF_DRIFT / 4, left) - Math.max(0, own));
+  const own = (p.vel.x * w.ux + p.vel.z * w.uz) / n;
+  const extra = Math.max(0, Math.min(WALK_OFF_DRIFT / n, left) - Math.max(0, own));
   drift.x = w.ux * extra;
   drift.z = w.uz * extra;
   return drift;
@@ -258,7 +259,7 @@ function walkOffDrift(p) {
 // Soon after a walk-off, a wall push on the air probe (resolved for the quarter step's move
 // (dx, dz) to tx, y, tz) beyond undoing that move and a drift step becomes a drift toward
 // where it leads, if he fits there; the probe then only undoes the move into the walls.
-function easeWalkOff(p, tx, y, tz, dx, dz) {
+function easeWalkOff(p, tx, y, tz, dx, dz, n) {
   const w = p.walkOff;
   if (!w || p.tick >= w.until) return;
   const rx = probe.x;
@@ -267,7 +268,7 @@ function easeWalkOff(p, tx, y, tz, dx, dz) {
   const pz = rz - tz;
   const push = Math.hypot(px, pz);
   const keep = push > 0 ? Math.max(0, -(dx * px + dz * pz) / push) : 0;
-  if (push - keep <= WALK_OFF_DRIFT / 4) return;
+  if (push - keep <= WALK_OFF_DRIFT / n) return;
   if (settles(p, rx, y, rz)) {
     driftTo(p, w);
     probe.x = tx + (px / push) * keep;
@@ -364,14 +365,14 @@ export function groundStep(p) {
   return r;
 }
 
-// One air quarter step moving by (dx, dz) horizontally and vel.y / 4 vertically. Returns
-// STEP_BLOCKED without committing when the spot ahead has no room for the hero, unless
-// `inPlace` (a retry without horizontal motion), which always commits.
-function airQuarterStep(p, r, dx, dz, inPlace) {
+// One air sub-step (of `n` per tick) moving by (dx, dz) horizontally and vel.y / n
+// vertically. Returns STEP_BLOCKED without committing when the spot ahead has no room for the
+// hero, unless `inPlace` (a retry without horizontal motion), which always commits.
+function airQuarterStep(p, r, dx, dz, inPlace, n) {
   const col = p.collision;
-  const ny = p.pos.y + p.vel.y / 4;
+  const ny = p.pos.y + p.vel.y / n;
   const wall = resolveHorizontal(p, p.pos.x + dx, ny, p.pos.z + dz, AIR_HIGH_Y, AIR_R, AIR_LOW_Y, AIR_R);
-  if (p.walkOff) easeWalkOff(p, p.pos.x + dx, ny, p.pos.z + dz, dx, dz);
+  if (p.walkOff) easeWalkOff(p, p.pos.x + dx, ny, p.pos.z + dz, dx, dz, n);
   const { x, z } = probe;
 
   const floor = col.findFloor(x, ny, z);
@@ -401,21 +402,25 @@ function airQuarterStep(p, r, dx, dz, inPlace) {
   return wall ? STEP_HIT_WALL : STEP_NONE;
 }
 
-// Moves the airborne hero by p.vel (plus any walk-off drift). Result: STEP_LANDED,
-// STEP_HIT_WALL (r.wall) or STEP_NONE. A spot without room (low ceiling over it) stops the
-// horizontal motion, never the vertical.
-export function airStep(p) {
+// Moves the airborne hero by p.vel (plus any walk-off drift) in `steps` sub-steps (4, the
+// classic quarter steps; fast movers such as the flight pass more so that no sub-step moves
+// further than the probes can resolve). Result: STEP_LANDED, STEP_HIT_WALL (r.wall) or
+// STEP_NONE; r.blocked when a spot without room (low ceiling over it) stopped the horizontal
+// motion (never the vertical).
+export function airStep(p, steps = 4) {
   const r = resetResult(airRes);
+  const n = steps;
   p.grounded = false;
-  for (let i = 0; i < 4; i++) {
-    const d = walkOffDrift(p);
-    let res = airQuarterStep(p, r, p.vel.x / 4 + d.x, p.vel.z / 4 + d.z, false);
+  for (let i = 0; i < n; i++) {
+    const d = walkOffDrift(p, n);
+    let res = airQuarterStep(p, r, p.vel.x / n + d.x, p.vel.z / n + d.z, false, n);
     if (res === STEP_BLOCKED) {
       p.vel.x = p.vel.z = 0;
       p.forwardVel = 0;
       p.airDrift = 0;
       r.result = STEP_HIT_WALL;
-      res = airQuarterStep(p, r, 0, 0, true);
+      r.blocked = true;
+      res = airQuarterStep(p, r, 0, 0, true, n);
     }
     if (res === STEP_LANDED) {
       p.grounded = true;

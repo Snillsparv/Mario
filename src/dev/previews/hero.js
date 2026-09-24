@@ -18,6 +18,10 @@
 //   move=1                         with from=: rs.pos rises with vy (and gravity) up to t
 //   pr=<radius>                    pole_handstand: radius of the pole under the hands (12)
 //   tree=<i>[&anim=&t=&yaw=&cy=&cd=&h=]  on the level's tree i, in context (see below)
+//   wingHat=1[&ending=1]           wearing the winged hat (RenderState.wingHat; ending=1 blinks
+//                                  it like the last seconds); anim=fly wears it by default
+//   hat=1[&spin=1&flap=<0..1>&still=1]  the standalone buildWingedHat() pickup model at four
+//                                  yaws (still=1: no flapping), beside Pip wearing it
 // Scenery sits where the physics puts it relative to rs.pos (see model/physicsLink.js): the
 // ledge lip HANG_DEPTH up and WALL_DIST ahead (ledge_climb moves rs.pos like the Player), a
 // wall WALL_DIST ahead, a trunk surface POLE_GAP ahead, the pole tip at rs.pos for
@@ -63,6 +67,9 @@ const PRESETS = {
   // Past the apex (vy < 0) so no smoke piles up on a still pose; the smoke trail shows with
   // from=idle&move=1&vy=50 (the Player's launch).
   burn: { t: 0.35, vy: -5, y: 70 },
+  // Level flight; pitch=<rad> dives (+) or climbs (-), roll=<rad> banks. from=triple_jump
+  // shows the somersault rolling on into it.
+  fly: { t: 1.2, fv: 45, y: 110, wingHat: true },
 };
 const LEDGE_Y = 170; // ledge top above the preview floor
 const CLIMB_INSET = 65; // how far the Player moves Pip onto the ledge
@@ -139,6 +146,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
       animTime: t ?? num('t', pre.t ?? 0.3), cyclePhase: cyclePhaseFor(anim, num('ph', pre.ph ?? 0), fv),
       forwardVel: fv,
       vy: num('vy', pre.vy ?? 0), floorY, floorNormal, invincible: params.has('inv'), headYaw: 0,
+      wingHat: params.has('wingHat') ? params.get('wingHat') !== '0' : !!pre.wingHat, wingHatEnding: params.has('ending'),
     };
     const actor = { model, rs, props, yaw };
     const from = params.has('from')
@@ -204,6 +212,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     return { el, pos: new THREE.Vector3(x, y, z) };
   }
   const labels = [];
+  const pickups = []; // hat=1: standalone winged hats
 
   let view;
   let world = null;
@@ -290,6 +299,22 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     yaws.forEach((yaw, i) => addHero(anim, (i - (yaws.length - 1) / 2) * 210, 0, 0, { yaw }));
     const lift = actors[0].rs.pos.y + (PRESETS[anim]?.lookUp ?? 0);
     view = { pos: [0, 120 + lift, 900], look: [0, 80 + lift, 0] };
+  } else if (params.has('hat')) {
+    // The standalone winged hat (objects' pickup) at four yaws, and Pip wearing it.
+    const { buildWingedHat } = await import('../../player/model/wings.js');
+    const yaws = [0, 0.8, Math.PI / 2, Math.PI];
+    yaws.forEach((yaw, i) => {
+      const hat = buildWingedHat();
+      hat.position.set((i - 1.5) * 170, 230, 0);
+      hat.rotation.y = yaw;
+      scene.add(hat);
+      pickups.push(hat);
+      labels.push(label(`yaw ${yaw.toFixed(2)}`, hat.position.x, 170, 0));
+    });
+    addHero(params.get('anim') || 'idle', -120, 0, 0, { yaw: 0.5 });
+    addHero(params.get('anim') || 'idle', 120, 0, 0, { yaw: Math.PI - 0.5 });
+    for (const a of actors) a.rs.wingHat = true;
+    view = { pos: [0, 260, 900], look: [0, 150, 0] };
   } else if (params.has('faces')) {
     FACES.forEach((face, i) => {
       const x = (i - (FACES.length - 1) / 2) * 90;
@@ -315,6 +340,10 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     camera: view,
     update(dt, t) {
       world?.update(t, camera);
+      for (const h of pickups) {
+        if (params.has('spin')) h.rotation.y += dt * 2;
+        if (!params.has('still')) h.userData.flap(t, num('flap', 1));
+      }
       for (const a of actors) {
         if (!a.face) step(a, dt); // (expression strip: frozen)
       }

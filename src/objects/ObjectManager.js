@@ -1,12 +1,16 @@
 // Interactive objects of the castle grounds: yellow and red coins, the red-coin star, a hidden
-// 1-up gem, butterflies and circling birds, plus their sparkles and blob shadows; and for AI RACE
-// mode the "AI RACE" floor button, the robot beast on the castle roof and its fireballs.
+// 1-up gem, butterflies and circling birds, plus their sparkles and blob shadows; the mystery box
+// with the winged hat (MysteryBox.js) and the locked castle door (CastleDoor.js); and for AI RACE
+// mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs and the
+// robot lizard minions (Minions.js).
 //
 //   new ObjectManager({ scene, collision, events, layout, player, fx?, level? })
 //   update({ player })             30 Hz: pickups, star state, butterfly AI, button, beast, fireballs
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
 //   reset()                        new game: every pickup back, star hidden, star count taken back,
-//                                  no beast, fireballs or fire zones, button up, mode off
+//                                  no beast, fireballs, fire zones or minions, button up, mode off,
+//                                  the mystery box lit with its hat inside, the door armed
+//   spawnCoin(x, y, z)             a yellow coin appears over the floor there (minion drops)
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
 //
@@ -16,15 +20,22 @@
 // RobotBeast.js), and turns the button's label to "STOP" (back to "AI RACE" when off). The beast
 // spits fireballs (Fireballs.js) that explode through `fx`, scorch the ground and set trees alight
 // through `level`, and hurt the hero (blast, direct hit, fire zones). Lightning ('lightning'
-// { strength }) flashes the beast's plates.
+// { strength }) flashes the beast's plates. 10 s after the beast has fully risen, minions burrow
+// out of the ground around the hero (Minions.js); they burrow back down when the mode ends.
+//
+// Mystery box (layout.MYSTERY_BOX, MysteryBox.js): bumped from below or punched it releases the
+// winged hat (player.giveWingHat). Castle door (layout.CASTLE, CastleDoor.js): walking up to it
+// plays 'evil_laugh' and opens the dialog ('signRead' { sign: { id: 'castle_locked', ... } }).
 //
 // Everything animates on the simulation clock (ticks + alpha), so pausing the game freezes the
 // objects too. Before the first update() (the title screen shows the level behind it), and
 // again after reset() until the next update(), animate() runs that clock from the caller's
 // time instead (ambient()): ambient motion only (no pickups), and play then carries on from
 // there without a jump. Seven draw calls in total: coins, sparkles, shadows, star, 1-up,
-// butterflies, birds; plus the button (base, cap) and, only while AI RACE mode shows them, the
-// beast (nine rig parts), fireball cores, their ground markers and the fire sprites.
+// butterflies, birds; plus the button (base, cap), the mystery box (frame, crystal back and
+// front; the hat's three only while it is out) and, only while AI RACE mode shows them, the
+// beast (nine rig parts), fireball cores, their ground markers, the fire sprites and the
+// minions (one instanced draw).
 //
 // Allocation: once JIT-compiled, the per-frame path allocates nothing, and the per-tick path
 // only event payloads plus the small result objects of its few collision queries (see
@@ -52,6 +63,9 @@ import { AiButton } from './AiButton.js';
 import { RobotBeast } from './RobotBeast.js';
 import { Fireballs } from './Fireballs.js';
 import { FireSprites } from './FireSprites.js';
+import { MysteryBox } from './MysteryBox.js';
+import { Minions } from './Minions.js';
+import { CastleDoor } from './CastleDoor.js';
 
 const STAR_SHADOW = 150;
 const STAR_GLOW = 360;
@@ -59,6 +73,8 @@ const ONE_UP_SHADOW = 90;
 const TWINKLE_EVERY = 4; // ticks between the idle star's twinkles
 const ONE_UP_TWINKLE_EVERY = 9;
 const ONE_UP_BEHIND_CASTLE = 800; // default 1-up spot: this far behind the castle's back wall
+const COIN_DROPS = 6; // run-time coin slots (minion drops)
+const MINION_SLOTS = 8; // shadow slots for the minions (Minions POOL)
 const _toCam = new THREE.Vector3();
 // Stand-in hero for the title backdrop's ambient ticks: out of reach of every pickup and far
 // from the butterflies.
@@ -72,7 +88,7 @@ function oneUpSpot(layout) {
 }
 
 export class ObjectManager {
-  constructor({ scene, collision, events, layout, player, fx = null, level = null }) {
+  constructor({ scene, collision, events, layout, player, fx = null, level = null, buildHat = null }) {
     this.events = events;
     this.player = player;
     this.collision = collision;
@@ -88,8 +104,11 @@ export class ObjectManager {
     const coinCount = (layout.COINS?.length ?? 0) + (layout.RED_COINS?.length ?? 0);
     this.starShadow = coinCount; // shadow slots after the coins
     this.oneUpShadow = coinCount + 1;
-    this.shadows = new BlobShadows(coinCount + 2);
-    this.coins = new CoinField({ layout, collision, groundAt, shadows: this.shadows });
+    const dropShadow0 = coinCount + 2;
+    const boxShadow = dropShadow0 + COIN_DROPS; // box, hat
+    const minionShadow0 = boxShadow + 2;
+    this.shadows = new BlobShadows(minionShadow0 + (layout.KAIJU ? MINION_SLOTS : 0));
+    this.coins = new CoinField({ layout, collision, groundAt, shadows: this.shadows, drops: COIN_DROPS, dropShadow0 });
     this.sparkles = new Sparkles(this.rng);
     this.star = new Star(makeStarEnvMap());
     this.starSpot = layout.STAR;
@@ -98,6 +117,13 @@ export class ObjectManager {
     this.oneUp = this._makeOneUp(oneUpSpot(layout), groundAt);
     this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng, waterTop: layout.WATER_LEVEL });
     this.birds = new Birds(layout.BIRD_CIRCLES ?? [], { collision, rng: this.rng });
+    // The hero's previous tick (box bumps and stomps need his motion before the physics
+    // stopped it): feet height, vertical speed, airborne.
+    this.hero = { y: 0, vy: 0, air: false, valid: false };
+    this.box = layout.MYSTERY_BOX
+      ? new MysteryBox({ spot: layout.MYSTERY_BOX, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowSlots: [boxShadow, boxShadow + 1], groundAt, buildHat })
+      : null;
+    this.door = layout.CASTLE ? new CastleDoor({ castle: layout.CASTLE, collision, events }) : null;
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -117,15 +143,28 @@ export class ObjectManager {
         rng,
         launch: (x, y, z, vx, vy, vz) => balls.launch(x, y, z, vx, vy, vz),
       });
+      this.minions = new Minions({
+        collision,
+        events,
+        fx,
+        fire: this.fire,
+        sparkles: this.sparkles,
+        shadows: this.shadows,
+        shadowBase: minionShadow0,
+        rng: makeRng(0x3a11ce),
+        layout,
+        groundAt: layout.groundHeight ?? null,
+        onCoin: (x, y, z) => this.spawnCoin(x, y, z),
+      });
     } else {
-      this.fire = this.fireballs = this.beast = null;
+      this.fire = this.fireballs = this.beast = this.minions = null;
     }
     events.on?.('darkMode', (e) => this._setMode(!!e?.on));
     events.on?.('lightning', (e) => this.beast?.flash(e?.strength ?? 1));
 
     this.group = new THREE.Group();
     this.group.name = 'objects';
-    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.beast, this.fireballs, this.fire]) {
+    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.box, this.beast, this.fireballs, this.minions, this.fire]) {
       if (part) this.group.add(part.mesh);
     }
     scene.add(this.group);
@@ -155,6 +194,7 @@ export class ObjectManager {
   setDarkness(t) {
     this.darkT = t;
     this.button?.setDarkness(t);
+    this.box?.setDarkness(t);
     const calm = t < 0.5;
     this.butterflies.mesh.visible = calm;
     this.birds.mesh.visible = calm;
@@ -201,6 +241,10 @@ export class ObjectManager {
     this.button?.reset();
     this.beast?.reset();
     this.fireballs?.clear();
+    this.minions?.clear();
+    this.box?.reset();
+    this.door?.reset();
+    this.hero.valid = false;
     this.setDarkness(0);
     this.started = false;
     this._backdropStart = null;
@@ -236,10 +280,34 @@ export class ObjectManager {
     this._updateOneUp(player);
     this.butterflies.update(this.tick, pos);
     if (this.button !== null && this.button.update(player)) this._pressButton();
+    const hero = this.hero.valid ? this.hero : null;
+    if (this.box !== null) this.box.update(player, hero, this.tick);
+    if (this.door !== null) this.door.update(player);
     if (this.beast !== null) {
       this.beast.update(player, this.tick);
       this.fireballs.update(player, this.tick);
+      this.minions.update(player, hero, this.tick, this.modeOn && this.beast.state === 'active');
     }
+    this._rememberHero(player);
+  }
+
+  // The hero's motion this tick, read on the next one (see this.hero).
+  _rememberHero(player) {
+    const h = this.hero;
+    const p = player.pos;
+    const vy = player.vel ? player.vel.y : 0;
+    h.y = p.y;
+    h.vy = vy;
+    const f = player.floor;
+    h.air = f && f.surface !== undefined ? !(f.surface && p.y <= f.y + 1) : vy !== 0;
+    h.valid = true;
+  }
+
+  // A yellow coin appears over the floor under (x, y, z) (a wrecked minion's drop).
+  spawnCoin(x, y, z) {
+    const c = this.coins.spawnCoin(x, y, z);
+    if (c) this.sparkles.burst(c, this.time, TINT.coin, 5);
+    return c;
   }
 
   _spawnStar() {
@@ -338,9 +406,11 @@ export class ObjectManager {
     }
     this.sparkles.animate(clock);
     if (this.button !== null) this.button.animate(alpha, clock);
+    if (this.box !== null) this.box.animate(alpha, clock);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);
+      this.minions.animate(alpha, clock, camera);
       this.fire.animate(clock);
     }
   }

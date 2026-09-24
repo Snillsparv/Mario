@@ -7,7 +7,9 @@
 // trajectory (coloured by action group) and frames it from the side. Script steps:
 //   { n: ticks, ...input }  or  { until: 'grounded' | 'airborne' | <action>, ...input }
 // with input = { stickX, stickY, A, B, Z } (truthy buttons are held; presses are edges).
-// Optional: &spawn=x,y,z,yaw  &cy=<camera yaw for the stick>  &intro=1 (drop-in first).
+// Optional: &spawn=x,y,z,yaw  &cy=<camera yaw for the stick>  &intro=1 (drop-in first)
+// &hat=<seconds> (start with the winged hat; a demo's `hat` does the same). Live mode: H puts
+// the winged hat on (then a triple jump flies: W dives, S climbs, A / D bank, Shift lets go).
 
 import { Player } from '../../player/Player.js';
 import { ACTIONS } from '../../player/actions/index.js';
@@ -128,6 +130,30 @@ export const DEMOS = {
     spawn: [-2900, 700, -1350, Math.PI],
     script: [{ n: 70 }],
   },
+  // With the winged hat: a triple jump takes off into flight; glide, bank right, dive, climb
+  // until it slows, then glide down to a belly-slide landing.
+  fly: {
+    spawn: [-6000, 0, -9000, 0],
+    hat: 40,
+    script: [
+      { n: 40, stickY: 1 },
+      { n: 1, stickY: 1 },
+      { n: 1, stickY: 1, A: 1 },
+      { until: 'grounded', stickY: 1, A: 1 },
+      { n: 1, stickY: 1 },
+      { n: 1, stickY: 1, A: 1 },
+      { until: 'grounded', stickY: 1, A: 1 },
+      { n: 1, stickY: 1 },
+      { n: 1, stickY: 1, A: 1 },
+      { until: 'flying' },
+      { n: 30 },
+      { n: 14, stickX: 1 },
+      { n: 10, stickY: 1 },
+      { n: 18, stickY: -1 },
+      { until: 'grounded' },
+      { n: 20 },
+    ],
+  },
 };
 
 const GROUP_COLORS = {
@@ -166,6 +192,8 @@ export async function setup({ THREE, scene, camera, ui, params }) {
   }
   const player = new Player({ collision: world, events, spawn, signs });
   if (params.get('intro')) player.beginIntro();
+  const hatSeconds = Number(params.get('hat') ?? demo?.hat ?? 0);
+  if (hatSeconds > 0) player.giveWingHat(hatSeconds);
   // Stand-in for the game's dialog box: the pages of the sign being read, one per A/B press.
   let reading = null; // { sign, page }
   events.on('signRead', ({ sign }) => {
@@ -187,6 +215,7 @@ export async function setup({ THREE, scene, camera, ui, params }) {
       `${rs.action} / ${rs.anim}  t=${rs.animTime.toFixed(2)}\n` +
       `fv ${rs.forwardVel.toFixed(1)}  vy ${rs.vy.toFixed(1)}  health ${rs.health}\n` +
       `pos ${rs.pos.x.toFixed(0)}, ${rs.pos.y.toFixed(0)}, ${rs.pos.z.toFixed(0)}\n` +
+      (rs.wingHat ? `winged hat ${(player.wingHat / 30).toFixed(1)} s  fly speed ${player.flySpeed.toFixed(1)}\n` : '') +
       recent.join(' ') +
       (reading ? `\n\n[${reading.sign.pages[reading.page]}]  (Space/J)` : '');
   };
@@ -203,8 +232,11 @@ export async function setup({ THREE, scene, camera, ui, params }) {
     return { camera: sideView(trail), update() {} };
   }
 
-  // Live mode: keyboard / gamepad with a trailing camera.
+  // Live mode: keyboard / gamepad with a trailing camera. H: the winged hat.
   const input = new Input(window);
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyH' && !e.repeat) player.giveWingHat();
+  });
   let camYaw = spawn.yaw;
   let acc = 0;
   return {
@@ -225,7 +257,8 @@ export async function setup({ THREE, scene, camera, ui, params }) {
         }
         if (c.CL.down) camYaw += 0.06;
         if (c.CR.down) camYaw -= 0.06;
-        if (player.forwardVel > 4 && !player.inWater) camYaw = approachAngle(camYaw, player.faceYaw, 0.02);
+        const follow = player.action === 'flying' ? 0.08 : 0.02;
+        if (player.forwardVel > 4 && !player.inWater) camYaw = approachAngle(camYaw, player.faceYaw, follow);
         player.update(c, camYaw);
       }
       draw(acc / FRAME_DT);
@@ -364,6 +397,10 @@ function makeStandIn(THREE) {
   const nose = new THREE.Mesh(new THREE.ConeGeometry(18, 50, 8).rotateX(HALF_PI), new THREE.MeshLambertMaterial({ color: 0xdd3322 }));
   nose.position.set(0, 40, 45);
   body.add(nose);
+  // A flat bar across the shoulders while the winged hat is on (blinks in its last seconds).
+  const wings = new THREE.Mesh(new THREE.BoxGeometry(220, 6, 50), new THREE.MeshLambertMaterial({ color: 0xf4f4ff }));
+  wings.position.set(0, 20, -10);
+  body.add(wings);
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(45, 16).rotateX(-HALF_PI),
     new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }),
@@ -374,6 +411,7 @@ function makeStandIn(THREE) {
     update(rs, group) {
       object3D.position.set(rs.pos.x, rs.pos.y, rs.pos.z);
       body.rotation.set(rs.pitch, rs.yaw, rs.roll);
+      wings.visible = !!rs.wingHat && !(rs.wingHatEnding && Math.floor(rs.animTime * 8) % 2 === 1);
       mat.color.setHex(GROUP_COLORS[group]);
       mat.emissive.setHex(rs.invincible ? 0x662222 : 0x000000);
       shadow.position.y = rs.floorY - rs.pos.y + 2;

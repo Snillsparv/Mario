@@ -138,7 +138,8 @@ function letGo(p) {
 // pole.z }, where his hands are (the model draws him upside down above it, facing yaw);
 // animTime 0 is the moment he arrives from the top of the climb (hands at the tip, body still
 // hanging below them) and he swings up into the balanced handstand over POLE_TOP_SETTLE_TICKS.
-// A: a big flip jump off it (pole_top_jump, toward the stick when held, else the facing).
+// A: a big flip jump off it (pole_top_jump, toward the stick when held, else the facing); with
+// the winged hat on, a take-off into flight the same way.
 // Stick pulled down (POLE_TOP_DOWN_STICK, once settled): back onto the trunk at the top of
 // the climb (action 'pole'). Z: lets go from there, as on the trunk.
 const poleTopAction = {
@@ -154,7 +155,7 @@ const poleTopAction = {
   update(p, c) {
     placeOnTip(p);
     if (p.actionTimer >= 2) {
-      if (c.A.pressed) return p.setAction('pole_top_jump');
+      if (c.A.pressed) return p.wingHat > 0 ? p.setAction('flying', { fromPole: p.pole }) : p.setAction('pole_top_jump');
       if (c.Z.pressed) {
         p.setAction('pole', p.pole);
         return letGo(p);
@@ -239,6 +240,7 @@ const death = {
   anim: 'death',
   enter(p) {
     stop(p);
+    p.removeWingHat();
     p.emit('lifeLost', {});
   },
   update(p) {

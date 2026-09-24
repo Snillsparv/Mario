@@ -39,13 +39,58 @@ const limb = (r0, r1, len, segs = 7) => new THREE.CylinderGeometry(r0, r1, len, 
 
 // ---- body parts --------------------------------------------------------------------------
 
+// Pip is a little round in the middle: the tunic swells into a soft belly over the belt.
+// Extra forward bulge of the upper tunic at height y (torso space), times cos^2 of the
+// angle from straight ahead.
+const BELLY = 4;
+const bellyBulge = (y) => BELLY * Math.exp(-(((y - 8) / 7.5) ** 2));
+
+// Pushes the front of a lathe (around +Y) forward by bulge(y) (see BELLY).
+function swellFront(geo, bulge) {
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const r = Math.hypot(x, z);
+    if (z <= 0 || r < 1e-3) continue;
+    const k = bulge(pos.getY(i)) * (z / r) ** 2;
+    pos.setZ(i, z + k);
+    pos.setX(i, x * (1 + (0.25 * k) / r)); // a touch wider at the front corners too
+  }
+  geo.computeVertexNormals();
+  return smoothSeam(geo);
+}
+
+// Averages the normals of vertices that share a position (a lathe's seam column), so a
+// recomputed lathe keeps its smooth Gouraud shading across the seam.
+function smoothSeam(geo) {
+  const pos = geo.attributes.position;
+  const nrm = geo.attributes.normal;
+  const byKey = new Map();
+  for (let i = 0; i < pos.count; i++) {
+    const key = `${pos.getX(i).toFixed(3)},${pos.getY(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
+    const list = byKey.get(key);
+    if (list) list.push(i);
+    else byKey.set(key, [i]);
+  }
+  const n = new THREE.Vector3();
+  for (const list of byKey.values()) {
+    if (list.length < 2) continue;
+    n.set(0, 0, 0);
+    for (const i of list) n.x += nrm.getX(i), n.y += nrm.getY(i), n.z += nrm.getZ(i);
+    n.normalize();
+    for (const i of list) nrm.setXYZ(i, n.x, n.y, n.z);
+  }
+  return geo;
+}
+
 function buildHips() {
   const hips = group(0, D.HIP_Y, 0);
-  hips.add(mesh(ellipsoid(15, 9, 12), 'trousers', 0, -3, 0));
+  hips.add(mesh(ellipsoid(17, 9.5, 13.5), 'trousers', 0, -3, 0));
   // Lower tunic: a flared skirt that follows the pelvis, so leg swings do not tear it.
-  hips.add(mesh(lathe([[16, -9], [22.5, -8], [21, -2], [19.2, 5], [18.6, 9]], 12).scale(1, 1, 0.9), 'tunic'));
-  hips.add(mesh(new THREE.CylinderGeometry(19.8, 20.3, 5, 12, 1, true).scale(1, 1, 0.9), 'belt', 0, 6, 0));
-  hips.add(mesh(new THREE.BoxGeometry(7, 6, 2.5), 'buckle', 0, 6, 18.4));
+  hips.add(mesh(lathe([[18, -9], [26, -8], [24.6, -2], [23, 5], [22.6, 9]], 12).scale(1, 1, 0.92), 'tunic'));
+  hips.add(mesh(new THREE.CylinderGeometry(23.9, 24.3, 5, 12, 1, true).scale(1, 1, 0.93), 'belt', 0, 6, 0));
+  hips.add(mesh(new THREE.BoxGeometry(7, 6, 2.5), 'buckle', 0, 6, 22.6));
   return hips;
 }
 
@@ -53,8 +98,8 @@ function buildTorso() {
   const torso = group(0, D.SPINE_Y, 0);
   // Upper tunic. Its hem reaches ~10 units down inside the skirt so the waist never opens
   // up when the spine bends or twists (up to ~0.45 rad).
-  const tunic = [[17.8, -10], [18.6, 0], [18.8, 10], [18, 20], [15.5, 28], [10, 33], [0.1, 35]];
-  torso.add(mesh(lathe(tunic, 12).scale(1, 1, 0.88), 'tunic'));
+  const tunic = [[20.5, -10], [22, 0], [23, 6], [22.8, 12], [21.2, 19], [17.8, 27], [11, 33], [0.1, 35]];
+  torso.add(mesh(swellFront(lathe(tunic, 12).scale(1, 1, 0.9), bellyBulge), 'tunic'));
   torso.add(mesh(new THREE.CylinderGeometry(7, 8, 8, 8, 1, true), 'skin', 0, 36, 0));
   // Scarf wrapped around the neck, dipping slightly at the front, knotted at the back.
   const ring = mesh(new THREE.TorusGeometry(12, 4.8, 5, 12).rotateX(Math.PI / 2), 'scarf', 0, 34, 0);
@@ -64,10 +109,17 @@ function buildTorso() {
   return torso;
 }
 
+// Where the hat sits on the head centre (head-centre space).
+export const HAT_POS = [0, 14, -1];
+export const HAT_ROT = [-0.16, 0, 0.05];
+
+// The teal explorer hat in hat space (origin at the centre of the brim, +Y up, front +Z).
+// Named 'hat': the marker stays in the rig after the merge (the winged hat's wings hang
+// off it, see wings.js).
 function buildHat() {
-  const hat = group(0, 14, -1);
-  hat.rotation.x = -0.16;
-  hat.rotation.z = 0.05;
+  const hat = group(...HAT_POS);
+  hat.name = 'hat';
+  hat.rotation.set(...HAT_ROT);
   const brim = lathe([[12, 1.4], [44, 1.2], [50, 0], [45, -1.4], [12, -1.2]], 18);
   // Safari brim: sides curl up a little, front and back stay low.
   const pos = brim.attributes.position;
@@ -125,12 +177,12 @@ function buildHead(faceMaterial) {
 
 function buildArm(side) {
   const shoulder = group(side * D.SHOULDER_X, D.SHOULDER_Y, 0);
-  shoulder.add(mesh(ellipsoid(7, 7.5, 7), 'tunic'));
-  shoulder.add(mesh(limb(5.4, 4.8, D.UPPER_ARM), 'tunic'));
+  shoulder.add(mesh(ellipsoid(7.6, 8, 7.6), 'tunic'));
+  shoulder.add(mesh(limb(6, 5.3, D.UPPER_ARM), 'tunic'));
   const elbow = group(0, -D.UPPER_ARM, 0);
   shoulder.add(elbow);
-  elbow.add(mesh(ellipsoid(4.9, 4.9, 4.9, 7, 5), 'tunic'));
-  elbow.add(mesh(limb(4.8, 4.4, D.FOREARM - 4), 'tunic'));
+  elbow.add(mesh(ellipsoid(5.4, 5.4, 5.4, 7, 5), 'tunic'));
+  elbow.add(mesh(limb(5.3, 4.8, D.FOREARM - 4), 'tunic'));
   // The mitten and its flared cuff hang off their own wrist joint, which punches swell.
   const wrist = group(0, -D.FOREARM, 0);
   elbow.add(wrist);
@@ -145,11 +197,11 @@ function buildArm(side) {
 
 function buildLeg(side) {
   const thigh = group(side * D.HIP_X, -D.HIP_DROP, 0);
-  thigh.add(mesh(limb(6.6, 5.6, D.THIGH), 'trousers'));
+  thigh.add(mesh(limb(7.5, 6.3, D.THIGH), 'trousers'));
   const shin = group(0, -D.THIGH, 0);
   thigh.add(shin);
-  shin.add(mesh(ellipsoid(5.7, 5.7, 5.7, 7, 5), 'trousers'));
-  shin.add(mesh(limb(5.5, 5.2, D.SHIN), 'trousers'));
+  shin.add(mesh(ellipsoid(6.3, 6.3, 6.3, 7, 5), 'trousers'));
+  shin.add(mesh(limb(6.1, 5.7, D.SHIN), 'trousers'));
   const boot = group(0, -D.SHIN, 0);
   shin.add(boot);
   boot.add(mesh(new THREE.CylinderGeometry(7.4, 7.8, 15, 9, 1, true), 'boot', 0, 2, 0.5));
@@ -179,6 +231,24 @@ function mergeBone(joint, joints) {
   visit(joint);
   if (pieces.length) joint.add(new THREE.Mesh(mergeGeometries(pieces), BODY));
   for (const g of pieces) g.dispose();
+}
+
+// The explorer hat on its own, merged into one vertex-coloured mesh in hat space (origin at
+// the centre of the brim, +Y up, front +Z; ~100 units across). Used by the standalone
+// winged hat (wings.js buildWingedHat).
+export function buildHatMesh(material) {
+  const prev = BODY;
+  BODY = material;
+  const hat = buildHat();
+  hat.position.set(0, 0, 0);
+  hat.rotation.set(0, 0, 0);
+  hat.updateMatrixWorld(true);
+  mergeBone(hat, new Set());
+  BODY = prev;
+  const mesh = hat.children.find((o) => o.isMesh);
+  mesh.removeFromParent();
+  mesh.name = 'hat';
+  return mesh;
 }
 
 // ---- rig -----------------------------------------------------------------------------------
@@ -225,6 +295,7 @@ export function buildRig(faceMaterial) {
 
   return {
     object3D, orient, lift, body, hips, torso, head, armL, armR, legL, legR, material,
+    hat: head.getObjectByName('hat'), // empty marker in hat space (its meshes merged into the head)
     // Scarf tails hang from the back of the scarf knot.
     scarfAnchors: [new THREE.Vector3(-6, 31, -14), new THREE.Vector3(-1.5, 31.5, -15)],
   };

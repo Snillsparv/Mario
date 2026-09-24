@@ -9,12 +9,14 @@ import { waterStep } from '../physics/step.js';
 import { setForwardVel } from '../physics/movement.js';
 import { isSteep } from '../physics/slopes.js';
 
-// Called by the player when the feet sink WATER_ENTER_DEPTH below the surface.
+// Called by the player when the feet sink WATER_ENTER_DEPTH below the surface. A flight dives
+// in: the swim carries on along the flight's (nose-down) pitch at part of its speed.
 export function enterWater(p) {
   const fromAir = !p.grounded;
-  p.emit('splash', { pos: { x: p.pos.x, y: p.waterLevel, z: p.pos.z }, big: fromAir && p.vel.y < -30 });
-  p.swimPitch = 0;
-  p.forwardVel = Math.hypot(p.vel.x, p.vel.z) * 0.5;
+  const flying = p.action === 'flying';
+  p.emit('splash', { pos: { x: p.pos.x, y: p.waterLevel, z: p.pos.z }, big: fromAir && (flying || p.vel.y < -30) });
+  p.swimPitch = flying ? clamp(p.flyPitch, 0.3, T.SWIM_MAX_PITCH) : 0;
+  p.forwardVel = flying ? p.flySpeed * T.FLY_ENTER_WATER_SPEED : Math.hypot(p.vel.x, p.vel.z) * 0.5;
   p.waterVy = fromAir ? p.vel.y : 0;
   p.atSurface = false;
   p.grounded = false;

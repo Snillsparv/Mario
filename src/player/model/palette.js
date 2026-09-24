@@ -21,6 +21,13 @@ export const COLORS = {
   boot: 0x4d2e19,
   bootCuff: 0x7a4b2a,
   sole: 0x2b1b10,
+  // Winged hat (wings.js): soft white feathers, cool grey undersides, a hint of the hat's
+  // teal where they sprout from the crown.
+  wing: 0xf8f6ee,
+  wingTip: 0xe2e9ee,
+  wingUnder: 0xe4eaf2,
+  wingUnderTip: 0xcdd6e2,
+  wingRoot: 0x8fd0c6,
 };
 
 // Lambert (per-vertex lighting) reads as the N64's smooth Gouraud shading on low-poly parts.

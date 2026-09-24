@@ -195,3 +195,46 @@ export const INTRO_DROP = 1600;
 // Star celebration
 export const STAR_DANCE_TICKS = 80;
 export const STAR_GRAB_MAX_VY = 10; // a star grabbed while rising only carries on up this fast
+
+// Winged hat (player.giveWingHat): while it is on, a triple jump or the tree-top flip jump
+// takes off into flight (action 'flying'). Flight is tank-controlled with the raw stick, like
+// swimming: stick up = nose down (dive), stick down = nose up (climb), left / right banks and
+// the heading turns in proportion to the bank. The air speed (p.flySpeed) runs along the
+// heading and pitch; diving gains speed (FLY_DIVE_ACCEL * sin(pitch)), climbing drains it
+// (FLY_CLIMB_DRAIN * sin(pitch): the flapping wings make a climb cheaper than a dive is
+// rewarding, so porpoising gains height), drag (FLY_DRAG of the speed per tick) settles a
+// neutral glide (nose FLY_GLIDE_PITCH down) at ~40. Below FLY_STALL_SPEED the flight stalls
+// into a fall.
+export const WING_HAT_SECONDS = 40;
+export const WING_HAT_ENDING_SECONDS = 3; // RenderState.wingHatEnding: the last seconds (blink)
+export const FLY_LAUNCH_SPEED = 40;
+export const FLY_LAUNCH_PITCH = -0.9; // nose up (~52 deg; radians, pitch > 0 = nose down)
+export const FLY_LAUNCH_TICKS = 16; // the take-off climbs at the launch pitch without losing speed (~500 up)
+export const FLY_GLIDE_PITCH = 0.1;
+export const FLY_MAX_DIVE = 0.9; // ~52 deg nose down at full stick up
+export const FLY_MAX_CLIMB = 0.8; // ~46 deg nose up at full stick down
+export const FLY_PITCH_RATE = 0.08; // per tick (~4.6 deg)
+export const FLY_MAX_BANK = 0.75; // roll at full stick left / right
+export const FLY_BANK_RATE = 0.07; // per tick
+export const FLY_TURN_PER_BANK = 0.08; // yaw rate (per tick) per radian of bank: ~3.4 deg/tick at full bank
+export const FLY_DIVE_ACCEL = 3;
+export const FLY_CLIMB_DRAIN = 1;
+export const FLY_DRAG = 0.0075;
+export const FLY_MIN_SPEED = 10;
+export const FLY_MAX_SPEED = 70;
+export const FLY_STALL_SPEED = 12;
+export const FLY_FLAP_TICKS = 15; // sfx 'wing_flap' every 0.5 s while climbing
+export const FLY_FLAP_PITCH = -0.15; // climbing = nose up beyond this
+// Touching down: a descent shallower than FLY_BELLY_LAND_ANGLE belly-slides on at the flight's
+// horizontal speed (it skids to a stop); a steeper one lands on the feet (speed capped at
+// FLY_LAND_MAX_SPEED). A wall within FLY_BONK_COS of head-on bonks; grazing ones slide along.
+export const FLY_BELLY_LAND_ANGLE = 40 * DEG;
+export const FLY_LAND_MAX_SPEED = 24;
+export const FLY_BONK_COS = Math.cos(55 * DEG);
+export const FLY_ENTER_WATER_SPEED = 0.5; // swim speed = flight speed * this on a dive into water
+export const FLY_TILT_EASE = 0.15; // after a flight, a fall / bonk eases out of its tilt this fast (rad/tick)
+
+// Enemy stomps (player.bounce): the bounce's rise, higher with A held.
+export const BOUNCE_VY = 50;
+export const BOUNCE_HELD_VY = 68;
+export const BOUNCE_FLY_PITCH = -0.4; // a stomp in flight noses the flight up at least this much
