@@ -100,6 +100,10 @@ export class Effects {
     this.fires = Array.from({ length: FX.maxFires }, makeFire);
     this.bolt = new Float32Array(BOLT_SEGMENTS * 6);
     this.dir = { x: 0, y: 1, z: 0 }; // randomDir scratch (no allocation per particle)
+    // In-place random numbers for the per-frame spawners (see rand()).
+    this.randState = new Uint32Array([seed ^ 0x9e3779b9]);
+    this.randBuf = new Float32Array(16);
+    this.dirBuf = new Float32Array(2);
 
     this.camPos = new THREE.Vector3();
     this.camDir = new THREE.Vector3(0, 0, -1);
@@ -210,7 +214,7 @@ export class Effects {
     for (let k = 0; k < 12; k++) {
       i = P.alloc();
       if (i < 0) break;
-      randomDir(rng, 0.35, this.dir);
+      this.randomDir(0.35, this.dir);
       const sp = R * (1.8 + rng() * 1.4);
       P.kind[i] = KIND.FIREBALL;
       P.px[i] = x + this.dir.x * R * 0.1;
@@ -223,7 +227,7 @@ export class Effects {
       P.accel[i] = R * 0.6;
       P.size0[i] = R * (0.25 + rng() * 0.15);
       P.size1[i] = R * (0.55 + rng() * 0.25);
-      P.life[i] = 0.45 + rng() * 0.3;
+      P.life[i] = 0.42 + rng() * 0.3;
       P.age[i] = -rng() * 0.06;
       P.rot[i] = rng() * TAU;
       P.spin[i] = (rng() - 0.5) * 3;
@@ -232,7 +236,7 @@ export class Effects {
     for (let k = 0; k < 36; k++) {
       i = P.alloc();
       if (i < 0) break;
-      randomDir(rng, 0.25, this.dir);
+      this.randomDir(0.25, this.dir);
       const sp = R * (3 + rng() * 3.5);
       P.kind[i] = KIND.SPARK;
       P.px[i] = x;
@@ -246,13 +250,13 @@ export class Effects {
       P.size0[i] = (3.5 + rng() * 2.5) * Math.sqrt(sc);
       P.size1[i] = P.size0[i] * 0.6;
       P.stretch[i] = 0.035;
-      P.life[i] = 0.35 + rng() * 0.5;
+      P.life[i] = 0.3 + rng() * 0.45;
       P.seed[i] = rng();
     }
     for (let k = 0; k < 14; k++) {
       i = P.alloc();
       if (i < 0) break;
-      randomDir(rng, 0.55, this.dir);
+      this.randomDir(0.55, this.dir);
       const sp = R * (1.5 + rng() * 1.9);
       P.kind[i] = KIND.DEBRIS;
       P.px[i] = x;
@@ -272,7 +276,7 @@ export class Effects {
     for (let k = 0; k < 9; k++) {
       i = P.alloc();
       if (i < 0) break;
-      randomDir(rng, 0.2, this.dir);
+      this.randomDir(0.2, this.dir);
       const sp = R * (0.5 + rng() * 0.6);
       P.kind[i] = KIND.SMOKE;
       P.px[i] = x + this.dir.x * R * 0.3;
@@ -376,8 +380,12 @@ export class Effects {
     camera.getWorldDirection(this.camDir);
     this.hasCamera = true;
     this.camYaw = Math.atan2(this.camDir.x, this.camDir.z);
-    const water = this.collision ? this.collision.waterLevelAt(this.camPos.x, this.camPos.z) : this.layout?.waterLevelAt?.(this.camPos.x, this.camPos.z);
-    this.underwater = Number.isFinite(water) && this.camPos.y < water;
+    // Under water: the renderer already knows (from its last frame); otherwise ask.
+    if (this.view && 'isUnderwater' in this.view) this.underwater = this.view.isUnderwater;
+    else {
+      const water = this.collision ? this.collision.waterLevelAt(this.camPos.x, this.camPos.z) : this.layout?.waterLevelAt?.(this.camPos.x, this.camPos.z);
+      this.underwater = Number.isFinite(water) && this.camPos.y < water;
+    }
     // Streaks stay >= ~1 px wide at the picture's resolution.
     const view = this.view;
     let h = FX.pixelHeight;
@@ -429,7 +437,7 @@ export class Effects {
     const P = this.pool;
     const i = P.alloc();
     if (i < 0) return;
-    const rng = this.rng;
+    const q = this.rand(10); // fresh random numbers, no boxing
     const R = f.radius;
     const level = Math.max(f.level, 0.3);
     P.kind[i] = KIND.FLAME;
@@ -437,84 +445,84 @@ export class Effects {
     if (f.aerial) {
       // A burning canopy: flames lick up from its outer shell (the ones inside the
       // foliage would be hidden), mostly on its top and sides.
-      randomDir(rng, 0.45, this.dir);
-      const rr = R * (0.8 + 0.25 * rng());
-      const size = R * (0.2 + 0.13 * rng()) * (0.55 + 0.45 * level);
+      this.randomDir(0.45, this.dir);
+      const rr = R * (0.8 + 0.25 * q[0]);
+      const size = R * (0.2 + 0.13 * q[1]) * (0.55 + 0.45 * level);
       P.px[i] = f.x + this.dir.x * rr;
       P.py[i] = f.y + this.dir.y * rr * 0.85 + size * 0.4;
       P.pz[i] = f.z + this.dir.z * rr;
       P.size0[i] = size;
     } else {
-      const ang = rng() * TAU;
-      const rr = Math.sqrt(rng()) * R * 0.72;
+      const ang = q[2] * TAU;
+      const rr = Math.sqrt(q[3]) * R * 0.72;
       const rim = 1 - 0.45 * (rr / R);
-      const size = R * (0.36 + 0.2 * rng()) * (0.55 + 0.45 * level) * rim;
+      const size = R * (0.36 + 0.2 * q[4]) * (0.55 + 0.45 * level) * rim;
       P.px[i] = f.x + Math.cos(ang) * rr;
       P.pz[i] = f.z + Math.sin(ang) * rr;
       P.py[i] = f.y + size * 0.75;
       P.size0[i] = size;
     }
     const size = P.size0[i];
-    P.vx[i] = (rng() - 0.5) * R * 0.3;
-    P.vz[i] = (rng() - 0.5) * R * 0.3;
-    P.vy[i] = R * (0.9 + 0.6 * rng());
+    P.vx[i] = (q[5] - 0.5) * R * 0.3;
+    P.vz[i] = (q[6] - 0.5) * R * 0.3;
+    P.vy[i] = R * (0.9 + 0.6 * q[7]);
     P.accel[i] = R * 0.8;
     P.drag[i] = 0.6;
     P.wind[i] = 0.3;
     P.stretch[i] = 0.17;
     P.size1[i] = size * 0.35;
-    P.life[i] = 0.55 + 0.4 * rng();
+    P.life[i] = 0.55 + 0.4 * q[8];
     P.heat[i] = f.intensity > 1 ? 1 : 0.35 + 0.65 * f.intensity;
-    P.seed[i] = rng();
+    P.seed[i] = q[9];
   }
 
   spawnSmoke(f, slot) {
     const P = this.pool;
     const i = P.alloc();
     if (i < 0) return;
-    const rng = this.rng;
+    const q = this.rand(8); // fresh random numbers, no boxing
     const R = f.radius;
     P.kind[i] = KIND.SMOKE;
     P.owner[i] = slot + 1;
-    P.px[i] = f.x + (rng() - 0.5) * R * 0.6;
-    P.pz[i] = f.z + (rng() - 0.5) * R * 0.6;
+    P.px[i] = f.x + (q[0] - 0.5) * R * 0.6;
+    P.pz[i] = f.z + (q[1] - 0.5) * R * 0.6;
     P.py[i] = f.y + R * (f.aerial ? 0.5 : 0.9);
-    P.vy[i] = R * (0.9 + 0.4 * rng());
+    P.vy[i] = R * (0.9 + 0.4 * q[2]);
     P.accel[i] = R * 0.3;
     P.drag[i] = 0.3;
     P.wind[i] = 0.8;
     P.size0[i] = R * 0.35;
-    P.size1[i] = R * (1.2 + 0.5 * rng());
-    P.life[i] = 2.2 + 1.2 * rng();
-    P.rot[i] = rng() * TAU;
-    P.spin[i] = (rng() - 0.5) * 0.8;
+    P.size1[i] = R * (1.2 + 0.5 * q[3]);
+    P.life[i] = 2.2 + 1.2 * q[4];
+    P.rot[i] = q[5] * TAU;
+    P.spin[i] = (q[6] - 0.5) * 0.8;
     P.heat[i] = 0.6 + 0.4 * f.level;
-    P.seed[i] = rng();
+    P.seed[i] = q[7];
   }
 
   spawnEmber(f, slot) {
     const P = this.pool;
     const i = P.alloc();
     if (i < 0) return;
-    const rng = this.rng;
+    const q = this.rand(8); // fresh random numbers, no boxing
     const R = f.radius;
     P.kind[i] = KIND.EMBER;
     P.owner[i] = slot + 1;
-    P.px[i] = f.x + (rng() - 0.5) * R;
-    P.pz[i] = f.z + (rng() - 0.5) * R;
+    P.px[i] = f.x + (q[0] - 0.5) * R;
+    P.pz[i] = f.z + (q[1] - 0.5) * R;
     P.py[i] = f.y + R * 0.3;
-    P.vx[i] = (rng() - 0.5) * R * 1.2;
-    P.vz[i] = (rng() - 0.5) * R * 1.2;
-    P.vy[i] = R * (1.8 + rng());
+    P.vx[i] = (q[2] - 0.5) * R * 1.2;
+    P.vz[i] = (q[3] - 0.5) * R * 1.2;
+    P.vy[i] = R * (1.8 + q[4]);
     P.accel[i] = R * 0.5;
     P.drag[i] = 0.8;
     P.wind[i] = 1;
-    P.size0[i] = 2.5 + rng() * 1.5;
+    P.size0[i] = 2.5 + q[5] * 1.5;
     P.size1[i] = P.size0[i] * 0.5;
     P.stretch[i] = 0.05;
-    P.life[i] = 0.9 + rng() * 0.9;
+    P.life[i] = 0.9 + q[6] * 0.9;
     P.heat[i] = f.intensity > 1 ? 1 : f.intensity;
-    P.seed[i] = rng();
+    P.seed[i] = q[7];
   }
 
   spawnSplashes(dt) {
@@ -524,18 +532,22 @@ export class Effects {
     }
     this.splashAcc += dt * FX.splashRate * this.rainAmount;
     const P = this.pool;
-    const rng = this.rng;
     const cam = this.camPos;
+    const hc = this.heights;
     while (this.splashAcc >= 1) {
       this.splashAcc -= 1;
       if (P.load > 0.8) continue; // fires and blasts first
-      const ang = this.camYaw + (rng() - 0.5) * 1.9;
-      const d = 90 + Math.sqrt(rng()) * FX.splashRange;
+      const q = this.rand(12);
+      const ang = this.camYaw + (q[0] - 0.5) * 1.9;
+      const d = 90 + Math.sqrt(q[1]) * FX.splashRange;
       const x = cam.x + Math.sin(ang) * d;
       const z = cam.z + Math.cos(ang) * d;
-      const y = this.heights.sample(x, z);
+      hc.qx = x;
+      hc.qz = z;
+      hc.lookup();
+      const y = hc.y;
       if (y <= NOTHING_BELOW || y > cam.y + 400) continue;
-      const water = this.heights.water;
+      const water = hc.water;
       let i = P.alloc();
       if (i < 0) return;
       P.kind[i] = KIND.RING;
@@ -543,24 +555,24 @@ export class Effects {
       P.py[i] = y + 5;
       P.pz[i] = z;
       P.size0[i] = 4;
-      P.size1[i] = (water ? 34 : 22) * (0.8 + 0.4 * rng());
-      P.life[i] = 0.26 + 0.1 * rng();
-      P.heat[i] = 0.75 + 0.25 * rng();
-      P.rot[i] = rng() * TAU;
-      for (let k = water ? 1 : 2; k > 0; k--) {
+      P.size1[i] = (water ? 34 : 22) * (0.8 + 0.4 * q[2]);
+      P.life[i] = 0.26 + 0.1 * q[3];
+      P.heat[i] = 0.75 + 0.25 * q[4];
+      P.rot[i] = q[5] * TAU;
+      for (let k = water ? 1 : 2, r = 6; k > 0; k--, r += 3) {
         i = P.alloc();
         if (i < 0) return;
         P.kind[i] = KIND.DROPLET;
         P.px[i] = x;
         P.py[i] = y + 4;
         P.pz[i] = z;
-        P.vx[i] = (rng() - 0.5) * 140;
-        P.vz[i] = (rng() - 0.5) * 140;
-        P.vy[i] = 170 + rng() * 110;
+        P.vx[i] = (q[r] - 0.5) * 140;
+        P.vz[i] = (q[r + 1] - 0.5) * 140;
+        P.vy[i] = 170 + q[r + 2] * 110;
         P.accel[i] = -1600;
         P.stretch[i] = 0.03;
         P.size0[i] = P.size1[i] = 1.6;
-        P.life[i] = 0.2 + rng() * 0.1;
+        P.life[i] = 0.2 + q[r] * 0.1;
         P.heat[i] = 0.8;
       }
     }
@@ -663,15 +675,33 @@ export class Effects {
       b.push();
     }
   }
-}
 
-// Random unit vector into `out`, biased upward by `up` (0 = uniform sphere, 1 = straight up).
-function randomDir(rng, up, out) {
-  const a = rng() * TAU;
-  const y = Math.min(1, rng() * 2 - 1 + up);
-  const r = Math.sqrt(Math.max(0, 1 - y * y));
-  out.x = Math.cos(a) * r;
-  out.y = y;
-  out.z = Math.sin(a) * r;
-  return out;
+  // n fresh uniform random numbers in [0, 1) written into `into` (returned). Same generator
+  // as core/math makeRng (mulberry32), kept in integer registers: the spawners run every frame
+  // and a function returning a float would box it (allocate) whenever V8 does not inline it.
+  rand(n, into = this.randBuf) {
+    const st = this.randState;
+    let s = st[0] | 0;
+    for (let k = 0; k < n; k++) {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      into[k] = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    st[0] = s;
+    return into;
+  }
+
+  // Random unit vector into `out`, biased upward by `up` (0 = uniform sphere, 1 = straight up).
+  randomDir(up, out) {
+    const q = this.rand(2, this.dirBuf);
+    const a = q[0] * TAU;
+    const y = Math.min(1, q[1] * 2 - 1 + up);
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    out.x = Math.cos(a) * r;
+    out.y = y;
+    out.z = Math.sin(a) * r;
+    return out;
+  }
 }

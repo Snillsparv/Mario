@@ -176,7 +176,10 @@ export class RainStreaks {
     const u = this.material.uniforms;
     if (camPos) u.uCam.value.copy(camPos);
     const o = this.opts;
-    const [fx, fy, fz] = this.fallVel;
+    const fall = this.fallVel;
+    const fx = fall[0];
+    const fy = fall[1];
+    const fz = fall[2];
     const classes = o.speedClasses;
     const offs = u.uOffsets.value;
     for (let c = 0; c < 4; c++) {

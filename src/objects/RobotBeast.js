@@ -24,10 +24,10 @@ import { TAU, wrapAngle } from '../core/math.js';
 import { FRAME_DT } from '../core/constants.js';
 import { buildBeastGeometries, makeBeastMaterial, RIG } from './robotBeastModel.js';
 import { FIRE } from './aiRaceTextures.js';
-import { RAMP } from './FireSprites.js';
+import { RAMP, TINTS } from './FireSprites.js';
 
 export const BEAST = {
-  SCALE: 0.8,
+  SCALE: 0.76,
   STANCE_FORWARD: 800, // stand this far in front of layout.KAIJU (the keep)
   HIDDEN_DEPTH: 2400, // below its standing height when hidden inside the castle
   RISE_TICKS: 90, // ~3 s
@@ -44,21 +44,26 @@ export const BEAST = {
   FOV: 1.8, // it only attacks within this yaw of its facing (radians either side)
   GRACE: 75, // ticks after the hero (re)spawns before it shoots at him
   TURN: 0.05, // max tracking change per tick (radians)
-  BASE_LEAN: 0.2,
+  BASE_LEAN: 0.28,
   NECK_ARCH: -0.12,
   HEAD_SCALE: 1.3, // head and jaw, relative to the rest of the rig
   GLOW_PUSH: 110, // glow sprites sit this far toward the camera from their landmark
 };
 
 // Fireball ballistics (units, ticks): gravity per tick^2, flight time from horizontal range.
+// A fast, fairly flat spit rather than a high lob: from behind the hero the arc must stay in
+// the picture, since the beast shoots toward the camera.
 export const SHOT = {
-  GRAVITY: 1.7,
-  T_MIN: 46,
-  T_MAX: 84,
-  T_BASE: 30,
-  T_PER_UNIT: 1 / 115,
-  LEAD: 0.8, // fraction of the hero's velocity extrapolated over the flight
-  SPREAD: 150, // gaussian aim error (units, per axis)
+  GRAVITY: 0.9,
+  T_MIN: 40,
+  T_MAX: 72,
+  T_BASE: 24,
+  T_PER_UNIT: 1 / 150,
+  LEAD: 1, // fraction of the hero's (smoothed) velocity extrapolated over the flight
+  // Gaussian aim error (units, per axis): with a perfect prediction (a hero standing still or
+  // running straight on) about 55 % of the shots land within 250 of him.
+  SPREAD: 195,
+  VEL_SMOOTH: 0.15, // the hero's velocity is an average of his recent motion (per-tick blend)
 };
 
 // Animation channels (the tick writes CUR, the render lerps from PREV).
@@ -119,7 +124,8 @@ export class RobotBeast {
     this.roarIn = 0;
     this.grace = 0;
     this.shots = 0;
-    this.target = null; // aim point of the shot being charged
+    this.target = null; // aim point of the last shot { x, y, z, T }
+    this.seen = { x: 0, z: 0, vx: 0, vz: 0, valid: false }; // the hero's smoothed motion
     this.flashAt = -10;
     this.flashStrength = 0;
     this.lastClock = 0;
@@ -221,6 +227,7 @@ export class RobotBeast {
     this.roarT = -1;
     this.mode = 'idle';
     this.target = null;
+    if (this.seen) this.seen.valid = false;
   }
 
   reset() {
@@ -297,6 +304,7 @@ export class RobotBeast {
     const P = this.cur;
     const B = BEAST;
     const pos = player.pos;
+    this._watch(pos);
 
     // Tracking targets: yaw and pitch from the head toward the hero's chest.
     const hx = this.x + Math.sin(this.yaw) * 700;
@@ -428,6 +436,24 @@ export class RobotBeast {
     this._sparks(tick);
   }
 
+  // Smoothed hero velocity (units/tick) from his observed motion; teleports and respawns reset it.
+  _watch(pos) {
+    const w = this.seen;
+    const dx = pos.x - w.x;
+    const dz = pos.z - w.z;
+    if (!w.valid || dx * dx + dz * dz > 200 * 200) {
+      w.vx = 0;
+      w.vz = 0;
+    } else {
+      const k = SHOT.VEL_SMOOTH;
+      w.vx += (dx - w.vx) * k;
+      w.vz += (dz - w.vz) * k;
+    }
+    w.x = pos.x;
+    w.z = pos.z;
+    w.valid = true;
+  }
+
   _approach(cur, target, step) {
     const d = target - cur;
     return d > step ? cur + step : d < -step ? cur - step : target;
@@ -441,15 +467,16 @@ export class RobotBeast {
   _shoot(player) {
     const from = this.mouthPos();
     const pos = player.pos;
-    const vel = player.vel;
+    const vx = this.seen.vx * SHOT.LEAD;
+    const vz = this.seen.vz * SHOT.LEAD;
     const rng = this.rng;
     // Gaussian aim error (Box-Muller).
     const g = SHOT.SPREAD * Math.sqrt(-2 * Math.log(1 - rng() * 0.999));
     const ga = rng() * TAU;
     let T = flightTicks(Math.sqrt((pos.x - from.x) ** 2 + (pos.z - from.z) ** 2));
     for (let i = 0; i < 2; i++) {
-      _to.x = pos.x + (vel ? vel.x * T * SHOT.LEAD : 0) + Math.cos(ga) * g;
-      _to.z = pos.z + (vel ? vel.z * T * SHOT.LEAD : 0) + Math.sin(ga) * g;
+      _to.x = pos.x + vx * T + Math.cos(ga) * g;
+      _to.z = pos.z + vz * T + Math.sin(ga) * g;
       T = flightTicks(Math.sqrt((_to.x - from.x) ** 2 + (_to.z - from.z) ** 2));
     }
     const floor = this.collision.findFloor(_to.x, pos.y + 300, _to.z);
@@ -569,78 +596,47 @@ export class RobotBeast {
     this._glows(P, clock);
   }
 
-  // Additive glows: the optic slits, the mast beacon, the stack embers and the throat charge.
-  _glows(P, clock) {
-    const fire = this.fire;
-    if (!fire) return;
-    const power = P[CH.POWER];
-    const m = this.marks;
-    let g;
-    if (power > 0.05) {
-      for (let i = 0; i < 2; i++) {
-        this._glowAt(m.eyes[i], _v);
-        g = fire.glowSlot();
-        if (!g) return;
-        g.x = _v.x;
-        g.y = _v.y;
-        g.z = _v.z;
-        g.size = 300;
-        g.r = 1;
-        g.g = 0.16;
-        g.b = 0.06;
-        g.a = power * 0.9;
-      }
-      if (clock % 1.3 < 0.35) {
-        this._glowAt(m.beacon, _v);
-        g = fire.glowSlot();
-        if (!g) return;
-        g.x = _v.x;
-        g.y = _v.y;
-        g.z = _v.z;
-        g.size = 150;
-        g.r = 1;
-        g.g = 0.2;
-        g.b = 0.08;
-        g.a = power;
-      }
-    }
-    const charge = P[CH.CHARGE];
-    this._glowAt(m.core, _v);
-    g = fire.glowSlot();
-    if (!g) return;
+  // Queues a glow sprite at _v (see _glowAt) with a linear tint; false when out of slots.
+  _glow(size, tint, alpha) {
+    const g = this.fire.glowSlot();
+    if (!g) return false;
     g.x = _v.x;
     g.y = _v.y;
     g.z = _v.z;
-    g.size = 300 + 380 * charge;
-    g.r = 1;
-    g.g = 0.42;
-    g.b = 0.1;
-    g.a = (0.45 + 0.55 * charge) * (0.4 + 0.6 * power);
+    g.size = size;
+    g.r = tint[0];
+    g.g = tint[1];
+    g.b = tint[2];
+    g.a = alpha;
+    return true;
+  }
+
+  // Additive glows: the optic slits, the mast beacon, the furnace heart, the stack embers and
+  // the throat charge.
+  _glows(P, clock) {
+    if (!this.fire) return;
+    const power = P[CH.POWER];
+    const charge = P[CH.CHARGE];
+    const m = this.marks;
+    if (power > 0.05) {
+      for (let i = 0; i < 2; i++) {
+        this._glowAt(m.eyes[i], _v);
+        if (!this._glow(300, TINTS.eye, power)) return;
+      }
+      if (clock % 1.3 < 0.35) {
+        this._glowAt(m.beacon, _v);
+        if (!this._glow(160, TINTS.eye, power)) return;
+      }
+    }
+    this._glowAt(m.core, _v);
+    if (!this._glow(300 + 380 * charge, TINTS.core, (0.5 + 0.5 * charge) * (0.4 + 0.6 * power))) return;
     for (let i = 0; i < m.stacks.length; i++) {
       this._glowAt(m.stacks[i], _v);
-      g = fire.glowSlot();
-      if (!g) return;
-      g.x = _v.x;
-      g.y = _v.y;
-      g.z = _v.z;
-      g.size = 110 + 90 * charge;
-      g.r = 1;
-      g.g = 0.45;
-      g.b = 0.12;
-      g.a = 0.35 + 0.5 * charge;
+      if (!this._glow(110 + 90 * charge, TINTS.ember, 0.35 + 0.5 * charge)) return;
     }
     if (charge > 0.02) {
       this._glowAt(m.throat, _v);
-      g = fire.glowSlot();
-      if (!g) return;
-      g.x = _v.x;
-      g.y = _v.y;
-      g.z = _v.z;
-      g.size = 200 + 520 * charge;
-      g.r = 1;
-      g.g = 0.55;
-      g.b = 0.15;
-      g.a = charge;
+      this._glow(200 + 520 * charge, TINTS.charge, charge);
     }
   }
 }

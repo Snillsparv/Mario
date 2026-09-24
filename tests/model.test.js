@@ -14,7 +14,7 @@ const CONTRACT_ANIMS = `idle sleep walk run tiptoe skid turnaround push crouch c
   double_jump triple_jump backflip sideflip long_jump dive belly_slide butt_slide ground_pound_spin
   ground_pound_fall ground_pound_land wallkick bonk hurt fall_damage ledge_hang ledge_climb pole_hold
   pole_climb pole_jump punch1 punch2 kick jump_kick swim_idle swim_stroke swim_flutter water_surface
-  water_jump star_dance spawn death`.split(/\s+/);
+  water_jump star_dance spawn death pole_handstand burn`.split(/\s+/);
 
 function renderState(rng, anim, animTime) {
   const r = (a, b) => a + (b - a) * rng();

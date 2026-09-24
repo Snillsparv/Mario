@@ -70,7 +70,7 @@ export function buildSky() {
   stormMap.colorSpace = THREE.NoColorSpace; // densities, not colours
   const storm = {
     stormT: { value: 0 },
-    stormScroll: { value: new THREE.Vector4() },
+    stormScroll: { value: new THREE.Vector4(0, 0, 0, 0) },
     stormTime: { value: 0 },
     stormMap: { value: stormMap },
     stormHorizon: { value: new THREE.Color(SKY_STORM_HORIZON_COLOR) },
@@ -191,7 +191,9 @@ if (stormT > 0.0) {
   col = mix(col, vec3(0.07, 0.13, 0.03), greenBand * patches * breathe * (1.0 - 0.6 * dens));
   // Haze at the very bottom melts into the storm fog.
   col = mix(col, stormHorizon, 1.0 - smoothstep(0.0, 0.07, dir.y));
-  diffuseColor.rgb = mix(diffuseColor.rgb, col, stormT);
+  // Crossfade in a perceptual (gamma 2) space, like the world materials (darkGrade.js).
+  vec3 sm = mix(sqrt(max(diffuseColor.rgb, 0.0)), sqrt(col), stormT);
+  diffuseColor.rgb = sm * sm;
 }`,
     );
 }

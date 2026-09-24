@@ -10,6 +10,10 @@
 //   pole_*       the trunk surface is POLE_GAP in front of rs.pos (radius ~30-40); while
 //                climbing, rs.pos rises POLE_CLIMB_PER_CYCLE per cyclePhase.
 //   push         the wall face is WALL_DIST in front of rs.pos.
+//   pole_handstand  rs.pos is the pole tip (under his hands), set without interpolation on
+//                the tick the anim starts (and moved back to the climbing spot, again
+//                without interpolation, when he climbs or lets go back down); he swings up
+//                into the balanced handstand over POLE_TOP_SETTLE_TIME.
 
 import * as T from '../physics/tuning.js';
 import { FRAME_DT, PLAYER_RADIUS } from '../../core/constants.js';
@@ -25,6 +29,7 @@ export const POLE_GAP = num(T.POLE_HOLD_DIST, 30);
 // climbing (automatic.js) while rising POLE_CLIMB_SPEED units.
 export const POLE_CLIMB_PER_CYCLE = num(T.POLE_CLIMB_SPEED, 7) / 0.08;
 export const STROKE_TIME = num(T.STROKE_TICKS, 18) * FRAME_DT;
+export const POLE_TOP_SETTLE_TIME = num(T.POLE_TOP_SETTLE_TICKS, 8) * FRAME_DT;
 
 // Distance the Player advances per locomotion cycle (cyclePhase 1.0) for an anim, if any.
 export function physicsStride(anim) {

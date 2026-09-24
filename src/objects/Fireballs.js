@@ -24,9 +24,8 @@
 
 import * as THREE from 'three';
 import { FRAME_DT, NO_WATER } from '../core/constants.js';
-import { FIRE } from './aiRaceTextures.js';
-import { RAMP } from './FireSprites.js';
-import { makeShadowTexture } from './textures.js';
+import { FIRE, makeMarkerTexture } from './aiRaceTextures.js';
+import { RAMP, TINTS, lin } from './FireSprites.js';
 import { SHOT } from './RobotBeast.js';
 
 export const FIREBALL = {
@@ -75,7 +74,7 @@ function zone() {
 // Core: a lumpy low-poly ball with hot vertex colours (white-yellow core facing out, orange
 // and red patches), drawn unlit and unfogged so it blazes through the storm.
 function coreGeometry() {
-  const g = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
+  const g = new THREE.IcosahedronGeometry(1, 1); // already non-indexed
   const p = g.attributes.position;
   const col = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) {
@@ -86,8 +85,8 @@ function coreGeometry() {
     const k = 0.9 + 0.2 * n;
     p.setXYZ(i, x * k, y * k, z * k);
     col[i * 3] = 1;
-    col[i * 3 + 1] = 0.55 + 0.4 * n;
-    col[i * 3 + 2] = 0.1 + 0.35 * n * n;
+    col[i * 3 + 1] = lin(0.6 + 0.38 * n);
+    col[i * 3 + 2] = lin(0.12 + 0.4 * n * n);
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.deleteAttribute('normal');
@@ -122,7 +121,7 @@ export class Fireballs {
     this.cores.count = 0;
     this.cores.visible = false;
     const glow = new THREE.MeshBasicMaterial({
-      map: makeShadowTexture(),
+      map: makeMarkerTexture(),
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -542,9 +541,9 @@ export class Fireballs {
           g.y = y;
           g.z = z;
           g.size = 420 + 60 * Math.sin(clock * 23 + b.spin);
-          g.r = 1;
-          g.g = 0.55;
-          g.b = 0.15;
+          g.r = TINTS.ball[0];
+          g.g = TINTS.ball[1];
+          g.b = TINTS.ball[2];
           g.a = 0.9;
         }
       }
@@ -557,7 +556,8 @@ export class Fireballs {
         _q.setFromUnitVectors(UP, _n);
         _m.compose(_p.set(x, b.markY + 3, z), _q, _s.set(size, 1, size));
         this.markers.setMatrixAt(marks, _m);
-        this.markers.setColorAt(marks, _c.setRGB(0.35 + 0.65 * k, (0.12 + 0.35 * k) * (0.35 + 0.65 * k), 0.03));
+        const heat = 0.3 + 0.7 * k;
+        this.markers.setColorAt(marks, _c.setRGB(heat, heat * (0.08 + 0.2 * k), heat * 0.02));
         marks++;
       }
     }

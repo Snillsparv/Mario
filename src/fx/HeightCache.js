@@ -19,32 +19,44 @@ export class HeightCache {
     this.heights = new Float32Array(this.n * this.n).fill(UNKNOWN);
     this.flags = new Uint8Array(this.n * this.n); // 1 = water
     this.queries = 0; // collision queries made (tests / tuning)
-    // Results of the last sample(): y (FLOOR_LOWER_LIMIT when nothing is there), water.
-    this.y = 0;
+    // lookup() reads the point from qx, qz and leaves the result in y (FLOOR_LOWER_LIMIT when
+    // nothing is there) and water: no float crosses a call, so nothing is allocated per query.
+    this.qx = 0.5;
+    this.qz = 0.5;
+    this.y = 0.5;
     this.water = false;
   }
 
   // Top surface at (x, z): returns y and sets this.y / this.water.
   sample(x, z) {
+    this.qx = x;
+    this.qz = z;
+    this.lookup();
+    return this.y;
+  }
+
+  // The top surface at (this.qx, this.qz) into this.y / this.water.
+  lookup() {
+    const x = this.qx;
+    const z = this.qz;
     const cs = this.cell;
     const i = Math.floor((x + this.extent) / cs);
     const j = Math.floor((z + this.extent) / cs);
     if (i < 0 || j < 0 || i >= this.n || j >= this.n) {
       this.query(x, z); // off the grid: uncached
-      return this.y;
+      return;
     }
     const k = j * this.n + i;
     const h = this.heights[k];
     if (h !== UNKNOWN) {
       this.y = h;
       this.water = this.flags[k] === 1;
-      return h;
+      return;
     }
     // Sample the cell centre, so every point in the cell agrees.
     this.query((i + 0.5) * cs - this.extent, (j + 0.5) * cs - this.extent);
     this.heights[k] = this.y;
     this.flags[k] = this.water ? 1 : 0;
-    return this.y;
   }
 
   query(x, z) {

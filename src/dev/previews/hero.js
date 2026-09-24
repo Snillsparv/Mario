@@ -20,7 +20,8 @@
 //   tree=<i>[&anim=&t=&yaw=&cy=&cd=&h=]  on the level's tree i, in context (see below)
 // Scenery sits where the physics puts it relative to rs.pos (see model/physicsLink.js): the
 // ledge lip HANG_DEPTH up and WALL_DIST ahead (ledge_climb moves rs.pos like the Player), a
-// wall WALL_DIST ahead, a trunk surface POLE_GAP ahead.
+// wall WALL_DIST ahead, a trunk surface POLE_GAP ahead, the pole tip at rs.pos for
+// pole_handstand.
 // Lights mirror the game renderer (sun along layout.SUN_DIR + hemisphere ambient).
 
 import { PlayerModel } from '../../player/PlayerModel.js';
@@ -33,7 +34,7 @@ import {
 import { SUN_DIR } from '../../world/layout.js';
 
 const POLE_RADIUS = 40; // a tree's climbable pole (world/props/trees.js)
-const TIP_Y = 260; // pole_handstand: the tip above the preview floor
+const TIP_Y = 170; // pole_handstand: the tip above the preview floor
 
 // Representative moments: t = animTime, ph = cyclePhase, fv/vy = velocities (units/tick),
 // y = height above the ground, prop = scenery that makes the pose readable.
@@ -56,10 +57,12 @@ const PRESETS = {
   water_jump: { t: 0.2, vy: 20, y: 60 }, star_dance: { t: 1.35 }, spawn: { t: 0.4 }, death: { t: 1.8 },
   // rs.pos on the pole tip (TIP_Y up); by default it cartwheels up from the top of the climb.
   pole_handstand: {
-    t: 1.2, prop: 'tip', y: 0, yaw: 2.6, lookUp: 0,
+    t: 1.2, prop: 'tip', y: 0, yaw: 2.6, lookUp: 60,
     from: { anim: 'pole_climb', dy: -HANG_DEPTH, dz: -(POLE_RADIUS + POLE_GAP) },
   },
-  burn: { t: 0.35, vy: 25, y: 70 },
+  // Past the apex (vy < 0) so no smoke piles up on a still pose; the smoke trail shows with
+  // from=idle&move=1&vy=50 (the Player's launch).
+  burn: { t: 0.35, vy: -5, y: 70 },
 };
 const LEDGE_Y = 170; // ledge top above the preview floor
 const CLIMB_INSET = 65; // how far the Player moves Pip onto the ledge

@@ -313,7 +313,7 @@ function burn(p, c) {
   const w = c.t * BURN_STRIDES * TAU;
   p.squash = 0.16 * jolt;
   p.rootY = 3 * Math.sin(2 * w) * k; // bobs twice a stride
-  p.flipPitch = 0.38 * k;
+  p.flipPitch = 0.45 * k;
   p.flipRoll = 0.06 * Math.sin(w + 0.6) * k; // rocks with the stride
   p.hipsPitch = 0.15 * k; // seat stuck out behind...
   p.spinePitch = -0.35 * k; // ...chest back up over it, so the short arms reach the seat
@@ -336,7 +336,7 @@ function burn(p, c) {
 // Flip anims start instantly (tiny blend) so the rotation is never delayed.
 export const AIR_ANIMS = {
   jump: { pose: jump, blend: 0.06 },
-  fall: { pose: fall, blend: 0.15 },
+  fall: { pose: fall, blend: 0.15, carryFrom: ['pole_handstand'] }, // Z: let go from the tree top
   double_jump: { pose: doubleJump, blend: 0.06 },
   triple_jump: { pose: tripleJump, blend: 0.03 },
   backflip: { pose: backflip, blend: 0.03 },

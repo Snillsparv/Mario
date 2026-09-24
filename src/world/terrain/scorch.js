@@ -62,13 +62,20 @@ export function buildScorches(layout) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'scorches';
   mesh.frustumCulled = false; // spread over the whole level; drawn only while there are any
-  mesh.visible = false;
   mesh.renderOrder = 0.5; // after the path decal, before the water
 
   const rng = makeRng(8086);
   let next = 0; // slot the next scorch goes into (the oldest once the pool is full)
   let count = 0;
   let now = 0;
+  // Drawn (an empty draw range) in the first frame the scene renders, so its shader compiles
+  // with the level's instead of at the first impact; hidden from then on while there are none.
+  let warmed = false;
+  mesh.onAfterRender = () => {
+    delete mesh.onAfterRender;
+    warmed = true;
+    mesh.visible = count > 0;
+  };
 
   return {
     mesh,
@@ -112,7 +119,7 @@ export function buildScorches(layout) {
       count = 0;
       next = 0;
       geo.setDrawRange(0, 0);
-      mesh.visible = false;
+      if (warmed) mesh.visible = false;
     },
     update(t) {
       if (!Number.isFinite(t)) return;

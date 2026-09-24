@@ -128,7 +128,8 @@ export class N64Renderer {
     this.gradePass = new GradePass();
     this.gradeWarm = ''; // native: '' | 'pending' | 'ready' (programs for the grade target)
     this.drawSize = new THREE.Vector2();
-    this.warmList = new Map(); // object -> Set of variants compiled (see prewarm)
+    this.warmList = []; // objects to compile ahead of their first visible frame (prewarm)
+    this.warmed = { n64: 0, native: 0, grade: 0 }; // how many of them each setup has compiled
     this.day = {
       fog: new THREE.Color(FOG_COLOR),
       water: new THREE.Color(UNDERWATER_FOG.color),
@@ -183,15 +184,15 @@ export class N64Renderer {
   // canvas, native grade target) the first time each is used, instead of on the object's first
   // visible frame (effects meshes stay hidden until rain or fire starts).
   prewarm(object) {
-    if (!this.warmList.has(object)) this.warmList.set(object, new Set());
+    if (!this.warmList.includes(object)) this.warmList.push(object);
   }
 
   warmObjects(variant) {
-    for (const [object, done] of this.warmList) {
-      if (done.has(variant)) continue;
-      done.add(variant);
-      this.renderer.compile(object, this.camera, this.scene);
-    }
+    const list = this.warmList;
+    const from = this.warmed[variant];
+    if (from === list.length) return; // the usual case: nothing new
+    for (let i = from; i < list.length; i++) this.renderer.compile(list[i], this.camera, this.scene);
+    this.warmed[variant] = list.length;
   }
 
   // Current flash brightness at performance-clock time `now` (seconds).
@@ -400,7 +401,7 @@ export class N64Renderer {
     this.underwater.dispose();
     this.pass.dispose();
     this.gradePass.dispose();
-    this.warmList.clear();
+    this.warmList.length = 0;
     this.target.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

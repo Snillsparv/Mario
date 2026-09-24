@@ -9,7 +9,7 @@ import { clamp } from '../../core/math.js';
 // Storm fog: dark blue-grey, much shorter range than the sunny haze (8000..30000).
 export const STORM_FOG = Object.freeze({ color: 0x2a323c, near: 1200, far: 15000 });
 // Underwater in the storm: murky black-teal.
-export const STORM_UNDERWATER_FOG = Object.freeze({ color: 0x0a2028, near: -700, far: 3200 });
+export const STORM_UNDERWATER_FOG = Object.freeze({ color: 0x2a5864, near: -700, far: 3600 });
 // Lights for dynamic actors (hero, coins) at t = 1: a weak cold key and a grey ambient.
 export const STORM_LIGHTS = Object.freeze({
   sunColor: 0x9aa6b8,
@@ -25,6 +25,7 @@ export const STORM_GRADE = Object.freeze({
   gamma: 1.32, // > 1 deepens the shadows
   gain: [0.8, 0.93, 0.95], // darker, cold teal
   lift: [0.004, 0.012, 0.018], // shadows sit on a faint blue-green, not pure black
+  keepHighlights: [0.6, 1.0], // luminance range over which the gain fades out
 });
 
 // Lightning flash colour: added (and multiplied into the image) at flash strength 1.
@@ -52,7 +53,9 @@ export const GRADE_GLSL = /* glsl */ `
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
       vec3 g = mix(c, vec3(l), ${STORM_GRADE.desaturate.toFixed(3)});
       g = pow(max(g, vec3(0.0)), vec3(${STORM_GRADE.gamma.toFixed(3)}));
-      g = g * vec3(${STORM_GRADE.gain.map((v) => v.toFixed(3)).join(', ')}) + vec3(${STORM_GRADE.lift.map((v) => v.toFixed(3)).join(', ')});
+      // Cold and dark in the shadows and midtones; highlights (fire, blasts) keep their colour.
+      vec3 gain = mix(vec3(${STORM_GRADE.gain.map((v) => v.toFixed(3)).join(', ')}), vec3(1.0), smoothstep(${STORM_GRADE.keepHighlights.map((v) => v.toFixed(3)).join(', ')}, l));
+      g = g * gain + vec3(${STORM_GRADE.lift.map((v) => v.toFixed(3)).join(', ')});
       c = mix(c, g, uStorm);
     }
     if (uFlash > 0.0) {
@@ -68,9 +71,13 @@ export function gradeColor(c, storm, flash = 0) {
   if (storm > 0) {
     const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     const d = STORM_GRADE.desaturate;
+    const [h0, h1] = STORM_GRADE.keepHighlights;
+    const h = Math.min(1, Math.max(0, (l - h0) / (h1 - h0)));
+    const keep = h * h * (3 - 2 * h);
     const out = [r, g, b].map((v, i) => {
       let x = v + (l - v) * d;
-      x = Math.max(0, x) ** STORM_GRADE.gamma * STORM_GRADE.gain[i] + STORM_GRADE.lift[i];
+      const gain = STORM_GRADE.gain[i] + (1 - STORM_GRADE.gain[i]) * keep;
+      x = Math.max(0, x) ** STORM_GRADE.gamma * gain + STORM_GRADE.lift[i];
       return v + (x - v) * storm;
     });
     [r, g, b] = out;

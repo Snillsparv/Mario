@@ -213,3 +213,27 @@ function radial(ctx, x, y, r, stops) {
   ctx.fillStyle = g;
   ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
 }
+
+// ---------------------------------------------------------------- landing marker
+
+// A white target glow for the ground under a falling fireball (tinted and drawn additively):
+// a soft centre inside a brighter ring.
+export function makeMarkerTexture() {
+  const S = 64;
+  return canvasTexture(
+    S,
+    S,
+    (ctx) => {
+      const c = S / 2;
+      const g = ctx.createRadialGradient(c, c, 0, c, c, c);
+      g.addColorStop(0, 'rgba(255,255,255,0.75)');
+      g.addColorStop(0.45, 'rgba(255,255,255,0.35)');
+      g.addColorStop(0.72, 'rgba(255,255,255,0.9)');
+      g.addColorStop(0.82, 'rgba(255,255,255,0.4)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+    },
+    { repeat: false },
+  );
+}

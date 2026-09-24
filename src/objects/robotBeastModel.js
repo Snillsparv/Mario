@@ -19,9 +19,10 @@ import { makeRng } from '../core/math.js';
 
 // ---------------------------------------------------------------- palette
 
-const GUN = [0.25, 0.27, 0.31];
-const GUN_LIGHT = [0.36, 0.38, 0.43];
-const GUN_DARK = [0.13, 0.14, 0.17];
+// Written in sRGB (as picked); vertex colours are linear, so PartBuilder converts them.
+const GUN = [0.33, 0.35, 0.4];
+const GUN_LIGHT = [0.45, 0.47, 0.52];
+const GUN_DARK = [0.17, 0.18, 0.21];
 const STEEL = [0.5, 0.52, 0.55];
 const STEEL_DARK = [0.2, 0.2, 0.22];
 const RUST = [0.78, 0.28, 0.1];
@@ -49,25 +50,25 @@ export const RIG = {
   NECK: [0, 800, 270], // neck pivot (torso space)
   NECK_PTS: [
     [0, 0, 0],
-    [0, 170, 170],
-    [0, 270, 370],
-    [0, 300, 580],
-    [0, 250, 780],
+    [0, 110, 190],
+    [0, 150, 390],
+    [0, 120, 580],
+    [0, 40, 740],
   ],
   NECK_R: [175, 160, 145, 132, 122],
-  JAW: [0, -45, -60], // jaw hinge (head space)
-  MOUTH: [0, -70, 430], // fireball spawn (head space)
-  THROAT: [0, -55, 120], // charge glow (head space)
+  JAW: [0, -55, -70], // jaw hinge (head space)
+  MOUTH: [0, -80, 380], // fireball spawn (head space)
+  THROAT: [0, -66, 110], // charge glow (head space)
   EYES: [
-    [-72, 86, 268],
-    [72, 86, 268],
+    [-76, 100, 212],
+    [76, 100, 212],
   ],
-  BEACON: [-150, 405, -140], // mast tip (head space)
+  BEACON: [-140, 340, -130], // mast tip (head space)
   STACKS: [
-    [-700, 1250, -270],
-    [-500, 1250, -260],
-    [500, 1250, -260],
-    [700, 1250, -270],
+    [-700, 1160, -280],
+    [-500, 1160, -270],
+    [500, 1160, -270],
+    [700, 1160, -280],
   ], // exhaust stack tops (torso space)
   TAIL: [0, 1260, -330], // tail pivot (root space)
   TAIL_A: [
@@ -119,9 +120,12 @@ class PartBuilder {
     g.applyMatrix4(matrix);
     const p = g.attributes.position.array;
     const k = 1 + (this.rng() - 0.5) * 2 * vary;
+    const r = srgbToLinear(color[0] * k);
+    const gr = srgbToLinear(color[1] * k);
+    const bl = srgbToLinear(color[2] * k);
     for (let i = 0; i < p.length; i += 3) {
       this.pos.push(p[i], p[i + 1], p[i + 2]);
-      this.col.push(color[0] * k, color[1] * k, color[2] * k);
+      this.col.push(r, gr, bl);
       this.emit.push(emit[0], emit[1]);
     }
     g.dispose();
@@ -199,6 +203,10 @@ class PartBuilder {
     geo.computeBoundingSphere();
     return geo;
   }
+}
+
+export function srgbToLinear(c) {
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
 const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -321,74 +329,79 @@ function buildNeck() {
 
 function buildHead() {
   const b = new PartBuilder(41);
-  // Skull, tapering toward the snout.
+  // Anvil skull: tall at the back, narrowing to a flat face plate.
   b.hexa(
     [
-      [-170, -40, -130],
-      [170, -40, -130],
-      [-165, 190, -130],
-      [165, 190, -130],
-      [-140, -40, 260],
-      [140, -40, 260],
-      [-135, 115, 260],
-      [135, 115, 260],
+      [-178, -60, -150],
+      [178, -60, -150],
+      [-172, 215, -150],
+      [172, 215, -150],
+      [-150, -50, 205],
+      [150, -50, 205],
+      [-146, 150, 205],
+      [146, 150, 205],
     ],
     GUN,
   );
-  // Heavy chisel snout under the optics.
+  // Blunt ram snout under the optics.
   b.hexa(
     [
-      [-140, -40, 255],
-      [140, -40, 255],
-      [-140, 62, 255],
-      [140, 62, 255],
-      [-95, -30, 440],
-      [95, -30, 440],
-      [-95, 30, 440],
-      [95, 30, 440],
+      [-150, -50, 200],
+      [150, -50, 200],
+      [-150, 62, 200],
+      [150, 62, 200],
+      [-108, -42, 345],
+      [108, -42, 345],
+      [-108, 26, 345],
+      [108, 26, 345],
     ],
     GUN_LIGHT,
   );
+  b.box(0, 28, 340, 170, 14, 16, RUST, E_JOINT);
   // Overhanging brow visor (a scowl over the optics) with a rust edge.
   b.hexa(
     [
-      [-178, 120, 60],
-      [178, 120, 60],
-      [-172, 205, 40],
-      [172, 205, 40],
-      [-160, 112, 318],
-      [160, 112, 318],
-      [-150, 150, 300],
-      [150, 150, 300],
+      [-188, 140, 40],
+      [188, 140, 40],
+      [-180, 232, 20],
+      [180, 232, 20],
+      [-172, 128, 272],
+      [172, 128, 272],
+      [-160, 168, 256],
+      [160, 168, 256],
     ],
     GUN_DARK,
   );
-  b.box(0, 110, 314, 300, 14, 18, RUST, E_NONE);
-  // Optic slits, slanted down toward the middle.
+  b.box(0, 126, 268, 320, 14, 18, RUST, E_JOINT);
+  // Optic slits, slanted down toward the middle, in a dark recess.
+  b.box(0, 98, 206, 290, 62, 10, CABLE, E_NONE);
   for (const [i, s] of [
     [0, -1],
     [1, 1],
   ]) {
     const e = RIG.EYES[i];
-    b.box(e[0], e[1], e[2], 112, 22, 18, EYE, E_EYE, 0, 0, s * 0.24);
+    b.box(e[0], e[1], e[2], 118, 26, 16, EYE, E_EYE, 0, 0, s * 0.26);
   }
-  // Cheek armour.
-  for (const s of [-1, 1]) b.box(s * 168, 40, 60, 34, 170, 300, GUN_LIGHT, E_NONE, 0, s * 0.08, 0);
+  // Cheek armour and bolts.
+  for (const s of [-1, 1]) {
+    b.box(s * 178, 40, 40, 36, 190, 300, GUN_LIGHT, E_NONE, 0, s * 0.1, 0);
+    b.cyl([s * 190, 40, 40], [s * 215, 40, 40], 42, 42, 6, RUST_DARK);
+  }
   // Upper fangs along the snout's underside.
   for (const s of [-1, 1]) {
     for (let k = 0; k < 4; k++) {
-      const z = 250 + k * 50;
-      b.cone([s * (110 - k * 6), -35, z], [s * (108 - k * 6), -95, z + 8], 20, 4, CLAW);
+      const z = 215 + k * 38;
+      b.cone([s * (118 - k * 5), -45, z], [s * (116 - k * 5), -110, z + 8], 22, 4, CLAW);
     }
   }
   // Glowing palate and throat vent (the furnace shows when the jaw drops).
-  b.box(0, -42, 180, 210, 10, 360, FURNACE, E_THROAT);
-  b.box(0, -58, -30, 200, 16, 160, FURNACE, E_THROAT);
-  for (let k = 0; k < 4; k++) b.box(0, -66, -90 + k * 40, 210, 10, 12, GUN_DARK, E_NONE);
+  b.box(0, -52, 150, 230, 10, 330, FURNACE, E_THROAT);
+  b.box(0, -66, -40, 220, 16, 170, FURNACE, E_THROAT);
+  for (let k = 0; k < 4; k++) b.box(0, -74, -100 + k * 42, 230, 10, 12, GUN_DARK, E_NONE);
   // Mast with a beacon, and two short exhaust pipes at the back of the skull.
-  b.cyl([-110, 180, -80], RIG.BEACON, 14, 10, 5, STEEL);
+  b.cyl([-110, 200, -90], RIG.BEACON, 14, 10, 5, STEEL);
   b.ball(RIG.BEACON, 28, EYE, E_EYE);
-  for (const s of [-1, 1]) b.cyl([s * 90, 120, -120], [s * 110, 150, -270], 34, 30, 6, STEEL_DARK);
+  for (const s of [-1, 1]) b.cyl([s * 95, 140, -140], [s * 118, 175, -290], 36, 32, 6, STEEL_DARK);
   return b.build();
 }
 
@@ -397,31 +410,31 @@ function buildJaw() {
   // Massive underbite jaw, hinged at its back (the part's origin).
   b.hexa(
     [
-      [-155, -170, 0],
-      [155, -170, 0],
-      [-150, 0, 0],
-      [150, 0, 0],
-      [-112, -110, 470],
-      [112, -110, 470],
-      [-112, -8, 470],
-      [112, -8, 470],
+      [-168, -200, 0],
+      [168, -200, 0],
+      [-162, 0, 0],
+      [162, 0, 0],
+      [-126, -135, 430],
+      [126, -135, 430],
+      [-126, -8, 430],
+      [126, -8, 430],
     ],
     GUN,
   );
-  b.slab(0, 490, -110, -15, 95, 30, 85, 25, 0, 0, GUN_LIGHT);
-  b.cyl([-175, -40, 0], [175, -40, 0], 62, 62, 8, RUST);
+  b.slab(0, 450, -135, -10, 110, 30, 100, 25, 0, 0, GUN_LIGHT);
+  b.cyl([-188, -45, 0], [188, -45, 0], 66, 66, 8, RUST, E_JOINT);
   // Hazard striping on both sides.
   for (const s of [-1, 1]) {
-    for (let k = 0; k < 3; k++) b.box(s * 150, -85, 150 + k * 95, 14, 120, 40, HAZARD, E_NONE, -0.5, 0, 0);
+    for (let k = 0; k < 3; k++) b.box(s * 164, -100, 130 + k * 90, 14, 130, 40, HAZARD, E_NONE, -0.5, 0, 0);
   }
   // Lower fangs and the glowing tongue plate.
   for (const s of [-1, 1]) {
     for (let k = 0; k < 4; k++) {
-      const z = 220 + k * 58;
-      b.cone([s * (98 - k * 4), -6, z], [s * (96 - k * 4), 58, z - 6], 20, 4, CLAW);
+      const z = 200 + k * 60;
+      b.cone([s * (110 - k * 4), -6, z], [s * (108 - k * 4), 64, z - 6], 22, 4, CLAW);
     }
   }
-  b.box(0, -10, 250, 170, 10, 390, FURNACE, E_THROAT);
+  b.box(0, -12, 230, 190, 10, 360, FURNACE, E_THROAT);
   return b.build();
 }
 
@@ -490,12 +503,15 @@ function buildTailPart(points, radii, seed, plug) {
 //   emission = colour * (aEmit.x * uPower + aEmit.y * uCharge)   (optics, embers, furnace)
 //   + a cold rim light (keeps the silhouette readable against the storm sky)
 //   + colour * uFlash                                           (lightning flashes)
+// and only uFogScale of the scene fog: the storm fog would otherwise melt the dark beast into
+// the dark sky from the spawn (a deliberate cheat; it still recedes a little with distance).
 export function makeBeastMaterial() {
   const uniforms = {
     uCharge: { value: 0 },
     uPower: { value: 0 },
     uFlash: { value: 0 },
-    uRim: { value: new THREE.Color(0.26, 0.32, 0.46) },
+    uRim: { value: new THREE.Color(0.3, 0.36, 0.5) },
+    uFogScale: { value: 0.5 },
   };
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   material.onBeforeCompile = (shader) => {
@@ -504,20 +520,37 @@ export function makeBeastMaterial() {
       .replace('#include <common>', '#include <common>\nattribute vec2 aEmit;\nvarying vec2 vEmit;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvEmit = aEmit;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uCharge;\nuniform float uPower;\nuniform float uFlash;\nuniform vec3 uRim;\nvarying vec2 vEmit;')
+      .replace('#include <common>', '#include <common>\nuniform float uCharge;\nuniform float uPower;\nuniform float uFlash;\nuniform vec3 uRim;\nuniform float uFogScale;\nvarying vec2 vEmit;')
       .replace(
         '#include <emissivemap_fragment>',
         [
           '#include <emissivemap_fragment>',
           '\ttotalEmissiveRadiance += diffuseColor.rgb * (vEmit.x * uPower + vEmit.y * uCharge + uFlash);',
           '\tfloat rimK = 1.0 - abs(dot(normal, normalize(vViewPosition)));',
-          '\ttotalEmissiveRadiance += uRim * (rimK * rimK * rimK);',
+          '\ttotalEmissiveRadiance += uRim * (rimK * rimK);',
         ].join('\n'),
-      );
+      )
+      .replace('#include <fog_fragment>', scaledFog('uFogScale', false));
   };
   material.customProgramCacheKey = () => 'robotBeast';
   material.userData.uniforms = uniforms;
   return material;
+}
+
+// three.js's fog chunk with the fog factor scaled by uniform `scale`; `toBlack` fades to black
+// instead of the fog colour (for additive sprites, which would otherwise add the fog colour).
+export function scaledFog(scale, toBlack) {
+  return [
+    '#ifdef USE_FOG',
+    '\t#ifdef FOG_EXP2',
+    '\t\tfloat fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );',
+    '\t#else',
+    '\t\tfloat fogFactor = smoothstep( fogNear, fogFar, vFogDepth );',
+    '\t#endif',
+    `\tfogFactor *= ${scale};`,
+    toBlack ? '\tgl_FragColor.rgb *= 1.0 - fogFactor;' : '\tgl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
+    '#endif',
+  ].join('\n');
 }
 
 // Builds every part's geometry: { legs, torso, neck, head, jaw, armL, armR, tailA, tailB }.

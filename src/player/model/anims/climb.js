@@ -10,7 +10,7 @@ import {
 import { createPose, resetPose, blendPose } from '../pose.js';
 import { FOREARM, HAND_OFFSET, UPPER_ARM } from '../dims.js';
 import {
-  HANG_DEPTH, WALL_DIST, LEDGE_CLIMB_TIME, POLE_GAP, POLE_CLIMB_PER_CYCLE, climbProgress,
+  HANG_DEPTH, WALL_DIST, LEDGE_CLIMB_TIME, POLE_GAP, POLE_CLIMB_PER_CYCLE, POLE_TOP_SETTLE_TIME, climbProgress,
 } from '../physicsLink.js';
 
 // ---- ledges ------------------------------------------------------------------------------
@@ -185,13 +185,17 @@ function poleClimb(p, c) {
 // big head, so the chin is tucked: the head and hat sit forward of the tip, above it, and
 // the scarf tails hang free down the back of the neck. He gets there with a quick
 // cartwheel up from wherever the previous anim had him (ctx.entry*, carried by the
-// animator from pole_hold / pole_climb).
+// animator from pole_hold / pole_climb). Leaving it, the pose eases out over blendOut
+// (the Player's jump off is a triple_jump somersault; climbing or letting go back down
+// moves rs.pos back to the trunk, carried by pole_hold / pole_climb / fall).
 
 const TIP_HAND_X = 7.5; // mitten centres either side of the tip...
 const TIP_HAND_Y = 7.5; // ...and above it: the mittens rest on the tip
 const ARM_REACH = UPPER_ARM + FOREARM + HAND_OFFSET - 0.2; // shoulder -> mitten, arm straight
-const FLIP_TIME = 0.32;
-const HS_LEAN = -0.35; // body tipped back over the hands (legs behind), against the head's weight
+const FLIP_TIME = POLE_TOP_SETTLE_TIME; // the swing up (~0.27 s): the Player's settle time
+// The body leans back from the upright arms (legs behind) against the weight of the head.
+const HS_LEAN = -0.35;
+const HS_PIKE = 0.15;
 
 const sL = { x: 0, y: 0, z: 0 };
 const sR = { x: 0, y: 0, z: 0 };
@@ -204,26 +208,27 @@ const swayPitch = (t) => 0.05 * Math.sin(t * 1.6 + 0.5) + 0.02 * Math.sin(t * 4.
 function handstandBody(p, t, w) {
   const r = swayRoll(t) * w;
   const f = swayPitch(t) * w;
-  const V = globalThis.__hs ?? {};
-  p.flipRoll = PI + r;
-  p.flipPitch = (V.lean ?? HS_LEAN) + f;
-  p.spinePitch = V.spine ?? -0.05;
-  p.hipsPitch = V.hips ?? 0;
-  p.headPitch = V.head ?? 1.0;
+  // Fore-aft the whole body rocks about the hands (both arms stay straight); side to side
+  // mostly the hips and legs sway over square shoulders.
+  p.flipRoll = PI + 0.35 * r;
+  p.hipsRoll = r;
+  p.spineRoll = -r;
+  p.flipPitch = HS_LEAN + f;
+  p.spinePitch = -0.05;
+  p.headPitch = 1.0; // chin tucked: head and hat forward of the tip
   // Legs catch the balance: they part toward the side the body tips away from, and the
   // knees give a little as it tips.
   const soft = 0.22 + 0.5 * Math.abs(f) + 0.3 * Math.abs(r);
-  const arch = V.arch ?? 0.15;
-  const point = V.point ?? 1.0;
-  leg(p, 'L', arch - 0.04 - 1.2 * f, soft + 0.08 * Math.sin(t * 2.9), point, 0.16 - 1.4 * r);
-  leg(p, 'R', arch - 1.2 * f, soft + 0.08 * Math.sin(t * 2.9 + 2), point, 0.16 + 1.4 * r);
+  // The hips fold a little (HS_PIKE) so the legs point up more steeply than the leaning
+  // body, toes pointed.
+  leg(p, 'L', HS_PIKE - 0.04 - 1.2 * f, soft + 0.08 * Math.sin(t * 2.9), 0.6, 0.16 - 1.4 * r);
+  leg(p, 'R', HS_PIKE - 1.2 * f, soft + 0.08 * Math.sin(t * 2.9 + 2), 0.6, 0.16 + 1.4 * r);
   arms(p, 2.9, 0.3, 0.05);
   p.face = 'open';
 }
 
 // Moves the body so both shoulders are within a straight arm of the mittens on the tip,
-// the arms leaning with the body (the sway pivots about the hands), then puts the mittens
-// there. w (0..1) blends the hands in over the current arm pose. Returns the left mitten's
+// then puts the mittens there. w (0..1) blends the hands in over the current arm pose. Returns the left mitten's
 // x on the tip (each mitten goes on its own shoulder's side: upside down, left is -X).
 function standOnHands(p, w = 1) {
   shoulderAt(p, 'L', sL);
@@ -231,9 +236,10 @@ function standOnHands(p, w = 1) {
   const hx = sL.x >= sR.x ? TIP_HAND_X : -TIP_HAND_X;
   const half = Math.hypot(sL.x - sR.x, sL.y - sR.y, sL.z - sR.z) / 2;
   const up = Math.sqrt(ARM_REACH * ARM_REACH - (half - TIP_HAND_X) ** 2);
-  // Head direction of the inverted body = the arms' direction (hands below the shoulders).
+  // The arms point from the shoulders straight down to the tip, tipped only by the sway
+  // (so the sway pivots about the hands); the body leans on top of them.
   const r = p.flipRoll - PI;
-  const f = p.flipPitch - (globalThis.__hs?.lean ?? HS_LEAN) + (globalThis.__hs?.armLean ?? 0);
+  const f = p.flipPitch - HS_LEAN; // the sway only: the arms stay upright under the lean
   const dx = -Math.sin(r) * up;
   const dy = Math.cos(r) * Math.cos(f) * up;
   const dz = Math.cos(r) * Math.sin(f) * up;

@@ -8,6 +8,7 @@
 // continuous when the anim switches between gaits or the stride changes with speed.
 
 import { createPose, resetPose, copyPose, blendPose, wrapFlips } from './pose.js';
+import { TAU, wrapAngle } from '../../core/math.js';
 import { ANIMS, DEFAULT_BLEND, resolveAnim } from './animations.js';
 import { physicsStride } from './physicsLink.js';
 import { gaitStride } from './strides.js';
@@ -35,6 +36,13 @@ const MAX_CARRY = 400;
 
 const release = (shown, target, step) => Math.max(target, shown - step);
 
+// Whole-body rotations blend along the shortest arc to the target (blendPose). When a
+// spinning target (a somersault) passes half a turn from the start pose mid-blend, that arc
+// flips to the other side and the blend would jump by 2*PI*s: the animator counts those
+// wraps of (target - start) per channel and adds the turns back, so the blended rotation
+// stays continuous (and still ends on an angle equivalent to the target's).
+const flipWrap = (d, last) => (Number.isNaN(last) ? 0 : d - last > Math.PI ? -1 : d - last < -Math.PI ? 1 : 0);
+
 export class Animator {
   constructor() {
     this.pose = createPose(); // output
@@ -49,6 +57,9 @@ export class Animator {
     this.gaitPhase = 0;
     this.externalLook = false; // the Player drives headYaw during this anim
     this.swell = { handL: 0, handR: 0, footL: 0, footR: 0 }; // shown attack swells
+    // Flip wraps counted during the current blend, and last frame's (target - start) arcs.
+    this.turnPitch = this.turnYaw = this.turnRoll = 0;
+    this.arcPitch = this.arcYaw = this.arcRoll = NaN;
     this.carrying = false;
     this.lastPos = { x: 0, y: 0, z: 0 };
     this.ctx = {
@@ -74,6 +85,8 @@ export class Animator {
       this.blendDur = prev ? Math.max(def.blend ?? DEFAULT_BLEND, prev.blendOut ?? 0) : 0;
       this.carrying = !!prev && name !== this.anim && !!def.carryFrom?.includes(this.anim);
       c.entryX = c.entryY = c.entryZ = 0;
+      this.turnPitch = this.turnYaw = this.turnRoll = 0;
+      this.arcPitch = this.arcYaw = this.arcRoll = NaN;
       this.anim = name;
       this.externalLook = false;
     }
@@ -102,9 +115,28 @@ export class Animator {
 
     const k = this.blendDur > 0 ? Math.min(1, this.blendTime / this.blendDur) : 1;
     if (k >= 1) copyPose(this.pose, this.target);
-    else blendPose(this.pose, this.from, this.target, k * k * (3 - 2 * k));
+    else this.blend(k * k * (3 - 2 * k));
     this.releaseSwell(this.pose, dt);
     return this.pose;
+  }
+
+  // this.pose = from -> target at s, whole-body rotations kept continuous (flipWrap).
+  blend(s) {
+    const a = this.from;
+    const b = this.target;
+    const p = blendPose(this.pose, a, b, s);
+    let d = wrapAngle(b.flipPitch - a.flipPitch);
+    this.turnPitch += flipWrap(d, this.arcPitch);
+    this.arcPitch = d;
+    d = wrapAngle(b.flipYaw - a.flipYaw);
+    this.turnYaw += flipWrap(d, this.arcYaw);
+    this.arcYaw = d;
+    d = wrapAngle(b.flipRoll - a.flipRoll);
+    this.turnRoll += flipWrap(d, this.arcRoll);
+    this.arcRoll = d;
+    p.flipPitch += this.turnPitch * TAU * s;
+    p.flipYaw += this.turnYaw * TAU * s;
+    p.flipRoll += this.turnRoll * TAU * s;
   }
 
   // Takes this frame's move of rs.pos out of the blend's starting pose and adds it to the

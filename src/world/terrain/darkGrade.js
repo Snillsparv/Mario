@@ -4,7 +4,8 @@
 // version of its own colour as darkT goes to 1:
 //   dark = mix(luminance, colour, sat) * mul + add
 // so each material picks how much colour it keeps (sat), its tint and brightness (mul) and a
-// floor (add). The code is always compiled in and driven by uniforms only: switching the mode
+// floor (add). The crossfade runs in a gamma-2 space (mix the square roots, then square) so
+// it darkens evenly over the whole fade instead of mostly at its end. The code is always compiled in and driven by uniforms only: switching the mode
 // never compiles a shader or touches geometry, and every material patched the same way
 // shares one program (their per-material values are uniforms).
 //
@@ -119,14 +120,18 @@ uniform vec3 darkGlowColor;${glow ? '\nvarying float vDarkGlow;\nvarying vec3 vD
   #endif`
       : ''
   }
-  diffuseColor.rgb = mix(dc, dd, darkT);${
+  // Crossfade in a perceptual (gamma 2) space: a linear-light mix would look nearly sunny
+  // until the last third and then drop.
+  vec3 dm = mix(sqrt(max(dc, 0.0)), sqrt(max(dd, 0.0)), darkT);
+  diffuseColor.rgb = dm * dm;${
     glow
       ? `
   // Glowing windows: a slow uneven pulse, drifting across the building so neighbouring
   // windows are out of step.
   float ph = dot(vDarkWorld, vec3(0.0021, 0.0013, 0.0017));
   float pulse = 0.72 + 0.2 * sin(darkTime * 2.1 + ph) + 0.08 * sin(darkTime * 7.3 + ph * 3.0);
-  diffuseColor.rgb = mix(diffuseColor.rgb, darkGlowColor * pulse, darkT * vDarkGlow);
+  vec3 gm = mix(sqrt(max(diffuseColor.rgb, 0.0)), sqrt(darkGlowColor * pulse), darkT * vDarkGlow);
+  diffuseColor.rgb = gm * gm;
   darkShine = darkT * vDarkGlow;`
       : ''
   }${

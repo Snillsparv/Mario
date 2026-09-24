@@ -7,18 +7,34 @@
 import * as THREE from 'three';
 import { SpriteBatch } from './SpriteBatch.js';
 import { makeFireAtlas, fireUV, FIRE } from './aiRaceTextures.js';
+import { scaledFog } from './robotBeastModel.js';
 
 const UV = [fireUV(FIRE.GLOW), fireUV(FIRE.FLAME), fireUV(FIRE.SPARK), fireUV(FIRE.PUFF)];
 export const FIRE_CAPACITY = 420;
 const GLOW_SLOTS = 24; // per-frame glows (fireball halos, eyes, beacon, charge)
 
-// Colour ramps [r0, g0, b0, r1, g1, b1]: birth colour -> death colour (additive, so dark = faint).
+// sRGB (as picked) -> the linear values the sprite shader expects.
+export function lin(c) {
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+// Colour ramps [r0, g0, b0, r1, g1, b1] (linear): birth colour -> death colour (additive, so
+// dark = faint).
 export const RAMP = {
-  flame: [1, 0.92, 0.55, 0.75, 0.12, 0.02], // yellow-white core -> deep red
-  ember: [1, 0.6, 0.18, 0.5, 0.08, 0.02],
-  spark: [1, 0.95, 0.7, 1, 0.35, 0.05],
-  steam: [0.55, 0.58, 0.62, 0.18, 0.19, 0.21],
-  smoke: [0.35, 0.22, 0.14, 0.06, 0.05, 0.05],
+  flame: [1, 0.92, 0.55, 0.85, 0.2, 0.04].map(lin), // yellow-white core -> deep red
+  ember: [1, 0.62, 0.2, 0.6, 0.12, 0.03].map(lin),
+  spark: [1, 0.95, 0.7, 1, 0.45, 0.1].map(lin),
+  steam: [0.72, 0.74, 0.78, 0.35, 0.36, 0.4].map(lin),
+  smoke: [0.5, 0.36, 0.26, 0.2, 0.18, 0.18].map(lin),
+};
+
+// Glow tints (linear).
+export const TINTS = {
+  eye: [1, 0.16, 0.06].map(lin),
+  core: [1, 0.45, 0.12].map(lin),
+  ember: [1, 0.5, 0.16].map(lin),
+  charge: [1, 0.62, 0.2].map(lin),
+  ball: [1, 0.6, 0.18].map(lin),
 };
 
 function particle() {
@@ -31,7 +47,11 @@ export class FireSprites {
     this.batch = new SpriteBatch(FIRE_CAPACITY, { map: makeFireAtlas(), transparent: true, alphaCut: 0.004 });
     this.mesh = this.batch.mesh;
     this.mesh.name = 'fireSprites';
-    this.mesh.material.blending = THREE.AdditiveBlending;
+    const mat = this.mesh.material;
+    mat.blending = THREE.AdditiveBlending;
+    // Additive light fades to black in fog (not to the fog colour), and only partly: the glows
+    // are what makes the beast and its fireballs readable through the storm.
+    mat.fragmentShader = mat.fragmentShader.replace('#include <fog_fragment>', scaledFog('0.45', true));
     this.mesh.renderOrder = 11; // with the sparkles, over water and other blended surfaces
     this.mesh.visible = false;
     this.parts = Array.from({ length: FIRE_CAPACITY - GLOW_SLOTS }, particle);

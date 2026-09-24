@@ -5,13 +5,14 @@
 // strikes. Strength is 0.5..1.
 
 import { flashEnvelope } from '../render/post/storm.js';
+import { BOLT_LIFE } from './kinds.js';
 
 export const LIGHTNING = Object.freeze({
   minRain: 0.6,
   firstDelay: [2.5, 6],
   interval: [6, 14],
   strength: [0.5, 1],
-  boltLife: 0.2, // seconds the bolt stays drawn
+  boltLife: BOLT_LIFE, // seconds the bolt stays drawn
 });
 
 export class LightningScheduler {
@@ -53,8 +54,8 @@ export class LightningScheduler {
     return strength;
   }
 
-  pick([lo, hi]) {
-    return lo + (hi - lo) * this.rng();
+  pick(range) {
+    return range[0] + (range[1] - range[0]) * this.rng();
   }
 }
 

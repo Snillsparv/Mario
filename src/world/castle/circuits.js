@@ -128,8 +128,17 @@ export function buildCircuits(towers, centre) {
   mat.customProgramCacheKey = () => 'castle-circuits';
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'castle-circuits';
-  mesh.visible = false;
   mesh.renderOrder = 1;
+  // Drawn (fully transparent) in the first frame the scene renders, so its shader compiles
+  // with the level's instead of mid-crossfade; hidden from then on until the mode shows.
+  let warmed = false;
+  mesh.frustumCulled = false;
+  mesh.onAfterRender = () => {
+    delete mesh.onAfterRender;
+    warmed = true;
+    mesh.frustumCulled = true;
+    mesh.visible = uniforms.circuitT.value > 0;
+  };
 
   return {
     mesh,
@@ -137,7 +146,7 @@ export function buildCircuits(towers, centre) {
       // Fade in over the second half of the crossfade, once the walls have gone dark.
       const k = Math.min(1, Math.max(0, (t - 0.35) / 0.65));
       uniforms.circuitT.value = k * k * (3 - 2 * k);
-      mesh.visible = uniforms.circuitT.value > 0;
+      if (warmed) mesh.visible = uniforms.circuitT.value > 0;
     },
     update(time) {
       if (Number.isFinite(time)) uniforms.circuitTime.value = time;
