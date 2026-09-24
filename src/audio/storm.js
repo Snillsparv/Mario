@@ -5,21 +5,28 @@
 // disconnected) once it has faded out, so sunny weather costs nothing.
 
 import { clamp } from '../core/math.js';
+import { smoothRamp } from './synth.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-// Resting levels of the layers (the whole storm is then faded 0..1 on its bus).
-const RAIN = { wash: 0.03, patter: 0.035, body: 0.2 };
+// Resting levels of the layers (the whole storm is then faded 0..1 on its bus). Exported
+// for the preview's level checks; read when the storm graph is built.
+export const STORM_MIX = {
+  wash: 0.054, // rain hiss
+  patter: 0.07, // drops on leaves and grass (drifting)
+  body: 0.058, // heavy rain's low roar
+  drops: 0.125, // droplet ticks (peak gain of one)
+  wind: 0.54, // scales the WIND layers
+  drone: 0.023,
+};
 const DROP_RATE = 22; // droplet ticks per second
-const DROP_GAIN = 0.11;
 const WIND = [
   { freq: 380, q: 1.2, level: 0.16, pan: -0.45 }, // a broad, low blow
   { freq: 1050, q: 7, level: 0.05, pan: 0.5 }, // a thin howl
 ];
 const GUST_RANGE = [0.3, 1.5];
 const GUST_SECONDS = [1.2, 3.8];
-const DRONE_LEVEL = 0.07;
 // [hz, detune cents, wave, level]: two beating saws on D1, the fifth, and D2.
 const DRONE_VOICES = [
   [36.71, -7, 'sawtooth', 0.5],
@@ -30,33 +37,35 @@ const DRONE_VOICES = [
 
 const bufferCache = new WeakMap();
 
-// Stereo noise with independent channels (a wide image), pink when `pink`; the loop ends
-// are crossfaded into each other so the wrap is seamless.
+// Stereo noise, pink when `pink`: one channel generated, the other the same noise rotated
+// by half the loop (uncorrelated to the ear, at half the cost to make). The loop ends are
+// crossfaded into each other so the wrap is seamless.
 function stereoNoise(ctx, seconds, pink) {
   const n = Math.floor(ctx.sampleRate * seconds);
   const buf = ctx.createBuffer(2, n, ctx.sampleRate);
-  const fade = Math.floor(ctx.sampleRate * 0.05);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = buf.getChannelData(ch);
-    let b0 = 0;
-    let b1 = 0;
-    let b2 = 0;
-    for (let i = 0; i < n; i++) {
-      const w = Math.random() * 2 - 1;
-      if (!pink) {
-        d[i] = w * 0.5;
-        continue;
-      }
-      b0 = 0.99765 * b0 + w * 0.099046;
-      b1 = 0.963 * b1 + w * 0.2965164;
-      b2 = 0.57 * b2 + w * 1.0526913;
-      d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2;
+  const d = buf.getChannelData(0);
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  for (let i = 0; i < n; i++) {
+    const w = Math.random() * 2 - 1;
+    if (!pink) {
+      d[i] = w * 0.5;
+      continue;
     }
-    for (let i = 0; i < fade; i++) {
-      const k = i / fade;
-      d[i] = d[i] * k + d[n - fade + i] * (1 - k);
-    }
+    b0 = 0.99765 * b0 + w * 0.099046;
+    b1 = 0.963 * b1 + w * 0.2965164;
+    b2 = 0.57 * b2 + w * 1.0526913;
+    d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2;
   }
+  const fade = Math.floor(ctx.sampleRate * 0.05);
+  for (let i = 0; i < fade; i++) {
+    const k = i / fade;
+    d[i] = d[i] * k + d[n - fade + i] * (1 - k);
+  }
+  const r = buf.getChannelData(1);
+  const half = Math.floor(n / 2);
+  for (let i = 0; i < n; i++) r[i] = d[(i + half) % n];
   return buf;
 }
 
@@ -83,7 +92,7 @@ function dropBuffers(ctx) {
 
 function buffers(ctx) {
   let b = bufferCache.get(ctx);
-  if (!b) bufferCache.set(ctx, (b = { white: stereoNoise(ctx, 3, false), pink: stereoNoise(ctx, 4.3, true), drops: dropBuffers(ctx) }));
+  if (!b) bufferCache.set(ctx, (b = { white: stereoNoise(ctx, 3, false), pink: stereoNoise(ctx, 3.7, true), drops: dropBuffers(ctx) }));
   return b;
 }
 
@@ -108,10 +117,7 @@ export class Storm {
     this.on = !!on;
     if (this.on && !this.graph) this.graph = this.build(now);
     if (!this.graph) return;
-    const g = this.graph.bus.gain;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(this.on ? 1 : 0, now + Math.max(fade, 0.02));
+    smoothRamp(this.graph.bus.gain, now, this.on ? 1 : 0, Math.max(fade, 0.02));
     this.offAt = this.on ? Infinity : now + Math.max(fade, 0.02) + 0.1;
   }
 
@@ -166,12 +172,14 @@ export class Storm {
     const bus = gain(0, this.out);
     // Rain: the hiss of countless drops, the band where they hit leaves and grass (its
     // level drifts), and heavy rain's low roar.
-    loop(white, filter('highpass', 600, 0.5, filter('lowpass', 7000, 0.5, gain(RAIN.wash, bus))), 0);
-    const patter = gain(RAIN.patter, bus);
+    const mix = { ...STORM_MIX };
+    loop(white, filter('highpass', 600, 0.5, filter('lowpass', 7000, 0.5, gain(mix.wash, bus))), 0);
+    const patter = gain(mix.patter, bus);
     loop(white, filter('bandpass', 2200, 0.7, patter), 1.7);
-    loop(pink, filter('lowpass', 450, 0.6, gain(RAIN.body, bus)), 1.1);
+    loop(pink, filter('lowpass', 450, 0.6, gain(mix.body, bus)), 1.1);
     // Wind: gusting layers, each drifting in level, pitch and position.
-    const winds = WIND.map((w, i) => {
+    const winds = WIND.map((layer, i) => {
+      const w = { ...layer, level: layer.level * mix.wind };
       const pan = ctx.createStereoPanner();
       pan.pan.value = w.pan;
       pan.connect(bus);
@@ -182,7 +190,7 @@ export class Storm {
     });
     // Drone: beating saws on D1, the fifth and D2 under a low-pass that breathes slowly,
     // one saw drifting in pitch and the level swelling, so it never sits still.
-    const droneOut = gain(DRONE_LEVEL, bus);
+    const droneOut = gain(mix.drone, bus);
     const lp = filter('lowpass', 170, 1.8, droneOut);
     const voices = DRONE_VOICES.map(([hz, detune, type, level]) => {
       const o = osc(type, hz, gain(level, lp));
@@ -191,7 +199,7 @@ export class Storm {
     });
     osc('sine', 0.07, gain(60, lp.frequency));
     osc('sine', 0.045, gain(9, voices[0].detune));
-    osc('sine', 0.11, gain(DRONE_LEVEL * 0.35, droneOut.gain));
+    osc('sine', 0.11, gain(mix.drone * 0.35, droneOut.gain));
     // Droplets: four fixed stereo positions to drop into.
     const dropPans = [-0.8, -0.3, 0.3, 0.8].map((v) => {
       const p = ctx.createStereoPanner();
@@ -200,7 +208,7 @@ export class Storm {
       return p;
     });
     this.nextDrop = now + 0.05;
-    return { bus, sources, patter, patterTimer: 0, winds, dropPans, drops };
+    return { bus, sources, mix, patter, patterTimer: 0, winds, dropPans, drops };
   }
 
   updateGusts(dt, now) {
@@ -218,7 +226,7 @@ export class Storm {
     gr.patterTimer -= dt;
     if (gr.patterTimer <= 0) {
       gr.patterTimer = rand(1, 3);
-      gr.patter.gain.setTargetAtTime(RAIN.patter * rand(0.65, 1.3), now, rand(0.4, 1));
+      gr.patter.gain.setTargetAtTime(gr.mix.patter * rand(0.65, 1.3), now, rand(0.4, 1));
     }
   }
 
@@ -234,7 +242,7 @@ export class Storm {
       const fat = Math.random() < 0.2;
       src.playbackRate.value = fat ? rand(0.35, 0.55) : rand(0.75, 1.3);
       const g = this.ctx.createGain();
-      g.gain.value = DROP_GAIN * (fat ? rand(0.5, 1) : rand(0.15, 1) ** 2);
+      g.gain.value = gr.mix.drops * (fat ? rand(0.5, 1) : rand(0.15, 1) ** 2);
       src.connect(g).connect(pick(gr.dropPans));
       src.onended = () => g.disconnect();
       src.start(this.nextDrop);

@@ -18,6 +18,8 @@ import { compileSong } from '../src/audio/compile.js';
 import { Sequencer } from '../src/audio/Sequencer.js';
 import { INSTRUMENTS } from '../src/audio/instruments.js';
 import { LEVELS } from '../src/audio/mixer.js';
+import { Storm } from '../src/audio/storm.js';
+import { smoothRamp } from '../src/audio/synth.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.
@@ -706,4 +708,68 @@ test('AI RACE events play their sounds; bursts are rate-limited; big sounds carr
   } finally {
     restore();
   }
+});
+
+test('storm: a steady droplet stream of self-disconnecting nodes; torn down (every source stopped) once faded out', () => {
+  const ctx = new FakeAudioContext();
+  ctx.state = 'running';
+  const sources = [];
+  for (const type of ['BufferSource', 'Oscillator']) {
+    const make = ctx[`create${type}`].bind(ctx);
+    ctx[`create${type}`] = () => {
+      const n = make();
+      n.stopped = false;
+      n.stop = () => (n.stopped = true);
+      sources.push(n);
+      return n;
+    };
+  }
+  const storm = new Storm(ctx, ctx.destination);
+  storm.update(1 / 60);
+  assert.equal(sources.length, 0, 'nothing built until the storm starts');
+  storm.set(true, 3);
+  const beds = sources.length;
+  assert.ok(beds >= 8 && beds <= 16, `bed sources ${beds}`);
+  for (let i = 0; i < 600; i++) {
+    ctx.currentTime += 1 / 60;
+    storm.update(1 / 60);
+  }
+  const drops = sources.slice(beds);
+  assert.ok(drops.length > 120 && drops.length < 350, `${drops.length} drops in 10 s`);
+  assert.ok(drops.every((d) => typeof d.onended === 'function'), 'each drop frees its gain when it ends');
+  // A stall (a background tab) does not bring a burst of drops afterwards.
+  ctx.currentTime += 5;
+  const before = sources.length;
+  storm.update(1 / 60);
+  assert.ok(sources.length - before < 10, 'no burst after a stall');
+  storm.set(false, 3);
+  assert.ok(storm.active, 'still fading out');
+  for (let i = 0; i < 200; i++) {
+    ctx.currentTime += 1 / 60;
+    storm.update(1 / 60);
+  }
+  assert.equal(storm.active, false);
+  assert.ok(sources.slice(0, beds).every((n) => n.stopped), 'every bed source stopped');
+  // Switching back on mid-fade reverses the fade instead of rebuilding.
+  storm.set(true, 3);
+  const built = sources.length;
+  storm.set(false, 3);
+  ctx.currentTime += 1;
+  storm.update(1 / 60);
+  storm.set(true, 3);
+  assert.ok(storm.active);
+  assert.ok(sources.length - built < 10, 'no second graph');
+});
+
+test('smoothRamp glides from the current value along an S-curve to the target', () => {
+  const p = fakeParam();
+  p.value = 0.2;
+  smoothRamp(p, 10, 1, 3);
+  const ramps = p.calls.filter(([m]) => m === 'linearRampToValueAtTime');
+  assert.deepEqual(p.calls[0], ['cancelScheduledValues', 10]);
+  assert.deepEqual(p.calls[1], ['setValueAtTime', 0.2, 10]);
+  assert.deepEqual(ramps.at(-1).slice(1), [1, 13]);
+  for (let i = 1; i < ramps.length; i++) assert.ok(ramps[i][1] > ramps[i - 1][1] && ramps[i][2] > ramps[i - 1][2]);
+  // Slow at the ends: the first step covers far less than an even share.
+  assert.ok(ramps[0][1] - 0.2 < 0.8 / ramps.length / 2);
 });

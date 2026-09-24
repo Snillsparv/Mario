@@ -24,6 +24,7 @@ import { Sequencer } from './Sequencer.js';
 import { SFX, SFX_INFO, footstepLevel, landLevel } from './sfx.js';
 import { Ambience } from './ambience.js';
 import { Storm } from './storm.js';
+import { smoothRamp } from './synth.js';
 import { SPAWN, LAWN_BASE } from '../world/layout.js';
 import { clamp } from '../core/math.js';
 import { GAME_OVER_SECONDS } from '../core/constants.js';
@@ -471,8 +472,12 @@ export class AudioEngine {
     if (old) this.fadeOutTrack(old, crossfade ? Math.max(MUSIC_FADE, fadeIn) : QUICK_CUT);
     const gain = ctx.createGain();
     gain.connect(this.mix.music);
+    gain.gain.value = 0;
     gain.gain.setValueAtTime(fadeIn ? 0 : song.level, now);
-    if (fadeIn) gain.gain.linearRampToValueAtTime(song.level, now + fadeIn);
+    // A song's own fade-in (the dark track, with the picture's 3 s crossfade) creeps in;
+    // a plain crossfade stays linear.
+    if (song.fadeIn) smoothRamp(gain.gain, now, song.level, fadeIn);
+    else if (fadeIn) gain.gain.linearRampToValueAtTime(song.level, now + fadeIn);
     const seq = new Sequencer(ctx, song, gain);
     seq.start(now + (old && !crossfade ? QUICK_CUT : 0.06), { endBeat: song.endBeat });
     this.track = { name, gain, seq, started: now };

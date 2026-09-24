@@ -64,9 +64,14 @@ async function renderOffline(seconds, schedule) {
   const ctx = new OfflineAudioContext(2, Math.ceil(SAMPLE_RATE * total), SAMPLE_RATE);
   const onStep = schedule(ctx, createMixer(ctx), PRE_ROLL);
   if (onStep) {
+    // Always resume, even if a step throws (the render would hang forever otherwise).
     const hook = (t) =>
       ctx.suspend(t).then(() => {
-        onStep(t);
+        try {
+          onStep(t);
+        } catch (err) {
+          console.error('render step failed:', err);
+        }
         if (t + STEP < total - 0.01) hook(Math.round((t + STEP) * 1000) / 1000);
         ctx.resume();
       });
@@ -560,8 +565,7 @@ export async function setup({ scene, THREE, ui, params }) {
       engine.ambience.setDark(true, 0.01);
       engine.ambience.birds = 0;
       if (storm) engine.storm.set(true, 0.01);
-      else engine.ambience.pastoral.gain.value = 0;
-      const song = music && songPlayer(ctx, mix, t0, compileSong(SONGS.dark), fromBeat);
+      const song = music ? songPlayer(ctx, mix, t0, compileSong(SONGS.dark), fromBeat) : null;
       const flashes = lightning.map(([t, strength]) => ({ at: t0 + t, strength }));
       return (t) => {
         while (flashes.length && flashes[0].at <= t + 1e-6) engine.thunder(flashes.shift().strength);

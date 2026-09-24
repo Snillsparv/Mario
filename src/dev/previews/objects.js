@@ -7,7 +7,11 @@
 //   freeze=1                          stop the simulation after setup (repeatable screenshots)
 //   pause=1                           like the game's pause: no ticks, alpha keeps cycling
 //   title=1                           like the title screen: never update(), animate() only
-// Flat lawn with a round hill (for slope shadows), built into a small CollisionWorld.
+//   dark=1                            AI RACE mode: the robot beast rises on its block and shoots
+//                                     at the fake hero (view=beast frames it, view=button the switch)
+//   pound=1                           the fake hero ground-pounds the AI RACE button once
+// Flat lawn with a round hill (for slope shadows), built into a small CollisionWorld, plus a
+// stone block standing in for the castle roof under the beast.
 
 import { CollisionWorld } from '../../collision/CollisionWorld.js';
 import { Events } from '../../core/events.js';
@@ -36,8 +40,11 @@ const LAYOUT = {
   BUTTERFLY_SPOTS: [{ x: -700, z: -100 }, { x: 600, z: 500 }],
   BIRD_CIRCLES: [{ x: 0, z: -1200, y: 1300, radius: 900 }],
   ONE_UP: { x: 500, z: 250 },
+  AI_BUTTON: { x: -900, z: 150, radius: 140 },
+  KAIJU: { x: 0, z: -3600, yaw: 0 },
   groundHeight,
 };
+const ROOF = { minX: -1300, maxX: 1300, minZ: -3600, maxZ: -1900, y: 1200 };
 
 const VIEWS = {
   close: { pos: [260, 170, 820], look: [0, 90, 300] },
@@ -46,6 +53,8 @@ const VIEWS = {
   birds: { pos: [0, 250, 1400], look: [0, 1200, -1200] },
   flies: { pos: [-300, 350, 500], look: [-700, 250, -100] },
   oneup: { pos: [620, 170, 560], look: [500, 90, 250] },
+  button: { pos: [-900, 420, 750], look: [-900, 40, 150] },
+  beast: { pos: [900, 1500, 2600], look: [0, 2400, -2800] },
 };
 
 export async function setup({ THREE, scene, params, camera }) {
@@ -72,15 +81,27 @@ export async function setup({ THREE, scene, params, camera }) {
   );
   const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: grassTex }));
   scene.add(ground);
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(ROOF.maxX - ROOF.minX, ROOF.y, ROOF.maxZ - ROOF.minZ).translate((ROOF.minX + ROOF.maxX) / 2, ROOF.y / 2, (ROOF.minZ + ROOF.maxZ) / 2),
+    new THREE.MeshLambertMaterial({ color: 0xd8ccb0 }),
+  );
+  scene.add(roof);
   const collision = new CollisionWorld();
   collision.addObject(ground);
+  collision.addObject(roof);
   collision.finalize();
 
   const num = (k, d) => (params.has(k) ? Number(params.get(k)) : d);
   const player = {
     pos: { x: num('px', 0), y: 0, z: num('pz', 1400) },
+    vel: { x: 0, y: 0, z: 0 },
+    action: 'idle',
+    health: 8,
     coins: 0,
     stars: 0,
+    takeDamage(n) {
+      this.health = Math.max(0, this.health - n);
+    },
     collectCoin(v) {
       this.coins += v;
     },
@@ -102,9 +123,13 @@ export async function setup({ THREE, scene, params, camera }) {
   hud.style.cssText = 'position:absolute;left:8px;top:8px;font:14px monospace;color:#fff;text-shadow:1px 1px #000';
   document.getElementById('ui').appendChild(hud);
   const log = [];
-  for (const name of ['coin', 'redCoinsComplete', 'starCollected', 'oneUp']) events.on(name, (e) => log.push(name + (e?.red ? ` red #${e.index}` : '')));
+  for (const name of ['coin', 'redCoinsComplete', 'starCollected', 'oneUp', 'aiRaceButton']) events.on(name, (e) => log.push(name + (e?.red ? ` red #${e.index}` : '') + (name === 'aiRaceButton' ? ` ${e.on}` : '')));
+  events.on('sfx', (e) => /kaiju|fireball|button/.test(e.name) && log.push(e.name));
+  // Stands in for main: the button's request switches the mode.
+  events.on('aiRaceButton', ({ on }) => events.emit('darkMode', { on }));
+  const level = { trees: [], addScorch() {} };
 
-  const objects = new ObjectManager({ scene, collision, events, layout: LAYOUT, player });
+  const objects = new ObjectManager({ scene, collision, events, layout: LAYOUT, player, level });
   if (params.has('tex')) showTextures(objects);
   const tick = () => {
     marker.position.set(player.pos.x, player.pos.y, player.pos.z);
@@ -118,6 +143,18 @@ export async function setup({ THREE, scene, params, camera }) {
     tick();
   }
   player.pos = home;
+  if (params.has('pound')) {
+    const b = objects.button;
+    player.pos = { x: b.x, y: b.capTop0, z: b.z };
+    player.action = 'ground_pound_land';
+    tick();
+    player.action = 'idle';
+  }
+  if (params.has('dark')) {
+    objects.setDarkness(1);
+    scene.background.set(0x30363e);
+    scene.fog.color.set(0x30363e);
+  }
   const title = params.has('title');
   const pause = params.has('pause');
   const ticks0 = title ? 0 : Math.max(num('ticks', 0), pause ? 1 : 0);
@@ -143,7 +180,8 @@ export async function setup({ THREE, scene, params, camera }) {
         ticks++;
       }
       objects.animate(t, freeze ? 1 : (acc / FRAME_DT) % 1, camera);
-      hud.textContent = `coins ${player.coins}  stars ${player.stars}  star:${objects.star.state}  ${log.slice(-3).join(', ')}`;
+      const beast = objects.beast ? `  beast:${objects.beast.state}  hp ${player.health}` : '';
+      hud.textContent = `coins ${player.coins}  stars ${player.stars}  star:${objects.star.state}${beast}  ${log.slice(-3).join(', ')}`;
     },
   };
 }

@@ -90,6 +90,19 @@ export function silentGain(ctx) {
   return g;
 }
 
+// Glide a param from its current value to `to` over `seconds` along a smoothstep curve (a
+// few linear segments), so a long fade creeps in and settles instead of jumping most of the
+// way in its first second as a linear gain ramp sounds. Replaces anything scheduled from t.
+export function smoothRamp(param, t, to, seconds, steps = 8) {
+  const from = param.value;
+  param.cancelScheduledValues(t);
+  param.setValueAtTime(from, t);
+  for (let k = 1; k <= steps; k++) {
+    const x = k / steps;
+    param.linearRampToValueAtTime(from + (to - from) * x * x * (3 - 2 * x), t + seconds * x);
+  }
+}
+
 // Gain node shaped as attack -> optional hold -> exponential decay to silence at t + dur.
 export function envelope(ctx, out, t, { peak, dur, attack = 0.004, hold = 0 }) {
   const g = silentGain(ctx);

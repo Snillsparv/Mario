@@ -7,7 +7,7 @@
 
 import { WATERFALL, WATER_LEVEL, MOAT, ISLAND, POND, TREES, groundHeight, sdRoundRect, sdCircle } from '../world/layout.js';
 import { clamp, TAU } from '../core/math.js';
-import { harmonicWave, lfo, noise, tone } from './synth.js';
+import { harmonicWave, lfo, noise, smoothRamp, tone } from './synth.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -211,11 +211,7 @@ export class Ambience {
   setDark(on, fade = 3) {
     this.dark = !!on;
     this.birdFade = Math.max(fade, 0.01);
-    const t = this.ctx.currentTime;
-    const g = this.pastoral.gain;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(g.value, t);
-    g.linearRampToValueAtTime(this.dark ? 0 : 1, t + this.birdFade);
+    smoothRamp(this.pastoral.gain, this.ctx.currentTime, this.dark ? 0 : 1, this.birdFade);
   }
 
   update(dt, listener) {
