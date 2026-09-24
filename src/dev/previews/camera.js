@@ -1,11 +1,11 @@
 // Camera preview: a test room (flat ground, a tall wall, a back wall, a pillar, a thin plank,
-// a thin post, a low wall, a pool with a pier, a stand-in castle block, and a 25 deg ramp up
-// to a plateau that ends in a sheer drop into a water pit) plus a scripted fake hero that
-// exercises the follow camera.
+// a thin post, a low wall, a pool with a pier, a stand-in castle block with a corner tower
+// standing out at its front-left corner, and a 25 deg ramp up to a plateau that ends in a sheer
+// drop into a water pit) plus a scripted fake hero that exercises the follow camera.
 //
 // URL params:
 //   s=<scenario>   circle | toward | jump | wall | pillar | swim | ledge | plank | post |
-//                  lowwall | pier | fp | buttons | mouse | intro | title | play
+//                  lowwall | pier | tower | fp | buttons | mouse | intro | title | play
 //   t=<seconds>    simulate up to that time and freeze
 //   strip=a,b,...  render the listed moments (seconds) as a grid plus a top-down trail map
 //   map=0          hide the live mini-map
@@ -27,6 +27,9 @@ const LEDGE = { x0: 4000, x1: 7000, z1: 7000, rampTop: 5500, z0: 3000, top: 700,
 const PLANK = { x0: 1800, x1: 1840, z0: 6700, z1: 7500, height: 1500 };
 const POST = { x: -6000, z: 3000, radius: 45, height: 900 }; // tree-trunk sized
 const LOW_WALL = { x0: -7400, x1: -5400, z0: 5200, z1: 5230, height: 200 }; // parapet
+// Corner tower standing out west of and in front of the castle block's front-left corner: a
+// camera swung round behind it lands in the notch against the block's side wall.
+const TOWER = { x0: -layout.CASTLE.halfWidth - 350, x1: -layout.CASTLE.halfWidth + 350, z0: layout.CASTLE.frontZ - 350, z1: layout.CASTLE.frontZ + 350, height: 2400 };
 const PIER = { x0: -4200, x1: -4000, z0: 4400, z1: 4600, top: 200 }; // in the pool
 const EXTENT = 8000;
 const MAP_LAYER = 1;
@@ -71,6 +74,13 @@ const SCENARIOS = {
   pier: {
     start: [-3600, 3600, -Math.PI / 2],
     segs: [{ ticks: 10 }, { ticks: 60, dive: 450, goto: [[-4100, 4250]] }, { ticks: 240, dive: 450, goto: [[-3850, 4500], [-4100, 4750], [-4350, 4500], [-4100, 4250], [-3850, 4500]] }],
+  },
+  // In front of the castle block, facing the corner tower, zoomed out: C-left (round behind the
+  // tower) is refused with a buzz; a mouse drag there anyway leaves the camera trapped in the
+  // notch, and it swings back to a clear view.
+  tower: {
+    start: [-1155, -228, Math.PI / 2],
+    segs: [{ ticks: 10 }, { ticks: 70, press: { CD: true } }, { ticks: 30, press: { CL: true } }, { ticks: 6, mouse: [(Math.PI / 4) / 0.006 / 6, 0] }, { ticks: 90 }],
   },
   // First-person look: the stick turns the view while the hero stands still, B leaves it.
   fp: { start: [0, 3000, Math.PI], segs: [{ ticks: 10 }, { ticks: 30, press: { CU: true } }, { ticks: 40, stick: [0.7, 0.25] }, { ticks: 40, press: { B: true } }] },
@@ -279,6 +289,7 @@ function buildRoom(THREE) {
     ...box(2600, 2800, 0, 1400, 0, 6000), // tall side wall
     ...box(-1200, 1200, 0, 1400, 7400, 7600), // back wall
     ...box(C.x - C.halfWidth, C.x + C.halfWidth, 0, C.baseY + C.mainHeight, C.backZ, C.frontZ), // castle block
+    ...box(TOWER.x0, TOWER.x1, 0, TOWER.height, TOWER.z0, TOWER.z1), // its front-left corner tower
     ...box(C.x - 600, C.x + 600, 0, C.baseY + 3600, C.backZ + 900, C.backZ + 2100), // keep
     ...box(PLANK.x0, PLANK.x1, 0, PLANK.height, PLANK.z0, PLANK.z1),
   ];
@@ -442,8 +453,8 @@ export async function setup({ THREE, scene, camera, renderer, ui, params }) {
     `camY=${cam.pos.y.toFixed(0)} underwater=${cam.underwater} hero=${hero.action}\n` +
     `aim=${((cam.aimRise * 180) / Math.PI).toFixed(1)} rest=${((cam.restAim * 180) / Math.PI).toFixed(1)} hlift=${cam.collider.heightLift.toFixed(0)} ` +
     `ratio=${(cam.collider.ratio ?? 1).toFixed(2)} view=${cam.collider.viewRatio.toFixed(2)} ` +
-    `lift=${((cam.collider.lift * 180) / Math.PI).toFixed(0)}${cam.collider.occluded ? ' occluded' : ''} ` +
-    `crest=${cam.collider.crestRise.toFixed(0)}${cam.hero.covered ? ' covered' : ''}${cam.swimSight.goal !== null ? ' swim-swing' : ''}${cam.celebration ? ' celebrating' : ''} ` +
+    `lift=${((cam.collider.lift * 180) / Math.PI).toFixed(0)}${cam.collider.occluded ? ' occluded' : ''}${cam.collider.trapped ? ' trapped' : ''} ` +
+    `crest=${cam.collider.crestRise.toFixed(0)}${cam.hero.covered ? ' covered' : ''}${cam.sight.goal !== null ? ' sight-swing' : ''}${cam.celebration ? ' celebrating' : ''} ` +
     `sfx: ${sfxLog.slice(-4).join(' ')}`;
 
   const W = renderer.domElement.width;

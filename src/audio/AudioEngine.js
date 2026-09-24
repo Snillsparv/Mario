@@ -8,8 +8,9 @@
 // Audio must never break gameplay: event handlers and voices swallow (and log once) errors.
 //
 // Music: a looping track plays until replaced; a cue (a song with finalBar) plays once and
-// frees the music slot when it has faded out. A menu track stops when the game starts, and
-// the game-over jingle plays over the GAME OVER card.
+// frees the music slot when it has faded out. Only looping tracks are queued until the
+// context exists; a cue asked for without audio is dropped. A menu track stops when the
+// game starts, and the game-over jingle plays over the GAME OVER card.
 
 import { SONGS } from './songs.js';
 import { compileSong } from './compile.js';
@@ -147,8 +148,19 @@ export class AudioEngine {
     this.voice(recipe, opts.terrain ? opts : { ...opts, terrain: this.terrain }, this.mix.sfx);
   }
 
+  // A looping track requested before the context exists waits for it (see
+  // startPendingMusic). A cue (a song with finalBar: the arrival cue, the game-over jingle)
+  // belongs to the moment it is asked for, so without audio to play it now (no context yet,
+  // e.g. after a gamepad-only start, or muted) it is dropped, not queued: it must not turn
+  // up minutes later when the first key or click finally unlocks audio. Like any newer
+  // request, it still replaces the track asked for before it.
   playMusic(name) {
-    if (!own(SONGS, name)) return;
+    const song = own(SONGS, name);
+    if (!song) return;
+    if (song.finalBar && (!this.ctx || this._muted)) {
+      this.stopMusic();
+      return;
+    }
     this.wantMusic = name;
     if (this.ctx && this.track?.name !== name) this.guard(() => this.startMusic(name));
   }
@@ -216,11 +228,11 @@ export class AudioEngine {
     // GAME OVER card: a short original jingle cuts in on the music slot (and through any
     // fanfare duck) while the ambience of the frozen world drops back; the title track then
     // crossfades in from the jingle's last chord, and the ambience returns.
-    // Without a context (muted, or audio never unlocked) nothing is queued: a jingle must
-    // not turn up later.
+    // Without a context (muted, or audio never unlocked) nothing is queued: the jingle is a
+    // cue, which playMusic() drops rather than let it turn up later.
     on('gameOver', () => {
       this.clearDucks();
-      if (this.ctx) this.playMusic('game_over');
+      this.playMusic('game_over');
       this.setDuck('gameOver', GAME_OVER_AMB_DUCK);
       this.gameOverTimer = setTimeout(() => this.setDuck('gameOver', 1), GAME_OVER_SECONDS * 1000);
     });

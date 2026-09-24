@@ -2,8 +2,9 @@
 // a half-failed context setup leaves a clean silent engine, a track replaced right after it
 // started is cut instead of crossfaded, terrain-less sounds use the last terrain, names
 // inherited from Object.prototype are unknown, voice slots free on the audio clock, a cue
-// ends by itself, music requested before audio existed waits for the unlocking press, and
-// game over plays a jingle over the card with the ambience ducked.
+// ends by itself, a looping track requested before audio existed waits for the unlocking
+// press while a cue asked for without audio (no context yet, or muted) is dropped instead
+// of starting later, and game over plays a jingle over the card with the ambience ducked.
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
@@ -369,4 +370,75 @@ test('game over: a jingle takes the music slot, the ambience drops back for the 
   audio.stopMusic();
   mock.timers.tick(5000);
   assert.equal(level('amb'), LEVELS.amb, 'no stale duck release');
+});
+
+test('a cue asked for without audio is dropped, not started when a press unlocks audio later', async () => {
+  // A gamepad-only start: no user gesture, so no context. Minutes later the player's first
+  // click creates it; the 8-bar arrival cue must not start then, in the middle of play.
+  let active = false;
+  Object.defineProperty(navigator, 'userActivation', { configurable: true, get: () => ({ hasBeenActive: active, isActive: false }) });
+  try {
+    const fire = fakeWindow();
+    const events = new Events();
+    const audio = new AudioEngine(events);
+    audio.playMusic('title'); // the title screen, still locked: a loop waits for the context
+    assert.equal(audio.wantMusic, 'title');
+    events.emit('gameStart'); // pad Start: the menu track stops, nothing unlocks
+    audio.playMusic('castle_grounds');
+    assert.equal(FakeAudioContext.instances.length, 0);
+    assert.equal(audio.wantMusic, null, 'the cue is not queued');
+    events.emit('gameOver'); // nor is the game-over jingle
+    assert.equal(audio.wantMusic, null);
+    mock.timers.tick(120000);
+    events.emit('gameStart');
+    audio.playMusic('castle_grounds');
+    mock.timers.tick(90000);
+    active = true;
+    fire('pointerdown'); // the first click, mid-game
+    assert.equal(await audio.unlock(), true);
+    fire('pointerup');
+    mock.timers.tick(3000);
+    assert.equal(audio.track, null, 'no arrival cue mid-game');
+    assert.equal(audio.wantMusic, null);
+
+    // A cue asked for while muted is dropped as well (the suspended context would otherwise
+    // play it on unmute) and replaces what played before; looping tracks still start.
+    audio.playMusic('title');
+    const title = audio.track;
+    assert.equal(title?.name, 'title');
+    audio.ctx.currentTime = 5;
+    audio.muted = true;
+    audio.playMusic('castle_grounds');
+    assert.equal(audio.track, null);
+    assert.equal(audio.wantMusic, null);
+    assert.ok(title.gain.gain.calls.some(([m, v]) => m === 'linearRampToValueAtTime' && v === 0), 'the title fades out');
+    audio.playMusic('title');
+    assert.equal(audio.track?.name, 'title', 'a loop is not dropped while muted');
+    audio.muted = false;
+    mock.timers.tick(3000);
+    assert.equal(audio.track?.name, 'title');
+
+    // With audio running a cue plays straight away, as before.
+    audio.ctx.currentTime = 20;
+    audio.playMusic('castle_grounds');
+    assert.equal(audio.track?.name, 'castle_grounds');
+    audio.stopMusic();
+    mock.timers.tick(3000);
+  } finally {
+    delete navigator.userActivation;
+  }
+});
+
+test('a looping track asked for before audio exists still starts once audio does', async () => {
+  const fire = fakeWindow();
+  const audio = new AudioEngine(new Events());
+  audio.playMusic('title');
+  mock.timers.tick(60000);
+  fire('keydown', { code: 'KeyA' });
+  await audio.unlock();
+  fire('keyup', { code: 'KeyA' });
+  mock.timers.tick(700);
+  assert.equal(audio.track?.name, 'title');
+  audio.stopMusic();
+  mock.timers.tick(2000);
 });

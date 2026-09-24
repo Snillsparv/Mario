@@ -50,6 +50,27 @@ test('fog colour is the sky horizon colour, so distant terrain melts into the sk
   assert.equal(FOG_COLOR, sky.SKY_HORIZON_COLOR);
 });
 
+test('F1 overlay names the render modes neutrally (no console trademark)', async () => {
+  const { N64Renderer, MODE_LABELS } = await import('../src/render/N64Renderer.js');
+  const describe = (state) => N64Renderer.prototype.describeMode.call(state);
+  const base = { internal: { width: 427, height: 240 }, viewport: { width: 1280, height: 720 }, pixelRatio: 1.5 };
+  const lines = [
+    describe({ ...base, n64: true, pillarbox: false, isUnderwater: false }),
+    describe({ ...base, n64: true, pillarbox: true, isUnderwater: true }),
+    describe({ ...base, n64: false, pillarbox: false, isUnderwater: false }),
+    describe({ ...base, n64: false, pillarbox: true, isUnderwater: true }),
+  ];
+  assert.deepEqual(lines, [
+    'Retro 427x240',
+    'Retro 427x240 4:3 underwater',
+    'native 1920x1080',
+    'native 1920x1080 4:3 underwater',
+  ]);
+  for (const text of [...lines, ...Object.values(MODE_LABELS)]) {
+    assert.doesNotMatch(text, /n64|nintendo|ultra\s*64/i, text);
+  }
+});
+
 test('N64 mode renders the console line count with MSAA edges', async () => {
   const { N64_INTERNAL_HEIGHT, N64_MSAA_SAMPLES } = await import('../src/render/N64Renderer.js');
   assert.equal(N64_INTERNAL_HEIGHT, 240);

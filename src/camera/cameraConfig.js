@@ -77,6 +77,11 @@ export const C_ROTATE_STEP = 45 * DEG;
 export const C_ROTATE_TICKS = 6;
 export const C_BLOCK_MIN_DIST = 350; // a rotation is refused if a wall is closer than this...
 export const C_BLOCK_RATIO = 0.3; // ...or than this fraction of the orbit distance
+// A rotation is also refused if the camera, run through it and this many ticks after it (time
+// to dolly in front of a blocker), would still not see the hero (look point and chest), or not
+// his chest all that time: it swung round behind a solid corner (the castle's front corner
+// towers) and cannot get back in front without tunnelling, or a pillar or step hides his body.
+export const C_TRAP_SETTLE = 10;
 
 // Mouse drag orbit (pixels -> radians).
 export const MOUSE_YAW = 0.006;
@@ -163,12 +168,14 @@ export const COVER_MAX_TURN = 135 * DEG;
 export const COVER_SWING_GAIN = 0.25;
 export const COVER_SWING_MAX = 5 * DEG;
 
-// A swimmer hidden round a corner of the island (swimSight.js): once the line from his chest to
+// A swimmer hidden round a corner of the island (sight.js): once the line from his chest to
 // the camera has been blocked for SWIM_HIDDEN_TICKS, the orbit turns toward the nearest yaw, in
-// SWIM_STEP steps up to SWIM_MAX_TURN either way, with a clear line (along the moat).
+// SWIM_STEP steps up to SWIM_MAX_TURN either way, with a clear line (along the moat). A camera
+// the collider reports `trapped` behind something solid turns the same way, right away.
 export const SWIM_HIDDEN_TICKS = 5;
 export const SWIM_STEP = 15 * DEG;
 export const SWIM_MAX_TURN = 90 * DEG;
+export const TRAP_MAX_TURN = 180 * DEG; // (a trapped camera on dry land looks all the way round)
 export const SWIM_SWING_GAIN = 0.25;
 export const SWIM_SWING_MAX = 4 * DEG;
 export const SWIM_SWING_EASE = 0.5; // the turn rate eases toward that by this fraction per tick

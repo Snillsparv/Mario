@@ -1,7 +1,9 @@
 // Low cover over a swimmer (the drawbridge deck, see cameraConfig COVER_*): with no room for
 // the camera between the water and the deck, it ducks under the surface with the hero and
-// looks at the waterline; while the line from the hero's hips to the camera is blocked, the
-// orbit turns toward the nearest yaw with a clear view along the water.
+// looks at the waterline; while any part of the hero is hidden from the camera (a trestle post
+// in front of him: collider.heroInView samples several points on his body), the orbit turns
+// toward the nearest yaw with a clear view of all of him along the water (or failing that, of
+// his hips).
 //
 // State for CameraController: `ticks` (cover lasts while > 0), the eased look-point drop and
 // pitch hold (`drop`, `mix`, `cap`) and the yaw the orbit turns to (`goal`). No per-tick garbage.
@@ -71,10 +73,16 @@ export class Cover {
     from.y = hero.y + K.COVER_SIGHT_HEIGHT;
     from.z = hero.z;
     if (this.goal === null) {
-      if (this.collider.lineClear(from, camPos)) return 0;
+      // (The whole swimmer, not just a line to his hips: a trestle post passing just beside
+      // that line can still cover half of him.)
+      if (this.collider.heroInView(hero, camPos)) return 0;
       const water = this.collision.waterLevelAt(hero.x, hero.z);
       const y = Math.min(camPos.y, (water === NO_WATER ? hero.y : water) - K.COVER_CAM_DEPTH);
-      this.goal = this.collider.clearYaw(from, yaw, K.COVER_SIGHT_DIST, y, K.COVER_STEP, K.COVER_MAX_TURN);
+      this.goal = this.collider.clearHeroYaw(hero, yaw, K.COVER_SIGHT_DIST, y, K.COVER_STEP, K.COVER_MAX_TURN);
+      // (Nothing shows all of him: settle for a clear line to his hips.)
+      if (this.goal === null && !this.collider.lineClear(from, camPos)) {
+        this.goal = this.collider.clearYaw(from, yaw, K.COVER_SIGHT_DIST, y, K.COVER_STEP, K.COVER_MAX_TURN);
+      }
       if (this.goal === null) return 0;
     }
     const d = angleDiff(yaw, this.goal);

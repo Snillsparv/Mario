@@ -19,6 +19,7 @@ import { SpriteCache, drawText, drawIcon, textCanvas } from './raster.js';
 import { PowerMeterLogic, drawPowerMeter, isLowHealth } from './powerMeter.js';
 import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME } from './hudLogic.js';
 import { drawPauseScreen, gamepadConnected } from './pauseScreen.js';
+import { pixelRatio } from './pixelRatio.js';
 
 const TICK = 1 / 30;
 const MARGIN = 18; // logical px from the screen edge
@@ -122,7 +123,8 @@ export class HUD {
   _resize() {
     // The real ratio (no cap): a canvas stretched over more device pixels would blur the
     // pixel art, and it only repaints when something changes.
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = pixelRatio();
+    this._dpr = dpr;
     const w = Math.round((this.el.clientWidth || innerWidth) * dpr);
     const h = Math.round((this.el.clientHeight || innerHeight) * dpr);
     if (w === this.canvas.width && h === this.canvas.height && this.s) return;
@@ -151,6 +153,9 @@ export class HUD {
   }
 
   _draw(now) {
+    // A new devicePixelRatio with the same CSS size (the window moved to a monitor with
+    // another scale) never reaches the ResizeObserver: re-layout at the new resolution.
+    if (pixelRatio() !== this._dpr) this._resize();
     const dt = Math.max(0, Math.min(0.1, (now - this._last) / 1000));
     this._last = now;
     const moving = this._animate(dt);

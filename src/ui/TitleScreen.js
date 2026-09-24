@@ -22,6 +22,7 @@ import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
 import { renderLogoWord } from './logo.js';
 import { hudMetrics, boxStyle, TitleGate, START_PRESS, START_PROMPT, UNLOCK_PRESS, UNLOCK_PROMPT, TITLE_HINT } from './hudLogic.js';
+import { pixelRatio } from './pixelRatio.js';
 
 // Escape is the in-game Start (pause) key, so it starts the game here too.
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
@@ -282,6 +283,9 @@ export class TitleScreen {
       // Gamepad Start/A, polled every frame; waits for release like the keyboard path.
       let padRelease = null;
       const poll = () => {
+        // A new devicePixelRatio with the same CSS size (the window moved to a monitor with
+        // another scale) never reaches the ResizeObserver: redraw the card at it.
+        if (pixelRatio() !== this._dpr) this._layout();
         // Unlocked by a gesture the card did not see (e.g. a handler that stopped the event).
         if (gate.locked && (hasBeenActive() === true || audio?.ctx?.state === 'running') && gate.unlock()) wake();
         const down = this._pressedPadButtons();
@@ -296,7 +300,8 @@ export class TitleScreen {
       };
       rafId = requestAnimationFrame(poll);
 
-      // Follow the card's own box: window resizes and setViewport() (F3 pillarbox).
+      // Follow the card's own box: window resizes and setViewport() (F3 pillarbox); poll()
+      // follows the devicePixelRatio.
       const observer = new ResizeObserver(() => this._layout());
       observer.observe(this.el);
       cleanups.push(() => observer.disconnect());
@@ -366,7 +371,8 @@ export class TitleScreen {
   _layout() {
     const el = this.el;
     if (!el) return;
-    const dpr = window.devicePixelRatio || 1; // uncapped, so the pixel text is never stretched
+    const dpr = pixelRatio(); // uncapped, so the pixel text is never stretched
+    this._dpr = dpr;
     const { scale: u, H } = hudMetrics(el.clientWidth || innerWidth, el.clientHeight || innerHeight);
     const px = u * dpr; // device px per logical px
     const at = (v) => `${Math.round(v * u)}px`;

@@ -5,7 +5,7 @@
 //     soft horizontal video filter and upscales bilinearly. Off = native resolution.
 //   F3: 4:3 pillarbox (the canvas shrinks to a centred 4:3 rectangle; `viewport` says where,
 //     onViewportChange/alignOverlay keep DOM overlays such as the HUD inside it).
-//   F1: debug overlay (fps, draw calls, triangles).
+//   F1: debug overlay (fps, draw calls, triangles, render mode; see describeMode/MODE_LABELS).
 //   Underwater: when the camera is below the water surface the fog switches to a short
 //     blue-green one and the sky dome is tinted toward it (surface heights from
 //     layout.waterLevelAt unless setWaterLevelFn overrides it).
@@ -45,6 +45,10 @@ export const AMBIENT_GROUND_COLOR = 0x9a9a88;
 export const AMBIENT_INTENSITY = 0.62 * Math.PI;
 
 const MAX_PIXEL_RATIO = 2;
+
+// Player-visible names of the render modes in the F1 overlay. Neutral wording (like the pause
+// legend's "Retro filter" for F2): no console trademark in anything the player can read.
+export const MODE_LABELS = Object.freeze({ retro: 'Retro', native: 'native' });
 
 export class N64Renderer {
   constructor(container, { internalHeight = N64_INTERNAL_HEIGHT, storage } = {}) {
@@ -231,10 +235,11 @@ export class N64Renderer {
     }
   }
 
+  // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater'.
   describeMode() {
     const size = this.n64
-      ? `N64 ${this.internal.width}x${this.internal.height}`
-      : `native ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
+      ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
+      : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
     return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '');
   }
 

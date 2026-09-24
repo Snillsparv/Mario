@@ -98,7 +98,7 @@ export const KEY_CONTROLS = [
   ['C', 'Camera mode'],
   ['Mouse drag', 'Orbit camera'],
   ['Esc / Enter', 'Pause'],
-  ['F2', 'N64 filter'],
+  ['F2', 'Retro filter'],
   ['F3', '4:3 screen'],
 ];
 export const PAD_CONTROLS = [

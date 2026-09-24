@@ -1,7 +1,8 @@
 // The castle building: an original fairy-tale design laid out around layout.CASTLE.
 //
 //   front (+Z)  corner tower · wing · entrance tower · hall (door, balcony, rose window,
-//               gable roof) · entrance tower · wing · corner tower
+//               gable roof) · entrance tower · wing · corner tower; a porch with broad steps
+//               before the door that the two entrance towers stand on
 //   middle      side towers rising where the wings meet the taller rear block
 //   centre      square keep with a round upper tower, conical roof and banner
 //   back (-Z)   rear block with two rear corner towers
@@ -12,6 +13,9 @@ import { archContour, hexaPolys, localBoxPolys, wallFrame } from './geom.js';
 import { TINT, archWindow, flagpole, merlonRow, roundTower, roundWindow, stringCourse } from './parts.js';
 
 const PLINTH_H = 140; // stone base course; the door threshold sits on top of it
+// Door steps: a porch on the base course that the entrance towers stand on, then three steps
+// down to the courtyard (see steps()).
+const STEPS = { landing: 290, tread: 70 };
 const COURSE_1 = 880; // string courses (above baseY), continuous across walls and towers
 const COURSE_2 = 1480;
 // Window sizes: few, varied openings; the roofs and towers carry the silhouette.
@@ -342,7 +346,7 @@ function entrance(kit, C, d) {
   const X = C.x;
   const facade = wallFrame([X, B, F], [0, 0, 1]);
   const doorSill = PLINTH_H;
-  steps(kit, C);
+  steps(kit, C, d);
   door(kit, wallFrame([X, B + doorSill, F], [0, 0, 1]), C.doorWidth, C.doorHeight);
   const balconyY = doorSill + C.doorHeight + 100;
   balcony(kit, facade, balconyY, 360, 170);
@@ -354,16 +358,19 @@ function entrance(kit, C, d) {
   roundWindow(kit, facade, d.hallTop - B + 230, 75, { border: 28, depth: 26, segs: 12 });
 }
 
-// Landing on the base course plus three steps down to the courtyard. The collider is a
-// smooth ramp so walking up never snags on the risers.
-function steps(kit, C) {
+// Porch (landing) on the base course plus three steps down to the courtyard, all as wide as
+// the pair of entrance towers, which stand on the porch: the porch runs far enough past each
+// tower's round base (in front and on its outer side) to walk round it on top. (Narrower
+// door steps left a crack between the landing or the ramp's side and each tower's base,
+// narrower than the hero, which he dropped into or was shoved sideways out of.) The collider
+// is a smooth ramp so walking up never snags on the risers.
+function steps(kit, C, d) {
   const B = C.baseY;
   const F = C.frontZ;
   const X = C.x;
-  const hw = 480;
-  const landing = 150;
+  const { landing, tread } = STEPS;
+  const hw = d.entryX + d.entryR + 90;
   const rise = PLINTH_H / 4;
-  const tread = 70;
   kit.trim.color(TINT.stone);
   kit.trim.shade = (px, py) => (py <= B + 1 ? 0.75 : 1);
   kit.trim.box(X - hw, X + hw, B, B + PLINTH_H, F - 10, F + landing, { bottom: false });

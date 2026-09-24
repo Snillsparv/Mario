@@ -22,7 +22,10 @@ import {
   START_PROMPT,
   GAME_OVER,
   GAME_OVER_SCALE,
+  COURSE_NAME,
+  TITLE_HINT,
 } from '../src/ui/hudLogic.js';
+import { watchPixelRatio, pixelRatio } from '../src/ui/pixelRatio.js';
 import { HUD } from '../src/ui/HUD.js';
 import { GameOverCard } from '../src/ui/GameOverCard.js';
 import { Events } from '../src/core/events.js';
@@ -361,4 +364,108 @@ test('HUD setVisible hides it without losing state; showing again repaints', () 
   assert.equal(hud.dirty, true, 'repaints the current counters when shown');
   assert.equal(hud.state.lives, 4);
   hud.dispose();
+});
+
+// ---- originality: the HUD coin is our coin; no console trademarks in player-visible text ----
+
+// Relative luminance (0..1) of a '#rrggbb' colour.
+function lum(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+test('HUD coin icon is our coin: a ring around a diamond lit from the upper left', () => {
+  const { rows, palette, w, h } = ICONS.coin;
+  const at = (x, y) => rows[y][x];
+  const L = (x, y) => lum(palette[at(x, y)]);
+  // Round, centred silhouette (mirror symmetric both ways).
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) assert.equal(at(x, y) === '.', at(w - 1 - x, h - 1 - y) === '.', `silhouette at ${x},${y}`);
+  }
+  // Diamond facets meet at the centre: upper-left brightest (near white), then upper-right,
+  // lower-left, lower-right darkest (world coin: objects/textures.js paintCoinFace).
+  const c = [L(6, 6), L(7, 6), L(6, 7), L(7, 7)];
+  assert.ok(c[0] > 0.95, 'upper-left facet is near white');
+  for (let i = 1; i < 4; i++) assert.ok(c[i - 1] > c[i], `facet ${i - 1} brighter than facet ${i}: ${c}`);
+  // The emblem is a diamond taller than wide, and its tips are single-width (no bar or slot).
+  const facet = new Set([at(6, 6), at(7, 6), at(6, 7), at(7, 7)]);
+  const cells = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (facet.has(at(x, y)) && Math.hypot(x - 6.5, y - 6.5) < 4.6) cells.push([x, y]);
+  const xs = cells.map(([x]) => x);
+  const ys = cells.map(([, y]) => y);
+  const bw = Math.max(...xs) - Math.min(...xs) + 1;
+  const bh = Math.max(...ys) - Math.min(...ys) + 1;
+  assert.ok(bh > bw && bw >= 4 && bh <= 9, `diamond ${bw}x${bh}`);
+  const rowWidth = (y) => cells.filter(([, cy]) => cy === y).length;
+  assert.ok(rowWidth(Math.min(...ys)) <= 2 && rowWidth(Math.max(...ys)) <= 2, 'pointed tips');
+  assert.ok(rowWidth(6) > rowWidth(Math.min(...ys)), 'widest at the middle');
+  // A ring: walking out from the emblem in each direction, a pixel darker than the face
+  // colour just outside the emblem comes before the rim.
+  const face = L(6, 2); // face pixel between the ring and the diamond's top tip
+  for (const [dx, dy, x0, y0] of [[-1, 0, 3, 6], [1, 0, 10, 7], [0, -1, 6, 2], [0, 1, 7, 11]]) {
+    let x = x0;
+    let y = y0;
+    let dip = false;
+    for (; x >= 0 && y >= 0 && x < w && y < h && at(x, y) !== '.'; x += dx, y += dy) if (L(x, y) < face - 0.05) dip = true;
+    assert.ok(dip, `ring crossed going ${dx},${dy}`);
+  }
+});
+
+test('no console trademark in any player-visible UI text', () => {
+  assert.deepEqual(
+    KEY_CONTROLS.find(([k]) => k === 'F2'),
+    ['F2', 'Retro filter'],
+    'F2 names the look, not a console',
+  );
+  const texts = [...BIG_STRINGS, ...SMALL_STRINGS, ...KEY_CONTROLS.flat(), ...PAD_CONTROLS.flat(), COURSE_NAME, TITLE_HINT];
+  for (const t of texts) assert.ok(!/n64|nintendo|mario/i.test(t), `trademark in "${t}"`);
+});
+
+// ---- devicePixelRatio changes without a CSS resize (window moved to another monitor) ----
+
+// Stand-in window: matchMedia() returns resolution queries whose 'change' listeners the
+// test fires when it changes devicePixelRatio (like a browser whose query stops matching).
+function fakeWindow(dpr) {
+  const queries = [];
+  const win = {
+    devicePixelRatio: dpr,
+    matchMedia(media) {
+      const q = {
+        media,
+        listeners: new Set(),
+        addEventListener: (type, fn) => type === 'change' && q.listeners.add(fn),
+        removeEventListener: (type, fn) => type === 'change' && q.listeners.delete(fn),
+      };
+      queries.push(q);
+      return q;
+    },
+    setRatio(next) {
+      const armed = queries.filter((q) => q.listeners.size && q.media.includes(`${win.devicePixelRatio}dppx`));
+      win.devicePixelRatio = next;
+      for (const q of armed) for (const fn of [...q.listeners]) fn({ matches: false });
+    },
+    live: () => queries.filter((q) => q.listeners.size),
+  };
+  return win;
+}
+
+test('watchPixelRatio reports each ratio change and re-arms at the new ratio', () => {
+  const win = fakeWindow(1);
+  const seen = [];
+  const stop = watchPixelRatio((dpr) => seen.push(dpr), win);
+  assert.equal(win.live().length, 1);
+  assert.match(win.live()[0].media, /resolution: 1dppx/);
+  win.setRatio(2);
+  win.setRatio(1.25);
+  assert.deepEqual(seen, [2, 1.25]);
+  assert.equal(win.live().length, 1, 'one armed query at a time');
+  assert.match(win.live()[0].media, /resolution: 1.25dppx/);
+  stop();
+  assert.equal(win.live().length, 0, 'unsubscribed');
+  win.setRatio(3);
+  assert.deepEqual(seen, [2, 1.25]);
+  // Without matchMedia (node, old browsers) it is inert.
+  assert.doesNotThrow(() => watchPixelRatio(() => {}, {})());
+  assert.equal(pixelRatio({ devicePixelRatio: 2 }), 2);
+  assert.equal(pixelRatio({}), 1);
 });

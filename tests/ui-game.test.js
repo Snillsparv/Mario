@@ -2,7 +2,8 @@
 //   E2E=1 node --test tests/ui-game.test.js
 // Checks the wiring main.js owns: the HUD gets the event bus (red-coin numbers) and is
 // exposed as __game.hud, and the UI root follows the renderer's 4:3 pillarbox viewport
-// (view.alignOverlay(uiRoot)).
+// (view.alignOverlay(uiRoot)). Also: the HUD, title card and GAME OVER card redraw at a new
+// devicePixelRatio that comes without a CSS resize (window moved to another monitor).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -96,4 +97,57 @@ test('HUD setVisible and the GAME OVER card follow the picture', { skip, timeout
   assert.ok(Math.abs(r.textCentre[0] - (r.vp.x + r.vp.width / 2)) <= 2 && Math.abs(r.textCentre[1] - (r.vp.y + r.vp.height / 2)) <= 2, 'GAME OVER is centred');
   assert.ok(r.textWidth < r.vp.width * 0.6, `GAME OVER ${r.textWidth} px wide in a ${r.vp.width} px picture`);
   assert.equal(r.left, 0, 'remove() takes the card away');
+});
+
+// Last: it changes the page's device metrics (restored at the end).
+test('HUD, title and GAME OVER card redraw when only the devicePixelRatio changes', { skip, timeout: 60000 }, async () => {
+  await page.evaluate(async () => {
+    const { TitleScreen } = await import('/src/ui/TitleScreen.js');
+    const { GameOverCard } = await import('/src/ui/GameOverCard.js');
+    const ui = document.getElementById('ui');
+    window.__dprTitle = new TitleScreen(ui, { audio: { muted: true, unlock() {}, playMusic() {} } });
+    window.__dprTitleDone = false;
+    window.__dprTitle.show().then(() => (window.__dprTitleDone = true));
+    window.__dprCard = new GameOverCard(ui).show();
+    window.__game.step(1);
+  });
+  await nextFrames();
+  const read = () =>
+    page.evaluate(() => {
+      const { hud } = window.__game;
+      const press = window.__dprTitle.pieces.press;
+      const card = window.__dprCard;
+      return {
+        dpr: devicePixelRatio,
+        hud: [hud.canvas.width, hud.canvas.height, hud.s],
+        hudCss: hud.canvas.getBoundingClientRect().width,
+        press: [press.px, press.el.width, parseFloat(press.el.style.width)],
+        card: [card.px, card.text.width, parseFloat(card.text.style.width)],
+      };
+    });
+  const a = await read();
+  const cdp = await page.context().newCDPSession(page);
+  const metrics = (deviceScaleFactor) => cdp.send('Emulation.setDeviceMetricsOverride', { width: 960, height: 540, deviceScaleFactor, mobile: false });
+  let b;
+  try {
+    await metrics(2 * a.dpr);
+    await page.waitForFunction((d) => devicePixelRatio === d, 2 * a.dpr);
+    await nextFrames();
+    await page.waitForTimeout(100); // media-query change events
+    b = await read();
+  } finally {
+    await metrics(a.dpr);
+    await page.evaluate(() => window.__dprCard.remove());
+    await page.keyboard.press('Enter'); // dismiss the title card
+    await page.waitForFunction(() => window.__dprTitleDone === true, null, { timeout: 5000 });
+    await cdp.detach();
+  }
+  // Same CSS size, twice the device pixels: every layer redrew at the new resolution.
+  assert.equal(b.hudCss, a.hudCss, 'CSS size unchanged');
+  assert.deepEqual(b.hud, [a.hud[0] * 2, a.hud[1] * 2, a.hud[2] * 2], 'HUD canvas at device resolution');
+  assert.equal(b.press[0], a.press[0] * 2, 'title PRESS START redrawn');
+  assert.ok(b.press[1] > a.press[1] * 1.9, 'title canvas has twice the pixels');
+  assert.ok(Math.abs(b.press[2] - a.press[2]) <= 2, `title text keeps its CSS size (${a.press[2]} -> ${b.press[2]})`);
+  assert.equal(b.card[0], a.card[0] * 2, 'GAME OVER redrawn');
+  assert.ok(Math.abs(b.card[2] - a.card[2]) <= 2, `GAME OVER keeps its CSS size (${a.card[2]} -> ${b.card[2]})`);
 });

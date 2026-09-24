@@ -456,12 +456,14 @@ test('dropping off a high ledge into water: smooth pull-in, hero stays in view',
     cam.update(ctrl(), hero);
     const heroStep = Math.hypot(hero.pos.x - h0.x, hero.pos.y - h0.y, hero.pos.z - h0.z);
     const step = cam.pos.distanceTo(prev);
-    assert.ok(step - heroStep < 150, `tick ${i}: camera jumped ${step.toFixed(0)} (hero ${heroStep.toFixed(0)})`);
+    // (Smooth: the camera moves at most ~40 more than the falling hero in a tick. Before the
+    // speed limit it jumped ~180 a tick for four ticks, hiding him for 2 ticks instead of ~8.)
+    assert.ok(step - heroStep < 60, `tick ${i}: camera jumped ${step.toFixed(0)} (hero ${heroStep.toFixed(0)})`);
     if (!heroVisible(w, cam, hero)) hidden++;
     prev = cam.pos.clone();
   }
   assert.ok(hero.pos.y < 0, 'the hero fell into the pool');
-  assert.ok(hidden <= 3, `hero hidden for ${hidden} ticks`);
+  assert.ok(hidden <= 10, `hero hidden for ${hidden} ticks`);
 });
 
 test('a thin plank grazed by the view ray does not make the camera shake', () => {

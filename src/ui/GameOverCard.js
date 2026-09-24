@@ -6,12 +6,14 @@
 //   card.remove();                                  // gone at once; show() may be called again
 //
 // Like the HUD it follows its own box (window resizes, setViewport(), a root moved over the
-// picture by N64Renderer.alignOverlay), redrawing the text at the new scale. The DOM is
-// only touched by show(), so the module imports fine without one.
+// picture by N64Renderer.alignOverlay) and the devicePixelRatio (the window moved to a monitor
+// with another scale), redrawing the text at the new scale. The DOM is only touched by
+// show(), so the module imports fine without one.
 
 import { BIG_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
 import { hudMetrics, boxStyle, GAME_OVER, GAME_OVER_SCALE } from './hudLogic.js';
+import { pixelRatio, watchPixelRatio } from './pixelRatio.js';
 
 const DIM = 'rgba(0,0,12,0.78)';
 const DIM_FADE = 'background 700ms ease-in';
@@ -53,6 +55,7 @@ export class GameOverCard {
     this._layout();
     this._observer = new ResizeObserver(() => this._layout());
     this._observer.observe(el);
+    this._unwatch = watchPixelRatio(() => this._layout());
     el.getBoundingClientRect(); // commit the start styles so the fades run
     el.style.background = DIM;
     this.textBox.style.opacity = '1';
@@ -62,6 +65,7 @@ export class GameOverCard {
   remove() {
     if (!this.el) return;
     this._observer.disconnect();
+    this._unwatch();
     this.el.remove();
     this.el = this.textBox = this.text = null;
   }
@@ -70,7 +74,7 @@ export class GameOverCard {
   _layout() {
     const el = this.el;
     if (!el) return;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = pixelRatio();
     const { scale } = hudMetrics(el.clientWidth || innerWidth, el.clientHeight || innerHeight);
     const px = scale * dpr * GAME_OVER_SCALE;
     if (Math.abs(px - this.px) < 1e-6) return;

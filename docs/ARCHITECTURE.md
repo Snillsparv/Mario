@@ -306,6 +306,19 @@ to dance) the orbit swings round to a three-quarter front view and moves in, the
 to where it was once the dance ends, unless the player moves the hero or turns the camera
 first. The camera buttons wait for the dance and take over during the swing back.
 
+Keeping the hero in view (`src/camera/CameraCollider.js`, `src/camera/sight.js`):
+* A C-left/C-right press first runs the swing ahead on a copy of the collider; if the hero
+  would end up hidden behind something taller than him (a corner tower, a wall), the press
+  is refused with `sfx 'camera_buzz'`. Low, see-through blockers (fences) never veto it.
+* The collider checks whether the look point and the chest are visible from where the camera
+  actually ends up. If both stay hidden (6 ticks with no lift or dolly helping, or 30 in all)
+  it reports `trapped`: the dolly stops and `sight.js` turns the orbit toward the nearest
+  clear yaw (it also swings a swimmer around the island's corners and to a clear view of the
+  whole body under the bridge); if that fails the camera cuts after 45 ticks.
+* Motion is speed-limited: the camera moves at most 40 units per tick more than the orbit or
+  the hero does (true teleports and respawns snap), so drops into the moat and hill crests
+  never lurch.
+
 The orbit centre (look point) is `LOOK_HEIGHT` (150) above the hero's feet, but the rendered
 view is aimed a few degrees *above* it (`cameraConfig.js` `ORBIT_MODES.*.aim`, eased, fading
 out as the orbit steepens), so the hero stands in the lower middle of the picture; the orbit,
@@ -339,9 +352,11 @@ tinted copy of its material that mixes `UNDERWATER_SKY_TINT` of the fog colour i
 pixel, so looking up shows a murky surface instead of a clear sky. The tinted program is
 compiled ahead of time while dry (`warm()`), so the first dive does not stall.
 
-Keys: F1 debug overlay (fps, draw calls, triangles), F2 N64 mode (240-line render + 16-bit
-quantise/filter pass; off = native resolution), F3 4:3 pillarbox. N64 mode and pillarbox
-persist in `localStorage['castleGrounds.render.v1']`.
+Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 retro filter (240-line
+render + 16-bit quantise/filter pass; off = native resolution), F3 4:3 pillarbox. Player-visible
+labels are neutral ("Retro filter" in the pause legend, "Retro WxH" / "native WxH" in the F1
+overlay, `MODE_LABELS`); internal names such as `N64Renderer`/`setN64Mode` are not shown. The
+retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -358,7 +373,10 @@ in game is a one-shot arrival cue (`finalBar: 8` in `songs.js`), not a loop, and
 `'game_over'` ("Lanterns Out"), a jingle the engine plays **itself** on the `gameOver` event
 (main never requests it) over the GAME OVER card, cutting whatever plays; the ambience is
 ducked (to 0.3) for `GAME_OVER_SECONDS` (3.2 s, the card's length), then the title track
-crossfades in from the jingle's last chord. Without an AudioContext nothing is queued.
+crossfades in from the jingle's last chord. A one-shot cue (`castle_grounds`, `game_over`)
+requested without a running AudioContext, or while muted, is **dropped**, never queued to
+start later (so a gamepad-only start skips the arrival cue); a looping track (`title`) is
+queued until audio unlocks.
 Audio also consumes `gameStart` (stops a menu track, clears ducks, unlocks with sticky user
 activation) and `pause` / `unpause` (duck + sfx).
 
@@ -374,6 +392,10 @@ title.setViewport(rect | null)
 const card = new GameOverCard(uiRootElement).show()  // dark screen + gold GAME OVER, fades in
 card.setViewport(rect | null); card.remove(); card.shown   // remove() at once; show() again ok
 ```
+
+The HUD, title card and GAME OVER card re-layout when `devicePixelRatio` changes without a
+size change (a window moved to another monitor): the HUD and title check it every frame, the
+card listens through `src/ui/pixelRatio.js`, so the pixel font stays 1:1 with device pixels.
 
 `GameOverCard` (`src/ui/GameOverCard.js`) draws GAME OVER in the HUD's pixel font at the size
 of the pause screen's PAUSE, and follows its own box (window resize, F3 pillarbox via

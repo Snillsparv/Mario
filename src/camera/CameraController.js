@@ -21,8 +21,9 @@
 // CameraCollider keeps the result out of walls, terrain and water, and rises over a crest
 // that hides the hero's feet (crest.js). A swimmer under a low cover (the drawbridge deck)
 // takes the camera under the surface with it (cover.js), one hidden round a corner of the island
-// turns it along the moat (swimSight.js); the star celebration swings round to the hero's front
-// (celebration.js).
+// turns it along the moat, and a camera trapped behind something it swung round (a corner tower)
+// turns back to a clear view (sight.js); a C-button rotation that would trap it is refused with a
+// buzz. The star celebration swings round to the hero's front (celebration.js).
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
@@ -42,7 +43,7 @@ import { neutralController } from '../core/input.js';
 import { CameraCollider } from './CameraCollider.js';
 import { Celebration } from './celebration.js';
 import { Cover } from './cover.js';
-import { SwimSight } from './swimSight.js';
+import { Sight } from './sight.js';
 import { introPose, makeIntroPath, smootherstep, titleOrbitPose } from './cinematics.js';
 import * as layout from '../world/layout.js';
 import * as K from './cameraConfig.js';
@@ -88,7 +89,10 @@ export class CameraController {
     this.underwater = false;
     this.cover = new Cover(collision, this.collider); // swimmer under a low deck (cover.js)
     this.star = new Celebration(this.collider); // star celebration swing (celebration.js)
-    this.swimSight = new SwimSight(collision, this.collider); // swimmer round a corner (swimSight.js)
+    this.sight = new Sight(collision, this.collider); // swimmer round a corner, trapped camera (sight.js)
+    this._probe = null; // collider copy that runs a C-button rotation ahead (_rotationTraps)
+    this._probeAnchor = new THREE.Vector3();
+    this._probeOut = new THREE.Vector3();
     this.titleShot = false; // the title orbit is on screen (no hero)
 
     this.hero = {
@@ -143,7 +147,7 @@ export class CameraController {
     this._heroPrev.z = this._heroNow.z = hero.z;
     this.cover.reset(hero.covered);
     this.star.reset();
-    this.swimSight.reset();
+    this.sight.reset();
     this.titleShot = false;
     this.mode = this.orbitMode;
     this.zoom = 0;
@@ -289,18 +293,38 @@ export class CameraController {
     return hero.grounded && !hero.inWater && hero.speed < K.MOVING_SPEED;
   }
 
-  // Start a 45 deg orbit step (dir +1 = camera moves to its right), unless a wall is in the way.
+  // Start a 45 deg orbit step (dir +1 = camera moves to its right), unless a wall is in the way
+  // or the swing would leave the camera stuck behind something (a corner tower).
   _rotate(dir) {
     const remaining = this.tween ? this.tween.delta * (1 - tweenEase(this.tween.t)) : 0;
     const delta = remaining + dir * K.C_ROTATE_STEP;
     const pitch = this._orbitPitch();
     const minDist = Math.max(K.C_BLOCK_MIN_DIST, this.dist * K.C_BLOCK_RATIO);
-    if (this.collider.rotationBlocked(this.look, this.yaw + delta, pitch, this.dist, minDist)) {
+    if (this.collider.rotationBlocked(this.look, this.yaw + delta, pitch, this.dist, minDist) || this._rotationTraps(delta, pitch)) {
       this._sfx('camera_buzz');
       return;
     }
     this.tween = { delta, t: 0 };
     this._sfx('camera_move');
+  }
+
+  // Whether rotating the orbit by `delta` would end with the hero out of sight (his look point
+  // and chest, or his chest all through the settling time: a pillar or a step in front of him):
+  // a copy of the collider runs the swing (hero where he is) and C_TRAP_SETTLE ticks after it.
+  // A camera that swings round behind a solid corner cannot dolly back in front of it, so such
+  // a swing is refused. (Only run on a button press.)
+  _rotationTraps(delta, pitch) {
+    const probe = (this._probe ??= new CameraCollider(this.collision));
+    probe.copyState(this.collider);
+    const a = this._probeAnchor;
+    const cp = Math.cos(pitch) * this.dist;
+    const y = this.look.y + Math.sin(pitch) * this.dist;
+    for (let t = 1; t <= K.C_ROTATE_TICKS + K.C_TRAP_SETTLE; t++) {
+      const yaw = this.yaw + delta * tweenEase(t);
+      a.set(this.pivot.x + Math.sin(yaw) * cp, y, this.pivot.z + Math.cos(yaw) * cp);
+      probe.resolve(this.look, a, this.hero, this._probeOut);
+    }
+    return probe.hidden > 0 || probe.chestHidden >= K.C_TRAP_SETTLE;
   }
 
   // Glide from the orbit to the hand-over pose behind the head; _updateFirstPerson cuts to
@@ -325,6 +349,7 @@ export class CameraController {
     this._setOrbitYaw(this.fp.yaw + Math.PI);
     this._startBlend(pos, target);
     this.cut = true;
+    this.collider.stepValid = false; // (its last pose is from before first person: no speed limit)
     this._sfx('camera_move');
   }
 
@@ -340,11 +365,11 @@ export class CameraController {
     const az = this.anchor.z - this.pivot.z;
     if (ax * ax + az * az > 1) this.yaw = Math.atan2(ax, az);
 
-    // A swimmer under the deck or hidden round a corner: turn toward a clear view (the wall
-    // slide and the swing behind the hero rest meanwhile).
+    // A swimmer under the deck or hidden round a corner, or a camera trapped behind a tower:
+    // turn toward a clear view (the wall slide and the swing behind the hero rest meanwhile).
     const tweening = !!this.tween;
     let turn = this.cover.steer(hero, this.yaw, this.pos, tweening);
-    if (turn === null) turn = this.swimSight.steer(hero, this.yaw, this.pos, tweening);
+    if (turn === null) turn = this.sight.steer(hero, this.yaw, this.pos, tweening);
     if (turn !== null) {
       this.yaw += turn;
       this.slideRate = 0;
@@ -391,6 +416,7 @@ export class CameraController {
       this.pivot.z + Math.cos(this.yaw) * cp,
     );
     this.collider.resolve(this.look, this.anchor, hero, this.pos);
+    if (this.collider.jumped) this.cut = true; // cut out from behind a blocker: no interpolation
     this._aimTarget(hero);
   }
 

@@ -79,7 +79,7 @@ export const CASTLE = {
 
 // Paved flagstone courtyard on the island between the bridge landing and the castle door
 // (terrain paints it; it tucks slightly under the facade so no grass shows at the wall base).
-export const COURTYARD = { minX: -900, maxX: 900, minZ: CASTLE.frontZ - 80, maxZ: ISLAND.maxZ + 200, radius: 160 };
+export const COURTYARD = { minX: -1050, maxX: 1050, minZ: CASTLE.frontZ - 80, maxZ: ISLAND.maxZ + 200, radius: 160 };
 
 // Dirt/stone walking path from spawn to the bridge, and a loop around the front lawn.
 export const PATHS = [
@@ -176,7 +176,7 @@ export const RED_COINS = [
   { x: -6600, z: -3900 },
 ];
 
-export const STAR = { x: 0, z: 150 - 450, y: ISLAND_TOP + 450 }; // above the courtyard in front of the door
+export const STAR = { x: 0, z: -100, y: ISLAND_TOP + 450 }; // above the courtyard, in front of the entrance steps
 
 // Butterflies flutter around these spots; birds circle high overhead.
 export const BUTTERFLY_SPOTS = [

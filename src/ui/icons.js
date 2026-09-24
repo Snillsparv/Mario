@@ -41,25 +41,30 @@ function procedural(size, palette, shade) {
   return { rows, palette };
 }
 
-// Gold coin: dark rim, bright face lit from the top-left, embossed vertical slot.
-function coinIcon() {
-  const c = 7;
-  return procedural(14, { H: '#fff4b0', M: '#ffd23a', L: '#e8a414', R: '#b8700a' }, (x, y) => {
-    const dx = x - c;
-    const dy = y - c;
-    const d = Math.hypot(dx, dy);
-    if (d > 7) return '.';
-    if (d > 5.9) return dx + dy < -3 ? 'M' : 'R';
-    // Raised centre bar with a shadow on its right, like a coin face lit from the left.
-    if (Math.abs(dy) < 3.6) {
-      if (x > 6 && x < 8) return 'H';
-      if (x > 8 && x < 9) return 'L';
-    }
-    if (d > 3.4 && dx + dy < -3) return 'H';
-    if (d > 3.4 && dx + dy > 3) return 'L';
-    return 'M';
-  });
-}
+// Our gold coin, matching the coins in the world (objects/textures.js paintCoinFace): a border
+// ring (amber, bronze on the shaded lower right) and an embossed four-facet diamond lit from
+// the upper left (white upper-left facet, light-gold upper-right, amber lower-left, bronze
+// lower-right); the rim is lit on the upper left. W/M/L/R are the world coin's facet white,
+// mid, lo and rim colours; H is a light gold for the lit rim and the upper-right facet.
+const COIN = {
+  rows: [
+    '....HHHHHH....',
+    '..HHHLLLLMMM..',
+    '.HHLLMMMMLLMM.',
+    '.HLMMMWHMMMLM.',
+    'HHLMMWWHHMMLML',
+    'HLMMMWWHHMMMRL',
+    'HLMMWWWHHHMMRL',
+    'HLMMLLLRRRMMRL',
+    'HLMMMLLRRMMMRL',
+    'HMLMMLLRRMMRLL',
+    '.MLMMMLRMMMRL.',
+    '.MMLLMMMMRRLL.',
+    '..MMMRRRRLLL..',
+    '....LLLLLL....',
+  ],
+  palette: { W: '#fffdf0', H: '#ffe680', M: '#ffd23a', L: '#d48c0c', R: '#b8700a' },
+};
 
 // Direction the light comes from (screen space, y down): top-left.
 const LIGHT_ANGLE = Math.atan2(-1, -1);
@@ -106,6 +111,6 @@ function starIcon() {
 
 export const ICONS = {
   pip: { ...PIP, w: 14, h: 14 },
-  coin: { ...coinIcon(), w: 14, h: 14 },
+  coin: { ...COIN, w: 14, h: 14 },
   star: { ...starIcon(), w: 14, h: 14 },
 };
