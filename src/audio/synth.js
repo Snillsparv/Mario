@@ -86,16 +86,20 @@ export function noise(ctx, out, t, o) {
   return f;
 }
 
-// Periodic modulation of an AudioParam (vibrato, tremolo, wobble). depth is in the
-// param's units; `fadeIn` delays the modulation onset like a player's natural vibrato.
-export function lfo(ctx, param, t, dur, { rate, depth, fadeIn = 0, wave = 'sine' }) {
+// Periodic modulation of an AudioParam, or of several with one oscillator (vibrato,
+// tremolo, wobble). depth is in the params' units; `fadeIn` delays the modulation onset like
+// a player's natural vibrato; `decay` (a time constant, seconds) lets it die away after that,
+// like a struck spring settling.
+export function lfo(ctx, param, t, dur, { rate, depth, fadeIn = 0, decay = 0, wave = 'sine' }) {
   const osc = ctx.createOscillator();
   osc.type = wave;
   osc.frequency.value = rate;
   const g = silentGain(ctx);
   g.gain.setValueAtTime(fadeIn ? 0 : depth, t);
   if (fadeIn) g.gain.linearRampToValueAtTime(depth, t + fadeIn);
-  osc.connect(g).connect(param);
+  if (decay) g.gain.setTargetAtTime(0, t + fadeIn, decay);
+  osc.connect(g);
+  for (const p of Array.isArray(param) ? param : [param]) g.connect(p);
   osc.start(t);
   osc.stop(t + dur);
 }

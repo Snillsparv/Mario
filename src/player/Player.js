@@ -5,6 +5,7 @@
 import { clamp, lerp, lerpAngle, stickToWorldYaw } from '../core/math.js';
 import { FRAME_DT, NO_WATER } from '../core/constants.js';
 import { neutralController } from '../core/input.js';
+import { SIGNS, groundHeight } from '../world/layout.js';
 import * as T from './physics/tuning.js';
 import { UP } from './physics/slopes.js';
 import { ACTIONS, enterWater } from './actions/index.js';
@@ -18,11 +19,32 @@ function finiteClamp(v, lo, hi) {
   return Number.isFinite(v) ? clamp(v, lo, hi) : 0;
 }
 
+// A button snapshot that does not count as a fresh press.
+function unpressed(b) {
+  return b.pressed ? { ...b, pressed: false } : b;
+}
+
+// Readable signs as the reach test uses them: `y` is the sign's foot (sign.y if given, else
+// the layout's ground height there).
+function signEntries(signs) {
+  return (signs ?? []).map((sign) => ({
+    sign,
+    x: sign.x,
+    z: sign.z,
+    y: sign.y ?? groundHeight(sign.x, sign.z),
+    yaw: sign.yaw ?? 0,
+  }));
+}
+
 export class Player {
-  constructor({ collision, events, spawn }) {
+  // `signs`: readable signs ([{ x, z, yaw, y?, pages, ... }], default layout.SIGNS; [] for none).
+  constructor({ collision, events, spawn, signs = SIGNS }) {
     this.collision = collision;
     this.events = events;
     this.spawn = { x: spawn.x, y: spawn.y, z: spawn.z, yaw: spawn.yaw ?? 0 };
+    this.signs = signEntries(signs);
+    this.readingSign = null; // the p.signs entry being read (action 'reading')
+    this.pressGuard = false; // the next tick ignores fresh A/B/Z presses (see endReading)
 
     this.pos = { x: 0, y: 0, z: 0 };
     this.prevPos = { x: 0, y: 0, z: 0 };
@@ -43,10 +65,13 @@ export class Player {
 
     this.input = neutralController();
     this.cameraYaw = 0;
-    this.stickMag = 0;
+    this.stickMag = 0; // effective stick magnitude (see readInput)
     this.stickHeld = false;
     this.intendedMag = 0;
     this.intendedYaw = 0;
+    this.rawStickX = 0; // the stick at the keys' full push (no keyboard ease-in, see readInput)
+    this.rawStickY = 0;
+    this.fullPush = false; // this key hold skips the rest of the ease-in (see readInput)
 
     this.action = 'idle';
     this.prevAction = 'idle';
@@ -112,14 +137,33 @@ export class Player {
 
   // Stores the controller (sanitised: finite stick values within -1..1) and derives the
   // intended speed / direction. A non-finite camera yaw reuses the last good one.
+  //
+  // Keyboard ease-in (core/input.js): stickMag rises over ~0.37 s after a key is pressed from
+  // rest while rawStickMag is the key's full push along the same direction. The eased stick
+  // softens starting from rest only: as soon as the hero already moves faster than it asks for
+  // (a key pressed again while still skidding, mid-air at speed, a start downhill), the full
+  // push applies for the rest of that hold, so pressing a key never slows him down. Stick
+  // thresholds that must answer at once (water jump-out / dive, pole climbing) read
+  // rawStickX / rawStickY. For a gamepad (or a controller without rawStickMag) both are equal.
   readInput(c, cameraYaw) {
     if (!(Math.abs(c.stickX) <= 1 && Math.abs(c.stickY) <= 1 && c.stickMag >= 0 && c.stickMag <= 1)) {
       c = { ...c, stickX: finiteClamp(c.stickX, -1, 1), stickY: finiteClamp(c.stickY, -1, 1), stickMag: finiteClamp(c.stickMag, 0, 1) };
     }
+    if (this.pressGuard) {
+      this.pressGuard = false;
+      c = { ...c, A: unpressed(c.A), B: unpressed(c.B), Z: unpressed(c.Z) };
+    }
     if (Number.isFinite(cameraYaw)) this.cameraYaw = cameraYaw;
     this.input = c;
-    this.stickMag = c.stickMag;
-    this.intendedMag = c.stickMag * c.stickMag * T.MAX_TARGET_SPEED;
+    const eased = c.stickMag;
+    const raw = eased > 0 && Number.isFinite(c.rawStickMag) ? clamp(c.rawStickMag, eased, 1) : eased;
+    const k = eased > 0 ? raw / eased : 0;
+    this.rawStickX = c.stickX * k;
+    this.rawStickY = c.stickY * k;
+    if (raw <= eased) this.fullPush = false;
+    else if (eased * eased * T.MAX_TARGET_SPEED < Math.abs(this.forwardVel)) this.fullPush = true;
+    this.stickMag = this.fullPush ? raw : eased;
+    this.intendedMag = this.stickMag * this.stickMag * T.MAX_TARGET_SPEED;
     this.stickHeld = this.intendedMag > 0.5;
     this.intendedYaw = this.stickHeld ? stickToWorldYaw(c.stickX, c.stickY, this.cameraYaw) : this.faceYaw;
     return c;
@@ -277,6 +321,16 @@ export class Player {
   collectCoin(value = 1) {
     this.coins += value;
     this.health = Math.min(T.MAX_HEALTH, this.health + value);
+  }
+
+  // The dialog box closed: stop reading and stand idle. The next update ignores fresh A/B/Z
+  // presses, so the press that closed the box never turns into a jump or a punch even if it
+  // still reaches the Player (main also flushes its input on 'dialogClosed').
+  endReading() {
+    if (this.action !== 'reading') return;
+    this.readingSign = null;
+    this.pressGuard = true;
+    this.setAction('idle');
   }
 
   // The celebration plays on the ground: grabbed in mid-air, the hero drops first (star_fall).

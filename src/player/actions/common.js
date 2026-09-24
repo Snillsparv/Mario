@@ -2,6 +2,7 @@
 // locomotion animation bookkeeping.
 
 import { PLAYER_HEIGHT } from '../../core/constants.js';
+import { angleDiff } from '../../core/math.js';
 import * as T from '../physics/tuning.js';
 import { isSlippery, isSteep } from '../physics/slopes.js';
 import { gaitStride } from '../model/strides.js';
@@ -13,6 +14,34 @@ export function jumpFromGround(p) {
   if (chain === 'double' && p.forwardVel >= T.TRIPLE_JUMP_MIN_SPEED) return p.setAction('triple_jump');
   if (chain === 'single') return p.setAction('double_jump');
   return p.setAction('jump');
+}
+
+const SIGN_FRONT_COS = Math.cos(T.SIGN_FRONT_ANGLE);
+
+// The nearest readable sign in reach (see SIGN_* in tuning.js): Pip within SIGN_REACH of the
+// board centre and roughly level with its foot, in front of the face (his offset from the
+// board within SIGN_FRONT_ANGLE of the face direction: never beside or behind it) and facing
+// the board within SIGN_FACING_ANGLE. Returns an entry of p.signs ({ sign, x, y, z, yaw }) or null.
+export function signInReach(p) {
+  let best = null;
+  let bestDist = T.SIGN_REACH;
+  for (const s of p.signs) {
+    const dx = p.pos.x - s.x;
+    const dz = p.pos.z - s.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > bestDist || Math.abs(p.pos.y - s.y) > T.SIGN_REACH_Y) continue;
+    if (dx * Math.sin(s.yaw) + dz * Math.cos(s.yaw) <= dist * SIGN_FRONT_COS) continue; // beside / behind
+    if (Math.abs(angleDiff(p.faceYaw, Math.atan2(-dx, -dz))) > T.SIGN_FACING_ANGLE) continue;
+    best = s;
+    bestDist = dist;
+  }
+  return best;
+}
+
+// B near a sign: starts reading it (true) instead of the usual punch / dive.
+export function tryReadSign(p) {
+  const sign = signInReach(p);
+  return sign ? p.setAction('reading', sign) : false;
 }
 
 // Walking off a ledge keeps the momentum.
@@ -122,9 +151,15 @@ export function facingWall(p, wall, cosLimit) {
   return -(Math.sin(p.faceYaw) * wall.hn.x + Math.cos(p.faceYaw) * wall.hn.z) > cosLimit;
 }
 
-// Walk-cycle animation from the larger of stick intent and actual speed.
-export function walkAnim(p) {
-  const v = Math.max(p.intendedMag, p.forwardVel);
+// The speed the walk cycle shows: the forward speed, led by up to GAIT_LEAD toward the
+// stick's target while the speed is still catching up (the legs dig in a little ahead).
+export function gaitSpeed(p) {
+  const fv = Math.abs(p.forwardVel);
+  return Math.max(fv, Math.min(p.intendedMag, fv + T.GAIT_LEAD));
+}
+
+// Walk-cycle animation for a gait speed (default: gaitSpeed).
+export function walkAnim(p, v = gaitSpeed(p)) {
   return v < T.TIPTOE_SPEED ? 'tiptoe' : v < T.RUN_SPEED ? 'walk' : 'run';
 }
 

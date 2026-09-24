@@ -1,9 +1,9 @@
 // Builds Pip from low-poly primitives and exposes the joint hierarchy:
 //   object3D (feet, yaw) -> orient (physical pitch/roll) -> lift (root offset + flips about
 //   CENTER) -> body (squash) -> hips -> torso -> head (face, hair, hat) / shoulders ->
-//   upper arm -> forearm -> hand;  hips -> thigh -> shin -> boot.
+//   upper arm -> forearm -> wrist (mitten);  hips -> thigh -> shin -> boot.
 // Parts are authored as separate primitives, then every bone's static parts are merged
-// into one vertex-coloured mesh (one material, ~20 draw calls for the whole hero). Scarf
+// into one vertex-coloured mesh (one material, ~22 draw calls for the whole hero). Scarf
 // tails hang off the torso and are driven by scarf.js; the blob shadow is separate.
 
 import * as THREE from 'three';
@@ -131,13 +131,16 @@ function buildArm(side) {
   shoulder.add(elbow);
   elbow.add(mesh(ellipsoid(4.9, 4.9, 4.9, 7, 5), 'tunic'));
   elbow.add(mesh(limb(4.8, 4.4, D.FOREARM - 4), 'tunic'));
-  elbow.add(mesh(new THREE.CylinderGeometry(5, 7, 6, 8, 1, true), 'glove', 0, -D.FOREARM + 2, 0)); // flared cuff
-  const hand = group(0, -D.FOREARM - D.HAND_OFFSET, 0);
-  hand.name = 'hand'; // marker at the mitten centre (its mesh merges into the forearm)
-  elbow.add(hand);
+  // The mitten and its flared cuff hang off their own wrist joint, which punches swell.
+  const wrist = group(0, -D.FOREARM, 0);
+  elbow.add(wrist);
+  wrist.add(mesh(new THREE.CylinderGeometry(5, 7, 6, 8, 1, true), 'glove', 0, 2, 0)); // flared cuff
+  const hand = group(0, -D.HAND_OFFSET, 0);
+  hand.name = 'hand'; // marker at the mitten centre (its mesh merges into the wrist)
+  wrist.add(hand);
   hand.add(mesh(ellipsoid(D.HAND_R, 8.2, 7), 'glove'));
   hand.add(mesh(ellipsoid(3, 3.8, 3, 6, 4), 'glove', -side * 3.5, 2.5, 5.5)); // thumb
-  return { shoulder, elbow, hand };
+  return { shoulder, elbow, wrist, hand };
 }
 
 function buildLeg(side) {
@@ -210,9 +213,9 @@ export function buildRig(faceMaterial) {
   torso.name = 'torso';
   head.name = 'head';
   for (const [s, a, l] of [['L', armL, legL], ['R', armR, legR]]) {
-    for (const k of ['shoulder', 'elbow']) a[k].name = k + s;
+    for (const k of ['shoulder', 'elbow', 'wrist']) a[k].name = k + s;
     for (const k of ['thigh', 'shin', 'boot']) l[k].name = k + s;
-    bones.push(a.shoulder, a.elbow, l.thigh, l.shin, l.boot);
+    bones.push(a.shoulder, a.elbow, a.wrist, l.thigh, l.shin, l.boot);
   }
   const joints = new Set(bones);
   object3D.updateMatrixWorld(true);
@@ -258,4 +261,20 @@ export function applyPose(rig, p, pitch, roll, headYaw) {
   rig.legR.shin.rotation.x = p.kneeR;
   rig.legL.boot.rotation.x = p.ankleL;
   rig.legR.boot.rotation.x = p.ankleR;
+
+  // Attack swells: mittens grow about the wrist; boots about BOOT_PIVOT_Y above the ankle.
+  rig.armL.wrist.scale.setScalar(swellScale(p.handLSwell));
+  rig.armR.wrist.scale.setScalar(swellScale(p.handRSwell));
+  swellBoot(rig.legL.boot, swellScale(p.footLSwell), p.ankleL);
+  swellBoot(rig.legR.boot, swellScale(p.footRSwell), p.ankleR);
+}
+
+const swellScale = (v) => 1 + Math.min(Math.max(v, -0.5), 1.5);
+
+// Scales a boot by s about the point BOOT_PIVOT_Y up its (ankle-rotated) axis: the joint
+// moves by (1 - s) times that offset so the pivot stays put on the shin.
+function swellBoot(boot, s, ankle) {
+  const k = (1 - s) * D.BOOT_PIVOT_Y;
+  boot.position.set(0, -D.SHIN + k * Math.cos(ankle), k * Math.sin(ankle));
+  boot.scale.setScalar(s);
 }

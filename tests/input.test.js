@@ -1,0 +1,201 @@
+// core/input keyboard stick ease-in (round-2 feedback: starting to run felt too intense on a
+// keyboard, whose digital keys slammed the stick to full at once).
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { Input, KEY_RAMP_GRACE, KEY_RAMP_START, KEY_RAMP_TICKS } from '../src/core/input.js';
+import { Player } from '../src/player/Player.js';
+import { CourseBuilder } from '../src/player/physics/testCourse.js';
+
+function keyboard() {
+  const target = new EventTarget();
+  const input = new Input(target);
+  input.getGamepads = () => [];
+  const key = (type, code) => target.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { code }));
+  return { input, down: (code) => key('keydown', code), up: (code) => key('keyup', code) };
+}
+
+const polls = (input, n) => Array.from({ length: n }, () => input.poll());
+
+describe('keyboard stick ease-in', () => {
+  test('a direction key from rest eases the stick in over ~0.37 s', () => {
+    const { input, down } = keyboard();
+    input.poll();
+    down('KeyW');
+    const mags = polls(input, KEY_RAMP_TICKS + 3).map((c) => c.stickMag);
+    assert.ok(Math.abs(mags[0] - KEY_RAMP_START) < 0.02, `first poll ${mags[0]}`);
+    assert.ok(mags[0] >= 0.3, 'the first poll already moves the hero (intended speed > 0.5)');
+    for (let i = 1; i < KEY_RAMP_TICKS; i++) {
+      assert.ok(mags[i] > mags[i - 1], `rising at ${i}`);
+      if (i >= 2) assert.ok(mags[i] - mags[i - 1] > mags[i - 1] - mags[i - 2] - 1e-12, `ease-in at ${i}`);
+    }
+    assert.ok(mags[4] < 0.5, `still gentle after 5 polls: ${mags[4]}`);
+    assert.equal(mags[KEY_RAMP_TICKS - 1], 1);
+    assert.equal(mags[KEY_RAMP_TICKS + 2], 1);
+  });
+
+  test('turning while keys are held is immediate and keeps the magnitude', () => {
+    const { input, down, up } = keyboard();
+    down('KeyW');
+    polls(input, 6);
+    const before = input.poll();
+    up('KeyW');
+    down('KeyD');
+    const turned = input.poll();
+    assert.equal(turned.stickX > 0 && turned.stickY === 0, true, 'faces the new key at once');
+    assert.ok(turned.stickMag > before.stickMag, `no restart: ${turned.stickMag} after ${before.stickMag}`);
+    down('KeyW'); // diagonal
+    const diag = input.poll();
+    assert.ok(Math.abs(diag.stickX - diag.stickY) < 1e-12 && diag.stickMag > turned.stickMag);
+  });
+
+  test('release is immediate; a quick re-press carries on, a later one eases in again', () => {
+    const { input, down, up } = keyboard();
+    down('KeyW');
+    polls(input, KEY_RAMP_TICKS);
+    up('KeyW');
+    assert.equal(input.poll().stickMag, 0, 'let go: neutral at once');
+    down('KeyS'); // e.g. reversing for a turnaround, one poll later
+    const back = input.poll();
+    assert.equal(back.stickMag, 1);
+    assert.ok(back.stickY < 0);
+    up('KeyS');
+    polls(input, KEY_RAMP_GRACE + 1);
+    down('KeyS');
+    assert.ok(Math.abs(input.poll().stickMag - KEY_RAMP_START) < 0.02, 'eases in again from rest');
+  });
+
+  test('Q still walks slowly (eased in to 0.45)', () => {
+    const { input, down } = keyboard();
+    down('KeyQ');
+    down('KeyA');
+    const mags = polls(input, KEY_RAMP_TICKS + 2).map((c) => c.stickMag);
+    assert.ok(mags[0] < 0.2 && mags[0] > 0.125, `first ${mags[0]}`);
+    assert.ok(Math.abs(mags[mags.length - 1] - 0.45) < 1e-12);
+  });
+
+  test('gamepad sticks and test overrides keep their exact value', () => {
+    const { input } = keyboard();
+    const axes = [0, -0.6, 0, 0];
+    input.getGamepads = () => [{ connected: true, mapping: 'standard', axes, buttons: [], timestamp: 0 }];
+    const c = input.poll();
+    assert.ok(Math.abs(c.stickMag - (0.6 - 0.18) / 0.82) < 1e-9, `pad ${c.stickMag}`);
+    input.getGamepads = () => [];
+    input.setOverride({ stickY: 1 });
+    assert.equal(input.poll().stickMag, 1);
+  });
+
+  test('from the keyboard the hero tiptoes, walks, then runs up to full speed', () => {
+    const b = new CourseBuilder();
+    b.ground(30000);
+    const p = new Player({ collision: b.build(), events: null, spawn: { x: 0, y: 0, z: 0, yaw: 0 }, signs: [] });
+    const { input, down } = keyboard();
+    p.update(input.poll(), 0);
+    down('KeyW');
+    const anims = [];
+    let t32 = -1;
+    for (let i = 1; i <= 70; i++) {
+      p.update(input.poll(), 0);
+      if (anims[anims.length - 1] !== p.anim) anims.push(p.anim);
+      if (i === 1) assert.equal(p.action, 'walking', 'moves on the first tick');
+      if (i === 9) assert.ok(p.pos.z < 70, `covered ${p.pos.z} in 0.3 s`);
+      if (t32 < 0 && p.forwardVel >= 32) t32 = i;
+    }
+    assert.deepEqual(anims, ['tiptoe', 'walk', 'run']);
+    assert.ok(t32 >= 45 && t32 <= 60, `32 after ${t32} ticks`);
+  });
+});
+
+// Round-2 review: the ease-in must only soften starting to run from rest.
+describe('keyboard full push (rawStickMag)', () => {
+  test("the snapshot carries the keys' full push while the stick eases in", () => {
+    const { input, down, up } = keyboard();
+    assert.equal(input.poll().rawStickMag, 0, 'neutral');
+    down('KeyS');
+    const first = input.poll();
+    assert.ok(first.stickMag < 0.5 && first.rawStickMag === 1, `${first.stickMag} / ${first.rawStickMag}`);
+    down('KeyQ');
+    assert.equal(input.poll().rawStickMag, 0.45, 'Q: the slow walk is the full push');
+    up('KeyQ');
+    up('KeyS');
+    assert.equal(input.poll().rawStickMag, 0, 'released');
+    const axes = [0.7, 0, 0, 0];
+    input.getGamepads = () => [{ connected: true, mapping: 'standard', axes, buttons: [], timestamp: 0 }];
+    const pad = input.poll();
+    assert.equal(pad.rawStickMag, pad.stickMag, 'a pad stick is its own full push');
+    input.getGamepads = () => [];
+    input.setOverride({ stickX: 0.3 });
+    assert.ok(Math.abs(input.poll().rawStickMag - 0.3) < 1e-12, 'overrides too');
+  });
+
+  const pool = () => {
+    const b = new CourseBuilder();
+    const hole = { x0: -1000, z0: -3000, x1: 1000, z1: -500 };
+    b.ground(30000, 0, hole);
+    b.pool({ ...hole, y0: -700, level: -60, bank: 1000 });
+    return b.build();
+  };
+
+  // Floats at the surface after walking in with S, then waits `rest` polls with no key held.
+  function floating(rest = 12) {
+    const p = new Player({ collision: pool(), events: null, spawn: { x: 0, y: 0, z: 0, yaw: Math.PI }, signs: [] });
+    const kb = keyboard();
+    kb.down('KeyS');
+    for (let i = 0; i < 150 && !p.inWater; i++) p.update(kb.input.poll(), 0);
+    kb.up('KeyS');
+    for (let i = 0; i < rest; i++) p.update(kb.input.poll(), 0);
+    assert.equal(p.action, 'water_surface');
+    return { p, ...kb };
+  }
+
+  test('S / W with jump at the water surface jump out / dive at once, as with the stick', () => {
+    for (const lead of [0, 2, 4]) {
+      const { p, input, down } = floating();
+      down('KeyS');
+      for (let i = 0; i < lead; i++) p.update(input.poll(), 0);
+      down('Space');
+      p.update(input.poll(), 0);
+      assert.equal(p.action, 'water_jump', `S held ${lead} polls before jump`);
+    }
+    const { p, input, down } = floating();
+    down('KeyW');
+    down('Space');
+    p.update(input.poll(), 0);
+    assert.equal(p.action, 'swim_stroke');
+    assert.ok(!p.atSurface && p.swimPitch > 0.5, 'dives under');
+  });
+
+  test('a key pressed again while still moving picks up at once (no speed dip)', () => {
+    const b = new CourseBuilder();
+    b.ground(30000);
+    const p = new Player({ collision: b.build(), events: null, spawn: { x: 0, y: 0, z: 0, yaw: 0 }, signs: [] });
+    const { input, down, up } = keyboard();
+    down('KeyW');
+    for (let i = 0; i < 60; i++) p.update(input.poll(), 0);
+    assert.equal(p.forwardVel, 32);
+    up('KeyW');
+    for (let i = 0; i <= KEY_RAMP_GRACE; i++) p.update(input.poll(), 0); // the ease-in restarts
+    const atPress = p.forwardVel;
+    assert.ok(atPress > 8, `still moving at ${atPress}`);
+    down('KeyW');
+    let prev = atPress;
+    for (let i = 0; i < 12; i++) {
+      p.update(input.poll(), 0);
+      assert.ok(p.forwardVel > prev, `speeds up at once (tick ${i}: ${p.forwardVel} after ${prev})`);
+      prev = p.forwardVel;
+    }
+  });
+
+  test('a stick zeroed on the way (first-person look) is no push at all', () => {
+    const b = new CourseBuilder();
+    b.ground(30000);
+    const p = new Player({ collision: b.build(), events: null, spawn: { x: 0, y: 0, z: 0, yaw: 0 }, signs: [] });
+    const { input, down } = keyboard();
+    down('KeyW');
+    for (let i = 0; i < 40; i++) p.update(input.poll(), 0);
+    const c = input.poll();
+    p.update({ ...c, stickX: 0, stickY: 0, stickMag: 0 }, 0); // what CameraController.playerInput does
+    assert.equal(p.intendedMag, 0);
+    assert.equal(p.rawStickY, 0);
+    assert.ok(!p.stickHeld);
+  });
+});

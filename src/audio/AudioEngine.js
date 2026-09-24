@@ -34,6 +34,7 @@ const MAX_VOICES = 32; // concurrent one-shots; extra ones are dropped
 const VOICE_TAIL = 0.5; // a one-shot's slot is held this long past its reported length
 const PITCH_JITTER = 0.03; // +-3% random pitch per sound
 const DEDUPE_SECONDS = 0.02; // the same sound requested twice at once plays once
+const JAB_CHAIN = 0.35; // a plain 'punch' this soon after a first jab is the combo's second jab
 const FULL_VOLUME_DIST = 1400; // positional sounds are full volume within this range
 const SILENT_DIST = 9000;
 const PAUSE_DUCK = 0.35;
@@ -65,6 +66,7 @@ export class AudioEngine {
     this.unlockPress = null; // key code or 'pointer' of the press that created the context, while held
     this.active = []; // sounding one-shots: { end (context time), node }
     this.lastPlayed = new Map();
+    this.jab = { name: null, at: -Infinity }; // last jab played for a plain 'punch'
     this.terrain = 'grass'; // last terrain seen in footstep/land events
     this.duck = { pause: 1, fanfare: 1, gameOver: 1 };
     this.fanfareTimer = 0;
@@ -140,12 +142,21 @@ export class AudioEngine {
   // Play a named sound effect. opts: { pos, volume, pitch, terrain, big, index }.
   // Unknown names are ignored. Sounds without a terrain use the last one walked on.
   play(name, opts = {}) {
-    const recipe = own(SFX, name);
+    let recipe = own(SFX, name);
     if (!recipe || !this.ctx) return;
     const now = this.ctx.currentTime;
     if (now - (this.lastPlayed.get(name) ?? -1) < DEDUPE_SECONDS) return;
     this.lastPlayed.set(name, now);
+    if (name === 'punch') recipe = SFX[this.comboJab(now)];
     this.voice(recipe, opts.terrain ? opts : { ...opts, terrain: this.terrain }, this.mix.sfx);
+  }
+
+  // The ground combo may send both of its jabs as a plain 'punch': one that closely follows
+  // a first jab plays as the second jab ('punch2'), so each step of the combo sounds its own.
+  comboJab(now) {
+    const second = this.jab.name === 'punch1' && now - this.jab.at < JAB_CHAIN;
+    this.jab = { name: second ? 'punch2' : 'punch1', at: now };
+    return this.jab.name;
   }
 
   // A looping track requested before the context exists waits for it (see

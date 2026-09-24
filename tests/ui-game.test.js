@@ -2,8 +2,9 @@
 //   E2E=1 node --test tests/ui-game.test.js
 // Checks the wiring main.js owns: the HUD gets the event bus (red-coin numbers) and is
 // exposed as __game.hud, and the UI root follows the renderer's 4:3 pillarbox viewport
-// (view.alignOverlay(uiRoot)). Also: the HUD, title card and GAME OVER card redraw at a new
-// devicePixelRatio that comes without a CSS resize (window moved to another monitor).
+// (view.alignOverlay(uiRoot)). Also: the HUD, title card, GAME OVER card and sign dialog
+// redraw at a new devicePixelRatio that comes without a CSS resize (window moved to another
+// monitor), and the sign dialog sits in the picture, pages with B and hides on pause.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -99,6 +100,59 @@ test('HUD setVisible and the GAME OVER card follow the picture', { skip, timeout
   assert.equal(r.left, 0, 'remove() takes the card away');
 });
 
+test('sign dialog: upper middle of the 4:3 picture (clear of Pip), pages with B, closes once, hides on pause', { skip, timeout: 60000 }, async () => {
+  const r = await page.evaluate(async () => {
+    const { events, dialog, view, step } = window.__game;
+    const frames = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const closed = [];
+    const off = events.on('dialogClosed', (e) => closed.push(e));
+    view.setPillarbox(true);
+    step(1);
+    await frames();
+    const sign = { id: 'e2e', pages: ['First page.', 'Second and last page.'] };
+    events.emit('signRead', { sign });
+    step(30);
+    await frames();
+    step(1); // redraw after the pillarbox resize (?test=1 has no rAF loop driving the box)
+    await frames();
+    const b = dialog.canvas.getBoundingClientRect();
+    const box = dialog.box; // panel inside the canvas, device px
+    const dpr = devicePixelRatio;
+    const panel = { x: b.x + box.x / dpr, y: b.y + box.y / dpr, width: box.w / dpr, height: box.h / dpr };
+    const vp = { ...view.viewport };
+    const pixels = dialog.ctx.getImageData(Math.round(box.x + box.w / 2), Math.round(box.y + box.h / 2), 1, 1).data[3];
+    step(1, { START: true }); // pause: the pause screen shows, the box hides
+    const paused = getComputedStyle(dialog.el).visibility;
+    step(1);
+    step(1, { START: true });
+    const resumed = getComputedStyle(dialog.el).visibility;
+    step(1);
+    const pages = [dialog.screenIndex];
+    step(1, { B: true });
+    pages.push(dialog.screenIndex);
+    step(1);
+    step(1, { B: true }); // completes the second page
+    step(1);
+    step(1, { B: true }); // closes
+    const open = dialog.isOpen;
+    step(5, { B: true }); // held: nothing more
+    off();
+    view.setPillarbox(false); // the setting is persisted; leave it as found
+    step(1);
+    return { panel, vp, pixels, paused, resumed, pages, open, closed: closed.map((e) => e.sign.id), action: window.__game.player.action };
+  });
+  const { panel, vp } = r;
+  assert.ok(panel.x >= vp.x && panel.x + panel.width <= vp.x + vp.width, `panel ${JSON.stringify(panel)} inside picture ${JSON.stringify(vp)}`);
+  assert.ok(Math.abs(panel.x + panel.width / 2 - (vp.x + vp.width / 2)) <= 2, 'centred');
+  assert.ok(panel.y >= vp.y && panel.y + panel.height / 2 < vp.y + vp.height * 0.5, 'in the upper half, clear of the hero');
+  assert.ok(r.pixels > 150, 'the panel is drawn (dark, mostly opaque)');
+  assert.equal(r.paused, 'hidden');
+  assert.equal(r.resumed, 'visible');
+  assert.deepEqual(r.pages, [0, 1]);
+  assert.equal(r.open, false);
+  assert.deepEqual(r.closed, ['e2e']);
+});
+
 // Last: it changes the page's device metrics (restored at the end).
 test('HUD, title and GAME OVER card redraw when only the devicePixelRatio changes', { skip, timeout: 60000 }, async () => {
   await page.evaluate(async () => {
@@ -110,6 +164,8 @@ test('HUD, title and GAME OVER card redraw when only the devicePixelRatio change
     window.__dprTitle.show().then(() => (window.__dprTitleDone = true));
     window.__dprCard = new GameOverCard(ui).show();
     window.__game.step(1);
+    window.__game.events.emit('signRead', { sign: { id: 'dpr', pages: ['Some text on a sign.'] } });
+    window.__game.step(30);
   });
   await nextFrames();
   const read = () =>
@@ -123,6 +179,7 @@ test('HUD, title and GAME OVER card redraw when only the devicePixelRatio change
         hudCss: hud.canvas.getBoundingClientRect().width,
         press: [press.px, press.el.width, parseFloat(press.el.style.width)],
         card: [card.px, card.text.width, parseFloat(card.text.style.width)],
+        dialog: [window.__game.dialog.canvas.width, parseFloat(window.__game.dialog.canvas.style.width), window.__game.dialog.m.fp],
       };
     });
   const a = await read();
@@ -137,7 +194,10 @@ test('HUD, title and GAME OVER card redraw when only the devicePixelRatio change
     b = await read();
   } finally {
     await metrics(a.dpr);
-    await page.evaluate(() => window.__dprCard.remove());
+    await page.evaluate(() => {
+      window.__dprCard.remove();
+      window.__game.dialog.close();
+    });
     await page.keyboard.press('Enter'); // dismiss the title card
     await page.waitForFunction(() => window.__dprTitleDone === true, null, { timeout: 5000 });
     await cdp.detach();
@@ -150,4 +210,7 @@ test('HUD, title and GAME OVER card redraw when only the devicePixelRatio change
   assert.ok(Math.abs(b.press[2] - a.press[2]) <= 2, `title text keeps its CSS size (${a.press[2]} -> ${b.press[2]})`);
   assert.equal(b.card[0], a.card[0] * 2, 'GAME OVER redrawn');
   assert.ok(Math.abs(b.card[2] - a.card[2]) <= 2, `GAME OVER keeps its CSS size (${a.card[2]} -> ${b.card[2]})`);
+  assert.ok(b.dialog[2] > a.dialog[2] * 1.5, `dialog text redrawn at the new ratio (${a.dialog[2]} -> ${b.dialog[2]} px per font pixel)`);
+  assert.ok(b.dialog[0] > a.dialog[0] * 1.6, 'dialog canvas has about twice the pixels');
+  assert.ok(Math.abs(b.dialog[1] / a.dialog[1] - 1) <= 0.2, `dialog keeps about its CSS size (${a.dialog[1]} -> ${b.dialog[1]})`);
 });

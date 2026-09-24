@@ -68,6 +68,25 @@ export function legs(p, swing, knee, ankle = 0, spread = 0) {
   leg(p, 'R', swing, knee, ankle, spread);
 }
 
+// Attack swell (0 = normal size, 0.8 = 1.8x) of one mitten / boot; side is 'L' or 'R'.
+export function swellHand(p, side, v) {
+  if (side === 'L') p.handLSwell = v;
+  else p.handRSwell = v;
+}
+
+export function swellFoot(p, side, v) {
+  if (side === 'L') p.footLSwell = v;
+  else p.footRSwell = v;
+}
+
+// The cartoon strike swell: pops out over `grow` s (a little overshoot), holds until
+// `hold`, deflates by `end`. Returns 0..~1.1 (multiply by the swell amount).
+export const STRIKE_SWELL = 0.8; // boots on kicks: 1.8x
+export const PUNCH_SWELL = 1.1; // fists on punches: 2.1x (a fist is smaller than a boot)
+export function strikeSwell(t, grow, hold, end) {
+  return t < grow ? easeOutBack(t / grow) : 1 - smoothstep(hold, end, t);
+}
+
 // Relaxed standing: arms hang a little away from the tunic with soft elbows.
 export function stand(p) {
   arms(p, 0.05, 0.24, 0.3);

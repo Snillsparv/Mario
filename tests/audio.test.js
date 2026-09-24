@@ -56,7 +56,8 @@ test('engine is a silent no-op without an AudioContext', async () => {
 test('every standard sfx name has a recipe', () => {
   const names = `jump double_jump triple_jump backflip sideflip long_jump wallkick dive ground_pound
     ground_pound_land punch kick land land_hard skid bonk hurt ledge_grab climb swim splash
-    water_exit coin red_coin star_appear star_get one_up pause menu_select camera_move camera_buzz`;
+    water_exit coin red_coin star_appear star_get one_up pause menu_select camera_move camera_buzz
+    footstep life_lost unpause punch1 punch2 jump_kick dialog_open text_blip dialog_next dialog_close`;
   for (const n of names.split(/\s+/)) assert.equal(typeof SFX[n], 'function', n);
 });
 

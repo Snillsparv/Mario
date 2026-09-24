@@ -5,7 +5,11 @@
 // For automation (no speakers in CI): offline renders with analysis and pictures.
 //   __renderMusic(name, seconds = 20, fromBeat = 0)  -> analysis; draws waveform + spectrogram
 //   __renderCue(name, barsBefore = 3)               -> the in-game ending of a cue song
-//   __renderSfx(names?, opts?)                      -> { name: analysis } for one-shots
+//   __renderSfx(names?, opts?, seconds = 3)         -> { name: analysis } for one-shots
+//   __renderSequence(cues, seconds?, spot?)         -> analysis of timed sfx [[t, name, opts?]]
+//                                                      through the real engine voices (and the
+//                                                      ambience at a SPOTS listener, if given)
+//   __renderCombo() / __renderDialog(spot?)         -> the punch combo / a sign being read
 //   __renderAmbience(spot, seconds = 30, music?)    -> analysis of the live ambience code
 //   __stress(names?)                                -> peak of many sfx at once over music
 //   __loopSeam(name)                                -> analysis around the loop point
@@ -253,7 +257,8 @@ function drawRender(g, buf, title) {
   g.fillRect(0, 20 + waveH / 2 - 0.95 * (waveH / 2), W, 1);
   label(g, title, 8, 14);
 
-  const N = 2048;
+  // Short renders (single sound effects) use a short FFT, so their transients show.
+  const N = L.length < buf.sampleRate * 1.2 ? 512 : 2048;
   const top = waveH + 40;
   const specH = H - top - 20;
   const fLo = 40;
@@ -315,7 +320,7 @@ const SPOTS = {
 };
 
 // Sounds for the headroom stress test: the loudest ones, all at once.
-const STRESS = ['star_get', 'star_appear', 'ground_pound_land', 'land_hard', 'triple_jump', 'hurt', 'coin', 'red_coin', 'one_up', 'bonk', 'splash', 'wallkick'];
+const STRESS = ['star_get', 'star_appear', 'ground_pound_land', 'land_hard', 'triple_jump', 'hurt', 'coin', 'red_coin', 'one_up', 'bonk', 'splash', 'wallkick', 'kick', 'jump_kick', 'jump'];
 
 export async function setup({ scene, THREE, ui, params }) {
   scene.background = new THREE.Color(0x111111);
@@ -376,11 +381,11 @@ export async function setup({ scene, THREE, ui, params }) {
     return publish({ status: 'done', endAt, ...whole, windowsDb, afterFadeDb: after.rmsDb });
   };
 
-  window.__renderSfx = async (names = Object.keys(SFX), opts = {}) => {
+  window.__renderSfx = async (names = Object.keys(SFX), opts = {}, seconds = 3) => {
     publish({ status: 'running' });
     const out = {};
     for (const name of names) {
-      const buf = await renderOffline(3, (ctx, mix, t0) => {
+      const buf = await renderOffline(seconds, (ctx, mix, t0) => {
         SFX[name](ctx, mix.sfx, t0, { p: 1, terrain: 'grass', big: true, index: 8, ...opts });
       });
       const { windowsDb, ...a } = analyze(buf);
@@ -388,6 +393,46 @@ export async function setup({ scene, THREE, ui, params }) {
       if (names.length === 1) drawRender(g, buf, name);
     }
     return publish({ status: 'done', ...out });
+  };
+
+  // Timed sound effects through the engine's own voice path (pitch jitter, voice gain), with
+  // the live ambience heard from a SPOTS listener if `spot` is given. cues: [[t, name, opts?]].
+  window.__renderSequence = async (cues, seconds = null, spot = null) => {
+    publish({ status: 'running' });
+    const end = seconds ?? Math.max(...cues.map(([t]) => t)) + 1.5;
+    const buf = await renderOffline(end, (ctx, mix, t0) => {
+      const engine = offlineEngine(ctx, mix);
+      if (spot) engine.setListener(...SPOTS[spot]);
+      const pending = cues.map(([t, name, opts]) => ({ at: t0 + t, name, opts })).sort((a, b) => a.at - b.at);
+      // Cues are started from the STEP callbacks, a little late at worst, like the live game's
+      // frame-quantised events; the ambience (if any) updates on the same clock.
+      return (t) => {
+        while (pending.length && pending[0].at <= t + 1e-6) {
+          const c = pending.shift();
+          engine.voice(SFX[c.name], { terrain: 'grass', ...c.opts }, mix.sfx);
+        }
+        if (spot && t >= t0) engine.update(STEP);
+      };
+    });
+    drawRender(g, buf, `sequence: ${cues.map(([t, n]) => `${n}@${t}`).join(' ').slice(0, 140)}`);
+    const { windowsDb, ...a } = analyze(buf, 0.1);
+    return publish({ status: 'done', ...a, windowsDb });
+  };
+
+  // The ground combo near its in-game rhythm (a hit every 7 ticks at 30 Hz, rounded to the
+  // render's 0.1 s step), then a jump and a flying kick.
+  window.__renderCombo = () =>
+    window.__renderSequence([[0, 'punch1'], [0.2, 'punch2'], [0.4, 'kick'], [1.2, 'jump'], [1.5, 'jump_kick']], 2.4);
+
+  // A sign read at the dialog box's pace: open, a blip every 3 characters of typing (at 30
+  // characters a second), next page, more typing, close; over the spawn ambience by default.
+  window.__renderDialog = (spot = 'spawn') => {
+    const cues = [[0, 'dialog_open']];
+    for (let i = 0; i < 14; i++) cues.push([0.3 + i * 0.1, 'text_blip']);
+    cues.push([2.2, 'dialog_next']);
+    for (let i = 0; i < 10; i++) cues.push([2.4 + i * 0.1, 'text_blip']);
+    cues.push([4, 'dialog_close']);
+    return window.__renderSequence(cues, 5, spot);
   };
 
   // The live ambience code (and optionally a music track) heard from one of SPOTS.

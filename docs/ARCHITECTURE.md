@@ -3,7 +3,7 @@
 An N64-era 3D platformer level (a castle on a moated island with a lawn, hills, a
 waterfall and a pond) rendered with three.js. The goal is to recreate the **look and feel**
 of a late-90s N64 platformer's castle-grounds hub as closely as possible: low-poly
-geometry, small bilinear-filtered textures, baked vertex-colour lighting, billboard trees,
+geometry, small bilinear-filtered textures, baked vertex-colour lighting, low-poly 3D trees,
 panoramic sky, distance fog, a 30 Hz simulation with momentum-based movement, and a
 camera that trails the hero.
 
@@ -93,7 +93,9 @@ so the world (water, waterfall, flags, clouds), the objects and the hero all fre
 
 Input (`src/core/input.js`): `poll()` once per tick; a key or pad button that goes down and
 up between two polls still reads as held for one poll (`pressed`, then `released`);
-`sample()` per render frame latches pad buttons; `flush()` drops latched taps and makes held
+The keyboard's digital stick eases in from rest (0.3 to full over ~0.37 s) so a run starts
+gently, like tilting an analog stick; turning and releasing are immediate, and gamepads keep
+their true analog value. `sample()` per render frame latches pad buttons; `flush()` drops latched taps and makes held
 buttons not count as fresh presses; `setOverride(partialController)` for tests.
 Gamepads: every connected standard-mapping pad is read and merged (buttons OR'ed, the stick
 pushed furthest wins), so an idle or odd device at index 0 cannot hide the real controller;
@@ -276,6 +278,10 @@ explorer hat with a mustard band and a small leaf sprig; a mustard-yellow scarf 
 trailing tails; a burnt-orange tunic with a brown belt; cream gloves; dark-brown boots.
 Built from low-poly primitives with Lambert/Gouraud shading lit by the sun + ambient.
 Includes an N64-style dark circular blob shadow projected onto the floor.
+Attack swell (like classic cartoon platformers): on `punch1`/`punch2` the striking mitten
+balloons to ~2x about its wrist joint, on `kick`/`jump_kick` the kicking boot to ~1.8x
+about `dims.BOOT_PIVOT_Y`, and a dive swells both mittens slightly; pose channels
+`handLSwell/handRSwell/footLSwell/footRSwell`, deflating smoothly when an attack is cut short.
 
 ## Camera (`src/camera/CameraController.js`)
 
@@ -326,7 +332,7 @@ the collider's sight lines and `getYaw()` ignore the aim. Because of the aim the
 longer at the centre of the view, so `cam.apply()` publishes **`camera.userData.focus`**
 (`{ x, y, z }`, the interpolated look point `LOOK_HEIGHT` above the hero's feet, one reused
 object; `null` while there is no hero to keep in view: title, intro, first person). The
-props' foliage fade (`src/world/props/billboards.js` `heroLocator`) reads it to find the
+props' foliage fade (`src/world/props/foliageFade.js`) reads it to find the
 hero. Only when `focus` is `undefined` (previews, other cameras) does it estimate the hero
 from the camera position and horizontal view direction, assuming the default 8° orbit pitch
 and 1000–1450 trailing distance. That estimate ignores the aim, so it is only approximate:
@@ -474,12 +480,16 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `starCollected` | `{ pos }` | objects |
 | `lifeLost` / `oneUp` | `{}` | player / objects (main counts lives; audio plays sfx) |
 | `pause` / `unpause` / `gameStart` / `gameOver` | `{}` | main (audio consumes all four: ducks, menu-track stop, unlock, `game_over` jingle) |
+| `signRead` | `{ sign }` (a `layout.SIGNS` entry) | player (B in front of a sign); the dialog box opens |
+| `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,
-wallkick, dive, ground_pound, ground_pound_land, punch, kick, land, land_hard, skid,
+wallkick, dive, ground_pound, ground_pound_land, punch1, punch2, kick, jump_kick, land,
+land_hard, skid,
 bonk, hurt, ledge_grab, climb, swim, splash, water_exit, coin, red_coin, star_appear,
 star_get, one_up, pause, menu_select`, plus `footstep, life_lost, unpause, camera_move,
-camera_buzz`. Unknown names must be ignored silently.
+camera_buzz`, and the dialog box's `dialog_open, text_blip, dialog_next, dialog_close`.
+Unknown names must be ignored silently.
 
 ## Tooling
 

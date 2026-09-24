@@ -4,14 +4,16 @@
 //   {
 //     stickX, stickY,   // -1..1, stick up = +1 (after deadzone, clamped to the unit circle)
 //     stickMag,         // 0..1
+//     rawStickMag,      // stickMag before the keyboard ease-in (>= stickMag; the same for a pad)
 //     A, B, Z, R, START, CU, CD, CL, CR: { down, pressed, released }
 //     mouseDX, mouseDY  // accumulated mouse drag since the last poll (pixels), for camera orbit
 //   }
 //
-// Keyboard: WASD move, Q = walk slowly, Space/K = A (jump), J = B (punch/dive),
-// Shift/L = Z (crouch/ground pound), arrow keys = C buttons (camera), C = R (camera mode),
-// Enter/Esc = Start, mouse drag = camera orbit. Gamepad (standard mapping): left stick, A = A, X/B = B, triggers = Z,
-// right stick = C buttons, RB = R, Start = Start.
+// Keyboard: WASD move (eased in from rest, see KEY_RAMP_*), Q = walk slowly, Space/K = A (jump),
+// J = B (punch/dive/read a sign), Shift/L = Z (crouch/ground pound), arrow keys = C buttons
+// (camera), C = R (camera mode), Enter/Esc = Start, mouse drag = camera orbit. Gamepad
+// (standard mapping): left stick, A = A, X/B = B, triggers = Z, right stick = C buttons,
+// RB = R, Start = Start.
 //
 // Gamepads: every connected pad with the standard mapping is read and merged (buttons OR'ed,
 // the stick pushed furthest wins), so an idle or odd device ahead of the real controller in
@@ -49,6 +51,21 @@ const KEY_ENTRIES = Object.entries(KEYMAP);
 
 const DEADZONE = 0.18;
 
+// Keyboard stick ease-in. A digital key would slam the virtual stick to full at once (the
+// hero would dig in at a sprint from the first tick); instead a direction key pressed from
+// rest pushes the stick from KEY_RAMP_START to full over KEY_RAMP_TICKS polls on an ease-in
+// curve, like easing an analog stick forward. Only the magnitude ramps: the direction always
+// follows the keys at once (turning never lags), releasing every key drops the stick to
+// neutral at once, and keys pressed again within KEY_RAMP_GRACE polls (switching W to S for a
+// turnaround, say) carry on from where the ramp was. Gamepad sticks keep their analog value.
+// The snapshot also carries rawStickMag, the keys' full push (the stick is eased in along the
+// same direction): the hero uses it for stick thresholds that must not wait for the ramp
+// (jumping out of / diving under the water with S / W + jump) and once he already moves
+// faster than the eased stick asks for (see Player.readInput).
+export const KEY_RAMP_TICKS = 11; // ~0.37 s at 30 polls per second
+export const KEY_RAMP_START = 0.3; // first poll: already moves and turns the hero
+export const KEY_RAMP_GRACE = 4; // polls without a direction key before the ramp restarts
+
 function browserGamepads() {
   return typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
 }
@@ -71,6 +88,8 @@ export class Input {
     this.override = null;
     this.prev = buttonRecord();
     this.enabled = true;
+    this.keyRamp = 0; // keyboard stick ease-in progress 0..1 (see KEY_RAMP_*)
+    this.keyIdlePolls = Infinity; // polls since a direction key was last held
     this.getGamepads = browserGamepads; // replaceable (tests)
     this._pads = []; // scratch: the pads read this poll/sample
 
@@ -151,6 +170,19 @@ export class Input {
     if (ry > 0.5 || b(13)) out.CD = true;
   }
 
+  // Advances the keyboard stick ease-in by one poll (direction keys held or not) and returns
+  // the stick magnitude for held keys.
+  _keyStick(held) {
+    if (!held) {
+      this.keyIdlePolls++;
+      return 0;
+    }
+    if (this.keyIdlePolls > KEY_RAMP_GRACE) this.keyRamp = 0;
+    this.keyIdlePolls = 0;
+    this.keyRamp = Math.min(1, this.keyRamp + 1 / KEY_RAMP_TICKS);
+    return KEY_RAMP_START + (1 - KEY_RAMP_START) * this.keyRamp * this.keyRamp;
+  }
+
   // Call once per render frame: latches gamepad buttons that are held now, so a flick
   // shorter than a 30 Hz tick still reaches the next poll().
   sample() {
@@ -170,6 +202,7 @@ export class Input {
   poll() {
     let sx = 0;
     let sy = 0;
+    let raw = 0; // the stick's magnitude before the keyboard ease-in
     const held = this.held;
     for (let i = 0; i < BUTTONS.length; i++) {
       const b = BUTTONS[i];
@@ -185,9 +218,12 @@ export class Input {
       if (k.has('KeyA')) sx -= 1;
       const len = Math.hypot(sx, sy);
       if (len > 0) {
-        const walk = k.has('KeyQ') ? 0.45 : 1;
-        sx = (sx / len) * walk;
-        sy = (sy / len) * walk;
+        raw = k.has('KeyQ') ? 0.45 : 1;
+        const m = raw * this._keyStick(true);
+        sx = (sx / len) * m;
+        sy = (sy / len) * m;
+      } else {
+        this._keyStick(false);
       }
       const tapped = this.tapped;
       for (let i = 0; i < KEY_ENTRIES.length; i++) {
@@ -216,9 +252,11 @@ export class Input {
         const scaled = Math.min(1, (pm - DEADZONE) / (1 - DEADZONE));
         sx = (px / pm) * scaled;
         sy = (py / pm) * scaled;
+        raw = scaled;
       }
     } else {
       for (const b of BUTTONS) held[b] = false;
+      this._keyStick(false);
     }
     this.tapped.clear();
 
@@ -226,6 +264,7 @@ export class Input {
       const o = this.override;
       if (typeof o.stickX === 'number') sx = o.stickX;
       if (typeof o.stickY === 'number') sy = o.stickY;
+      if (typeof o.stickX === 'number' || typeof o.stickY === 'number') raw = Math.hypot(sx, sy);
       for (let i = 0; i < BUTTONS.length; i++) if (o[BUTTONS[i]]) held[BUTTONS[i]] = true;
     }
 
@@ -236,7 +275,8 @@ export class Input {
       mag = 1;
     }
 
-    const out = { stickX: sx, stickY: sy, stickMag: mag, mouseDX: this.mouseDX, mouseDY: this.mouseDY };
+    const rawStickMag = mag > 0 ? Math.min(1, Math.max(raw, mag)) : 0;
+    const out = { stickX: sx, stickY: sy, stickMag: mag, rawStickMag, mouseDX: this.mouseDX, mouseDY: this.mouseDY };
     this.mouseDX = 0;
     this.mouseDY = 0;
     for (let i = 0; i < BUTTONS.length; i++) {
@@ -262,7 +302,7 @@ export class Input {
 
 // A neutral controller snapshot (useful for tests and cutscenes).
 export function neutralController() {
-  const out = { stickX: 0, stickY: 0, stickMag: 0, mouseDX: 0, mouseDY: 0 };
+  const out = { stickX: 0, stickY: 0, stickMag: 0, rawStickMag: 0, mouseDX: 0, mouseDY: 0 };
   for (const b of BUTTONS) out[b] = { down: false, pressed: false, released: false };
   return out;
 }

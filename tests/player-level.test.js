@@ -5,6 +5,11 @@ import * as THREE from 'three';
 import { buildLevel } from '../src/world/level.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
+import { Events } from '../src/core/events.js';
+
+// Run-up length for the tree jumps: the run starts from rest and eases in (tiptoe -> walk ->
+// run), so the jump window below is reached at a running speed of ~14-15.
+const TREE_RUN_UP = 420;
 
 test('running jumps at every tree grab its trunk from all directions', () => {
   const level = buildLevel(new THREE.Scene());
@@ -17,13 +22,13 @@ test('running jumps at every tree grab its trunk from all directions', () => {
   for (const pole of col.poles) {
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * 2 * Math.PI + 0.1;
-      const x = pole.x + Math.sin(a) * 300;
-      const z = pole.z + Math.cos(a) * 300;
+      const x = pole.x + Math.sin(a) * TREE_RUN_UP;
+      const z = pole.z + Math.cos(a) * TREE_RUN_UP;
       const floor = col.findFloor(x, pole.y0 + 400, z, 0);
       // Only clear run-ups on open, fairly level ground (nothing else in the way).
       if (!floor.surface || floor.surface.normal.y < 0.9 || Math.abs(floor.y - pole.y0) > 60) continue;
-      const hit = col.raycast({ x, y: floor.y + 100, z }, { x: pole.x - x, y: 0, z: pole.z - z }, 300, { floors: false, ceilings: false });
-      if (hit && hit.distance < 200) continue;
+      const hit = col.raycast({ x, y: floor.y + 100, z }, { x: pole.x - x, y: 0, z: pole.z - z }, TREE_RUN_UP, { floors: false, ceilings: false });
+      if (hit && hit.distance < TREE_RUN_UP - 100) continue;
       tries++;
       const yaw = Math.atan2(pole.x - x, pole.z - z);
       p.teleport(x, floor.y, z, yaw);
@@ -122,4 +127,33 @@ test('walking slowly off the sides of the castle door steps: no sideways pop, ne
   }
   assert.ok(runs > 50, `${runs} runs`);
   assert.deepEqual(bad, []);
+});
+
+test('every sign in the level is read from in front of its face, never from behind', () => {
+  const { collision: col, layout, spawn } = getLevel();
+  const events = new Events();
+  const reads = [];
+  events.on('signRead', (e) => reads.push(e.sign.id));
+  const p = new Player({ collision: col, events, spawn });
+  const ctl = new ScriptedController();
+  const problems = [];
+  for (const s of layout.SIGNS) {
+    for (const [side, off] of [['front', 0], ['front-left', 0.6], ['front-right', -0.6], ['behind', Math.PI]]) {
+      const a = s.yaw + off;
+      const x = s.x + Math.sin(a) * 400;
+      const z = s.z + Math.cos(a) * 400;
+      const yaw = Math.atan2(s.x - x, s.z - z);
+      p.teleport(x, col.findFloor(x, 5000, z).y, z, yaw);
+      p.setAction('idle');
+      // Walk up to the board (the signpost's collider stops him), then press B.
+      for (let t = 0; t < 90 && Math.hypot(p.pos.x - s.x, p.pos.z - s.z) > 95; t++) p.update(ctl.next({ stickY: 1 }), yaw);
+      p.update(ctl.next({}), yaw);
+      reads.length = 0;
+      p.update(ctl.next({ B: true }), yaw);
+      const want = side === 'behind' ? 'punch' : 'reading';
+      if (p.action !== want || reads.length !== (side === 'behind' ? 0 : 1)) problems.push(`${s.id} ${side}: ${p.action}`);
+      if (p.action === 'reading') p.endReading();
+    }
+  }
+  assert.deepEqual(problems, []);
 });

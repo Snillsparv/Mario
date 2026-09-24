@@ -22,6 +22,12 @@ export const TEXT_STYLES = {
     outline: '#101024',
     shadow: 'rgba(0,0,20,0.5)',
   },
+  // Sign dialog text on its dark panel: near-white with a soft, translucent edge and shadow.
+  dialog: {
+    stops: [[0, '#ffffff'], [0.6, '#f6f7ff'], [1, '#d9e0f6']],
+    outline: 'rgba(0,0,18,0.5)',
+    shadow: 'rgba(0,0,10,0.55)',
+  },
   key: {
     stops: [[0, '#fffbe0'], [0.5, '#ffe070'], [1, '#f0b020']],
     outline: '#241004',

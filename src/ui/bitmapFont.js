@@ -2,7 +2,8 @@
 //
 // BIG_FONT: chunky 10-row glyphs with 3-pixel stems for counters and headings, rendered
 //           with a warm gradient and a dark outline (see raster.js).
-// SMALL_FONT: 7-row cap height (+2 descender rows) mixed-case font for legends and hints.
+// SMALL_FONT: 7-row cap height (+2 descender rows) mixed-case font for legends, hints and
+//             the sign dialog box (DialogBox.js).
 //
 // Glyphs are row strings: '#' = filled pixel, anything else = empty. Rows shorter than the
 // font height are padded with empty rows at the bottom (descender space).
@@ -128,6 +129,9 @@ const small = {
   '!': ['#', '#', '#', '#', '#', '.', '#'],
   '?': ['.###.', '#...#', '....#', '...#.', '..#..', '.....', '..#..'],
   "'": ['#', '#'],
+  '"': ['#.#', '#.#'],
+  ';': ['..', '..', '.#', '..', '..', '.#', '.#', '#.'],
+  '&': ['.##..', '#..#.', '#.#..', '.#...', '#.#.#', '#..#.', '.##.#'],
   '(': ['.#', '#.', '#.', '#.', '#.', '#.', '.#'],
   ')': ['#.', '.#', '.#', '.#', '.#', '.#', '#.'],
   '×': ['.....', '#...#', '.#.#.', '..#..', '.#.#.', '#...#'],

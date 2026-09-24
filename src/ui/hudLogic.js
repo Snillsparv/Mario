@@ -92,7 +92,7 @@ export const KEY_CONTROLS = [
   ['WASD', 'Move'],
   ['Q', 'Walk (hold)'],
   ['Space / K', 'Jump'],
-  ['J', 'Attack / Dive'],
+  ['J', 'Attack / Dive / Read'],
   ['Shift / L', 'Crouch / Ground pound'],
   ['Arrow keys', 'Camera'],
   ['C', 'Camera mode'],
@@ -104,7 +104,7 @@ export const KEY_CONTROLS = [
 export const PAD_CONTROLS = [
   ['Left stick', 'Move (tilt to walk)'],
   ['A', 'Jump'],
-  ['B / X', 'Attack / Dive'],
+  ['B / X', 'Attack / Dive / Read'],
   ['LB / LT / RT', 'Crouch / Ground pound'],
   ['Right stick / D-pad', 'Camera'],
   ['RB', 'Camera mode'],

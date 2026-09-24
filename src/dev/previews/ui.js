@@ -1,4 +1,10 @@
-// UI preview: /preview.html?m=ui&state=full|damaged|lowhp|redcoin|paused|gameover|title|glyphs
+// UI preview: /preview.html?m=ui&state=full|damaged|lowhp|redcoin|paused|gameover|title|glyphs|dialog
+// (state=dialog: the sign dialog box over the HUD. &sign=<layout.SIGNS id> (default welcome),
+// &page=N (screen, 0-based; default 1) &progress=0..1 (typed share; default 0.55, 1 = complete
+// with its page marker) freeze it; &live=1 types in real time instead (J/K/Space/click press,
+// it reopens after the last page); &grid=1 shows four boxes in quarter-size pictures: first
+// page typing, a complete page (arrow), a later page typing and the last page complete (end
+// marker). Hooks: __dialog (the DialogBox), __sfx (sfx names), __closed (dialogClosed events).)
 // (state=gameover: the GameOverCard over a HUD at x0 lives; &hud=0 hides the HUD via
 // setVisible(false), in any HUD state)
 // (&mute=1 with state=title: muted stand-in audio, so the card skips PRESS ANY KEY)
@@ -10,6 +16,8 @@
 import { HUD } from '../../ui/HUD.js';
 import { TitleScreen } from '../../ui/TitleScreen.js';
 import { GameOverCard } from '../../ui/GameOverCard.js';
+import { DialogBox } from '../../ui/DialogBox.js';
+import { SIGNS } from '../../world/layout.js';
 import { Events } from '../../core/events.js';
 import { BIG_FONT, SMALL_FONT } from '../../ui/bitmapFont.js';
 import { ICONS } from '../../ui/icons.js';
@@ -22,6 +30,7 @@ const STATES = {
   redcoin: { lives: 4, coins: 12, stars: 0, health: 8 },
   paused: { lives: 4, coins: 37, stars: 1, health: 6 },
   gameover: { lives: 0, coins: 14, stars: 0, health: 8 },
+  dialog: { lives: 4, coins: 3, stars: 0, health: 8 },
 };
 
 function skyTexture(THREE) {
@@ -171,6 +180,7 @@ function runState(state, ui, params) {
     card.setViewport(vp);
     window.__gameOver = card.show();
   }
+  const dialogTick = state === 'dialog' ? dialogPreview(ui, events, vp, params) : null;
   // Freeze the red-coin pop-up at a fixed age for screenshots (the HUD's aging is ignored).
   const popupAge = Number(params.get('age') || 0.5);
   const frozenPopup = {
@@ -187,8 +197,73 @@ function runState(state, ui, params) {
       while (acc >= 1 / 30) {
         acc -= 1 / 30;
         hud.update(s);
+        dialogTick?.();
       }
       if (state === 'redcoin') hud.redPopup = frozenPopup;
     },
+  };
+}
+
+// Put a box at screen `page` with `progress` of its text typed (frozen: no update() calls).
+function freezeDialog(box, page, progress) {
+  const lg = box.logic;
+  lg.index = Math.max(0, Math.min(lg.screens.length - 1, page));
+  lg.count = Math.round(Math.max(0, Math.min(1, progress)) * lg.screen.length);
+  lg.wait = 0;
+}
+
+// state=dialog. Returns a 30 Hz tick for live mode (null when frozen).
+function dialogPreview(ui, events, vp, params) {
+  const sign = SIGNS.find((x) => x.id === params.get('sign')) || SIGNS[0];
+  window.__sfx = [];
+  window.__closed = [];
+  events.on('sfx', (e) => window.__sfx.push(e.name));
+  events.on('dialogClosed', (e) => window.__closed.push(e));
+  if (params.get('grid')) {
+    // Four quarter-size pictures (each box scales with its own viewport).
+    const W = vp?.width ?? innerWidth;
+    const H = vp?.height ?? innerHeight;
+    const x0 = vp?.x ?? 0;
+    const cells = [
+      [0, 0.35],
+      [1, 1],
+      [1, 0.6],
+      [99, 1],
+    ];
+    window.__dialogs = cells.map(([page, progress], i) => {
+      const cell = { x: x0 + (i % 2) * Math.floor(W / 2), y: Math.floor(i / 2) * Math.floor(H / 2), width: Math.floor(W / 2), height: Math.floor(H / 2) };
+      const frame = document.createElement('div');
+      frame.style.cssText = `position:absolute;left:${cell.x}px;top:${cell.y}px;width:${cell.width}px;height:${cell.height}px;outline:1px solid #fff8;pointer-events:none`;
+      ui.appendChild(frame);
+      const box = new DialogBox(ui);
+      box.setViewport(cell);
+      box.open(sign);
+      freezeDialog(box, page, progress);
+      return box;
+    });
+    window.__dialog = window.__dialogs[0];
+    return null;
+  }
+  const box = new DialogBox(ui, { events });
+  box.setViewport(vp);
+  window.__dialog = box;
+  events.emit('signRead', { sign });
+  if (!params.get('live')) {
+    freezeDialog(box, Number(params.get('page') ?? 1), Number(params.get('progress') ?? 0.55));
+    return null;
+  }
+  // Live: keys and clicks press A; the sign reopens a second after its last page.
+  let press = false;
+  addEventListener('keydown', (e) => {
+    if (!e.repeat && ['KeyJ', 'KeyK', 'Space', 'Enter'].includes(e.code)) press = true;
+  });
+  let reopen = 0;
+  events.on('dialogClosed', () => (reopen = 30));
+  const up = { down: false, pressed: false, released: false };
+  return () => {
+    if (reopen > 0 && --reopen === 0) events.emit('signRead', { sign });
+    const A = press ? { down: true, pressed: true, released: false } : up;
+    press = false;
+    box.update({ A, B: up });
   };
 }

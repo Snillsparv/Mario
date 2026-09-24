@@ -18,6 +18,13 @@ const MAX_CYCLE_STEP = 1;
 // Player's cyclePhase (at most this many cycles per second) so footstep events fire on
 // heel strikes (both sides put a heel strike at every half cycle).
 const PHASE_LOCK_RATE = 0.4;
+// Attack swells (mitten / boot size, pose.js) grow as authored but never deflate faster than
+// this (swell units per second: a 1.8x fist takes >= 0.1 s to shrink back), so a strike cut
+// short by a quick-blending anim (a jump out of a punch) shrinks smoothly instead of popping.
+// The authored deflations are slower, so they pass unchanged.
+const SWELL_DEFLATE_RATE = 8;
+
+const release = (shown, target, step) => Math.max(target, shown - step);
 
 export class Animator {
   constructor() {
@@ -32,6 +39,7 @@ export class Animator {
     this.prevCycle = NaN;
     this.gaitPhase = 0;
     this.externalLook = false; // the Player drives headYaw during this anim
+    this.swell = { handL: 0, handR: 0, footL: 0, footR: 0 }; // shown attack swells
     this.ctx = { t: 0, ph: 0, stride: 0, spd: 0, vy: 0, time: 0, bank: 0, headYaw: 0, externalLook: false };
   }
 
@@ -72,7 +80,17 @@ export class Animator {
     const k = this.blendDur > 0 ? Math.min(1, this.blendTime / this.blendDur) : 1;
     if (k >= 1) copyPose(this.pose, this.target);
     else blendPose(this.pose, this.from, this.target, k * k * (3 - 2 * k));
+    this.releaseSwell(this.pose, dt);
     return this.pose;
+  }
+
+  releaseSwell(p, dt) {
+    const step = SWELL_DEFLATE_RATE * dt;
+    const s = this.swell;
+    p.handLSwell = s.handL = release(s.handL, p.handLSwell, step);
+    p.handRSwell = s.handR = release(s.handR, p.handRSwell, step);
+    p.footLSwell = s.footL = release(s.footL, p.footLSwell, step);
+    p.footRSwell = s.footR = release(s.footR, p.footRSwell, step);
   }
 
   // Advances the gait phase by the distance the Player covered since the last frame.

@@ -95,14 +95,16 @@ const pole = {
     }
     let anim = 'pole_hold';
     const top = poleTop(p.pole);
-    if (c.stickY > 0.2 && p.poleY < top) {
-      p.poleY = Math.min(top, p.poleY + T.POLE_CLIMB_SPEED * c.stickY);
-      p.cyclePhase += c.stickY * 0.08;
+    // The stick as pushed (no keyboard ease-in: that only softens starting to run).
+    const sy = p.rawStickY;
+    if (sy > 0.2 && p.poleY < top) {
+      p.poleY = Math.min(top, p.poleY + T.POLE_CLIMB_SPEED * sy);
+      p.cyclePhase += sy * 0.08;
       anim = 'pole_climb';
-    } else if (c.stickY < -0.2) {
-      p.poleY += T.POLE_SLIDE_SPEED * c.stickY;
+    } else if (sy < -0.2) {
+      p.poleY += T.POLE_SLIDE_SPEED * sy;
     }
-    p.faceYaw = wrapAngle(p.faceYaw - c.stickX * 0.08);
+    p.faceYaw = wrapAngle(p.faceYaw - p.rawStickX * 0.08);
     placeOnPole(p);
     p.setAnim(anim);
     if (p.floor.surface && p.poleY <= p.floor.y) standAtPoleFoot(p);

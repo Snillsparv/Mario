@@ -5,8 +5,9 @@
 //   model.update(renderState, dtSeconds);   // every render frame
 //
 // object3D sits at the feet (rs.pos) and is yawed to rs.yaw (front faces +Z). Everything
-// else (poses, flips, squash, physical pitch/roll, blinking, invincibility flicker, the
-// shadow) is handled inside. No lights are added: the renderer's sun + ambient shade Pip.
+// else (poses, flips, squash, attack swells, physical pitch/roll, blinking, invincibility
+// flicker, the shadow) is handled inside. No lights are added: the renderer's sun + ambient
+// shade Pip.
 
 import * as THREE from 'three';
 import { angleDiff, clamp } from '../core/math.js';

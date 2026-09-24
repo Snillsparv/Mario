@@ -6,6 +6,7 @@
 //   strip=<anim>&ts=0.1,0.3|phs=0,0.25   one anim at several times (or cycle phases)
 //   faces=1                        every facial expression side by side
 //   ph=<cyclePhase>&fv=<forwardVel>&vy=<vy>&pitch=&roll=&slope=&inv=1&action=   RenderState overrides
+//   zoom=<k>                       single pose / strip: camera k times closer (default 1)
 //   yawrate=<rad/s>                turn continuously (the view counter-rotates) to show the bank
 //   (phs / ph are gait phases for walk/run/tiptoe/crawl: converted to the Player's cyclePhase)
 //   wall_brace is the model's pose for the Player's air_hit_wall action (anim wallkick).
@@ -201,6 +202,10 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     view = { pos: [230, 170 + lift * 0.6, 430], look: [0, 75 + lift * 0.6, 0] };
     labels.push(label(`${anim}  t=${actors[0].rs.animTime}`, 0, -30, 0));
   }
+
+  // zoom=k: move the camera k times closer to the look point.
+  const zoom = num('zoom', 1);
+  if (zoom > 0 && zoom !== 1) view.pos = view.pos.map((v, i) => view.look[i] + (v - view.look[i]) / zoom);
 
   return {
     camera: view,

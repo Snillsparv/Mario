@@ -5,7 +5,8 @@ import * as T from '../physics/tuning.js';
 import { groundStep, STEP_LEFT_GROUND } from '../physics/step.js';
 import { decelerate, setForwardVel } from '../physics/movement.js';
 import { isSteep } from '../physics/slopes.js';
-import { fallOff, jumpFromGround } from './common.js';
+import { approachAngle } from '../../core/math.js';
+import { fallOff, jumpFromGround, tryReadSign } from './common.js';
 
 // Standing in place: re-snaps to the floor and falls if it disappears.
 function standStill(p) {
@@ -33,7 +34,7 @@ const idle = {
   update(p, c) {
     if (isSteep(p.floor)) return p.setAction('butt_slide');
     if (c.A.pressed) return jumpFromGround(p);
-    if (c.B.pressed) return p.setAction('punch');
+    if (c.B.pressed) return tryReadSign(p) || p.setAction('punch');
     if (c.Z.down) return p.setAction('crouch');
     if (p.stickHeld) {
       p.faceYaw = p.intendedYaw;
@@ -68,10 +69,30 @@ const crouch = {
   },
 };
 
-// Punch, punch, kick combo: B during a hit queues the next one.
+// Reading a sign (B in front of it, see tryReadSign): stands still, turns to face the board
+// and ignores the controller until player.endReading() (the dialog box closed).
+const reading = {
+  group: 'stationary',
+  anim: 'idle',
+  enter(p, entry) {
+    p.readingSign = entry;
+    setForwardVel(p, 0);
+    p.emit('signRead', { sign: entry.sign });
+  },
+  update(p) {
+    const s = p.readingSign;
+    const dx = s.x - p.pos.x;
+    const dz = s.z - p.pos.z;
+    if (dx * dx + dz * dz > 1) p.faceYaw = approachAngle(p.faceYaw, Math.atan2(dx, dz), T.READ_TURN_RATE);
+    return standStill(p);
+  },
+};
+
+// Punch, punch, kick combo: B during a hit queues the next one. Each step sends its own
+// sound name (the audio has a light jab, a heavier second jab and a kick).
 const PUNCH_STEPS = [
-  { anim: 'punch1', ticks: 7, sfx: 'punch' },
-  { anim: 'punch2', ticks: 7, sfx: 'punch' },
+  { anim: 'punch1', ticks: 7, sfx: 'punch1' },
+  { anim: 'punch2', ticks: 7, sfx: 'punch2' },
   { anim: 'kick', ticks: 10, sfx: 'kick' },
 ];
 
@@ -81,8 +102,8 @@ const punch = {
     p.punchStep = 0;
     p.punchQueued = false;
     p.punchStart = 0;
-    p.setAnim('punch1', true);
-    p.sfx('punch');
+    p.setAnim(PUNCH_STEPS[0].anim, true);
+    p.sfx(PUNCH_STEPS[0].sfx);
   },
   update(p, c) {
     if (c.A.pressed) return jumpFromGround(p);
@@ -112,6 +133,7 @@ export const STATIONARY_ACTIONS = {
   idle,
   sleep,
   crouch,
+  reading,
   punch,
   hurt_ground: hurtGround,
   hard_fall: hardFall,

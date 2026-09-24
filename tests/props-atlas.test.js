@@ -1,7 +1,7 @@
-// The foliage atlas painted in node through a minimal stand-in canvas (texgen only needs
-// getContext('2d') with createImageData / putImageData): every tree and bush is painted
-// inside its cell with a clear margin, so no canopy is cut off flat at a cell edge.
-// (Playtest: the two tree canopies had opaque texels in their cells' top row.)
+// The props' leaf and bark textures painted in node through a minimal stand-in canvas (texgen
+// only needs getContext('2d') with createImageData / putImageData): both tile seamlessly (the
+// canopies and trunks repeat them), the leaves are a dense pile of clumps in greens, and the
+// bark is brown.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -23,46 +23,66 @@ globalThis.OffscreenCanvas ??= class {
     return this.ctx;
   }
 };
-const { FOLIAGE, FOLIAGE_CELL, FOLIAGE_MARGIN, BUSH_CELL_HEIGHT, canopyProfile, foliageAtlas } = await import(
-  '../src/world/props/textures.js'
-);
+const { LEAF_SIZE, barkTexture, leafTexture } = await import('../src/world/props/textures.js');
 
-const atlas = foliageAtlas().image.getContext('2d').image;
-const W = FOLIAGE_CELL * 2;
-// Opaque bounds of cell i: rows from the cell's top edge, columns from its left edge.
-function bounds(i) {
-  const ox = (i % 2) * FOLIAGE_CELL;
-  const oy = Math.floor(i / 2) * FOLIAGE_CELL;
-  const b = { top: Infinity, bottom: -1, left: Infinity, right: -1 };
-  for (let y = 0; y < FOLIAGE_CELL; y++) {
-    for (let x = 0; x < FOLIAGE_CELL; x++) {
-      if (atlas.data[((oy + y) * W + ox + x) * 4 + 3] === 0) continue;
-      b.top = Math.min(b.top, y);
-      b.bottom = Math.max(b.bottom, y);
-      b.left = Math.min(b.left, x);
-      b.right = Math.max(b.right, x);
-    }
+const pixels = (tex) => tex.image.getContext('2d').image;
+const px = (img, x, y) => {
+  const i = (y * img.width + x) * 4;
+  return [img.data[i], img.data[i + 1], img.data[i + 2], img.data[i + 3]];
+};
+const diff = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+
+// Mean colour difference across the wrap seam vs between neighbouring columns (rows) inside.
+function seams(img) {
+  const { width: w, height: h } = img;
+  let seamX = 0;
+  let innerX = 0;
+  for (let y = 0; y < h; y++) {
+    seamX += diff(px(img, w - 1, y), px(img, 0, y));
+    for (let x = 0; x + 1 < w; x++) innerX += diff(px(img, x, y), px(img, x + 1, y)) / (w - 1);
   }
-  return b;
+  let seamY = 0;
+  let innerY = 0;
+  for (let x = 0; x < w; x++) {
+    seamY += diff(px(img, x, h - 1), px(img, x, 0));
+    for (let y = 0; y + 1 < h; y++) innerY += diff(px(img, x, y), px(img, x, y + 1)) / (h - 1);
+  }
+  return { x: seamX / innerX, y: seamY / innerY };
 }
 
-test('foliage sprites keep a clear margin inside their atlas cells (no flat-cut canopies)', () => {
-  assert.equal(atlas.width, W);
-  for (const i of [...FOLIAGE.tree, ...FOLIAGE.bush]) {
-    const b = bounds(i);
-    assert.ok(b.top >= FOLIAGE_MARGIN + 1, `cell ${i}: first opaque row ${b.top}`);
-    assert.ok(b.left >= FOLIAGE_MARGIN && b.right <= FOLIAGE_CELL - 1 - FOLIAGE_MARGIN, `cell ${i}: columns ${b.left}..${b.right}`);
+test('leaves: a tileable, opaque, green pile of clumps', () => {
+  const img = pixels(leafTexture());
+  assert.equal(img.width, LEAF_SIZE);
+  const s = seams(img);
+  assert.ok(s.x < 1.6 && s.y < 1.6, `wrap seams ${s.x.toFixed(2)} / ${s.y.toFixed(2)} x an inner edge`);
+  let dark = 0;
+  let sum = [0, 0, 0];
+  const tones = new Set();
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      const [r, g, b, a] = px(img, x, y);
+      assert.equal(a, 255, 'opaque');
+      assert.ok(g > r && g > b, `green at ${x},${y}: ${r},${g},${b}`);
+      if (g < 70) dark++;
+      sum = [sum[0] + r, sum[1] + g, sum[2] + b];
+      tones.add(`${r},${g},${b}`);
+    }
   }
-  // Trees stand on their trunk at the cell's bottom; bushes sit inside the part of the cell
-  // their quads show.
-  for (const i of FOLIAGE.tree) assert.equal(bounds(i).bottom, FOLIAGE_CELL - 1, `tree ${i} reaches the ground`);
-  for (const i of FOLIAGE.bush) assert.ok(bounds(i).top >= Math.ceil((1 - BUSH_CELL_HEIGHT) * FOLIAGE_CELL) + FOLIAGE_MARGIN);
+  const n = img.width * img.height;
+  assert.ok(dark / n < 0.25, `gaps between clumps: ${((100 * dark) / n).toFixed(0)} %`);
+  assert.ok(tones.size >= 4, 'several leaf tones');
+  const mean = sum.map((v) => v / n);
+  assert.ok(mean[1] > 90 && mean[1] < 160, `mean green ${mean[1].toFixed(0)}`);
 });
 
-test('canopy profiles match the painted canopies: empty above the top clump', () => {
-  for (const i of FOLIAGE.tree) {
-    const rows = canopyProfile(i, FOLIAGE_CELL);
-    const top = FOLIAGE_CELL - 1 - rows.findLastIndex((h) => h > 0); // profile rows are bottom first
-    assert.ok(Math.abs(top - bounds(i).top) <= 2, `cell ${i}: profile top row ${top}, painted ${bounds(i).top}`);
+test('bark: a tileable brown', () => {
+  const img = pixels(barkTexture());
+  const s = seams(img);
+  assert.ok(s.x < 1.6 && s.y < 1.6, `wrap seams ${s.x.toFixed(2)} / ${s.y.toFixed(2)} x an inner edge`);
+  for (let y = 0; y < img.height; y += 3) {
+    for (let x = 0; x < img.width; x += 3) {
+      const [r, g, b] = px(img, x, y);
+      assert.ok(r > g && g > b, `brown at ${x},${y}: ${r},${g},${b}`);
+    }
   }
 });

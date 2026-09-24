@@ -219,6 +219,37 @@ test('names inherited from Object.prototype are unknown sounds and songs', async
   }
 });
 
+test("a plain 'punch' plays the combo's first jab, or its second right after a first jab", async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const saved = { punch1: SFX.punch1, punch2: SFX.punch2 };
+  const heard = [];
+  for (const n of ['punch1', 'punch2']) {
+    SFX[n] = () => {
+      heard.push(n);
+      return 0.2;
+    };
+  }
+  const at = (t, name = 'punch') => {
+    audio.ctx.currentTime = t;
+    events.emit('sfx', { name });
+  };
+  try {
+    at(0); // the combo: jab, jab 7 ticks later
+    at(0.233);
+    at(2); // a lone punch
+    at(2.5); // too late to chain: a first jab again
+    at(2.7); // chains
+    at(2.9); // after a second jab, a new first jab
+    at(3.5, 'punch2'); // explicit names play as asked
+    at(3.6, 'punch2');
+  } finally {
+    Object.assign(SFX, saved);
+  }
+  assert.deepEqual(heard, ['punch1', 'punch2', 'punch1', 'punch1', 'punch2', 'punch1', 'punch2', 'punch2']);
+});
+
 test('voice slots are freed on the audio clock, not by wall-clock timers', async () => {
   const audio = new AudioEngine(new Events());
   await audio.unlock();

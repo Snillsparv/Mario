@@ -12,17 +12,49 @@ function whoosh(ctx, out, t, { from, to, dur, gain, freq }) {
   return noise(ctx, out, t, { freq: freq || from, to, q: 1.2, dur, gain, attack: dur * 0.3 });
 }
 
-// Springy rising blip with a fast wobble, the core of the jump sounds.
-function spring(ctx, out, t, { from, to, dur, gain }) {
-  const osc = tone(ctx, out, t, { wave: 'triangle', freq: from, to, glide: dur * 0.6, dur, gain });
-  lfo(ctx, osc.frequency, t, dur, { rate: 36, depth: from * 0.12 });
-  tone(ctx, out, t, { wave: 'square', freq: from * 2, to: to * 2, glide: dur * 0.6, dur: dur * 0.5, gain: gain * 0.12 });
+// Cartoon spring 'boing', the core of the jump sounds: a sine body with a triangle edge an
+// octave up, both bending up past the target and settling back, with a fast wobble that dies
+// away as the spring rings out, over a short sub-octave push-off that gives it weight.
+function boing(ctx, out, t, { from, to, dur, gain, rate = 32 }) {
+  const bend = [[0, from], [dur * 0.35, to * 1.05], [dur, to * 0.97]];
+  const body = tone(ctx, out, t, { freq: bend, dur, gain, attack: 0.003 });
+  const edge = tone(ctx, out, t, { wave: 'triangle', freq: bend.map(([dt, f]) => [dt, f * 2]), dur: dur * 0.6, gain: gain * 0.22, attack: 0.003 });
+  lfo(ctx, [body.detune, edge.detune], t, dur, { rate, depth: 90, decay: dur * 0.35 });
+  tone(ctx, out, t, { freq: from * 0.5, to: to * 0.5, glide: dur * 0.5, dur: dur * 0.45, gain: gain * 0.45, attack: 0.003 });
 }
 
-// Body impact: pitch-dropping sine plus a muffled noise hit.
+// Body impact: a pitch-dropping sine, a muffled noise hit and a short bright contact click
+// on top (the crisp edge that keeps it from sounding like mush).
 function thud(ctx, out, t, { freq = 150, to = 60, dur = 0.12, gain = 0.4 }) {
-  tone(ctx, out, t, { freq, to, glide: dur * 0.6, dur, gain, attack: 0.002 });
-  noise(ctx, out, t, { filter: 'lowpass', freq: 900, dur: dur * 0.5, gain: gain * 0.45 });
+  tone(ctx, out, t, { freq, to, glide: dur * 0.45, dur, gain, attack: 0.002 });
+  noise(ctx, out, t, { filter: 'lowpass', freq: 1400, dur: dur * 0.4, gain: gain * 0.4, attack: 0.001 });
+  noise(ctx, out, t, { filter: 'highpass', freq: 3200, dur: 0.014, gain: gain * 0.16, attack: 0.001 });
+}
+
+// Cartoon hit 'thwack': a bright wide-band crack, a pitched body that drops fast (the
+// punch of it), a short woody 'tock' over it and muffled noise under it.
+function thwack(ctx, out, t, { body, to, snap, gain, heavy = false }) {
+  noise(ctx, out, t, { freq: snap, q: 0.7, dur: 0.03, gain: gain * 0.6, attack: 0.001 });
+  tone(ctx, out, t, { freq: body, to, glide: 0.045, dur: heavy ? 0.13 : 0.1, gain, attack: 0.001 });
+  tone(ctx, out, t, { wave: 'triangle', freq: body * 2.7, to: body * 1.6, glide: 0.02, dur: 0.035, gain: gain * 0.3, attack: 0.001 });
+  noise(ctx, out, t, { filter: 'lowpass', freq: heavy ? 1100 : 1600, dur: heavy ? 0.07 : 0.05, gain: gain * 0.45, attack: 0.001 });
+}
+
+// The punch-punch-kick combo and the flying kick: a cloth swish (a frequency point list, see
+// synth.js) that builds into the moment of contact, `swing` seconds in, then the thwack.
+// Each has its own swing length, swish band and impact pitch, so the combo climbs from a
+// light jab to a heavy kick.
+const HITS = {
+  punch1: { swing: 0.045, swish: [[0, 1500], [0.085, 4000]], body: [340, 125], snap: 3400, gain: 0.44 },
+  punch2: { swing: 0.05, swish: [[0, 1250], [0.09, 3500]], body: [300, 105], snap: 2800, gain: 0.46 },
+  kick: { swing: 0.075, swish: [[0, 850], [0.115, 3000]], body: [230, 72], snap: 2200, gain: 0.5, heavy: true },
+  jump_kick: { swing: 0.07, swish: [[0, 700], [0.08, 2800], [0.22, 1300]], body: [260, 85], snap: 2500, gain: 0.44, heavy: true },
+};
+function hit(ctx, out, t, p, { swing, swish, body, snap, gain, heavy }) {
+  const dur = swish.at(-1)[0];
+  noise(ctx, out, t, { freq: swish, q: 1.4, dur, gain: gain * 0.45, attack: swing * 0.85 });
+  thwack(ctx, out, t + swing, { body: body[0] * p, to: body[1] * p, snap, gain, heavy });
+  return Math.max(dur, swing + 0.14);
 }
 
 // Water drop "plip": a sine that chirps upward very fast.
@@ -30,31 +62,34 @@ function plip(ctx, out, t, freq, gain) {
   tone(ctx, out, t, { freq, to: freq * 1.9, glide: 0.035, dur: 0.05, gain, attack: 0.002 });
 }
 
-// Short foot contact texture per terrain; also layered into landings.
+// Short foot contact texture per terrain; also layered into landings. Every surface opens
+// with a fast (1-2 ms) attack and a short bright edge so steps read crisply, not as mush.
 function step(ctx, out, t, terrain, p, level) {
   switch (terrain) {
     case 'stone':
-      noise(ctx, out, t, { filter: 'highpass', freq: 3500, dur: 0.018, gain: 0.162 * level });
-      tone(ctx, out, t, { freq: 1900 * p, dur: 0.022, gain: 0.058 * level });
-      tone(ctx, out, t, { freq: 190 * p, to: 120 * p, dur: 0.045, gain: 0.139 * level });
+      noise(ctx, out, t, { filter: 'highpass', freq: 3500, dur: 0.018, gain: 0.19 * level, attack: 0.001 });
+      tone(ctx, out, t, { freq: 1900 * p, dur: 0.022, gain: 0.06 * level, attack: 0.001 });
+      tone(ctx, out, t, { freq: 200 * p, to: 120 * p, dur: 0.045, gain: 0.145 * level, attack: 0.002 });
       return 0.06;
     case 'wood':
       // Hollow knock, kept short and about as loud as stone (the bridge is walked a lot).
-      tone(ctx, out, t, { freq: 340 * p, to: 300 * p, dur: 0.06, gain: 0.13 * level });
-      tone(ctx, out, t, { wave: 'triangle', freq: 760 * p, dur: 0.04, gain: 0.04 * level });
-      noise(ctx, out, t, { freq: 900, q: 3, dur: 0.03, gain: 0.06 * level });
+      noise(ctx, out, t, { filter: 'highpass', freq: 3000, dur: 0.01, gain: 0.07 * level, attack: 0.001 });
+      tone(ctx, out, t, { freq: 340 * p, to: 300 * p, dur: 0.055, gain: 0.13 * level, attack: 0.002 });
+      tone(ctx, out, t, { wave: 'triangle', freq: 780 * p, dur: 0.035, gain: 0.045 * level, attack: 0.001 });
+      noise(ctx, out, t, { freq: 900, q: 3, dur: 0.03, gain: 0.06 * level, attack: 0.002 });
       return 0.08;
     case 'sand':
-      for (const dt of [0, 0.013, 0.03]) noise(ctx, out, t + dt, { freq: 2800 * p, dur: 0.022, gain: 0.28 * level });
-      noise(ctx, out, t, { filter: 'lowpass', freq: 500, dur: 0.05, gain: 0.175 * level });
+      for (const dt of [0, 0.013, 0.03]) noise(ctx, out, t + dt, { freq: 3000 * p, dur: 0.022, gain: 0.33 * level, attack: 0.001 });
+      noise(ctx, out, t, { filter: 'lowpass', freq: 550, dur: 0.05, gain: 0.175 * level, attack: 0.002 });
       return 0.07;
     case 'water':
       noise(ctx, out, t, { freq: 1500, to: 700, dur: 0.14, gain: 0.42 * level, attack: 0.01 });
       plip(ctx, out, t + 0.03, 900 * p, 0.14 * level);
       return 0.16;
-    default: // grass
-      noise(ctx, out, t, { freq: 1600 * p, q: 0.8, dur: 0.05, gain: 0.35 * level });
-      noise(ctx, out, t, { filter: 'lowpass', freq: 400, dur: 0.055, gain: 0.245 * level });
+    default: // grass: a crisp blade snap over a soft brush and a light low thump
+      noise(ctx, out, t, { filter: 'highpass', freq: 4500, dur: 0.012, gain: 0.13 * level, attack: 0.001 });
+      noise(ctx, out, t, { freq: 1800 * p, q: 1, dur: 0.045, gain: 0.42 * level, attack: 0.002 });
+      noise(ctx, out, t, { filter: 'lowpass', freq: 520, dur: 0.045, gain: 0.23 * level, attack: 0.002 });
       return 0.07;
   }
 }
@@ -93,24 +128,26 @@ const RED_COIN_STEPS = [0, 2, 4, 5, 7, 9, 11, 12];
 
 export const SFX = {
   jump(ctx, out, t, { p }) {
-    spring(ctx, out, t, { from: 330 * p, to: 880 * p, dur: 0.16, gain: 0.6 });
-    whoosh(ctx, out, t, { from: 900, to: 2600, dur: 0.18, gain: 0.312 });
-    return 0.2;
+    boing(ctx, out, t, { from: 290 * p, to: 780 * p, dur: 0.2, gain: 0.44 });
+    whoosh(ctx, out, t, { from: 800, to: 2600, dur: 0.2, gain: 0.3 });
+    return 0.22;
   },
   double_jump(ctx, out, t, { p }) {
-    spring(ctx, out, t, { from: 440 * p, to: 1250 * p, dur: 0.14, gain: 0.432 });
-    spring(ctx, out, t + 0.07, { from: 660 * p, to: 1500 * p, dur: 0.12, gain: 0.288 });
-    whoosh(ctx, out, t, { from: 1100, to: 3000, dur: 0.22, gain: 0.252 });
+    boing(ctx, out, t, { from: 400 * p, to: 1100 * p, dur: 0.17, gain: 0.38, rate: 36 });
+    boing(ctx, out, t + 0.07, { from: 620 * p, to: 1450 * p, dur: 0.15, gain: 0.26, rate: 36 });
+    whoosh(ctx, out, t, { from: 1000, to: 3000, dur: 0.24, gain: 0.26 });
     return 0.25;
   },
+  // A springier, higher launch with a rising major arpeggio over it and a long airy swoop.
   triple_jump(ctx, out, t, { p }) {
+    boing(ctx, out, t, { from: 330 * p, to: 990 * p, dur: 0.22, gain: 0.3, rate: 30 });
     [72, 76, 79, 84].forEach((m, i) => {
-      tone(ctx, out, t + i * 0.055, { wave: 'triangle', freq: mtof(m) * p, to: mtof(m + 2) * p, dur: 0.12, gain: 0.234 });
+      tone(ctx, out, t + 0.04 + i * 0.055, { wave: 'triangle', freq: mtof(m) * p, to: mtof(m + 2) * p, dur: 0.12, gain: 0.2 });
     });
-    const wee = tone(ctx, out, t + 0.2, { freq: 700 * p, to: 1500 * p, glide: 0.35, dur: 0.45, gain: 0.13, attack: 0.05 });
-    lfo(ctx, wee.frequency, t + 0.2, 0.45, { rate: 9, depth: 40 });
-    whoosh(ctx, out, t, { freq: [[0, 600], [0.3, 3200], [0.55, 1800]], dur: 0.6, gain: 0.208 });
-    return 0.65;
+    const wee = tone(ctx, out, t + 0.24, { freq: 700 * p, to: 1500 * p, glide: 0.35, dur: 0.45, gain: 0.13, attack: 0.05 });
+    lfo(ctx, wee.frequency, t + 0.24, 0.45, { rate: 9, depth: 40 });
+    whoosh(ctx, out, t, { freq: [[0, 600], [0.3, 3200], [0.55, 1800]], dur: 0.6, gain: 0.24 });
+    return 0.7;
   },
   backflip(ctx, out, t, { p }) {
     whoosh(ctx, out, t, { from: 700, to: 2000, dur: 0.16, gain: 0.35 });
@@ -152,18 +189,13 @@ export const SFX = {
     tone(ctx, out, t, { freq: 55, dur: 0.9, gain: 0.2, attack: 0.01 });
     return 0.95;
   },
-  punch(ctx, out, t, { p }) {
-    noise(ctx, out, t, { freq: 1600, to: 3800, q: 1.5, dur: 0.08, gain: 0.195, attack: 0.02 });
-    tone(ctx, out, t + 0.04, { freq: 240 * p, to: 110 * p, dur: 0.07, gain: 0.364 });
-    noise(ctx, out, t + 0.04, { filter: 'lowpass', freq: 1200, dur: 0.04, gain: 0.182 });
-    return 0.12;
-  },
-  kick(ctx, out, t, { p }) {
-    noise(ctx, out, t, { freq: 1100, to: 3000, q: 1.5, dur: 0.12, gain: 0.16, attack: 0.03 });
-    tone(ctx, out, t + 0.06, { freq: 200 * p, to: 90 * p, dur: 0.08, gain: 0.3 });
-    noise(ctx, out, t + 0.06, { filter: 'lowpass', freq: 1000, dur: 0.05, gain: 0.15 });
-    return 0.16;
-  },
+  punch1: (ctx, out, t, { p }) => hit(ctx, out, t, p, HITS.punch1),
+  punch2: (ctx, out, t, { p }) => hit(ctx, out, t, p, HITS.punch2),
+  kick: (ctx, out, t, { p }) => hit(ctx, out, t, p, HITS.kick),
+  jump_kick: (ctx, out, t, { p }) => hit(ctx, out, t, p, HITS.jump_kick),
+  // The plain name, for callers that do not tell the jabs apart: the engine plays it as
+  // punch1 or, right after a first jab, as punch2 (see AudioEngine.comboJab).
+  punch: (ctx, out, t, { p }) => hit(ctx, out, t, p, HITS.punch1),
   land(ctx, out, t, { p, terrain }) {
     thud(ctx, out, t, { freq: 150 * p, to: 70 * p, dur: 0.1, gain: 0.45 });
     return Math.max(0.12, step(ctx, out, t, terrain, p, 1.2));
@@ -299,5 +331,33 @@ export const SFX = {
   camera_buzz(ctx, out, t) {
     for (const dt of [0, 0.12]) tone(ctx, out, t + dt, { wave: 'square', freq: 140, dur: 0.09, gain: 0.084, hold: 0.05 });
     return 0.22;
+  },
+  // Sign dialog box. Soft UI sounds: they sit well under the gameplay sounds.
+  // Opening: a paper flick and a hollow wooden 'pop' that bends up.
+  dialog_open(ctx, out, t, { p }) {
+    noise(ctx, out, t, { freq: 2200, to: 4200, q: 1.3, dur: 0.06, gain: 0.07, attack: 0.012 });
+    tone(ctx, out, t + 0.01, { freq: 380 * p, to: 640 * p, glide: 0.04, dur: 0.09, gain: 0.2, attack: 0.002 });
+    tone(ctx, out, t + 0.01, { wave: 'triangle', freq: 1150 * p, to: 1500 * p, glide: 0.03, dur: 0.04, gain: 0.05, attack: 0.001 });
+    return 0.12;
+  },
+  // Typing: one tiny soft tick every few characters (a single oscillator, so it is cheap),
+  // its pitch wandering a little so a line of text chatters instead of drilling.
+  text_blip(ctx, out, t, { p }) {
+    tone(ctx, out, t, { wave: 'triangle', freq: 1250 * p * rand(0.93, 1.07), dur: 0.028, gain: 0.1, attack: 0.002 });
+    return 0.03;
+  },
+  // Next page: a soft click, bright tick over a small low knock.
+  dialog_next(ctx, out, t, { p }) {
+    noise(ctx, out, t, { filter: 'highpass', freq: 3500, dur: 0.01, gain: 0.08, attack: 0.001 });
+    tone(ctx, out, t, { freq: 1700 * p, to: 1400 * p, dur: 0.035, gain: 0.11, attack: 0.001 });
+    tone(ctx, out, t, { freq: 560 * p, dur: 0.04, gain: 0.11, attack: 0.001 });
+    return 0.04;
+  },
+  // Closing: the opening pop in reverse, bending down, settling with a soft knock.
+  dialog_close(ctx, out, t, { p }) {
+    noise(ctx, out, t, { freq: 3000, to: 1500, q: 1.3, dur: 0.05, gain: 0.05, attack: 0.008 });
+    tone(ctx, out, t, { freq: 620 * p, to: 330 * p, glide: 0.06, dur: 0.11, gain: 0.18, attack: 0.003 });
+    tone(ctx, out, t + 0.05, { freq: 300 * p, to: 260 * p, dur: 0.06, gain: 0.1, attack: 0.002 });
+    return 0.14;
   },
 };

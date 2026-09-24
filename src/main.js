@@ -191,6 +191,8 @@ async function start() {
       player.update(cam.playerInput(controller), cam.getYaw());
     }
     if (player.action !== lastAction) {
+      // Damage, death or a respawn can end a read early: take the box down with it.
+      if (lastAction === 'reading' && dialog.isOpen) dialog.close();
       lastAction = player.action;
       if (lastAction === 'spawn' && onRespawn()) return;
     }

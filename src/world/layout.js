@@ -105,7 +105,7 @@ export const PATHS = [
   },
 ];
 
-// Billboard trees (also climbable poles). y is computed from groundHeight().
+// Low-poly 3D trees (also climbable poles). y is computed from groundHeight().
 export const TREES = [
   { x: -2600, z: 5200 },
   { x: -3900, z: 3500 },
@@ -194,7 +194,7 @@ export const SIGNS = [
   {
     id: 'moat',
     x: -760,
-    z: 1640,
+    z: 1700,
     yaw: 0,
     pages: [
       'Castle Moat',
@@ -215,8 +215,8 @@ export const SIGNS = [
   },
   {
     id: 'hill',
-    x: 5000,
-    z: 900,
+    x: 4850,
+    z: 780,
     yaw: -Math.PI / 4,
     pages: [
       'East Hill',

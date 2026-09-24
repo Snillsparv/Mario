@@ -1,25 +1,27 @@
-// Castle-grounds props: billboard trees and bushes, wooden fences and a signpost, boulders,
+// Castle-grounds props: low-poly 3D trees and bushes, wooden fences and signposts, boulders,
 // flower patches, soft ground shadows and the waterfall (see src/world/props/*).
 //
-// Everything of one material is merged into one mesh, so the whole part costs 7 draw
-// calls: foliage (trees + bushes), flowers, wood, rock, shadows, waterfall sheets and
-// waterfall splash. Colliders are raw triangle lists (trunks/fences/sign = wood, rocks =
-// stone, bushes = grass); every tree trunk is also a climbable pole.
+// Everything of one material is merged into one static mesh, so the whole part costs 8 draw
+// calls: leaves (canopies + bushes), bark (trunks), flowers, wood, rock, shadows, waterfall
+// sheets and waterfall splash. Colliders are raw triangle lists (trunks/fences/signs = wood,
+// rocks = stone, bushes = grass); every tree trunk is also a climbable pole.
 
 import * as THREE from 'three';
 import { worldMaterial } from '../render/materials.js';
 import { MeshBuilder, bakedMesh } from './props/geom.js';
-import { BillboardBatch, heroLocator } from './props/billboards.js';
+import { FoliageFade, heroLocator } from './props/foliageFade.js';
 import { buildTrees } from './props/trees.js';
 import { buildFences } from './props/fences.js';
 import { buildDecor } from './props/decor.js';
 import { buildWaterfall } from './props/waterfall.js';
-import { foliageAtlas, rockTexture, shadowTexture, woodTexture } from './props/textures.js';
+import { LEAF_TILE, barkTexture, leafTexture, rockTexture, shadowTexture, woodTexture } from './props/textures.js';
 
 export function buildProps(layout) {
   // Shared builders the sub-modules add to.
   const kit = {
-    foliage: [], // billboard sprites (see BillboardBatch)
+    leaves: new MeshBuilder({ fadeGroups: true }), // canopies and bushes (canopy.js)
+    bark: new MeshBuilder({ fadeGroups: true }), // tree trunks
+    fade: new FoliageFade(), // one fade group per canopy, bush and trunk
     wood: new MeshBuilder(),
     rock: new MeshBuilder(),
     shadows: new MeshBuilder({ alpha: true }),
@@ -33,15 +35,17 @@ export function buildProps(layout) {
   const waterfall = buildWaterfall(layout, kit);
   // Foliage thins out (screen-door dither) when the camera is right up against it or a
   // canopy stands between the camera and the hero it frames.
-  const foliage = new BillboardBatch('foliage', kit.foliage, worldMaterial({ map: foliageAtlas(), alphaTest: 0.5 }), {
-    fade: true,
-  });
+  // The leaves are mapped tri-planar (world axes, blended by their normals): seamless.
+  const leafMaterial = kit.fade.patch(worldMaterial({ map: leafTexture() }), { triplanar: LEAF_TILE });
+  const leaves = foliageMesh('leaves', kit.leaves, leafMaterial, { normals: true });
+  const bark = foliageMesh('bark', kit.bark, kit.fade.patch(worldMaterial({ map: barkTexture() })));
   const locateHero = heroLocator((x, z) => Math.max(layout.groundHeight(x, z), layout.waterLevelAt(x, z)));
 
   const group = new THREE.Group();
   group.name = 'props';
   group.add(
-    foliage.mesh,
+    leaves,
+    bark,
     decor.flowers,
     bakedMesh('wood', kit.wood, worldMaterial({ map: woodTexture() })),
     bakedMesh('rocks', kit.rock, worldMaterial({ map: rockTexture() })),
@@ -58,11 +62,21 @@ export function buildProps(layout) {
     })),
     poles,
     update(time, camera) {
-      foliage.update(camera, locateHero);
+      kit.fade.update(camera, locateHero, time);
       decor.update(camera);
       waterfall.update(time, camera);
     },
   };
+}
+
+// Static foliage mesh: colours are baked by the builders (canopy.js, trees.js); the unlit
+// material only needs normals for a tri-planar map.
+function foliageMesh(name, builder, material, { normals = false } = {}) {
+  const geo = builder.toGeometry();
+  if (!normals) geo.deleteAttribute('normal');
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = name;
+  return mesh;
 }
 
 // Soft round shadow draped over the ground under a prop: a disc of rings whose vertices sit

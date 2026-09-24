@@ -260,6 +260,12 @@ test('controls legends name every key and gamepad binding family', () => {
   }
 });
 
+test('controls legends teach that the attack button reads signs', () => {
+  // B (J on the keyboard) in front of a sign reads it (docs/ARCHITECTURE.md "Signs and dialog").
+  assert.match(KEY_CONTROLS.find(([k]) => k === 'J')[1], /Read/);
+  assert.match(PAD_CONTROLS.find(([k]) => /^B\b/.test(k))[1], /Read/);
+});
+
 test('red-coin number and counter bumps freeze while paused', () => {
   const events = new Events();
   const hud = new HUD(null, { events });

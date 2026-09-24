@@ -1,6 +1,8 @@
 // Player-physics test course: /preview.html?m=physics
 //
 // Live mode (default): WASD / Space / J / Shift drive a capsule stand-in with a follow camera.
+// The course has a readable sign ahead-left of the spawn: J in front of its (cream) face reads
+// it; Space / J turn the pages, as the game's dialog box does.
 // Scripted mode: &demo=<preset> or &script=<json> runs the whole script at load, draws the
 // trajectory (coloured by action group) and frames it from the side. Script steps:
 //   { n: ticks, ...input }  or  { until: 'grounded' | 'airborne' | <action>, ...input }
@@ -11,7 +13,7 @@ import { Player } from '../../player/Player.js';
 import { ACTIONS } from '../../player/actions/index.js';
 import { buildTestCourse, ScriptedController } from '../../player/physics/testCourse.js';
 import { Events } from '../../core/events.js';
-import { Input } from '../../core/input.js';
+import { Input, neutralController } from '../../core/input.js';
 import { FRAME_DT } from '../../core/constants.js';
 import { approachAngle } from '../../core/math.js';
 
@@ -59,7 +61,7 @@ export const DEMOS = {
   },
   ledge: {
     spawn: [1300, 0, 0, HALF_PI],
-    script: [{ n: 28, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'ledge_hang', stickY: 1, A: 1 }, { until: 'idle', stickY: 1 }, { n: 20, stickY: 1 }],
+    script: [{ n: 35, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'ledge_hang', stickY: 1, A: 1 }, { until: 'idle', stickY: 1 }, { n: 20, stickY: 1 }],
   },
   dive: {
     spawn: [-5000, 0, -4000, 0],
@@ -90,6 +92,11 @@ export const DEMOS = {
     spawn: [690, -300, -3000, HALF_PI],
     script: [{ until: 'water_surface' }, { n: 1, A: 1 }, { n: 6 }, { n: 1, stickY: -1, A: 1 }, { until: 'grounded', stickY: 1 }, { n: 15 }],
   },
+  // Walks up to the course's sign and reads it (B while walking in front of its face).
+  read: {
+    spawn: [-500, 0, 450, 0],
+    script: [{ n: 16, stickY: 1 }, { n: 1, stickY: 1, B: 1 }, { until: 'reading' }, { n: 15 }],
+  },
   pole: {
     spawn: [2000, 0, -2500, 0],
     script: [{ n: 32, stickY: 1 }, { n: 1, stickY: 1, A: 1 }, { until: 'pole', stickY: 1, A: 1 }, { n: 40, stickY: 1 }, { n: 1 }, { n: 1, A: 1 }, { until: 'grounded' }, { n: 10 }],
@@ -115,9 +122,10 @@ const GROUP_COLORS = {
 const TERRAIN_COLORS = { grass: 0x6fbf4a, stone: 0x9a9a9a, sand: 0xd8c38a, wood: 0x9b6a3c };
 
 export async function setup({ THREE, scene, camera, ui, params }) {
-  const { builder, spawn: courseSpawn } = buildTestCourse();
+  const { builder, spawn: courseSpawn, signs } = buildTestCourse();
   const world = builder.build();
   scene.add(courseMesh(THREE, builder));
+  for (const sign of signs) scene.add(signFace(THREE, sign));
   scene.add(new THREE.HemisphereLight(0xdfefff, 0x445533, 1.4));
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(0.4, 1, 0.3);
@@ -137,8 +145,15 @@ export async function setup({ THREE, scene, camera, ui, params }) {
       if (recent.length > 6) recent.shift();
     });
   }
-  const player = new Player({ collision: world, events, spawn });
+  const player = new Player({ collision: world, events, spawn, signs });
   if (params.get('intro')) player.beginIntro();
+  // Stand-in for the game's dialog box: the pages of the sign being read, one per A/B press.
+  let reading = null; // { sign, page }
+  events.on('signRead', ({ sign }) => {
+    reading = { sign, page: 0 };
+    recent.push('signRead');
+    if (recent.length > 6) recent.shift();
+  });
 
   const standIn = makeStandIn(THREE);
   scene.add(standIn.object3D);
@@ -153,7 +168,8 @@ export async function setup({ THREE, scene, camera, ui, params }) {
       `${rs.action} / ${rs.anim}  t=${rs.animTime.toFixed(2)}\n` +
       `fv ${rs.forwardVel.toFixed(1)}  vy ${rs.vy.toFixed(1)}  health ${rs.health}\n` +
       `pos ${rs.pos.x.toFixed(0)}, ${rs.pos.y.toFixed(0)}, ${rs.pos.z.toFixed(0)}\n` +
-      recent.join(' ');
+      recent.join(' ') +
+      (reading ? `\n\n[${reading.sign.pages[reading.page]}]  (Space/J)` : '');
   };
 
   const scriptText = params.get('script');
@@ -178,7 +194,16 @@ export async function setup({ THREE, scene, camera, ui, params }) {
       acc += dt;
       while (acc >= FRAME_DT) {
         acc -= FRAME_DT;
-        const c = input.poll();
+        let c = input.poll();
+        if (reading) {
+          if (c.A.pressed || c.B.pressed) reading.page++;
+          if (reading.page >= reading.sign.pages.length) {
+            reading = null;
+            player.endReading();
+            input.flush();
+          }
+          c = neutralController();
+        }
         if (c.CL.down) camYaw += 0.06;
         if (c.CR.down) camYaw -= 0.06;
         if (player.forwardVel > 4 && !player.inWater) camYaw = approachAngle(camYaw, player.faceYaw, 0.02);
@@ -297,6 +322,14 @@ function normalY(p) {
   const ny = uz * vx - ux * vz;
   const nz = ux * vy - uy * vx;
   return ny / (Math.hypot(nx, ny, nz) || 1);
+}
+
+// A cream panel on the readable face of a course sign (the collider boxes are drawn plain).
+function signFace(THREE, sign) {
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(100, 56), new THREE.MeshLambertMaterial({ color: 0xf2e6c4 }));
+  face.position.set(sign.x + Math.sin(sign.yaw) * 5, sign.y + 145, sign.z + Math.cos(sign.yaw) * 5);
+  face.rotation.y = sign.yaw;
+  return face;
 }
 
 // Capsule with a nose cone (shows facing) and a blob shadow; tinted by action group.

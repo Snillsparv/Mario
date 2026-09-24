@@ -7,10 +7,11 @@ import { Player } from '../src/player/Player.js';
 import { buildTestCourse, ScriptedController } from '../src/player/physics/testCourse.js';
 
 test('every preview demo reaches each of its `until` goals', () => {
-  const world = buildTestCourse().builder.build();
+  const { builder, signs } = buildTestCourse();
+  const world = builder.build();
   for (const [name, demo] of Object.entries(DEMOS)) {
     const [x, y, z, yaw] = demo.spawn;
-    const p = new Player({ collision: world, events: null, spawn: { x, y, z, yaw } });
+    const p = new Player({ collision: world, events: null, spawn: { x, y, z, yaw }, signs });
     const ctl = new ScriptedController();
     const reached = (until) => (until === 'grounded' ? p.grounded : until === 'airborne' ? !p.grounded && !p.inWater : p.action === until);
     for (const step of demo.script) {

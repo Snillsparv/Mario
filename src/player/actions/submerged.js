@@ -42,10 +42,14 @@ function leaveWater(p, r) {
   return false;
 }
 
+// Swimming reads the stick as pushed (p.rawStickX / rawStickY, without the keyboard ease-in,
+// which only softens starting to run): S or W with jump at the surface jumps out or dives at
+// once, just like the analog stick.
+
 // Stick X turns, stick Y pitches; at the surface the nose levels out instead of pointing up.
-function swimSteer(p, c) {
-  p.faceYaw = wrapAngle(p.faceYaw - c.stickX * T.SWIM_TURN_RATE);
-  p.swimPitch = approach(p.swimPitch, c.stickY * T.SWIM_MAX_PITCH, T.SWIM_PITCH_RATE);
+function swimSteer(p) {
+  p.faceYaw = wrapAngle(p.faceYaw - p.rawStickX * T.SWIM_TURN_RATE);
+  p.swimPitch = approach(p.swimPitch, p.rawStickY * T.SWIM_MAX_PITCH, T.SWIM_PITCH_RATE);
   if (p.atSurface && p.swimPitch < 0) p.swimPitch = Math.min(0, p.swimPitch + 3 * T.SWIM_PITCH_RATE);
 }
 
@@ -70,7 +74,7 @@ const swimIdle = {
   anim: 'swim_idle',
   update(p, c) {
     if (c.A.pressed) return p.setAction('swim_stroke');
-    swimSteer(p, c);
+    swimSteer(p);
     p.forwardVel = approach(p.forwardVel, 0, 0.35);
     return swimMove(p);
   },
@@ -85,13 +89,13 @@ const swimStroke = {
     p.sfx('swim');
   },
   update(p, c) {
-    if (c.A.pressed && p.actionTimer >= 1 && p.atSurface && c.stickY < -0.5) return p.setAction('water_jump');
+    if (c.A.pressed && p.actionTimer >= 1 && p.atSurface && p.rawStickY < -0.5) return p.setAction('water_jump');
     if (c.A.pressed && p.actionTimer >= T.RESTROKE_TICKS) return p.setAction('swim_stroke');
     if (p.actionTimer >= T.STROKE_TICKS) {
       if (p.atSurface) return p.setAction('water_surface');
       return p.setAction(c.A.down ? 'swim_flutter' : 'swim_idle');
     }
-    swimSteer(p, c);
+    swimSteer(p);
     if (p.actionTimer < T.STROKE_BURST_TICKS) p.forwardVel = Math.min(p.forwardVel + T.STROKE_ACCEL, T.STROKE_MAX_SPEED);
     else p.forwardVel = approach(p.forwardVel, 0, 0.4);
     p.cyclePhase += 1 / T.STROKE_TICKS;
@@ -105,7 +109,7 @@ const swimFlutter = {
   update(p, c) {
     if (c.A.pressed) return p.setAction('swim_stroke');
     if (!c.A.down) return p.setAction('swim_idle');
-    swimSteer(p, c);
+    swimSteer(p);
     p.forwardVel = approach(p.forwardVel, T.FLUTTER_SPEED, 1);
     p.cyclePhase += 1 / 12;
     return swimMove(p);
@@ -125,8 +129,8 @@ const waterSurface = {
   },
   update(p, c) {
     if (c.A.pressed) {
-      if (c.stickY < -0.5) return p.setAction('water_jump');
-      p.atSurface = c.stickY <= 0.5;
+      if (p.rawStickY < -0.5) return p.setAction('water_jump');
+      p.atSurface = p.rawStickY <= 0.5;
       p.swimPitch = p.atSurface ? 0 : 0.6;
       return p.setAction('swim_stroke');
     }
@@ -135,8 +139,8 @@ const waterSurface = {
       p.forwardVel = Math.max(p.forwardVel, 10);
       return p.setAction('swim_idle');
     }
-    p.faceYaw = wrapAngle(p.faceYaw - c.stickX * T.SWIM_TURN_RATE);
-    const target = c.A.down ? T.FLUTTER_SPEED : Math.max(0, c.stickY) * T.SURFACE_PADDLE_SPEED;
+    p.faceYaw = wrapAngle(p.faceYaw - p.rawStickX * T.SWIM_TURN_RATE);
+    const target = c.A.down ? T.FLUTTER_SPEED : Math.max(0, p.rawStickY) * T.SURFACE_PADDLE_SPEED;
     p.forwardVel = approach(p.forwardVel, target, 0.6);
     p.swimPitch = 0;
     p.waterVy = 0;

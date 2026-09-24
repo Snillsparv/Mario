@@ -179,7 +179,7 @@ const dive = airAction(
 
 const jumpKick = airAction(
   (p) => {
-    p.sfx('kick');
+    p.sfx('jump_kick');
   },
   { anim: 'jump_kick', ledge: true, wallHit: 'air_hit_wall', land: {} },
 );

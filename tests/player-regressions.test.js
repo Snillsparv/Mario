@@ -22,10 +22,10 @@ function hopBeside(build, { ticks = 60, after = {} } = {}) {
 }
 
 describe('walking and air control use the project model', () => {
-  test('rest to 30 takes 1.1-1.6 s at full stick, then holds 32', () => {
+  test('rest to 30 takes 1.3-1.6 s at full stick, then holds 32', () => {
     const s = sim(flat);
     const t = s.until(90, { stickY: 1 }, (p) => p.forwardVel >= 30);
-    assert.ok(t >= 33 && t <= 48, `${t} ticks`);
+    assert.ok(t >= 39 && t <= 48, `${t} ticks`);
     s.run(30, { stickY: 1 });
     assert.equal(s.p.forwardVel, 32);
   });
@@ -440,21 +440,64 @@ describe('long jump descent', () => {
 });
 
 describe('starting to walk', () => {
-  test('snaps to walking speed 8, reaches 32 after ~41 ticks and pumps the legs from the start', () => {
+  // Round-2 feedback: starting to run felt too intense. From rest the hero now sets off with a
+  // small nudge and eases in (tiptoe -> walk -> run), reaching the unchanged top speed in ~1.6 s.
+  test('eases in from rest: small first step, tiptoe -> walk -> run, 32 after ~1.6 s', () => {
     const s = sim(flat);
-    s.run(1, { stickY: 1 });
-    assert.ok(s.p.forwardVel >= 8 && s.p.forwardVel < 10, `first tick ${s.p.forwardVel}`);
-    s.run(4, { stickY: 1 });
-    assert.ok(s.p.cyclePhase > 0.5, `run cycle only at ${s.p.cyclePhase} after 5 ticks`);
-    assert.ok(s.p.pos.z > 45, `covered ${s.p.pos.z} in 5 ticks`);
-    const t = s.until(60, { stickY: 1 }, (p) => p.forwardVel >= 32);
-    assert.ok(t + 5 >= 38 && t + 5 <= 44, `32 after ${t + 5} ticks`);
+    const anims = [];
+    let t32 = -1;
+    s.run(90, { stickY: 1 }, (p, i) => {
+      if (anims[anims.length - 1] !== p.anim) anims.push(p.anim);
+      if (i === 0) assert.ok(p.forwardVel >= 2 && p.forwardVel < 3.5, `first tick ${p.forwardVel}`);
+      if (i === 4) assert.ok(p.cyclePhase > 0.3, `legs only at ${p.cyclePhase} after 5 ticks`);
+      if (i === 8) assert.ok(p.pos.z > 35 && p.pos.z < 70, `covered ${p.pos.z} in 0.3 s (was 111 before the ease-in)`);
+      if (i === 17) assert.ok(p.forwardVel > 14 && p.forwardVel < 18, `speed ${p.forwardVel} after 0.6 s`);
+      if (t32 < 0 && p.forwardVel >= 32) t32 = i + 1;
+    });
+    assert.deepEqual(anims, ['tiptoe', 'walk', 'run']);
+    assert.ok(t32 >= 45 && t32 <= 55, `32 after ${t32} ticks`);
+    assert.equal(s.p.forwardVel, 32);
+  });
+
+  test('the acceleration is gentle near a standstill and unchanged once running', () => {
+    const s = sim(flat);
+    let prev = 0;
+    const accel = [];
+    s.run(60, { stickY: 1 }, (p) => {
+      accel.push({ v: prev, a: p.forwardVel - prev });
+      prev = p.forwardVel;
+    });
+    for (const { v, a } of accel.slice(1)) {
+      if (v < 6) assert.ok(a > 0.6 && a < 0.85, `accel ${a} at ${v}`);
+      if (v >= 14 && v < 31) assert.ok(Math.abs(a - (47.3 - v) / 43) < 1e-9, `running accel ${a} at ${v}`);
+    }
+  });
+
+  test('a light stick starts at its own speed; very slippery floors start from zero', () => {
     const slow = sim(flat);
     slow.run(1, { stickY: 0.4 });
-    assert.ok(Math.abs(slow.p.forwardVel - 0.16 * 32) < 0.5, `half stick starts at ${slow.p.forwardVel}`);
+    assert.ok(slow.p.forwardVel > 2 && slow.p.forwardVel <= 0.16 * 32, `light stick starts at ${slow.p.forwardVel}`);
+    slow.run(30, { stickY: 0.4 });
+    assert.ok(Math.abs(slow.p.forwardVel - 0.16 * 32) < 1e-9, `light stick settles at ${slow.p.forwardVel}`);
+    assert.equal(slow.p.anim, 'tiptoe');
     const ice = sim((b) => b.ground(30000, 0, null, { surface: 'very_slippery' }));
     ice.run(1, { stickY: 1 });
-    assert.ok(ice.p.forwardVel < 2, `very slippery start ${ice.p.forwardVel}`);
+    assert.ok(ice.p.forwardVel < 1, `very slippery start ${ice.p.forwardVel}`);
+  });
+
+  test('walkable slopes stay climbable from a standstill', () => {
+    for (const deg of [20, 25, 30]) {
+      const s = sim((b) => b.ramp(-1000, 1000, -3000, 5000, 0, Math.tan(deg * DEG) * 8000), {
+        x: 0,
+        y: Math.tan(deg * DEG) * 3000,
+        z: 0,
+        yaw: 0,
+      });
+      const y0 = s.p.pos.y;
+      s.run(60, { stickY: 1 });
+      assert.equal(s.p.action, 'walking', `${deg} deg`);
+      assert.ok(s.p.pos.y - y0 > 100, `${deg} deg: climbed only ${s.p.pos.y - y0}`);
+    }
   });
 
   test('the turnaround pivot runs off at speed 8', () => {

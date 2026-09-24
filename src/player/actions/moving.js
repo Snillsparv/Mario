@@ -5,7 +5,7 @@ import * as T from '../physics/tuning.js';
 import { groundStep, STEP_HIT_WALL, STEP_LEFT_GROUND } from '../physics/step.js';
 import { decelerate, setForwardVel, stickHeldBack, updateSliding, updateWalkingSpeed } from '../physics/movement.js';
 import { alignToFloor, isSteep, skidDecel, slopeAlong } from '../physics/slopes.js';
-import { advanceCycle, facingWall, fallOff, jumpFromGround, walkAnim } from './common.js';
+import { advanceCycle, facingWall, fallOff, gaitSpeed, jumpFromGround, tryReadSign, walkAnim } from './common.js';
 
 // Z while slowing down or landing: crouch slide when moving fast enough, otherwise crouch.
 // (Z while walking always crouch-slides; a slow slide just stops into the crouch.)
@@ -24,19 +24,21 @@ function startSlide(p) {
   p.slideVel.z = p.vel.z;
 }
 
-// Standard walk-cycle anim. The cycle follows the distance travelled, but while the speed
-// is still catching up with the stick the legs already pump at the stick's pace.
+// Standard walk-cycle anim. Gait and leg pace follow the speed (a little ahead of it while
+// the speed is still catching up with the stick, see gaitSpeed), so a start from rest
+// visibly goes tiptoe -> walk -> run.
 function animateWalk(p) {
-  const anim = walkAnim(p);
+  const speed = gaitSpeed(p);
+  const anim = walkAnim(p, speed);
   p.setAnim(anim);
-  advanceCycle(p, anim, Math.max(p.intendedMag, Math.abs(p.forwardVel)));
+  advanceCycle(p, anim, speed);
 }
 
-// Starting to walk snaps up to the stick's speed (at most WALK_START_SPEED), except on very
-// slippery floors; the walking update then eases it the rest of the way.
-function startWalking(p, fv = p.forwardVel) {
-  const start = p.floor.surface?.surface === 'very_slippery' ? 0 : Math.min(p.intendedMag, T.WALK_START_SPEED);
-  setForwardVel(p, Math.max(fv, start));
+// Starting to walk sets off at the stick's speed up to `start` (WALK_START_SPEED from rest:
+// just a nudge, the walking update eases in the rest), except on very slippery floors.
+function startWalking(p, fv = p.forwardVel, start = T.WALK_START_SPEED) {
+  const v = p.floor.surface?.surface === 'very_slippery' ? 0 : Math.min(p.intendedMag, start);
+  setForwardVel(p, Math.max(fv, v));
 }
 
 const walking = {
@@ -46,6 +48,7 @@ const walking = {
     if (isSteep(p.floor) && (slopeAlong(p.floor, p.faceYaw) > 0 || p.forwardVel <= -1)) return p.setAction('butt_slide');
     if (c.A.pressed) return jumpFromGround(p);
     if (c.B.pressed) {
+      if (tryReadSign(p)) return true;
       const dive = p.forwardVel >= T.GROUND_DIVE_MIN_SPEED && p.stickMag > 0.8;
       return dive ? p.setAction('dive', { fromGround: true }) : p.setAction('punch');
     }
@@ -76,7 +79,7 @@ const decelerating = {
   update(p, c) {
     if (isSteep(p.floor)) return p.setAction('butt_slide');
     if (c.A.pressed) return jumpFromGround(p);
-    if (c.B.pressed) return p.setAction('punch');
+    if (c.B.pressed) return tryReadSign(p) || p.setAction('punch');
     if (c.Z.pressed) return crouchOrSlide(p);
     if (p.stickHeld) return p.setAction('walking');
     decelerate(p, T.STOP_DECEL);
@@ -98,7 +101,7 @@ const braking = {
   },
   update(p, c) {
     if (c.A.pressed) return jumpFromGround(p);
-    if (c.B.pressed) return p.setAction('punch');
+    if (c.B.pressed) return tryReadSign(p) || p.setAction('punch');
     if (c.Z.pressed) return crouchOrSlide(p);
     if (p.stickHeld && !stickHeldBack(p) && p.actionTimer >= 2) return p.setAction('walking');
     decelerate(p, skidDecel(p.floor));
@@ -136,7 +139,7 @@ const finishTurnaround = {
   anim: 'turnaround',
   enter(p) {
     p.faceYaw = p.intendedYaw;
-    startWalking(p, 0);
+    startWalking(p, 0, T.PIVOT_START_SPEED);
   },
   update(p, c) {
     if (c.A.pressed) return p.setAction('sideflip', { yaw: p.faceYaw });
@@ -248,7 +251,7 @@ const land = {
   },
   update(p, c) {
     if (c.A.pressed && !p.landHard) return jumpFromGround(p);
-    if (c.B.pressed) return p.setAction('punch');
+    if (c.B.pressed) return tryReadSign(p) || p.setAction('punch');
     if (c.Z.pressed) return crouchOrSlide(p);
     if (isSteep(p.floor)) return p.setAction('butt_slide');
     if (p.stickHeld && !p.landHard) updateWalkingSpeed(p);

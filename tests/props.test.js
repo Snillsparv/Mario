@@ -1,7 +1,9 @@
-// Props + sky in node: trunks, fences, boulders, bushes and the signpost block the hero
+// Props + sky in node: trunks, fences, boulders, bushes and the signposts block the hero
 // (quarter-step walks with the same wall probes the player uses), solid props are closed on
 // top (a hero lands on them, never inside), stepping stones are walked over, every tree is a
-// climbable pole, decoration sits on open lawn, billboards face the camera, and the
+// climbable pole as thick as its 3D trunk, the trees and bushes are static closed 3D meshes
+// that fade (screen door) exactly when they hide the hero or the camera is inside them,
+// decoration and signs sit on open lawn, flower billboards face the camera, and the
 // draw-call budget holds.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,9 +13,9 @@ import { buildProps } from '../src/world/props.js';
 import { buildSky, SKY_HORIZON_COLOR } from '../src/world/sky.js';
 import { CollisionWorld } from '../src/collision/CollisionWorld.js';
 import { COLLIDER_TOP, SLAB_HALF, fenceRuns } from '../src/world/props/fences.js';
-import { BUSHES, FLOWER_PATCHES, ROCKS, SIGNPOST, SIGN_BOX } from '../src/world/props/decor.js';
-import { POLE_HEIGHT, POLE_RADIUS, TRUNK_RADIUS } from '../src/world/props/trees.js';
-import { FADE_SNAP, OCCLUDER_ALPHA, heroLocator } from '../src/world/props/billboards.js';
+import { BUSHES, FLOWER_PATCHES, ROCKS, SIGN_BOX } from '../src/world/props/decor.js';
+import { POLE_RADIUS, TRUNK_RADIUS, treeShapes, trunkRadius } from '../src/world/props/trees.js';
+import { FADE_SNAP, FADE_TIME, NEAR_FADE, OCCLUDER_ALPHA, heroLocator } from '../src/world/props/foliageFade.js';
 import { LOOK_HEIGHT, ORBIT_MODES } from '../src/camera/cameraConfig.js';
 
 const L = layout;
@@ -55,16 +57,105 @@ function landingHeight(x, z) {
   return f.surface ? f.y : null;
 }
 
-test('every tree is a climbable pole from the ground up', () => {
+const TREES = treeShapes(L);
+const leaves = part.object3D.getObjectByName('leaves');
+const bark = part.object3D.getObjectByName('bark');
+const fade = leaves.material.userData.foliageFade;
+const ray = new THREE.Raycaster();
+// First leaves (or `mesh`) hit from `from` toward `to` (arrays or {x,y,z}), within `far`.
+function firstHit(from, to, mesh = leaves, far = Infinity) {
+  const o = Array.isArray(from) ? new THREE.Vector3(...from) : new THREE.Vector3(from.x, from.y, from.z);
+  const t = Array.isArray(to) ? new THREE.Vector3(...to) : new THREE.Vector3(to.x, to.y, to.z);
+  const d = t.clone().sub(o);
+  ray.set(o, d.clone().normalize());
+  ray.far = Math.min(far, d.length());
+  return ray.intersectObject(mesh, false)[0] ?? null;
+}
+// Fade group of a hit on the leaves.
+const groupOf = (hit) => hit && leaves.geometry.attributes.fadeGroup.getX(hit.face.a);
+const groupIndex = (name) => fade.groups.findIndex((g) => g.name === name);
+// The leaves of each fade group on their own (cheaper to raycast than the whole mesh).
+const groupLeaves = (() => {
+  const pos = leaves.geometry.attributes.position.array;
+  const grp = leaves.geometry.attributes.fadeGroup.array;
+  const lists = fade.groups.map(() => []);
+  for (let v = 0; v < grp.length; v += 3) lists[grp[v]].push(...pos.subarray(v * 3, v * 3 + 9));
+  return lists.map((l) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(l, 3));
+    return new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
+  });
+})();
+
+test('every tree is a climbable pole as thick as its trunk, topping out just under the canopy', () => {
   assert.equal(part.poles.length, L.TREES.length);
-  for (const t of L.TREES) {
+  TREES.forEach((t, i) => {
     const p = part.poles.find((q) => q.x === t.x && q.z === t.z);
     assert.ok(p, `pole at tree ${t.x},${t.z}`);
     assert.ok(Math.abs(p.y0 - L.groundHeight(t.x, t.z)) < 1, 'pole starts on the ground');
-    const len = p.y1 - p.y0;
-    assert.ok(len > POLE_HEIGHT * 0.85 && len < POLE_HEIGHT * 1.15, `pole length ${len}`);
     assert.equal(p.radius, POLE_RADIUS);
+    const len = p.y1 - p.y0;
+    // A real climb even after a running jump grabs it at ~200 (review: ~7 units were left).
+    assert.ok(len > 460 && len < 640, `tree ${i}: pole length ${len.toFixed(0)}`);
+    // The pole is as thick as the bark where his hands go (between the foot's flare and the top).
+    for (let h = 80; h < len; h += 40) {
+      const r = trunkRadius(h, t.scale);
+      assert.ok(Math.abs(r - POLE_RADIUS) < 5, `tree ${i}: trunk radius ${r.toFixed(1)} at ${h}`);
+    }
+    // At the top of the climb (feet 160 below the pole top, 70 out from the axis) the leaves
+    // start around his hat (~165 above his feet), all round the trunk.
+    const feet = p.y1 - 160;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      const at = { x: t.x + Math.cos(a) * 70, z: t.z + Math.sin(a) * 70 };
+      const hit = firstHit([at.x, feet + 60, at.z], [at.x, feet + 2000, at.z]);
+      assert.ok(hit && groupOf(hit) === groupIndex(`tree:${i}`), `tree ${i} dir ${k}: no canopy overhead`);
+      const above = hit.point.y - (feet + 165);
+      assert.ok(above > -60 && above < 90, `tree ${i} dir ${k}: canopy ${above.toFixed(0)} above his hat`);
+    }
+  });
+});
+
+test('trees and bushes are static 3D meshes, closed and leafy from every side', () => {
+  const camera = new THREE.PerspectiveCamera();
+  const snap = () => [leaves, bark].map((m) => m.geometry.attributes.position.array.slice());
+  camera.position.set(0, 800, 6000);
+  camera.lookAt(0, 400, 0);
+  camera.updateMatrixWorld();
+  part.update(1, camera);
+  const before = snap();
+  camera.position.set(-5000, 600, 2000);
+  camera.lookAt(3000, 500, -3000);
+  camera.updateMatrixWorld();
+  part.update(2, camera);
+  assert.deepEqual(snap(), before, 'nothing turns to face the camera');
+  // Rays at every canopy and bush from all round, above and below hit its own leaves.
+  const dirs = [];
+  for (let el = -2; el <= 2; el++) {
+    for (let k = 0; k < (Math.abs(el) === 2 ? 1 : 8); k++) {
+      const e = (el * Math.PI) / 4.2;
+      const a = (k / 8) * Math.PI * 2;
+      dirs.push([Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)]);
+    }
   }
+  fade.groups.forEach((g, i) => {
+    if (g.kind !== 'canopy') return;
+    const bush = g.name.startsWith('bush');
+    for (const [dx, dy, dz] of dirs) {
+      if (bush && dy < -0.1) continue; // a bush sits on the ground
+      const from = [g.x + dx * 2000, g.y + dy * 2000, g.z + dz * 2000];
+      assert.ok(firstHit(from, [g.x, g.y, g.z], groupLeaves[i]), `${g.name}: no leaves seen from ${dx.toFixed(1)},${dy.toFixed(1)},${dz.toFixed(1)}`);
+    }
+  });
+  // Trunks: the bark is seen from all round below the canopy.
+  TREES.forEach((t, i) => {
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      const y = t.ground + 150;
+      const hit = firstHit([t.x + Math.cos(a) * 800, y, t.z + Math.sin(a) * 800], [t.x, y, t.z], bark);
+      assert.ok(hit && Math.abs(hit.distance - (800 - trunkRadius(150, t.scale))) < 8, `trunk ${i} from ${k}`);
+    }
+  });
 });
 
 test('tree trunks block walking from every direction', () => {
@@ -216,21 +307,50 @@ test('boulder colliders hug the drawn rock: the hero neither sinks into it nor s
   }
 });
 
-test('the signpost is a solid box you can stand on', () => {
-  const ground = L.groundHeight(SIGNPOST.x, SIGNPOST.z);
-  assert.ok(Math.abs(landingHeight(SIGNPOST.x, SIGNPOST.z) - (ground + SIGN_BOX.top)) < 1, 'sign top');
-  const face = Math.atan2(L.SPAWN.x - SIGNPOST.x, L.SPAWN.z - SIGNPOST.z);
-  const c = { x: SIGNPOST.x + Math.sin(face) * SIGN_BOX.centreZ, z: SIGNPOST.z + Math.cos(face) * SIGN_BOX.centreZ };
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    const end = walk({ x: c.x + Math.cos(a) * 400, z: c.z + Math.sin(a) * 400 }, c, 8);
-    // Distance outside the box, in the sign's frame (soft corners allowed for).
-    const dx = end.x - c.x;
-    const dz = end.z - c.z;
-    const lx = dx * Math.cos(face) - dz * Math.sin(face);
-    const lz = dx * Math.sin(face) + dz * Math.cos(face);
-    const out = Math.max(Math.abs(lx) - SIGN_BOX.halfWidth, Math.abs(lz) - SIGN_BOX.halfDepth);
-    assert.ok(out > 30 && end.inside < 1, `signpost from ${k}: ${out.toFixed(1)} outside`);
+test('a signpost at every layout.SIGNS entry: a solid box you can stand on', () => {
+  assert.ok(L.SIGNS.length >= 5);
+  for (const sign of L.SIGNS) {
+    const face = sign.yaw;
+    const c = { x: sign.x + Math.sin(face) * SIGN_BOX.centreZ, z: sign.z + Math.cos(face) * SIGN_BOX.centreZ };
+    const ground = L.groundHeight(sign.x, sign.z);
+    assert.ok(Math.abs(landingHeight(c.x, c.z) - (ground + SIGN_BOX.top)) < 1, `${sign.id}: sign top`);
+    assert.equal(world.findFloor(c.x, ground + 1000, c.z).surface?.terrain, 'wood', `${sign.id}: wooden top`);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      const end = walk({ x: c.x + Math.cos(a) * 400, z: c.z + Math.sin(a) * 400 }, c, 8);
+      // Distance outside the box, in the sign's frame (soft corners allowed for).
+      const dx = end.x - c.x;
+      const dz = end.z - c.z;
+      const lx = dx * Math.cos(face) - dz * Math.sin(face);
+      const lz = dx * Math.sin(face) + dz * Math.cos(face);
+      const out = Math.max(Math.abs(lx) - SIGN_BOX.halfWidth, Math.abs(lz) - SIGN_BOX.halfDepth);
+      assert.ok(out > 30 && end.inside < 1, `${sign.id} from ${k}: ${out.toFixed(1)} outside`);
+    }
+  }
+});
+
+test('every sign board faces its yaw and carries dark writing strokes on its front', () => {
+  const wood = part.object3D.getObjectByName('wood');
+  const col = wood.geometry.attributes.color;
+  const pos = wood.geometry.attributes.position;
+  for (const sign of L.SIGNS) {
+    const fx = Math.sin(sign.yaw);
+    const fz = Math.cos(sign.yaw);
+    const y = L.groundHeight(sign.x, sign.z) + 125; // between the writing lines
+    const hit = firstHit([sign.x + fx * 300, y, sign.z + fz * 300], [sign.x, y, sign.z], wood);
+    assert.ok(hit, `${sign.id}: board seen from the front`);
+    const n = hit.face.normal;
+    assert.ok(n.x * fx + n.z * fz > 0.99, `${sign.id}: board front faces yaw`);
+    assert.ok(Math.abs(hit.distance - 280) < 4, `${sign.id}: board front 20 in front of the post: ${hit.distance}`);
+    // Writing: dark wood vertices floating just in front of the board.
+    let ink = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const dx = pos.getX(i) - sign.x;
+      const dz = pos.getZ(i) - sign.z;
+      const front = dx * fx + dz * fz;
+      if (Math.abs(dx * fz - dz * fx) < 85 && front > 20.5 && front < 23 && col.getX(i) < 0.3) ink++;
+    }
+    assert.ok(ink > 150, `${sign.id}: ${ink} ink vertices`);
   }
 });
 
@@ -259,10 +379,26 @@ test('decoration sits on open lawn, clear of paths, trees, fences and the spawn'
     assert.equal(L.regionAt(f.x, f.z), 'lawn');
     clear(f.x, f.z, f.radius, 'flowers');
   }
-  clear(SIGNPOST.x, SIGNPOST.z, 45, 'signpost');
+  // Signs: on open ground, not under a canopy, clear of rocks, bushes and flowers.
+  for (const sign of L.SIGNS) {
+    assert.ok(['lawn', 'island'].includes(L.regionAt(sign.x, sign.z)), `${sign.id} region`);
+    clear(sign.x, sign.z, 90, `sign ${sign.id}`);
+    for (const t of TREES) {
+      assert.ok(Math.hypot(t.x - sign.x, t.z - sign.z) > t.reach + 90, `sign ${sign.id} under the tree at ${t.x},${t.z}`);
+    }
+    for (const o of [...ROCKS, ...BUSHES]) {
+      assert.ok(Math.hypot(o.x - sign.x, o.z - sign.z) > o.r + 90 + 150, `sign ${sign.id} by the lump at ${o.x},${o.z}`);
+    }
+    for (const f of FLOWER_PATCHES) {
+      assert.ok(Math.hypot(f.x - sign.x, f.z - sign.z) > f.radius + 90 + 60, `sign ${sign.id} in the flowers at ${f.x},${f.z}`);
+    }
+    for (const other of L.SIGNS) {
+      if (other !== sign) assert.ok(Math.hypot(other.x - sign.x, other.z - sign.z) > 500, `signs ${sign.id} and ${other.id}`);
+    }
+  }
 });
 
-test('billboards turn to face the camera', () => {
+test('flower billboards turn to face the camera', () => {
   const camera = new THREE.PerspectiveCamera();
   for (const [pos, look] of [
     [
@@ -279,54 +415,99 @@ test('billboards turn to face the camera', () => {
     camera.updateMatrixWorld();
     part.update(1, camera);
     const fwd = camera.getWorldDirection(new THREE.Vector3());
-    for (const name of ['foliage', 'flowers']) {
-      const p = part.object3D.getObjectByName(name).geometry.attributes.position;
-      const a = new THREE.Vector3().fromBufferAttribute(p, 0);
-      const b = new THREE.Vector3().fromBufferAttribute(p, 1);
-      const c = new THREE.Vector3().fromBufferAttribute(p, 3);
-      const n = b.sub(a).cross(c.sub(a)).normalize(); // quad front
-      const facing = -(n.x * fwd.x + n.z * fwd.z) / Math.hypot(fwd.x, fwd.z);
-      assert.ok(facing > 0.999 && Math.abs(n.y) < 1e-6, `${name} faces the camera (${facing})`);
-    }
+    const p = part.object3D.getObjectByName('flowers').geometry.attributes.position;
+    const a = new THREE.Vector3().fromBufferAttribute(p, 0);
+    const b = new THREE.Vector3().fromBufferAttribute(p, 1);
+    const c = new THREE.Vector3().fromBufferAttribute(p, 3);
+    const n = b.sub(a).cross(c.sub(a)).normalize(); // quad front
+    const facing = -(n.x * fwd.x + n.z * fwd.z) / Math.hypot(fwd.x, fwd.z);
+    assert.ok(facing > 0.999 && Math.abs(n.y) < 1e-6, `flowers face the camera (${facing})`);
   }
 });
 
 // Foliage screen-door fade (playtest: a canopy the trailing camera passed behind filled the
-// screen and hid the hero). Camera poses are the in-game ones: the view is aimed a little
-// above the hero, 1250-1450 units behind him.
-function foliageFades(camPos, aimAt, focus) {
+// screen and hid the hero). `focus`: the hero's feet [x, y, z] (published as the camera's
+// focus, LOOK_HEIGHT above them), null (no hero: first person) or undefined (no focus
+// published: the props estimate where he is). `hold`: seconds of game time the view is held
+// (long enough by default for any fade to play out).
+let clock = 100;
+function foliageFades(camPos, aimAt, focus, hold = 1) {
   const camera = new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000);
   camera.position.set(...camPos);
   camera.lookAt(...aimAt);
   camera.updateMatrixWorld();
   if (focus !== undefined) camera.userData.focus = focus && { x: focus[0], y: focus[1] + LOOK_HEIGHT, z: focus[2] };
-  part.update(1, camera);
-  const a = part.object3D.getObjectByName('foliage').geometry.attributes.spriteFade.array;
-  return (i) => {
-    assert.ok(a[i * 4] === a[i * 4 + 1] && a[i * 4] === a[i * 4 + 3], 'one fade per sprite');
-    return a[i * 4];
-  };
+  clock += hold;
+  part.update(clock, camera);
+  return (name) => fade.fade(name);
 }
-const treeIndex = (x, z) => L.TREES.findIndex((t) => t.x === x && t.z === z);
+const treeName = (x, z) => `tree:${L.TREES.findIndex((t) => t.x === x && t.z === z)}`;
+const heroAt = (x, z) => [x, L.groundHeight(x, z), z];
 
-test('foliage between the camera and the hero thins out to a screen door', () => {
-  const tree = treeIndex(-2600, 5200);
-  const hero = [-2480, L.groundHeight(-2480, 4502), 4502];
-  // With the camera's published focus and with the props' own estimate of where he is.
-  for (const focus of [hero, undefined]) {
-    for (const camZ of [6007, 5815]) {
-      const fade = foliageFades([-2480, 450, camZ], [-2480, 437, 4502], focus);
-      assert.ok(fade(tree) <= OCCLUDER_ALPHA + 0.01, `canopy in front of the hero (cam z ${camZ}): ${fade(tree)}`);
+// The fade's hidden test (ellipsoids) against the real leaves: trailing cameras at canopy
+// height around every tree and bush, the hero on the far side. Where rays from the camera to
+// most of his body pass through that canopy's leaves, it is a screen door; where no ray does,
+// it stays solid. The fade tests smooth ellipsoids: sight lines grazing the lumpy underside
+// (cameras above the canopy's middle looking down past it) may come out either way, so a few
+// in a hundred such cases may disagree, never more.
+test('a canopy or bush hides the hero exactly when its leaves cover him: then it thins out', () => {
+  let hiddenCases = 0;
+  let clearCases = 0;
+  let grazing = 0;
+  const missed = [];
+  const false_ = [];
+  fade.groups.forEach((g, gi) => {
+    if (g.kind !== 'canopy') return;
+    const bush = g.name.startsWith('bush');
+    const ground = L.groundHeight(g.x, g.z);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + 0.2;
+      const dx = Math.cos(a);
+      const dz = Math.sin(a);
+      for (const H of bush ? [230, 330] : [600, 700, 800]) {
+        for (const side of [0, 120, 260]) {
+          const D = bush ? 480 : 640;
+          const back = bush ? 450 : 700;
+          const hero = heroAt(g.x - dx * back - dz * side, g.z - dz * back + dx * side);
+          if (L.regionAt(hero[0], hero[2]) === 'water' || L.regionAt(hero[0], hero[2]) === 'cliff') continue;
+          const cam = [g.x + dx * D, ground + H, g.z + dz * D];
+          const f = foliageFades(cam, [hero[0], hero[1] + 137, hero[2]], hero)(g.name);
+          // Nine points on him: ankles to hat, and both sides of his middle.
+          let hidden = 0;
+          for (const [up, lat] of [[40, 0], [90, 0], [140, 0], [165, 0], [60, 40], [60, -40], [120, 40], [120, -40], [100, 0]]) {
+            const p = [hero[0] - dz * lat, hero[1] + up, hero[2] + dx * lat];
+            if (firstHit(cam, p, groupLeaves[gi])) hidden++;
+          }
+          const where = `${g.name} dir ${k} H ${H} side ${side}`;
+          if (hidden >= 6) {
+            hiddenCases++;
+            if (f > OCCLUDER_ALPHA + 0.01) missed.push(`${where}: hides ${hidden}/9, fade ${f.toFixed(2)}`);
+          } else if (hidden === 0) {
+            clearCases++;
+            if (f < 1) grazing++;
+            if (f <= OCCLUDER_ALPHA + 0.1) false_.push(`${where}: hides nothing, fade ${f.toFixed(2)}`);
+          }
+        }
+      }
     }
-  }
-  // Nothing to keep in view (first person): only the near fade applies, and a tree ~800
-  // ahead is solid.
-  assert.equal(foliageFades([-2480, 450, 6007], [-2480, 437, 4502], null)(tree), 1);
-  // A bush hiding his legs fades; one in the foreground below his feet does not.
-  const bush = L.TREES.length + BUSHES.findIndex((b) => b.x === -1200 && b.z === 3900);
-  const behindBush = [-1200, L.groundHeight(-1200, 3620), 3620];
-  assert.ok(foliageFades([-1200, 430, 4870], [-1200, 417, 3620], behindBush)(bush) <= OCCLUDER_ALPHA + 0.01);
-  assert.equal(foliageFades([-1200, 432, 4488], [-1200, 419, 3250], [-1200, L.groundHeight(-1200, 3250), 3250])(bush), 1);
+  });
+  assert.ok(hiddenCases > 100 && clearCases > 300, `${hiddenCases} hidden, ${clearCases} clear cases`);
+  assert.ok(missed.length <= hiddenCases * 0.02, `hidden but solid: ${missed.join('; ')}`);
+  assert.ok(false_.length <= clearCases * 0.01, `clear but faded: ${false_.join('; ')}`);
+  assert.ok(grazing <= clearCases * 0.02, `${grazing} of ${clearCases} clear cases thinned`);
+});
+
+test('the fade also works from the props\' own estimate of where the hero is', () => {
+  // A trailing camera 1250 behind him, lifted well above the default pitch (the default one
+  // sees under the canopy), a tree in between.
+  const tree = treeName(-2600, 5200);
+  const hero = heroAt(-2600, 4500);
+  const cam = [-2600, hero[1] + LOOK_HEIGHT + 1250 * Math.tan(ORBIT_MODES.follow.pitch[0]) + 500, 4500 + 1250];
+  const look = [hero[0], hero[1] + LOOK_HEIGHT, hero[2]];
+  const withFocus = foliageFades(cam, look, hero)(tree);
+  const estimated = foliageFades(cam, look, undefined)(tree);
+  assert.ok(withFocus <= OCCLUDER_ALPHA + 0.01, `with focus: ${withFocus}`);
+  assert.ok(estimated <= OCCLUDER_ALPHA + 0.01, `estimated: ${estimated}`);
 });
 
 // The locator shares the camera's tuning (cameraConfig.js) rather than a private copy: the
@@ -354,48 +535,53 @@ test('the hero locator uses the camera config: focus height, trailing pitch and 
   assert.ok(Math.abs(hero.z) < 2 && hero.x === 0 && hero.y === 0, `estimate ${hero.x}, ${hero.y}, ${hero.z}`);
 });
 
-test('foliage beside or behind the hero stays solid, foliage at the lens is gone', () => {
-  const tree = treeIndex(-2600, 5200);
-  // Running north past the tree: once he is in front of it, it stays solid (also with the
-  // estimate, on the lawn that slopes away from the camera here).
-  for (const focus of [[-2600, L.groundHeight(-2600, 5526), 5526], undefined]) {
+test('foliage beside or behind the hero stays solid; inside a canopy it is gone; from under it, leafy', () => {
+  const i = L.TREES.findIndex((t) => t.x === -2600 && t.z === 5200);
+  const tree = `tree:${i}`;
+  const t = TREES[i];
+  // Running north past the tree: once he is in front of it, it stays solid.
+  for (const focus of [heroAt(-2600, 5526), undefined]) {
     assert.equal(foliageFades([-2600, 499, 6817], [-2600, 485, 5526], focus)(tree), 1);
   }
   // Hero just beside the canopy: not hidden, not faded.
-  const beside = foliageFades([-1981, 450, 5622], [-2600, 437, 4550], [-2600, L.groundHeight(-2600, 4550), 4550]);
-  assert.ok(beside(tree) > 0.9, `tree beside the hero: ${beside(tree)}`);
-  // Camera 150 in front of the tree's plane: fully faded.
-  assert.equal(foliageFades([-2600, 450, 5350], [-2600, 437, 4000], null)(tree), 0);
+  const beside = foliageFades([-1981, 450, 5622], [-2600, 437, 4550], heroAt(-2600, 4550));
+  assert.equal(beside(tree), 1);
+  // Camera inside the canopy: gone (canopy and nothing else).
+  const inside = foliageFades([t.centre.x + 60, t.centre.y, t.centre.z], [-2600, 437, 4000], null);
+  assert.equal(inside(tree), 0);
+  assert.equal(inside(`trunk:${i}`), 1, 'the trunk below is not in the way');
+  // First-person look up from beside the trunk (his eyes ~140 up, 95 from the axis, where
+  // the trunk's collider stops him): the canopy's underside and the trunk are solid.
+  const up = foliageFades([t.x + 95, t.ground + 140, t.z], [t.x, t.ground + 1500, t.z], null);
+  assert.equal(up(tree), 1, 'canopy seen from under it');
+  assert.equal(up(`trunk:${i}`), 1, 'trunk beside him');
+  // A camera pressed against the bark: the trunk is gone.
+  assert.equal(foliageFades([t.x + 45, t.ground + 200, t.z], [t.x - 1000, t.ground + 200, t.z], null)(`trunk:${i}`), 0);
 });
 
 // Playtest: behind the castle, a camera ~400 from the tree at (2900, -6200) left its canopy
 // at fade 0.037, i.e. 1 pixel in 16: a sparse, perfectly regular dot grid over the sky and
 // the cliff that read as a screen overlay. Fades now skip the lowest and highest levels.
 test('foliage fades never leave a sparse dot grid: only 4/16 .. 12/16 dither levels show', () => {
-  const tree = treeIndex(2900, -6200);
-  const heroAt = (x, z) => [x, L.groundHeight(x, z), z];
-  const near = foliageFades([3238, 498, -6000], [2000, L.groundHeight(2000, -6000) + 137, -6000], heroAt(2000, -6000));
-  assert.equal(near(tree), 0, 'canopy right at the lens is gone, not a 1-in-16 dot grid');
-  // Sweep the trailing camera past trees and bushes all over the grounds: every sprite is
-  // gone, solid, or in the band of dense, even screen doors.
-  const n = L.TREES.length + BUSHES.length;
   let partial = 0;
   for (const t of [...L.TREES, ...BUSHES]) {
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
-      for (const d of [150, 300, 450, 600, 900]) {
-        const cam = [t.x + Math.cos(a) * d, L.groundHeight(t.x, t.z) + 300, t.z + Math.sin(a) * d];
-        const hero = heroAt(cam[0] - Math.cos(a) * 1250, cam[2] - Math.sin(a) * 1250);
-        const fade = foliageFades(cam, [hero[0], hero[1] + 137, hero[2]], hero);
-        for (let i = 0; i < n; i++) {
-          const f = fade(i);
-          if (f > 0 && f < 1) partial++;
-          assert.ok(f === 0 || f === 1 || (f >= FADE_SNAP[0] && f <= FADE_SNAP[1]), `sprite ${i}: fade ${f}`);
+      for (const d of [100, 200, 300, 450, 600, 900]) {
+        for (const h of [150, 300, 500]) {
+          const cam = [t.x + Math.cos(a) * d, L.groundHeight(t.x, t.z) + h, t.z + Math.sin(a) * d];
+          const hero = heroAt(cam[0] - Math.cos(a) * 1250, cam[2] - Math.sin(a) * 1250);
+          foliageFades(cam, [hero[0], hero[1] + 137, hero[2]], hero);
+          fade.groups.forEach((g, i) => {
+            const f = fade.fade(i);
+            if (f > 0 && f < 1) partial++;
+            assert.ok(f === 0 || f === 1 || (f >= FADE_SNAP[0] && f <= FADE_SNAP[1]), `${g.name}: fade ${f}`);
+          });
         }
       }
     }
   }
-  assert.ok(partial > 0, 'some sprites are part faded');
+  assert.ok(partial > 0, 'some groups are part faded');
   // The shader keeps a fragment when fade * 16 > Bayer + 0.5: 4 and 12 of 16 at the ends.
   const kept = (f) => [...Array(16).keys()].filter((b) => f * 16 > b + 0.5).length;
   assert.equal(kept(FADE_SNAP[0]), 4);
@@ -403,13 +589,127 @@ test('foliage fades never leave a sparse dot grid: only 4/16 .. 12/16 dither lev
   assert.equal(kept(OCCLUDER_ALPHA) >= 4 && kept(OCCLUDER_ALPHA) <= 12, true);
 });
 
-test('the foliage material patch finds its anchors in the three.js shaders', () => {
-  const mat = part.object3D.getObjectByName('foliage').material;
-  const shader = { vertexShader: THREE.ShaderLib.basic.vertexShader, fragmentShader: THREE.ShaderLib.basic.fragmentShader };
-  mat.onBeforeCompile(shader);
-  assert.match(shader.vertexShader, /vSpriteFade = spriteFade;/);
-  assert.match(shader.fragmentShader, /if \(vSpriteFade \* 16\.0 <= BAYER4/);
-  assert.ok(!part.object3D.getObjectByName('flowers').geometry.attributes.spriteFade, 'flowers never fade');
+// Review: the follow camera parked 30..50 units outside a canopy (not hiding the hero) left it
+// half faded: a regular see-through dot grid over half the frame. The near fade is now all or
+// nothing (with a little hysteresis) and only passes through the dither levels while it
+// plays out (FADE_TIME).
+test('a canopy or trunk beside the camera is never left half faded', () => {
+  let gone = 0;
+  let solid = 0;
+  TREES.forEach((t, i) => {
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + 0.1;
+      const dx = Math.cos(a);
+      const dz = Math.sin(a);
+      for (const [d, h] of [[-40, 0], [0, 0], [20, 0], [40, 0], [60, 0], [80, 0], [100, 0], [130, 0], [160, 0], [0, -120], [40, -150]]) {
+        // Beside the canopy at its middle (h: lower), the hero out behind the camera.
+        const r = t.reach + d;
+        const cam = [t.centre.x + dx * r, t.centre.y + h, t.centre.z + dz * r];
+        const hero = heroAt(t.x + dx * (r + 1250), t.z + dz * (r + 1250));
+        for (const approach of [0, 1]) {
+          // From far away and from inside the canopy (the hysteresis's two sides).
+          if (approach) foliageFades([t.centre.x, t.centre.y, t.centre.z], [hero[0], hero[1] + 137, hero[2]], hero);
+          else foliageFades([t.x + dx * 3000, t.centre.y, t.z + dz * 3000], [t.x, t.centre.y, t.z], hero);
+          const f = foliageFades(cam, [t.x - dx * 1000, t.centre.y, t.z - dz * 1000], hero)(`tree:${i}`);
+          assert.ok(f === 0 || f === 1, `tree ${i} dir ${k} ${d} out, ${h} up: fade ${f}`);
+          if (f === 0) gone++;
+          else solid++;
+        }
+      }
+    }
+  });
+  assert.ok(gone > 100 && solid > 100, `${gone} gone, ${solid} solid`);
+  // Trunks likewise, the camera closing in on the bark and backing off.
+  const t = TREES[0];
+  for (const d of [80, 60, 40, 30, 20, 10, 20, 30, 40, 50, 60]) {
+    const f = foliageFades([t.x + trunkRadius(200, t.scale) + d, t.ground + 200, t.z], [t.x - 1000, t.ground + 150, t.z], null)('trunk:0');
+    assert.ok(f === 0 || f === 1, `trunk at ${d}: ${f}`);
+    if (d <= 20) assert.equal(f, 0, `trunk at ${d}`);
+    if (d >= 50) assert.equal(f, 1, `trunk at ${d}`);
+  }
+});
+
+test('near fades dissolve over FADE_TIME of game time, hold while it stands still, and have hysteresis', () => {
+  const t = TREES[0];
+  const tree = 'tree:0';
+  const out = [t.x + 3000, t.centre.y, t.z];
+  const look = [t.x, t.centre.y, t.z];
+  // The point out along +x at distance d from the nearest blob's surface (as the fade
+  // measures it: along the line to each ellipsoid's centre).
+  const g = fade.groups[groupIndex(tree)];
+  const dist = (x) =>
+    Math.min(
+      ...g.blobs.map((b) => {
+        const v = [x - b.x, t.centre.y - b.y, t.centre.z - b.z];
+        const q = Math.hypot(v[0] / b.rh, v[1] / b.ry, v[2] / b.rh);
+        return Math.hypot(...v) * (1 - 1 / q);
+      }),
+    );
+  const surface = (d) => {
+    let lo = t.centre.x;
+    let hi = t.centre.x + 2000;
+    for (let k = 0; k < 40; k++) {
+      const mid = (lo + hi) / 2;
+      if (dist(mid) < d) lo = mid;
+      else hi = mid;
+    }
+    return [lo, t.centre.y, t.centre.z];
+  };
+  assert.equal(foliageFades(out, look, null)(tree), 1);
+  // Into the canopy, 30 ticks a second: gone within FADE_TIME (+ a tick), through the
+  // coarse dither levels only.
+  const seen = [];
+  for (let k = 0; k < 10; k++) seen.push(foliageFades(surface(-60), look, null, 1 / 30)(tree));
+  const ticks = Math.ceil(FADE_TIME * 30) + 1;
+  assert.ok(seen[0] > 0 && seen.slice(ticks).every((f) => f === 0), `dissolve ${seen.map((f) => f.toFixed(2))}`);
+  assert.ok(seen.every((f) => f === 0 || f === 1 || (f >= FADE_SNAP[0] && f <= FADE_SNAP[1])));
+  // Render frames between ticks (no game time passes) hold the fade.
+  foliageFades(out, look, null);
+  const held = foliageFades(surface(-60), look, null, 0)(tree);
+  assert.equal(held, 1, 'no time passed');
+  // Hysteresis: gone within NEAR_FADE[0] of the surface; stays gone until beyond NEAR_FADE[1].
+  foliageFades(surface(NEAR_FADE[0] - 25), look, null);
+  assert.equal(fade.fade(tree), 0);
+  assert.equal(foliageFades(surface((NEAR_FADE[0] + NEAR_FADE[1]) / 2), look, null)(tree), 0, 'still gone backing off');
+  assert.equal(foliageFades(surface(NEAR_FADE[1] + 25), look, null)(tree), 1, 'back');
+  assert.equal(foliageFades(surface((NEAR_FADE[0] + NEAR_FADE[1]) / 2), look, null)(tree), 1, 'still solid closing in');
+});
+
+test('the foliage material patch finds its anchors in the three.js shaders; both materials share the fades', () => {
+  for (const mesh of [leaves, bark]) {
+    const mat = mesh.material;
+    const shader = { vertexShader: THREE.ShaderLib.basic.vertexShader, fragmentShader: THREE.ShaderLib.basic.fragmentShader, uniforms: {} };
+    mat.onBeforeCompile(shader);
+    assert.match(shader.vertexShader, /attribute float fadeGroup;/);
+    assert.match(shader.vertexShader, /vPropFade = c == 0 \? f4\.x/);
+    assert.match(shader.fragmentShader, /if \(vPropFade \* 16\.0 <= BAYER4/);
+    assert.equal(shader.uniforms.propFade.value, fade.fades, `${mesh.name}: shared fade array`);
+    assert.ok(fade.fades.length >= fade.groups.length && fade.fades.length % 4 === 0);
+    const groups = mesh.geometry.attributes.fadeGroup.array;
+    assert.ok(groups.every((g) => g >= 0 && g < fade.groups.length && Number.isInteger(g)));
+    // Review: per-face box UVs broke the leaves at every triangle edge. The leaves are mapped
+    // tri-planar in world space (seamless across faces and blobs); the bark keeps its UVs.
+    const tri = mesh === leaves;
+    assert.equal(/texture2D\(map, vLeafPos\.zy\)/.test(shader.fragmentShader), tri, `${mesh.name}: tri-planar map`);
+    assert.equal(shader.fragmentShader.includes('#include <map_fragment>'), !tri, `${mesh.name}: UV map`);
+    assert.equal(!!mesh.geometry.attributes.normal, tri, `${mesh.name}: normals for the blend`);
+  }
+  // Leaf normals: unit length, and smooth (each blob's shared corners agree).
+  const nrm = leaves.geometry.attributes.normal;
+  const pos = leaves.geometry.attributes.position;
+  const byCorner = new Map();
+  for (let v = 0; v < nrm.count; v++) {
+    const n = [nrm.getX(v), nrm.getY(v), nrm.getZ(v)];
+    assert.ok(Math.abs(Math.hypot(...n) - 1) < 1e-3);
+    const key = [pos.getX(v), pos.getY(v), pos.getZ(v)].map((c) => c.toFixed(2)).join();
+    const seen = byCorner.get(key);
+    if (seen) assert.ok(n[0] * seen[0] + n[1] * seen[1] + n[2] * seen[2] > 0.999, `normals split at ${key}`);
+    else byCorner.set(key, n);
+  }
+  assert.ok(!part.object3D.getObjectByName('flowers').geometry.attributes.fadeGroup, 'flowers never fade');
+  // Every canopy / bush / trunk group has geometry of its own kind.
+  const used = new Set([...leaves.geometry.attributes.fadeGroup.array, ...bark.geometry.attributes.fadeGroup.array]);
+  assert.equal(used.size, fade.groups.length);
 });
 
 test('waterfall splash only animates while it can be seen', () => {
@@ -431,11 +731,19 @@ test('waterfall splash only animates while it can be seen', () => {
   assert.notDeepEqual(splash.array, seen, 'animates again in view');
 });
 
-test('draw calls: props + sky stay within 10 meshes', () => {
+test('draw calls and triangles: props + sky stay within 10 meshes and 40k triangles', () => {
   const sky = buildSky(L);
   let meshes = 0;
-  for (const root of [part.object3D, sky.object3D]) root.traverse((o) => o.isMesh && meshes++);
+  let tris = 0;
+  for (const root of [part.object3D, sky.object3D]) {
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      meshes++;
+      if (o.name !== 'skyDome') tris += (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3;
+    });
+  }
   assert.ok(meshes <= 10, `${meshes} meshes`);
+  assert.ok(tris < 40000, `${tris} props triangles`);
 });
 
 test('sky: behind everything, follows the camera, sets the scene background', () => {

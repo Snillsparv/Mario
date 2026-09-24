@@ -25,10 +25,16 @@ export const JUMP_CUT_FACTOR = 0.25;
 // Ground
 export const MAX_TARGET_SPEED = 32; // intendedMag = stickMag^2 * 32
 export const MAX_FORWARD_VEL = 48;
-// Starting to walk snaps to the stick's speed up to WALK_START_SPEED; from there the speed
-// eases toward the stick's target (+1.1 - fv / 43 per tick: an exponential curve with this
-// asymptote and time constant, 8 -> 32 in ~1.35 s), clamped at the target.
-export const WALK_START_SPEED = 8;
+// Starting from rest eases in: the first tick moves at the stick's speed up to
+// WALK_START_SPEED, then the speed gains START_ACCEL per tick near a standstill, blending
+// (smoothstep) into the running curve by START_BLEND_SPEED. The running curve eases toward
+// the stick's target (+1.1 - fv / 43 per tick: an exponential curve with this asymptote and
+// time constant), clamped at the target. Rest -> 32 takes ~1.7 s (tiptoe -> walk -> run).
+export const WALK_START_SPEED = 2;
+export const START_ACCEL = 0.7;
+export const START_BLEND_SPEED = 14;
+export const START_UPHILL_BLEND = 0.5; // uphill pull (u/tick^2) at which starts use the running curve
+export const PIVOT_START_SPEED = 8; // the pivot after a turnaround skid runs off at once
 export const RUN_ACCEL_LIMIT = 47.3;
 export const RUN_ACCEL_TICKS = 43;
 export const RUN_OVERSPEED_DRAG = 0.08; // fraction of the excess over the target lost per tick
@@ -39,14 +45,24 @@ export const TURNAROUND_FINISH_TICKS = 4; // pivot after a turnaround skid (A st
 export const STOP_DECEL = 1;
 export const STEEP_WALK_ACCEL = 4; // slope pull on floors too steep to walk up (walkable: slopes.js)
 export const WALL_PUSH_SPEED = 6; // forward speed cap when running into a wall
-export const TIPTOE_SPEED = 8;
-export const RUN_SPEED = 18;
+export const TIPTOE_SPEED = 8; // gait speeds (see gaitSpeed in actions/common.js): tiptoe below this,
+export const RUN_SPEED = 18; // walk below this, run above
+export const GAIT_LEAD = 2; // the gait shows at most this much above the forward speed
 export const STRIDE = { tiptoe: 80, walk: 150, run: 240, crawl: 70 }; // units per anim cycle
 export const CRAWL_SPEED_FACTOR = 0.1; // crawl target = walking target * this (~3.2 max)
 export const CROUCH_SLIDE_MIN_SPEED = 10;
 export const GROUND_DIVE_MIN_SPEED = 29;
 export const AIR_DIVE_MIN_SPEED = 28;
 export const DIVE_BOOST = 15;
+// Signs (layout.SIGNS): B reads one instead of punching when Pip is within SIGN_REACH of the
+// board centre (horizontally, feet within SIGN_REACH_Y of its foot), in front of its face
+// (within SIGN_FRONT_ANGLE of the direction the face looks, so never beside or behind it) and
+// facing the board within SIGN_FACING_ANGLE; while reading he turns to it.
+export const SIGN_REACH = 140;
+export const SIGN_REACH_Y = 150;
+export const SIGN_FRONT_ANGLE = 80 * DEG;
+export const SIGN_FACING_ANGLE = 75 * DEG;
+export const READ_TURN_RATE = 22.5 * DEG; // per tick
 export const IDLE_LOOK_TICKS = 150; // 5 s
 export const IDLE_SLEEP_TICKS = 450; // 15 s
 

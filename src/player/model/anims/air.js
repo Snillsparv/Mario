@@ -5,6 +5,7 @@
 import { createPose, resetPose, blendPose } from '../pose.js';
 import {
   PI, TAU, clamp, smoothstep, unit, easeOut, easeOutBack, hump, arm, arms, leg, legs, tuck, legTo, reachArm,
+  swellHand, swellFoot, strikeSwell, STRIKE_SWELL,
 } from '../kit.js';
 import { HAND_R } from '../dims.js';
 import { WALL_DIST } from '../physicsLink.js';
@@ -13,6 +14,8 @@ import { WALL_DIST } from '../physicsLink.js';
 const takeoffStretch = (t, amount = 0.12) => amount * (1 - smoothstep(0, 0.25, t));
 // How far past the apex we are (0 rising .. 1 falling fast); vy in units/tick.
 const falling = (vy) => clamp(-vy / 25, 0, 1);
+// The dive's leading mittens swell only a little (1.25x), unlike a punch.
+const DIVE_SWELL = 0.25;
 
 function jump(p, c) {
   const k = easeOut(c.t / 0.15);
@@ -131,6 +134,10 @@ function dive(p, c) {
   p.flipPitch = 1.4 * k;
   p.squash = 0.06 * k;
   arms(p, 0.3 + 2.45 * k, 0.3 + 0.4 * k, 0.1);
+  // A subtle swell of the leading mittens as they thrust ahead.
+  const sw = DIVE_SWELL * strikeSwell(c.t, 0.15, 0.3, 0.55);
+  swellHand(p, 'L', sw);
+  swellHand(p, 'R', sw);
   const kick = 0.15 * Math.sin(c.t * 14);
   leg(p, 'L', -0.05 + kick, 0.2, 0.8);
   leg(p, 'R', -0.05 - kick, 0.2, 0.8);
@@ -266,6 +273,7 @@ function jumpKick(p, c) {
   leg(p, 'L', 0.55 * k, 1.9 * k, 0.4);
   arm(p, 'L', -0.8 * k, 0.7, 0.4);
   arm(p, 'R', -0.5 * k, 0.8, 0.5);
+  swellFoot(p, 'R', STRIKE_SWELL * strikeSwell(c.t, 0.12, 0.3, 0.55)); // the kicking boot
   p.headPitch = 0.2 * k;
   p.face = 'shout';
 }

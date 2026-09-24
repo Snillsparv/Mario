@@ -5,7 +5,7 @@
 // Storage: every pose is made by createPose()'s one object literal, so all poses share a
 // single fast V8 shape whose number fields are updated in place, and pose code (these
 // whole-pose helpers, the per-side helpers in kit.js) names its channels instead of
-// looping over p[c]. (A pose built key by key, p[c] = 0 for 34 channels, is a slow
+// looping over p[c]. (A pose built key by key, p[c] = 0 for 38 channels, is a slow
 // dictionary object, and p[c] reads and writes by a variable name box every number: a
 // large share of the hero's per-frame garbage.) tests/model.test.js checks that the
 // helpers cover every channel.
@@ -21,6 +21,8 @@
 //   armXSweep  + = raised arm sweeps forward (horizontal plane);  elbowX + = bend
 //   legXSwing  + = leg swings forward;  legXSpread + = leg out sideways
 //   kneeX      + = bend (foot goes back);  ankleX + = toes point down
+//   handXSwell / footXSwell   attack swell of a mitten (about the wrist) / boot (about
+//              dims BOOT_PIVOT_Y): 0 = normal size, + = bigger (0.8 = 1.8x), on strikes
 
 import { wrapAngle } from '../../core/math.js';
 
@@ -36,6 +38,7 @@ export function createPose() {
     armRSwing: 0, armRRaise: 0, armRSweep: 0, elbowR: 0,
     legLSwing: 0, legLSpread: 0, kneeL: 0, ankleL: 0,
     legRSwing: 0, legRSpread: 0, kneeR: 0, ankleR: 0,
+    handLSwell: 0, handRSwell: 0, footLSwell: 0, footRSwell: 0,
     face: 'open',
   };
 }
@@ -52,6 +55,7 @@ export function resetPose(p) {
   p.armRSwing = 0; p.armRRaise = 0; p.armRSweep = 0; p.elbowR = 0;
   p.legLSwing = 0; p.legLSpread = 0; p.kneeL = 0; p.ankleL = 0;
   p.legRSwing = 0; p.legRSpread = 0; p.kneeR = 0; p.ankleR = 0;
+  p.handLSwell = 0; p.handRSwell = 0; p.footLSwell = 0; p.footRSwell = 0;
   p.face = 'open';
   return p;
 }
@@ -66,6 +70,7 @@ export function copyPose(d, s) {
   d.armRSwing = s.armRSwing; d.armRRaise = s.armRRaise; d.armRSweep = s.armRSweep; d.elbowR = s.elbowR;
   d.legLSwing = s.legLSwing; d.legLSpread = s.legLSpread; d.kneeL = s.kneeL; d.ankleL = s.ankleL;
   d.legRSwing = s.legRSwing; d.legRSpread = s.legRSpread; d.kneeR = s.kneeR; d.ankleR = s.ankleR;
+  d.handLSwell = s.handLSwell; d.handRSwell = s.handRSwell; d.footLSwell = s.footLSwell; d.footRSwell = s.footRSwell;
   d.face = s.face;
   return d;
 }
@@ -107,6 +112,10 @@ export function blendPose(o, a, b, t) {
   o.legRSpread = a.legRSpread + (b.legRSpread - a.legRSpread) * t;
   o.kneeR = a.kneeR + (b.kneeR - a.kneeR) * t;
   o.ankleR = a.ankleR + (b.ankleR - a.ankleR) * t;
+  o.handLSwell = a.handLSwell + (b.handLSwell - a.handLSwell) * t;
+  o.handRSwell = a.handRSwell + (b.handRSwell - a.handRSwell) * t;
+  o.footLSwell = a.footLSwell + (b.footLSwell - a.footLSwell) * t;
+  o.footRSwell = a.footRSwell + (b.footRSwell - a.footRSwell) * t;
   o.face = b.face;
   return o;
 }

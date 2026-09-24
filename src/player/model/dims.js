@@ -10,6 +10,9 @@ export const HIP_DROP = 2; // hip joints sit slightly below the pelvis joint
 export const THIGH = 15;
 export const SHIN = 14;
 export const ANKLE_Y = HIP_Y - HIP_DROP - THIGH - SHIN; // 17: ankle height when standing
+// A swelling boot (attack anims) grows about this point above the ankle, on the shin inside
+// the boot shaft, so the shaft does not climb over the knee.
+export const BOOT_PIVOT_Y = 12;
 
 export const SPINE_Y = 8; // torso joint above the pelvis joint
 export const NECK_Y = 36; // head joint above the torso joint

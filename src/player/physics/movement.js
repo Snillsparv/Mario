@@ -1,7 +1,7 @@
 // Velocity helpers shared by the actions: walking acceleration, air control, gravity and
 // sliding. They only change velocities / facing; the step functions move the hero.
 
-import { angleDiff, approach, approachAngle } from '../../core/math.js';
+import { angleDiff, approach, approachAngle, smoothstep } from '../../core/math.js';
 import * as T from './tuning.js';
 import { floorNormal, isSteep, surfaceClass, walkSlopeAccel } from './slopes.js';
 
@@ -23,16 +23,30 @@ export function stickHeldBack(p) {
   return p.stickHeld && Math.abs(angleDiff(p.faceYaw, p.intendedYaw)) > T.STICK_BACK_ANGLE;
 }
 
+// Ground acceleration (units/tick^2) at forward speed fv: a gentle START_ACCEL near a
+// standstill that blends into the running curve (RUN_ACCEL_LIMIT - fv) / RUN_ACCEL_TICKS by
+// START_BLEND_SPEED, so a start from rest eases in while running at speed feels unchanged.
+// Backward speeds (knockbacks) recover on the running curve. Uphill (`slope` < 0, the slope
+// pull) the pull already slows the start, and the soft start would stall the hero on steep
+// walkable slopes, so it gives way to the running curve by a pull of START_UPHILL_BLEND.
+export function walkAccel(fv, slope = 0) {
+  const run = (T.RUN_ACCEL_LIMIT - fv) / T.RUN_ACCEL_TICKS;
+  if (fv < 0 || fv >= T.START_BLEND_SPEED) return run;
+  const soft = T.START_ACCEL + (run - T.START_ACCEL) * smoothstep(0, T.START_BLEND_SPEED, fv);
+  return slope < 0 ? soft + (run - soft) * Math.min(1, -slope / T.START_UPHILL_BLEND) : soft;
+}
+
 // Ground running toward `target` speed (default: the stick's). Below the target the speed
-// eases up an exponential curve and is clamped at the target; above it a drag proportional
+// eases up (walkAccel) and is clamped at the target; above it a drag proportional
 // to the excess brings it back down (so downhill momentum settles at a higher speed). Slope
 // pull comes on top, then the hard speed ceiling and the turn toward the stick.
 export function updateWalkingSpeed(p, target = Math.min(p.intendedMag, T.MAX_TARGET_SPEED)) {
   let fv = p.forwardVel;
+  const slope = walkSlopeAccel(p.floor, p.faceYaw);
   const excess = fv - target;
-  if (excess < 0) fv = Math.min(target, fv + (T.RUN_ACCEL_LIMIT - fv) / T.RUN_ACCEL_TICKS);
+  if (excess < 0) fv = Math.min(target, fv + walkAccel(fv, slope));
   else fv -= excess * T.RUN_OVERSPEED_DRAG;
-  fv = Math.min(fv + walkSlopeAccel(p.floor, p.faceYaw), T.MAX_FORWARD_VEL);
+  fv = Math.min(fv + slope, T.MAX_FORWARD_VEL);
   p.faceYaw = approachAngle(p.faceYaw, p.intendedYaw, T.WALK_TURN_RATE);
   setForwardVel(p, fv);
 }

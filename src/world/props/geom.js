@@ -1,21 +1,25 @@
 // Small geometry + collider toolkit for the props.
 //
-// MeshBuilder collects triangles for one material (position, normal, uv, colour [+ alpha])
-// and turns them into a non-indexed BufferGeometry, so every prop of a material ends up in
-// a single draw call. Collider helpers append world-space triangles (9 numbers each) to a
-// flat array; walls are wound counter-clockwise seen from the side they face, as
-// CollisionWorld expects.
+// MeshBuilder collects triangles for one material (position, normal, uv, colour [+ alpha]
+// [+ fade group]) and turns them into a non-indexed BufferGeometry, so every prop of a
+// material ends up in a single draw call. Collider helpers append world-space triangles (9
+// numbers each) to a flat array; walls are wound counter-clockwise seen from the side they
+// face, as CollisionWorld expects.
 
 import * as THREE from 'three';
 import { bakeLighting } from '../../render/materials.js';
 
 export class MeshBuilder {
-  constructor({ alpha = false } = {}) {
+  // fadeGroups: also record a 'fadeGroup' attribute, the current `fadeGroup` for every vertex
+  // added (see foliageFade.js: every tree or bush fades as one).
+  constructor({ alpha = false, fadeGroups = false } = {}) {
     this.alpha = alpha;
     this.pos = [];
     this.nrm = [];
     this.uv = [];
     this.col = [];
+    this.groups = fadeGroups ? [] : null;
+    this.fadeGroup = 0;
   }
 
   // Vertices: { x, y, z, u, v, nx?, ny?, nz?, r?, g?, b?, a? }. Without a normal the vertex
@@ -41,6 +45,7 @@ export class MeshBuilder {
       this.uv.push(p.u ?? 0, p.v ?? 0);
       this.col.push(p.r ?? 1, p.g ?? 1, p.b ?? 1);
       if (this.alpha) this.col.push(p.a ?? 1);
+      if (this.groups) this.groups.push(this.fadeGroup);
     }
   }
 
@@ -67,6 +72,7 @@ export class MeshBuilder {
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(this.col, this.alpha ? 4 : 3));
+    if (this.groups) geo.setAttribute('fadeGroup', new THREE.Float32BufferAttribute(this.groups, 1));
     geo.computeBoundingSphere();
     return geo;
   }

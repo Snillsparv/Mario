@@ -1,16 +1,17 @@
-// Lawn decoration: boulders, stepping stones and round bushes (bushes are billboards in the
-// foliage batch; boulders and bushes get solid colliders you bump into and can hop onto,
-// stepping stones are walked over), small flower patches
-// (billboards, no collision) and a wooden signpost near the spawn. Positions are
-// props-internal (not gameplay anchors) and all lie on open lawn away from the paths, trees
-// and fences (tests/props.test.js checks this).
+// Lawn decoration: boulders, stepping stones and round bushes (low-poly 3D leaf clumps in the
+// shared leaf mesh; boulders and bushes get solid colliders you bump into and can hop onto,
+// stepping stones are walked over), small flower patches (billboards, no collision) and the
+// wooden signposts at layout.SIGNS. Rock, bush and flower positions are props-internal (not
+// gameplay anchors) and all lie on open lawn away from the paths, trees, fences and signs
+// (tests/props.test.js checks this).
 
 import * as THREE from 'three';
 import { makeRng, smoothstep } from '../../core/math.js';
 import { worldMaterial } from '../../render/materials.js';
 import { BillboardBatch } from './billboards.js';
 import { addSolid, cone, convexHull, floorPolygon, footprintRadii, lumpyDome, polygonWalls, ring, solidBox, solidMound } from './geom.js';
-import { BUSH_CELL_HEIGHT, FLOWER_VARIANTS, FOLIAGE, ROCK_TILE, canopyProfile, cellUV, flowerAtlas } from './textures.js';
+import { FLOWER_VARIANTS, ROCK_TILE, cellUV, flowerAtlas } from './textures.js';
+import { addCanopy, fadeBlobs } from './canopy.js';
 
 // Boulders and bushes: radius r, height h. Boulders stand well clear of the ground around
 // them (at least ~85 above its highest point) so they are real obstacles; the small ones
@@ -28,7 +29,7 @@ export const ROCKS = [
   { x: 4700, z: -5600, r: 170, h: 130 },
 ];
 
-// The first two are one clump: their sprites overlap and they share a collider (SLOT_MIN).
+// The first two are one clump: their leaves overlap and they share a collider (SLOT_MIN).
 export const BUSHES = [
   { x: -4200, z: 1900, r: 170, h: 190 },
   { x: -4050, z: 2085, r: 120, h: 140 },
@@ -51,18 +52,14 @@ export const FLOWER_PATCHES = [
   { x: -5600, z: 1600, radius: 280, count: 14, kinds: [0, 1, 2] },
 ];
 
-// Signpost ahead and to the right of the spawn, its blank board turned toward the spawn.
-export const SIGNPOST = { x: 430, z: 5150 };
-// Its collider, in the sign's frame (local +z = the board's front): a box around post and
-// board (local z -16..24, x across the board), flat on top at the board's top edge.
+// Signpost collider, in the sign's frame (local +z = the board's front, facing sign.yaw): a
+// box around post and board (local z -16..24, x across the board), flat on top at the
+// board's top edge.
 export const SIGN_BOX = { centreZ: 4, halfWidth: 88, halfDepth: 20, top: 191 };
 
 const BOULDER_SIDES = 12;
 const BOULDER_INSET = 15;
 const BODY_PROBE = 60; // height of the hero's upper wall probe above his feet
-// Bush sprite width per unit of bush radius: the painted bush fills ~84 % of the cell's
-// width, so it ends up ~2 r wide.
-const BUSH_SPRITE_W = 2.4;
 // Bush collider radius per unit of bush radius (inside the painted edge: his hands brush it).
 const BUSH_COLLIDER = 0.8;
 
@@ -202,24 +199,11 @@ export function buildDecor(layout, kit) {
     }
   }
   BUSHES.forEach((b, i) => {
-    const ground = layout.groundHeight(b.x, b.z);
-    const w = b.r * BUSH_SPRITE_W;
-    const tint = 0.9 + 0.15 * rng();
-    const cell = FOLIAGE.bush[i % FOLIAGE.bush.length];
-    kit.foliage.push({
-      x: b.x,
-      y: ground - 20,
-      z: b.z,
-      w,
-      h: w * BUSH_CELL_HEIGHT,
-      uv: cellUV(cell, BUSH_CELL_HEIGHT),
-      tint: [tint, tint, tint * 0.95],
-      occluder: canopyProfile(cell, 16, BUSH_CELL_HEIGHT),
-    });
+    addBush(kit, layout, b, i, rng);
     kit.shadow(b.x, b.z, b.r * 1.4, 0.85);
   });
 
-  addSignpost(kit, layout);
+  for (const sign of layout.SIGNS) addSignpost(kit, layout, sign);
 
   const sprites = [];
   for (const patch of FLOWER_PATCHES) {
@@ -238,12 +222,37 @@ export function buildDecor(layout, kit) {
   return { flowers: flowers.mesh, update: (camera) => flowers.update(camera) };
 }
 
-// Square post with a blank plank board, into the wood builder, and its SIGN_BOX collider.
-function addSignpost(kit, layout) {
-  const { x, z } = SIGNPOST;
+// A round bush: a big low leaf blob with three smaller ones around it, sunk into the ground,
+// about 2 r across and h tall (its collider: 0.8 r, top at h); one fade group.
+function addBush(kit, layout, { x, z, r, h }, i, rng) {
   const ground = layout.groundHeight(x, z);
-  const face = Math.atan2(layout.SPAWN.x - x, layout.SPAWN.z - z); // local +z looks at the spawn
-  const frame = placement(x, ground, z, face, 1, 1, 1);
+  let seed = 3000 + i * 10;
+  const blobs = [{ x, y: ground + 0.3 * h, z, rx: 0.85 * r, ry: 0.7 * h, rz: 0.85 * r, yaw: rng() * Math.PI * 2, seed: seed++, detail: 2 }];
+  const phase = rng() * Math.PI * 2;
+  for (let k = 0; k < 3; k++) {
+    const a = phase + (k / 3) * Math.PI * 2 + (rng() - 0.5) * 0.6;
+    const d = (0.45 + 0.1 * rng()) * r;
+    const br = (0.46 + 0.08 * rng()) * r;
+    blobs.push({ x: x + Math.cos(a) * d, y: ground + (0.22 + 0.15 * rng()) * h, z: z + Math.sin(a) * d, rx: br, ry: 0.55 * h, rz: br, yaw: rng() * 6, seed: seed++ });
+  }
+  kit.leaves.fadeGroup = kit.fade.addCanopy(fadeBlobs(blobs), `bush:${i}`);
+  const t = 0.9 + 0.15 * rng();
+  addCanopy(kit.leaves, blobs, {
+    centre: { x, y: ground + 0.35 * h, z },
+    radii: { x: r, y: 0.65 * h, z: r },
+    bottom: ground - 0.1 * h,
+    top: ground + h,
+    tint: [t, t, t * 0.95],
+  });
+}
+
+// Square post with a plank board whose front faces sign.yaw, painted with a few lines of
+// dark "writing" squiggles (shaped like the words of its text, but no real letters), into
+// the wood builder, and its SIGN_BOX collider.
+function addSignpost(kit, layout, sign) {
+  const { x, z, yaw } = sign;
+  const ground = layout.groundHeight(x, z);
+  const frame = placement(x, ground, z, yaw, 1, 1, 1);
   // Box centred at local (cx, cy, cz); uv = face uv * scale, optionally swapped so the grain
   // (texture v) runs along the box's width.
   const box = (cx, cy, cz, hx, hy, hz, [su, sv], swap = false) => {
@@ -260,9 +269,66 @@ function addSignpost(kit, layout) {
   };
   box(0, 72, 0, 13, 112, 13, [0.27, 1.17]); // post, from 40 below the ground to 184 above
   box(0, 145, 14, 85, 46, 6, [0.89, 0.96], true); // board with horizontal planks
+  addWriting(kit.wood, frame, sign);
   const { centreZ, halfWidth, halfDepth, top } = SIGN_BOX;
-  const cx = x + Math.sin(face) * centreZ;
-  const cz = z + Math.cos(face) * centreZ;
-  solidBox(kit.colliders.wood, cx, cz, face, halfWidth, halfDepth, ground - 80, ground + top);
+  const cx = x + Math.sin(yaw) * centreZ;
+  const cz = z + Math.cos(yaw) * centreZ;
+  solidBox(kit.colliders.wood, cx, cz, yaw, halfWidth, halfDepth, ground - 80, ground + top);
   kit.shadow(x, z, 110, 0.6);
+}
+
+// Writing on a sign's board (local frame: front at z = 20, x -85..85, y 99..191): a centred
+// title line (the first page) and up to three lines of body text, each word a wavy stroke
+// as long as the word. Strokes float WRITING_LIFT in front of the board.
+const WRITING = { left: -66, right: 66, title: 172, first: 150, spacing: 17, lines: 3 };
+const WRITING_LIFT = 21.5;
+const INK = [0.26, 0.17, 0.1];
+function addWriting(builder, frame, sign) {
+  const words = (text) => text.split(/\s+/).filter(Boolean).map((w) => w.length);
+  const title = words(sign.pages[0] ?? '');
+  const body = words(sign.pages.slice(1).join(' '));
+  const rng = makeRng(sign.id.split('').reduce((h, c) => h * 31 + c.charCodeAt(0), 7) >>> 0);
+  const width = WRITING.right - WRITING.left;
+  // Title: bigger letters, centred, squeezed to fit.
+  const titleCh = Math.min(5.2, width / (title.reduce((s, n) => s + n + 1, 0) || 1));
+  let tx = -title.reduce((s, n) => s + n * titleCh + titleCh, -titleCh) / 2;
+  for (const n of title) {
+    stroke(builder, frame, tx, tx + n * titleCh, WRITING.title, 5.5, rng);
+    tx += (n + 1) * titleCh;
+  }
+  // Body: words wrapped onto the lines.
+  const ch = 3.6;
+  let line = 0;
+  let bx = WRITING.left;
+  for (const n of body) {
+    const w = Math.max(2, n) * ch;
+    if (bx + w > WRITING.right && bx > WRITING.left) {
+      line++;
+      bx = WRITING.left;
+    }
+    if (line >= WRITING.lines) break;
+    stroke(builder, frame, bx, Math.min(WRITING.right, bx + w), WRITING.first - line * WRITING.spacing, 4.2, rng);
+    bx += w + 2 * ch;
+  }
+}
+
+// One wavy ink stroke on the board from x0 to x1 at height y (local), `th` thick.
+function stroke(builder, frame, x0, x1, y, th, rng) {
+  const n = Math.max(2, Math.round((x1 - x0) / 3));
+  const phase = rng() * Math.PI * 2;
+  const amp = th * 0.35;
+  const p = new THREE.Vector3();
+  const nrm = new THREE.Vector3(0, 0, 1).transformDirection(frame);
+  const at = (lx, ly) => {
+    p.set(lx, ly, WRITING_LIFT).applyMatrix4(frame);
+    return { x: p.x, y: p.y, z: p.z, nx: nrm.x, ny: nrm.y, nz: nrm.z, u: 0.5, v: 0.5, r: INK[0], g: INK[1], b: INK[2] };
+  };
+  let prev = null;
+  for (let i = 0; i <= n; i++) {
+    const lx = x0 + ((x1 - x0) * i) / n;
+    const cy = y + amp * Math.sin(phase + i * 1.9);
+    const cur = [at(lx, cy - th / 2), at(lx, cy + th / 2)];
+    if (prev) builder.quad(prev[0], cur[0], cur[1], prev[1]);
+    prev = cur;
+  }
 }

@@ -35,6 +35,8 @@ function vertices(model) {
 }
 
 const hand = (model, side) => model.rig[`arm${side}`].hand.getWorldPosition(new THREE.Vector3());
+// Mitten radius including an attack swell.
+const handR = (model, side) => HAND_R * model.rig[`arm${side}`].wrist.scale.x;
 const headCentre = (model) => model.rig.head.children.find((c) => c.isGroup).getWorldPosition(new THREE.Vector3());
 const maxOf = (list, f) => list.reduce((m, x) => Math.max(m, f(x)), -Infinity);
 
@@ -241,7 +243,15 @@ test('raised and reaching mittens stay out of the face', () => {
     const head = headCentre(model);
     for (const side of ['L', 'R']) {
       const d = hand(model, side).distanceTo(head);
-      assert.ok(d > HEAD_R * 1.07 + HAND_R - 2, `${anim}: ${side} mitten ${d.toFixed(1)} from the head centre`);
+      assert.ok(d > HEAD_R * 1.07 + handR(model, side) - 2, `${anim}: ${side} mitten ${d.toFixed(1)} from the head centre`);
+    }
+  }
+  // The swollen punching fist stays clear of the face too.
+  for (const [anim, side] of [['punch1', 'R'], ['punch2', 'L']]) {
+    for (const t of [0.04, 0.1, 0.18, 0.25]) {
+      const model = posed({ anim, animTime: t, floorY: 0 });
+      const d = hand(model, side).distanceTo(headCentre(model));
+      assert.ok(d > HEAD_R * 1.07 + handR(model, side) - 2, `${anim} ${t}: fist ${d.toFixed(1)} from the head centre`);
     }
   }
 });
@@ -277,7 +287,7 @@ test('one body material and about a mesh per bone', () => {
   const meshes = [];
   model.object3D.traverse((o) => o.isMesh && meshes.push(o));
   const materials = new Set(meshes.map((m) => m.material));
-  assert.ok(meshes.length <= 22, `${meshes.length} meshes`);
+  assert.ok(meshes.length <= 23, `${meshes.length} meshes`); // 15 bones, 6 scarf links, face, shadow
   assert.equal(materials.size, 3, 'body + face + shadow');
 });
 

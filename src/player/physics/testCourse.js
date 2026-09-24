@@ -7,7 +7,7 @@ import { Events } from '../../core/events.js';
 import { Player } from '../Player.js';
 
 const BUTTONS = ['A', 'B', 'Z', 'R', 'START', 'CU', 'CD', 'CL', 'CR'];
-const PLAYER_EVENTS = ['sfx', 'land', 'footstep', 'splash', 'hurt', 'lifeLost'];
+const PLAYER_EVENTS = ['sfx', 'land', 'footstep', 'splash', 'hurt', 'lifeLost', 'signRead'];
 
 // The documented AnimName values (docs/ARCHITECTURE.md), for contract checks.
 export const ANIM_NAMES = new Set(
@@ -100,6 +100,21 @@ export class CourseBuilder {
     return this;
   }
 
+  // Wooden signpost at (x, z) standing on y whose board faces `yaw` (like layout.SIGNS):
+  // a post and a thin board, both solid. Returns the sign record for Player({ signs }).
+  sign(x, z, yaw, y = 0, pages = ['Test sign']) {
+    const s = Math.sin(yaw);
+    const c = Math.cos(yaw);
+    const post = 9;
+    this.box(x - post, y, z - post, x + post, y + 110, z + post, { noBottom: true, terrain: 'wood' });
+    // The board: 120 wide, 8 thick; axis-aligned boxes only, so snap it to the nearer axis.
+    const alongX = Math.abs(c) >= Math.abs(s);
+    const hw = alongX ? 60 : 4;
+    const hd = alongX ? 4 : 60;
+    this.box(x - hw, y + 110, z - hd, x + hw, y + 180, z + hd, { terrain: 'wood' });
+    return { id: `sign-${x}-${z}`, x, z, y, yaw, pages };
+  }
+
   pole(x, z, y0, y1, radius = 30) {
     this.poles.push({ x, z, y0, y1, radius });
     return this;
@@ -123,6 +138,7 @@ export class CourseBuilder {
 // The preview's obstacle course. Spawn at the origin facing +Z.
 //   +Z: 20 deg and 45 deg ramps, stairs   +X: ledge platform, tall wall, pole
 //   -Z: swimming pool with a sloped bank   -X: slippery slope, low ceiling tunnel
+//   a readable sign ahead-left of the spawn, its face toward the spawn (`signs`)
 export function buildTestCourse() {
   const c = new CourseBuilder();
   const pool = { x0: -900, z0: -4200, x1: 900, z1: -1500 };
@@ -145,7 +161,10 @@ export function buildTestCourse() {
   c.slope(-3400, -2400, 600, -1400, 0, 700, { surface: 'very_slippery', terrain: 'stone' });
   c.box(-3400, 0, -2000, -2400, 700, -1400, { noBottom: true });
   c.box(-2200, 200, 1000, -1400, 400, 2400, { terrain: 'wood' });
-  return { builder: c, spawn: { x: 0, y: 0, z: 0, yaw: 0 } };
+  const signs = [
+    c.sign(-500, 700, Math.PI, 0, ['Test course', 'Walk up to a sign, face it and press B to read it.']),
+  ];
+  return { builder: c, spawn: { x: 0, y: 0, z: 0, yaw: 0 }, signs };
 }
 
 // Produces controller snapshots (same shape as core/input.js poll()) from plain states like
@@ -164,7 +183,8 @@ export class ScriptedController {
       sy /= mag;
       mag = 1;
     }
-    const out = { stickX: sx, stickY: sy, stickMag: mag, mouseDX: 0, mouseDY: 0 };
+    // rawStickMag (optional): a keyboard stick's full push while stickX/Y are eased in.
+    const out = { stickX: sx, stickY: sy, stickMag: mag, rawStickMag: Math.max(mag, state.rawStickMag ?? mag), mouseDX: 0, mouseDY: 0 };
     for (const b of BUTTONS) {
       const down = !!state[b];
       out[b] = { down, pressed: down && !this.prev[b], released: !down && this.prev[b] };
@@ -176,19 +196,21 @@ export class ScriptedController {
 
 // Headless driver for tests and tools: a Player on a course made by build(CourseBuilder),
 // with its events logged ({ event, tick, ...payload }). Every tick is checked for contract
-// violations (undocumented anim, non-finite state), which throw.
+// violations (undocumented anim, non-finite state), which throw. The course has no readable
+// signs unless build() returns them (an array of CourseBuilder.sign() records).
 //   run(n, input, each)  advances up to n ticks holding `input` (camera yaw 0: stick up = +Z);
 //                        each(p, i) returning false stops early. Returns the ticks run.
 //   until(n, input, pred) runs until pred(p) holds (or n ticks).
 export function createSim(build, spawn = { x: 0, y: 0, z: 0, yaw: 0 }) {
   const builder = new CourseBuilder();
-  build(builder);
+  const built = build(builder);
+  const signs = Array.isArray(built) ? built : [];
   const world = builder.build();
   const events = new Events();
   const log = [];
   let p = null;
   for (const name of PLAYER_EVENTS) events.on(name, (e) => log.push({ event: name, tick: p.tick, ...e }));
-  p = new Player({ collision: world, events, spawn });
+  p = new Player({ collision: world, events, spawn, signs });
   const ctl = new ScriptedController();
   const sim = {
     p,

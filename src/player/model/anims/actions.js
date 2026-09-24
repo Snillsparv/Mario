@@ -3,13 +3,16 @@
 
 import {
   PI, TAU, smoothstep, unit, easeIn, easeOut, easeOutBack, hump, arm, arms, leg, legs, stand, plantLeg, plantFeet,
-  keyframes,
+  keyframes, swellHand, swellFoot, strikeSwell, STRIKE_SWELL, PUNCH_SWELL,
 } from '../kit.js';
 
 // Jab curve: snaps out in 0.06 s, holds briefly, pulls back by ~0.3 s.
 const jab = (t) => (t < 0.06 ? easeOut(t / 0.06) : 1 - smoothstep(0.14, 0.32, t));
 
-// side: the punching arm. The opposite foot leads and the chest twists into the blow.
+// side: the punching arm. The opposite foot leads and the hips and chest turn into the
+// blow, but only part way: the arm swings level and a little out to the side, so the
+// fist lands ahead of the punching shoulder, clear of the body and head as seen from the
+// follow camera behind Pip.
 function punch(p, c, side) {
   const other = side === 'R' ? 'L' : 'R';
   const s = side === 'R' ? 1 : -1;
@@ -21,12 +24,15 @@ function punch(p, c, side) {
   p.hipsPitch = 0.1;
   plantLeg(p, other, 2);
   plantLeg(p, side, -20);
-  p.spinePitch = 0.12 + 0.15 * e;
-  p.spineYaw = s * (-0.25 + 0.75 * e);
-  p.hipsYaw = s * 0.2 * e;
+  p.spinePitch = 0.12 + 0.03 * e;
+  p.spineYaw = s * (-0.25 + 0.4 * e);
+  p.hipsYaw = s * 0.1 * e;
   p.headYaw = -p.spineYaw * 0.7;
-  arm(p, side, 0.95 + 0.7 * e, 0.12, 1.7 * (1 - e) + 0.05);
+  arm(p, side, 0.95 + 0.8 * e, 0.12 + 0.55 * e, 1.7 * (1 - e) + 0.05);
   arm(p, other, 1.0, 0.3, 1.85, 0.3); // guard
+  // The fist balloons (~2.1x) as the arm snaps out, stays big through the hit, deflates
+  // on the way back.
+  swellHand(p, side, PUNCH_SWELL * strikeSwell(c.t, 0.06, 0.15, 0.3));
   p.face = 'shout';
 }
 
@@ -41,9 +47,11 @@ function kick(p, c) {
   p.spineRoll = -0.35 * e;
   p.headYaw = -0.3 * e;
   plantLeg(p, 'L', 2);
-  leg(p, 'R', 0.2 + 0.3 * e, 0.2 + 1.2 * chamber, 0.1, 1.3 * e);
+  leg(p, 'R', 0.2 + 0.3 * e, 0.2 + 1.2 * chamber, 0.1, 1.42 * e);
   arm(p, 'L', 0.3, 0.3 + 1.1 * e, 0.6);
   arm(p, 'R', 0.9, 0.6, 1.5);
+  // The boot swells once it is off the floor and deflates before the leg comes back down.
+  swellFoot(p, 'R', STRIKE_SWELL * strikeSwell(c.t - 0.03, 0.08, 0.16, 0.3));
   p.face = 'shout';
 }
 

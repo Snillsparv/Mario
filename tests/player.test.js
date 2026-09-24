@@ -139,7 +139,9 @@ describe('ground movement', () => {
       });
     }
     assert.ok(seen.includes(1) && seen.includes(2), `punch steps ${seen}`);
-    assert.ok(k.sfx().includes('kick'));
+    // Each combo step names its own sound (not a generic 'punch' the audio has to guess at).
+    const hits = k.sfx().filter((n) => /punch|kick/.test(n));
+    assert.deepEqual(hits.slice(0, 3), ['punch1', 'punch2', 'kick'], `combo sounds ${hits}`);
   });
 });
 
@@ -362,7 +364,7 @@ describe('walls and ledges', () => {
       flat(b);
       b.box(-2000, 0, 1300, 2000, 400, 2500);
     });
-    s.run(34, { stickY: 1 });
+    s.run(41, { stickY: 1 });
     s.run(1, { stickY: 1, A: true });
     s.until(40, { stickY: 1, A: true }, (p) => p.action === 'ledge_hang');
     assert.equal(s.p.action, 'ledge_hang');
@@ -394,7 +396,7 @@ describe('walls and ledges', () => {
       flat(b);
       b.box(-2000, 0, 1300, 2000, 400, 2500);
     });
-    s.run(34, { stickY: 1 });
+    s.run(41, { stickY: 1 });
     s.run(1, { stickY: 1, A: true });
     s.until(40, { stickY: 1, A: true }, (p) => p.action === 'ledge_hang');
     s.run(4, {});
@@ -476,6 +478,7 @@ describe('special moves', () => {
     s.run(1, { A: true });
     s.run(1, { B: true });
     assert.equal(s.p.action, 'jump_kick');
+    assert.equal(s.sfx().at(-1), 'jump_kick', 'the flying kick sends its own sound');
     const f = sim(flat);
     runUp(f);
     f.run(1, { stickY: 1, A: true });
@@ -676,9 +679,9 @@ describe('robustness and render state', () => {
   });
 
   test('long random input runs on the test course stay finite and valid', () => {
-    const { builder, spawn } = buildTestCourse();
+    const { builder, spawn, signs } = buildTestCourse();
     const world = builder.build();
-    const player = new Player({ collision: world, events: new Events(), spawn });
+    const player = new Player({ collision: world, events: new Events(), spawn, signs });
     const ctl = new ScriptedController();
     const rng = makeRng(1234);
     let input = {};
@@ -690,6 +693,7 @@ describe('robustness and render state', () => {
         input = { stickX: Math.cos(a) * m, stickY: Math.sin(a) * m, A: rng() < 0.3, B: rng() < 0.1, Z: rng() < 0.12 };
       }
       const { x, z } = player.pos;
+      if (player.action === 'reading' && player.actionTimer > 20) player.endReading(); // the dialog closes
       player.update(ctl.next(input), rng() * 6);
       const { pos, vel } = player;
       assert.ok(Number.isFinite(pos.x + pos.y + pos.z + vel.x + vel.y + vel.z + player.faceYaw), `NaN at ${i}`);
