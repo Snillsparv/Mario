@@ -31,6 +31,18 @@
 // name, 'stick', 'dpad' or 'none'; picture: the touch is over the game picture) and
 // 'touchRelease' { button } when it ends (the title screen starts from them), 'touchUi'
 // { shown } when the controller appears or goes.
+//
+// Standalone (the phone's pad page, pad.html: the phone only steers the game on a computer):
+//
+//   new TouchController({ standalone: true, sink: (state) => ..., events, haptics, onLayout })
+//
+// The controller body fills the whole screen (no picture; touchLayout(..., { standalone: true }):
+// a tall layout in portrait, a wide two-grip one in landscape, both keeping layout.strip free
+// for the page's status line). It shows at once, whatever the pointer, and hands every state
+// change to `sink(state)` (the same reused object input.setTouchState gets: copy what you keep)
+// instead of the input. `haptics(ms)` replaces the press buzz (default navigator.vibrate);
+// `onLayout(layout)` runs after every layout. Without touch events (a pen or touch screen that
+// only sends pointer events) each pointer works as one finger. touchUi.active stays untouched.
 
 import {
   touchLayout,
@@ -194,15 +206,28 @@ export function bodySvg(layout) {
   const r = Math.min(34, W * 0.09);
   const notch = layout.body.notchY - layout.body.y; // the middle of the lower edge
   const k = layout.k;
+  // The notch between the grips runs from 0.33 W to 0.67 W, or from the layout's gripL to
+  // gripR (standalone landscape: a wide body).
+  const { gripL, gripR, bottomR: rb } = layout.body; // rb: rounded lower corners (standalone)
+  let notchPath;
+  if (gripL === undefined || gripR === undefined) {
+    notchPath = [`H${W * 0.67}`, `C${W * 0.61},${h} ${W * 0.6},${notch} ${W * 0.5},${notch}`, `C${W * 0.4},${notch} ${W * 0.39},${h} ${W * 0.33},${h}`];
+  } else {
+    const c = (gripL + gripR) / 2;
+    const hw = (gripR - gripL) / 2; // same curve as above for gripL/R = 0.33 / 0.67 W
+    notchPath = [
+      `H${gripR}`,
+      `C${gripR - hw * 0.353},${h} ${gripR - hw * 0.412},${notch} ${c},${notch}`,
+      `C${gripL + hw * 0.412},${notch} ${gripL + hw * 0.353},${h} ${gripL},${h}`,
+    ];
+  }
   const path = [
     `M${r},${top}`,
     `H${W - r}`,
     `Q${W},${top} ${W},${top + r}`,
-    `V${h}`,
-    `H${W * 0.67}`,
-    `C${W * 0.61},${h} ${W * 0.6},${notch} ${W * 0.5},${notch}`,
-    `C${W * 0.4},${notch} ${W * 0.39},${h} ${W * 0.33},${h}`,
-    `H0`,
+    ...(rb ? [`V${h - rb}`, `Q${W},${h} ${W - rb},${h}`] : [`V${h}`]),
+    ...notchPath,
+    ...(rb ? [`H${rb}`, `Q0,${h} 0,${h - rb}`] : ['H0']),
     `V${top + r}`,
     `Q0,${top} ${r},${top}`,
     'Z',
@@ -210,7 +235,7 @@ export function bodySvg(layout) {
   // The centre plate holds CAM and START (with their labels), ending just under START's
   // label (clear of ATTACK), with a small speaker grille below it.
   const { R, START } = layout.buttons;
-  const plateW = 76 * k;
+  const plateW = layout.standalone ? Math.max(76 * k, Math.max(R.w, START.w) + 18 * k) : 76 * k;
   const plateX = W / 2 - plateW / 2;
   const plateY = R.y - R.h / 2 - layout.body.y - 14 * k;
   const plateH = Math.min(notch - 10 * k, START.y + START.h / 2 - layout.body.y + 23 * k) - plateY;
@@ -262,10 +287,15 @@ export class TouchController {
   // input: core/input.js Input; events: the game's bus; view: N64Renderer (its container is
   // the element whose bottom inset makes room in portrait). Options for previews/tests:
   // container (instead of view.container), search (instead of location.search), coarse.
-  constructor({ input, events, view, container, search, coarse } = {}) {
+  // standalone, sink, haptics, onLayout: the pad page's full-screen mode (see the top).
+  constructor({ input, events, view, container, search, coarse, standalone = false, sink = null, haptics = null, onLayout = null } = {}) {
     this.input = input;
     this.events = events;
     this.view = view;
+    this.standalone = !!standalone;
+    this.sink = typeof sink === 'function' ? sink : null;
+    this.haptics = typeof haptics === 'function' ? haptics : null;
+    this.onLayout = typeof onLayout === 'function' ? onLayout : null;
     this.shown = false;
     this.layout = null;
     this.touches = []; // active touch records (see _begin)
@@ -278,11 +308,19 @@ export class TouchController {
     this.dpadShown = 0; // D-pad state drawn: 0 = idle, 16 | direction bits while touched
     if (typeof document === 'undefined') return; // logic-only use (node tests)
 
-    this.container = container ?? view?.container ?? document.getElementById('game');
-    const query = search ?? location.search;
-    this.forced = new URLSearchParams(query).get('touch');
-    this.mq = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
-    this.wanted = () => wantTouchUi({ search: query, coarse: coarse ?? !!this.mq?.matches });
+    if (this.standalone) {
+      // No picture to make room on, no camera drags, always shown.
+      this.container = null;
+      this.forced = null;
+      this.mq = null;
+      this.wanted = () => true;
+    } else {
+      this.container = container ?? view?.container ?? document.getElementById('game');
+      const query = search ?? location.search;
+      this.forced = new URLSearchParams(query).get('touch');
+      this.mq = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+      this.wanted = () => wantTouchUi({ search: query, coarse: coarse ?? !!this.mq?.matches });
+    }
 
     injectStyles();
     this._build();
@@ -296,7 +334,7 @@ export class TouchController {
 
   _build() {
     const root = (this.root = document.createElement('div'));
-    root.className = 'cg-touch';
+    root.className = this.standalone ? 'cg-touch cg-pad' : 'cg-touch';
     this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.svg.setAttribute('class', 'cg-tc-body');
     this.zoneLayer = document.createElement('div');
@@ -375,6 +413,24 @@ export class TouchController {
       this._mouse = false;
       this._pointer('end', 'mouse', e.clientX, e.clientY);
     });
+    // Standalone on a browser without touch events: touch and pen pointers are the fingers.
+    if (this.standalone && !('ontouchstart' in window)) {
+      const id = (e) => `p${e.pointerId}`;
+      const pens = new Set();
+      on(this.root, 'pointerdown', (e) => {
+        if (e.pointerType === 'mouse') return;
+        e.preventDefault();
+        pens.add(e.pointerId);
+        this._pointer('start', id(e), e.clientX, e.clientY);
+      });
+      on(window, 'pointermove', (e) => pens.has(e.pointerId) && this._pointer('move', id(e), e.clientX, e.clientY));
+      const up = (e) => {
+        if (!pens.delete(e.pointerId)) return;
+        this._pointer('end', id(e), e.clientX, e.clientY);
+      };
+      on(window, 'pointerup', up);
+      on(window, 'pointercancel', up);
+    }
     // Drags on the picture orbit the camera.
     if (this.container) {
       on(this.container, 'touchstart', (e) => this._onLook(e, 'start'), active);
@@ -398,7 +454,7 @@ export class TouchController {
     on(document, 'visibilitychange', () => document.hidden && this.releaseAll());
     if (this.mq?.addEventListener) on(this.mq, 'change', () => this.setVisible(this.wanted()));
     // A touch screen whose primary pointer is fine (a laptop): show on the first touch.
-    if (this.forced !== '0' && this.forced !== 'false') {
+    if (!this.standalone && this.forced !== '0' && this.forced !== 'false') {
       const first = () => !this.shown && this.setVisible(true);
       on(window, 'touchstart', first, { passive: true, once: true });
     }
@@ -408,7 +464,7 @@ export class TouchController {
     on = !!on;
     if (!this.root || on === this.shown) return;
     this.shown = on;
-    touchUi.active = on;
+    if (!this.standalone) touchUi.active = on; // the game's title / pause texts
     this.root.classList.toggle('cg-on', on);
     document.documentElement.classList.toggle('cg-touch-on', on);
     if (on) this._layout(true);
@@ -463,9 +519,11 @@ export class TouchController {
     if (!force && key === this._layoutKey && this.layout) return;
     this._layoutKey = key;
     const prevMode = this.layout?.mode;
-    const L = (this.layout = touchLayout(W, H, safe));
-    const land = L.mode === 'landscape';
+    const L = (this.layout = this.standalone ? touchLayout(W, H, safe, { standalone: true }) : touchLayout(W, H, safe));
+    // The translucent overlay look is for landscape over the picture; standalone keeps the body.
+    const land = L.mode === 'landscape' && !L.standalone;
     this.root.classList.toggle('cg-land', land);
+    if (this.standalone) this.root.classList.toggle('cg-pad-land', L.mode === 'landscape');
     this._setPictureBottom(L.pictureBottom);
     const k = L.k;
 
@@ -476,7 +534,7 @@ export class TouchController {
       this.svg.innerHTML = bodySvg(L);
       this.emblem.style.left = px(L.emblem.x);
       this.emblem.style.top = px(L.emblem.y);
-      this.emblem.style.fontSize = px(7.5 * k);
+      this.emblem.style.fontSize = px(L.emblem.size ?? 7.5 * k);
     }
 
     // Zones that capture touches. The divs are reused (a touch's events go to the element it
@@ -564,6 +622,7 @@ export class TouchController {
     this.cLabel.style.display = land ? 'none' : '';
     if (prevMode && prevMode !== L.mode) this.releaseAll(); // rotated: touches from the old layout end
     else this._update(); // repaint (the fingers that are down stay)
+    this.onLayout?.(L);
   }
 
   _placeWell(x, y) {
@@ -624,12 +683,12 @@ export class TouchController {
         r.ox = L.stick.x;
         r.oy = L.stick.y;
       } else {
-        r.floating = L.mode === 'landscape'; // the well follows the thumb over the picture
+        r.floating = L.mode === 'landscape' && !L.standalone; // the well follows the thumb over the picture
       }
     }
     this.touches.push(r);
     this._move(r, x, y);
-    const picture = L.mode === 'landscape' || y < L.top;
+    const picture = !L.standalone && (L.mode === 'landscape' || y < L.top);
     this.events?.emit('touchPress', { button: role, picture });
   }
 
@@ -671,7 +730,8 @@ export class TouchController {
     }
   }
 
-  // Combine the touches into the controller state, hand it to the input, repaint.
+  // Combine the touches into the controller state, hand it to the input (or the standalone
+  // sink), repaint.
   _update() {
     const st = this.state;
     for (let i = 0; i < TOUCH_BUTTONS.length; i++) st[TOUCH_BUTTONS[i]] = false;
@@ -687,7 +747,8 @@ export class TouchController {
     const v = stick && stick.stick.mag > 0 ? stick.stick : dpad ? dpad.stick : null;
     st.stickX = v ? v.x : 0;
     st.stickY = v ? v.y : 0;
-    this.input?.setTouchState?.(st);
+    if (this.sink) this.sink(st);
+    else this.input?.setTouchState?.(st);
     this._paint(stick, dpad);
   }
 
@@ -751,6 +812,10 @@ export class TouchController {
 
   // A short buzz on a fresh press, where the browser allows it (Android; needs a prior tap).
   _buzz() {
+    if (this.haptics) {
+      this.haptics(VIBRATE_MS);
+      return;
+    }
     try {
       if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
       if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;

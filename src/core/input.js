@@ -35,6 +35,11 @@
 // button seen down is latched until the next poll, so a tap shorter than a tick still reads
 // as a press (like a key). addLookDelta(dx, dy) adds a drag on the picture to the mouse-drag
 // camera orbit (mouseDX / mouseDY).
+//
+// A phone used as a controller over the local network (net/RemotePad.js): setRemoteState(same
+// shape | null) is a separate channel merged exactly like the touch state (buttons OR'ed and
+// latched until the next poll, its stick used when pushed at least as far as the others);
+// null (the phone left) releases everything it held.
 
 const BUTTONS = ['A', 'B', 'Z', 'R', 'START', 'CU', 'CD', 'CL', 'CR'];
 
@@ -92,6 +97,19 @@ function buttonRecord() {
   return r;
 }
 
+// Copy an outside controller state ({ stickX, stickY, A, ... } or null = released) into a
+// virtual pad channel `t`; buttons seen down are latched until the next poll (when `latch`).
+function copyVirtual(t, latchRec, state, latch) {
+  t.stickX = unitAxis(state?.stickX);
+  t.stickY = unitAxis(state?.stickY);
+  for (let i = 0; i < BUTTONS.length; i++) {
+    const b = BUTTONS[i];
+    const down = !!state?.[b];
+    t[b] = down;
+    if (down && latch) latchRec[b] = true;
+  }
+}
+
 export class Input {
   constructor(target = window) {
     this.keys = new Set();
@@ -110,6 +128,8 @@ export class Input {
     this._pads = []; // scratch: the pads read this poll/sample
     this.touch = { stickX: 0, stickY: 0, ...buttonRecord() }; // on-screen controller (setTouchState)
     this.touchLatch = buttonRecord(); // touch buttons seen down since the last poll
+    this.remote = { stickX: 0, stickY: 0, ...buttonRecord() }; // phone controller (setRemoteState)
+    this.remoteLatch = buttonRecord(); // phone buttons seen down since the last poll
 
     this._onKeyDown = (e) => {
       if (e.code in KEYMAP || /^Key[WASDQ]$/.test(e.code)) e.preventDefault();
@@ -158,15 +178,13 @@ export class Input {
   // The touch controller's current state (null = released). Values are copied: the caller may
   // reuse its object. Sticks are -1..1 (y up) with the dead zone already applied.
   setTouchState(state) {
-    const t = this.touch;
-    t.stickX = unitAxis(state?.stickX);
-    t.stickY = unitAxis(state?.stickY);
-    for (let i = 0; i < BUTTONS.length; i++) {
-      const b = BUTTONS[i];
-      const down = !!state?.[b];
-      t[b] = down;
-      if (down && this.enabled) this.touchLatch[b] = true;
-    }
+    copyVirtual(this.touch, this.touchLatch, state, this.enabled);
+  }
+
+  // The phone controller's current state (net/RemotePad.js), same shape as setTouchState;
+  // null = the phone let go or left (everything released). Values are copied.
+  setRemoteState(state) {
+    copyVirtual(this.remote, this.remoteLatch, state, this.enabled);
   }
 
   // A drag on the game picture (touch), in CSS px: orbits the camera like a mouse drag.
@@ -229,7 +247,11 @@ export class Input {
     if (!this.enabled) return;
     const pads = this._gamepads();
     for (let i = 0; i < pads.length; i++) this._padButtons(pads[i], this.padLatch);
-    for (let i = 0; i < BUTTONS.length; i++) if (this.touch[BUTTONS[i]]) this.touchLatch[BUTTONS[i]] = true;
+    for (let i = 0; i < BUTTONS.length; i++) {
+      const b = BUTTONS[i];
+      if (this.touch[b]) this.touchLatch[b] = true;
+      if (this.remote[b]) this.remoteLatch[b] = true;
+    }
   }
 
   // Forget latched taps and the previous button state (held buttons will not read as
@@ -239,6 +261,7 @@ export class Input {
     for (const b of BUTTONS) {
       this.padLatch[b] = false;
       this.touchLatch[b] = false;
+      this.remoteLatch[b] = false;
     }
     this.poll();
   }
@@ -312,11 +335,27 @@ export class Input {
         sy = touch.stickY;
         raw = Math.min(1, tm);
       }
+
+      // The phone controller (setRemoteState): merged the same way, after the touch one.
+      const remote = this.remote;
+      for (let i = 0; i < BUTTONS.length; i++) {
+        const b = BUTTONS[i];
+        if (remote[b] || this.remoteLatch[b]) held[b] = true;
+      }
+      const rm = Math.hypot(remote.stickX, remote.stickY);
+      if (rm > 0 && rm >= raw) {
+        sx = remote.stickX;
+        sy = remote.stickY;
+        raw = Math.min(1, rm);
+      }
     } else {
       for (const b of BUTTONS) held[b] = false;
       this._keyStick(false);
     }
-    for (let i = 0; i < BUTTONS.length; i++) this.touchLatch[BUTTONS[i]] = false;
+    for (let i = 0; i < BUTTONS.length; i++) {
+      this.touchLatch[BUTTONS[i]] = false;
+      this.remoteLatch[BUTTONS[i]] = false;
+    }
     this.tapped.clear();
 
     if (this.override) {

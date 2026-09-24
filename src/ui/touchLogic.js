@@ -145,8 +145,11 @@ function pill(x, y, w, h, rot = 0) {
 //   stickZone: { x, y, w, h }  (touches starting here, off the other controls, drive the stick),
 //   zones: [{ x, y, w, h }]   (the areas that capture touches)
 // }
-export function touchLayout(width, height, safe) {
+// With { standalone: true } (the phone is only a controller: pad.html) the controller fills the
+// whole screen instead; see padPortraitLayout / padLandscapeLayout below.
+export function touchLayout(width, height, safe, opts) {
   const s = insets(safe);
+  if (opts?.standalone) return height > width ? padPortraitLayout(width, height, s) : padLandscapeLayout(width, height, s);
   return height > width ? portraitLayout(width, height, s) : landscapeLayout(width, height, s);
 }
 
@@ -217,6 +220,165 @@ function landscapeLayout(W, H, s) {
     bounds([buttons.START], 10 * k, W, H),
   ];
   return { mode: 'landscape', width: W, height: H, k, top: 0, pictureBottom: 0, body: null, stick, dpad, buttons, emblem: null, stickZone, zones };
+}
+
+// ---- standalone controller (pad.html: the phone only steers the game on a computer) -------
+//
+// No game picture: the moulded body fills the whole screen (layout.standalone = true,
+// pictureBottom 0, body = the screen, with rounded lower corners: body.bottomR). The pad page's
+// status strip gets a band the controls keep clear of, layout.strip = { x, y, w, h }: the top
+// edge in portrait, the top middle (between the grips) in landscape. In portrait the band above
+// the controls can also hold a label plate, layout.panel = { x, y, w, h } | null (the pad page
+// shows the game code there). The landscape body carries gripL / gripR: where the notch between
+// the two grips starts and ends on its lower edge (bodySvg).
+export const PAD_STRIP_H = 30;
+const PAD_STRIP_GAP = 4; // px between the strip and the screen edge / the controls
+
+// Portrait: a PAD_PORTRAIT_REF block of controls anchored to the bottom of the screen, where the
+// thumbs are: a top row (D-pad, CAM and START, the camera disc) over the thumb cluster (stick
+// left; ATTACK, JUMP and the CROUCH trigger right). A taller screen widens the gap between the
+// two a little (up to PAD_PORTRAIT_GAP) and leaves the rest above them to the emblem; the width
+// sets the scale (anchors: L = left edge, R = right edge, C = centred).
+export const PAD_PORTRAIT_REF = { w: 390, h: 515 };
+const PAD_PORTRAIT_GAP = 45;
+const PAD_PORTRAIT = {
+  dpad: { a: 'L', x: 82, y: 92, size: 104, row: true },
+  R: { a: 'C', x: 0, y: 58, w: 66, h: 28, row: true },
+  START: { a: 'C', x: 0, y: 122, w: 74, h: 30, row: true },
+  C: { a: 'R', x: 306, y: 92, r: 21, spread: 40, row: true },
+  stick: { a: 'L', x: 110, y: 318, well: 84, knob: 40, travel: 52 },
+  B: { a: 'R', x: 262, y: 268, r: 40 },
+  A: { a: 'R', x: 334, y: 356, r: 48 },
+  Z: { a: 'R', x: 250, y: 452, w: 100, h: 42, rot: -20 },
+};
+
+// Landscape: a wide two-grip body. Left grip: D-pad high, stick below it toward the middle;
+// right grip: camera disc high, ATTACK, JUMP and the CROUCH trigger under the thumb; CAM and
+// START in the middle column. Designed on a PAD_LANDSCAPE_REF screen, scaled to fit the height
+// (and the width on narrow screens); extra height is split above and below.
+export const PAD_LANDSCAPE_REF = { w: 720, h: 390 };
+const PAD_LANDSCAPE = {
+  dpad: { a: 'L', x: 84, y: 124, size: 96 },
+  stick: { a: 'L', x: 170, y: 266, well: 78, knob: 37, travel: 48 },
+  C: { a: 'R', x: 626, y: 118, r: 20, spread: 38 },
+  B: { a: 'R', x: 508, y: 206, r: 38 },
+  A: { a: 'R', x: 602, y: 276, r: 46 },
+  Z: { a: 'R', x: 484, y: 330, w: 94, h: 40, rot: -20 },
+  R: { a: 'C', x: 0, y: 176, w: 64, h: 28 },
+  START: { a: 'C', x: 0, y: 236, w: 72, h: 30 },
+};
+
+// Buttons, stick and D-pad of a design table P placed by X(p) / Y(p) at scale k.
+function placeControls(P, X, Y, k) {
+  return {
+    buttons: {
+      A: circle(X(P.A), Y(P.A), P.A.r * k),
+      B: circle(X(P.B), Y(P.B), P.B.r * k),
+      Z: pill(X(P.Z), Y(P.Z), P.Z.w * k, P.Z.h * k, P.Z.rot),
+      R: pill(X(P.R), Y(P.R), P.R.w * k, P.R.h * k),
+      START: pill(X(P.START), Y(P.START), P.START.w * k, P.START.h * k),
+      ...cButtons(X(P.C), Y(P.C), P.C.r * k, P.C.spread * k),
+    },
+    stick: { x: X(P.stick), y: Y(P.stick), well: P.stick.well * k, knob: P.stick.knob * k, travel: P.stick.travel * k },
+    dpad: { x: X(P.dpad), y: Y(P.dpad), size: P.dpad.size * k },
+  };
+}
+
+// Anchored x for a design point on a ref-wide design.
+const anchorX = (p, W, s, k, refW) => (p.a === 'L' ? s.left + p.x * k : p.a === 'R' ? W - s.right - (refW - p.x) * k : W / 2 + p.x * k);
+
+function padPortraitLayout(W, H, s) {
+  const REF = PAD_PORTRAIT_REF;
+  const strip = { x: s.left + 8, y: s.top + PAD_STRIP_GAP, w: Math.max(0, W - s.left - s.right - 16), h: PAD_STRIP_H };
+  const y0 = strip.y + strip.h + PAD_STRIP_GAP; // the controls start below the strip
+  const y1 = H - s.bottom - 8;
+  const avail = Math.max(1, y1 - y0);
+  const k = Math.max(0.4, Math.min((W - s.left - s.right) / REF.w, avail / REF.h, 1.6));
+  const extra = Math.max(0, avail - REF.h * k);
+  const gap = Math.min(extra * 0.35, PAD_PORTRAIT_GAP * k);
+  const base = y1 - REF.h * k; // the block's top
+  const P = PAD_PORTRAIT;
+  const X = (p) => anchorX(p, W, s, k, REF.w);
+  const Y = (p) => base + p.y * k - (p.row ? gap : 0);
+  const { buttons, stick, dpad } = placeControls(P, X, Y, k);
+  // The band between the strip and the top row (whose centre plate starts 14 px above CAM):
+  // the emblem, and under it a label plate when there is room for one.
+  const rowTop = buttons.R.y - buttons.R.h / 2 - 26 * k;
+  const band = Math.max(0, rowTop - y0);
+  let emblem = { x: W / 2, y: y0 + band / 2, size: clampNum(band * 0.09, 7.5 * k, 12 * k) };
+  let panel = null;
+  if (band >= 110 * k) {
+    emblem = { x: W / 2, y: y0 + 20 * k, size: 10 * k };
+    const top = y0 + 40 * k;
+    const room = rowTop - 12 * k - top;
+    const h = Math.min(150 * k, room);
+    const w = Math.min(300 * k, W - s.left - s.right - 48);
+    panel = { x: W / 2 - w / 2, y: top + (room - h) / 2, w, h };
+  }
+  const midHalf = Math.max(P.START.w, P.R.w) * k * 0.5 + 10 * k;
+  return {
+    mode: 'portrait',
+    standalone: true,
+    width: W,
+    height: H,
+    k,
+    top: 0,
+    pictureBottom: 0,
+    body: { x: 0, y: 0, w: W, h: H, notchY: H, bottomR: 40 * k }, // no notch: one slab
+    stick,
+    dpad,
+    buttons,
+    emblem,
+    stickZone: { x: 0, y: y0, w: W / 2 - midHalf, h: H - y0 },
+    zones: [{ x: 0, y: 0, w: W, h: H }],
+    strip,
+    panel,
+  };
+}
+
+function padLandscapeLayout(W, H, s) {
+  const REF = PAD_LANDSCAPE_REF;
+  const availH = Math.max(1, H - s.top - s.bottom);
+  const k = clampNum(Math.min(availH / REF.h, (W - s.left - s.right) / REF.w), 0.4, 1.5);
+  const oy = s.top + Math.max(0, availH - REF.h * k) * 0.5;
+  const P = PAD_LANDSCAPE;
+  const X = (p) => anchorX(p, W, s, k, REF.w);
+  const Y = (p) => oy + p.y * k;
+  const { buttons, stick, dpad } = placeControls(P, X, Y, k);
+  const { START, R, CU, CD, Z, B } = buttons;
+  // Strip: the top middle, between the D-pad's and the camera disc's sockets.
+  const left = dpad.x + dpad.size * 0.66 + 8;
+  const right = CU.x - ((CD.y - CU.y) / 2 + CU.r * 0.95 + 4 * k) - 8;
+  const sw = Math.max(0, Math.min(400, right - left, 2 * Math.min(W / 2 - left, right - W / 2)));
+  const strip = { x: W / 2 - sw / 2, y: s.top + PAD_STRIP_GAP, w: sw, h: PAD_STRIP_H };
+  // The notch between the grips: symmetric about the middle, clear of the stick and of ATTACK /
+  // CROUCH, its top under START's plate and the speaker grille.
+  const zExt = extent(Z).x;
+  const half = Math.max(0, Math.min(W / 2 - (stick.x + stick.well + 18 * k), Math.min(B.x - B.r, Z.x - zExt) - 18 * k - W / 2));
+  // (No deeper than it is wide: on a tall tablet it would turn into a spike.)
+  const notchY = Math.max(Math.min(H - 24 * k, START.y + START.h / 2 + 64 * k), H - half * 0.95);
+  const plateTop = R.y - R.h / 2 - 14 * k;
+  const y0 = strip.y + strip.h;
+  const emblem = { x: W / 2, y: y0 + Math.max(0, plateTop - y0) / 2, size: 8.5 * k };
+  const midHalf = Math.max(START.w, R.w) * 0.5 + 16 * k;
+  return {
+    mode: 'landscape',
+    standalone: true,
+    width: W,
+    height: H,
+    k,
+    top: 0,
+    pictureBottom: 0,
+    body: { x: 0, y: 0, w: W, h: H, notchY, gripL: W / 2 - half, gripR: W / 2 + half, bottomR: 44 * k },
+    stick,
+    dpad,
+    buttons,
+    emblem,
+    stickZone: { x: 0, y: 0, w: W / 2 - midHalf, h: H },
+    zones: [{ x: 0, y: 0, w: W, h: H }],
+    strip,
+    panel: null,
+  };
 }
 
 // Four camera buttons in a diamond around (x, y).

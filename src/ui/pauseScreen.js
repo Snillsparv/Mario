@@ -5,7 +5,7 @@
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { drawText, drawIcon, textWidth } from './raster.js';
-import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, TOUCH_CONTROLS, pauseLayout } from './hudLogic.js';
+import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, phoneEntry, pauseLayout } from './hudLogic.js';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -36,9 +36,31 @@ function counterGroup(ctx, cache, icon, name, value, x, y, s, draw = true) {
   return w;
 }
 
-// The legend for the pause screen: 'touch' | 'pad' | 'keys'.
+// The legend for the pause screen: 'touch' | 'pad' | 'keys'. While a phone can join as a
+// controller (phoneEntry.enabled), the keys and pad legends end with PHONE_CONTROL.
+const WITH_PHONE = new Map([KEY_CONTROLS, PAD_CONTROLS].map((c) => [c, [...c, PHONE_CONTROL]]));
 export function controlsLegend(kind) {
-  return kind === 'touch' ? TOUCH_CONTROLS : kind === 'pad' ? PAD_CONTROLS : KEY_CONTROLS;
+  const base = kind === 'touch' ? TOUCH_CONTROLS : kind === 'pad' ? PAD_CONTROLS : KEY_CONTROLS;
+  return phoneEntry.enabled && WITH_PHONE.has(base) ? WITH_PHONE.get(base) : base;
+}
+
+// Logical rect { x, y, w, h } of legend row `item` (an entry of the legend, e.g.
+// PHONE_CONTROL) on the pause screen of a W x H logical screen, or null when not shown. It
+// frames the row as drawPauseScreen draws it (ui/PhonePanel.js puts a click target there).
+export function pauseItemRect(W, H, kind, item) {
+  const lay = pauseLayout(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(kind));
+  const { panel, padX, padY, headerH, lineH, legend } = lay;
+  let x = panel.x + padX;
+  for (const col of legend.columns) {
+    const row = col.items.indexOf(item);
+    if (row >= 0) {
+      const y = panel.y + padY + headerH + row * lineH;
+      const h = Math.min(lineH, 11);
+      return { x: x - 3, y: y - (h - 7) / 2 - 1, w: col.width + 6, h: h + 1 };
+    }
+    x += col.width + legend.colGap;
+  }
+  return null;
 }
 
 export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys' }) {
@@ -72,12 +94,22 @@ export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = f
   ctx.stroke();
 
   if (lay.wide) drawText(ctx, cache, SMALL_FONT, 'CONTROLS', cx, (panel.y + padY) * s, { px: s, align: 'center', style: 'key' });
+  // The phone row reads as a button: a faint gold frame, its action in gold.
+  const phone = pauseItemRect(W, H, controls, PHONE_CONTROL);
+  if (phone) {
+    roundRect(ctx, phone.x * s, phone.y * s, phone.w * s, phone.h * s, 2 * s);
+    ctx.fillStyle = 'rgba(255,220,120,0.10)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,230,150,0.35)';
+    ctx.stroke();
+  }
   let x = panel.x + padX;
   for (const col of legend.columns) {
-    col.items.forEach(([key, action], row) => {
+    col.items.forEach((item, row) => {
+      const [key, action] = item;
       const y = (panel.y + padY + headerH + row * lineH) * s;
       drawText(ctx, cache, SMALL_FONT, key, x * s, y, { px: s, style: 'key' });
-      drawText(ctx, cache, SMALL_FONT, action, (x + col.keyWidth + legend.gap) * s, y, { px: s, style: 'white' });
+      drawText(ctx, cache, SMALL_FONT, action, (x + col.keyWidth + legend.gap) * s, y, { px: s, style: item === PHONE_CONTROL ? 'key' : 'white' });
     });
     x += col.width + legend.colGap;
   }

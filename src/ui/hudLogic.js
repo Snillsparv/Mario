@@ -1,5 +1,7 @@
 // Pure HUD helpers (no DOM): screen metrics, counters and animation curves.
 
+import { PHONE_SMALL_STRINGS, PHONE_BIG_STRINGS } from './phoneLogic.js';
+
 // The HUD is designed on a 320x240 grid and scaled by viewport height (or by width on
 // screens narrower than 4:3). Returns device pixels per logical pixel and the logical size.
 export function hudMetrics(width, height) {
@@ -122,6 +124,12 @@ export const TOUCH_CONTROLS = [
   ['START', 'Pause'],
 ];
 
+// The pause legend's extra row while a phone can join as a controller (net/RemotePad.js):
+// ui/PhonePanel.js sets phoneEntry.enabled, and a click on the row (or P) opens its panel. Not
+// shown with the touch legend (the game is then played on the touch screen itself).
+export const PHONE_CONTROL = ['P', 'Phone controller'];
+export const phoneEntry = { enabled: false };
+
 // Lay a legend out in two columns when they fit the logical width W, else one.
 // measure(text) returns a width in logical pixels. Each column has its own key width.
 // Returns { columns: [{ items, keyWidth, width }], rows, width, gap, colGap }.
@@ -197,11 +205,13 @@ export const AI_RACE = 'AI RACE';
 export const AI_RACE_SCALE = 2;
 
 // Every string the UI draws with each font (the glyph-coverage test checks these).
-export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, TOUCH_UNLOCK_PRESS, 'PIP', GAME_OVER, AI_RACE];
+export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, TOUCH_UNLOCK_PRESS, 'PIP', GAME_OVER, AI_RACE, ...PHONE_BIG_STRINGS];
 export const SMALL_STRINGS = [
   ...KEY_CONTROLS.flat(),
   ...PAD_CONTROLS.flat(),
   ...TOUCH_CONTROLS.flat(),
+  ...PHONE_CONTROL,
+  ...PHONE_SMALL_STRINGS,
   'starring',
   'CONTROLS',
   START_PROMPT,

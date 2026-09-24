@@ -22,6 +22,12 @@
 // instead of keys, and the controller's START or A, or a touch on the picture, counts as a
 // click on the card ('touchPress' / 'touchRelease' events); its first tap unlocks audio
 // through the same pointer listeners as any tap.
+//
+// Phone controller (options.phone, a ui/PhonePanel.js): while a phone can join, a small phone
+// button in the top-right corner opens the panel (so does P). While the panel is up the card
+// ignores keys, clicks, taps and pads, except that a fresh pad Start / A / B closes the panel.
+// A connected phone's START or A ('remotePress' / 'remoteRelease' from net/RemotePad.js) starts
+// the game like a gamepad (no user gesture: audio stays as it is).
 
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
@@ -42,6 +48,8 @@ import {
 } from './hudLogic.js';
 import { pixelRatio } from './pixelRatio.js';
 import { touchUi } from './touchLogic.js';
+import { renderPhoneBadge } from './PhonePanel.js';
+import { PHONE_BUTTON, PHONE_BUTTON_TIP } from './phoneLogic.js';
 
 // Touch-controller buttons that start the game like a click on the card (any touch over the
 // picture does too).
@@ -50,6 +58,9 @@ const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 // Escape is the in-game Start (pause) key, so it starts the game here too.
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
 const PAD_START_BUTTONS = [9, 0]; // standard mapping: Start, A
+const PAD_CLOSE_BUTTONS = [9, 0, 1, 2]; // Start, A, B, X: close the phone panel
+// Phone-controller buttons that start the game (net/RemotePad.js 'remotePress').
+const REMOTE_START_BUTTONS = new Set(['START', 'A']);
 const FADE_MS = 400;
 const RELEASE_TIMEOUT_MS = 2000; // never wait forever for a key-up that got lost (blur)
 
@@ -82,6 +93,12 @@ const CSS = `
 .cg-wake { animation: cg-pulse 2.4s ease-in-out infinite; }
 .cg-prompt, .cg-hint { position:absolute; left:50%; transform:translateX(-50%); opacity:0.9; }
 .cg-title.cg-locked .cg-if-ready, .cg-title:not(.cg-locked) .cg-if-locked { display:none; }
+.cg-phone { position:absolute; margin:0; padding:0; cursor:pointer; box-sizing:border-box;
+  background:rgba(8,10,40,0.72); border:max(1px, calc(var(--u) * 0.75)) solid rgba(255,230,150,0.55);
+  border-radius:calc(var(--u) * 3); transition:background 0.12s, border-color 0.12s; }
+.cg-phone:hover, .cg-phone:focus-visible { background:rgba(24,28,80,0.85); border-color:rgba(255,230,150,0.95); outline:none; }
+.cg-phone[hidden] { display:none; }
+.cg-phone canvas { pointer-events:none; }
 @keyframes cg-drop { from { transform: translateY(-60vh) scale(0.6); } to { transform: none; } }
 @keyframes cg-bob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
@@ -207,10 +224,11 @@ class LogoWorker {
 }
 
 export class TitleScreen {
-  constructor(root, { events, audio } = {}) {
+  constructor(root, { events, audio, phone = null } = {}) {
     this.root = root;
     this.events = events;
     this.audio = audio;
+    this.phone = phone;
     this.el = null;
     this.viewport = null;
   }
@@ -279,6 +297,7 @@ export class TitleScreen {
         window,
         'keydown',
         (e) => {
+          if (this.phone?.isOpen) return; // the panel takes the keys
           const start = START_KEYS.has(e.code);
           if (start) {
             e.preventDefault();
@@ -296,12 +315,21 @@ export class TitleScreen {
       // Pointer: any press on the page unlocks audio (mouse on press, touch/pen on release);
       // a click on the card starts, except the one that ends the unlocking press.
       const onPointer = (down) => () => {
+        if (this.phone?.isOpen) return; // a press on the phone panel (poll() still unlocks audio)
         if ((down ? gate.pointerDown(hasBeenActive()) : gate.pointerUp(hasBeenActive())) === 'unlock') wake();
       };
       listen(window, 'pointerdown', onPointer(true), true);
       listen(window, 'pointerup', onPointer(false), true);
       listen(window, 'touchend', onPointer(false), true);
       listen(this.el, 'click', () => gate.click() === 'begin' && begin(Promise.resolve()));
+      // The phone button opens the panel; its click is not a click on the card.
+      if (this.phoneBtn) {
+        listen(this.phoneBtn, 'click', (e) => {
+          e.stopPropagation();
+          gate.pressLocked = false; // its press may have unlocked audio: nothing to swallow later
+          if (!gate.starting) this.phone.open();
+        });
+      }
 
       // The touch controller: START / A (or a touch over the picture) is a click on the card;
       // the game starts once that touch has ended. The pointer listeners above have already
@@ -310,7 +338,7 @@ export class TitleScreen {
         let touchHeld = null;
         cleanups.push(
           this.events.on('touchPress', (e) => {
-            if (!e || !(TOUCH_START_BUTTONS.has(e.button) || e.picture) || gate.starting) return;
+            if (!e || !(TOUCH_START_BUTTONS.has(e.button) || e.picture) || gate.starting || this.phone?.isOpen) return;
             if (gate.click() === 'begin') begin(new Promise((r) => (touchHeld = { button: e.button, r })));
           }),
           this.events.on('touchRelease', (e) => {
@@ -318,10 +346,27 @@ export class TitleScreen {
           }),
           this.events.on('touchUi', () => this._setTouch(touchUi.active)),
         );
+        // A phone used as the controller: START / A starts like a gamepad (waits for release).
+        let remoteHeld = null;
+        cleanups.push(
+          this.events.on('remotePress', (e) => {
+            if (!e || !REMOTE_START_BUTTONS.has(e.button) || gate.starting) return;
+            if (this.phone?.isOpen) {
+              this.phone.close();
+              return;
+            }
+            if (gate.pad()) begin(new Promise((r) => (remoteHeld = { button: e.button, r })));
+          }),
+          this.events.on('remoteRelease', (e) => {
+            if (remoteHeld && e?.button === remoteHeld.button) remoteHeld.r();
+          }),
+          this.events.on('phonePad', () => this._syncPhone()),
+        );
       }
 
       // Gamepad Start/A, polled every frame; waits for release like the keyboard path.
       let padRelease = null;
+      let padCloseHeld = this._pressedPadButtons(PAD_CLOSE_BUTTONS);
       const poll = () => {
         // A new devicePixelRatio with the same CSS size (the window moved to a monitor with
         // another scale) never reaches the ResizeObserver: redraw the card at it.
@@ -330,6 +375,13 @@ export class TitleScreen {
         if (gate.locked && (hasBeenActive() === true || audio?.ctx?.state === 'running') && gate.unlock()) wake();
         const down = this._pressedPadButtons();
         for (const k of heldPad) if (!down.has(k)) heldPad.delete(k);
+        // The phone panel is up: a fresh Start / A / B closes it, and nothing held then starts.
+        const closeDown = this._pressedPadButtons(PAD_CLOSE_BUTTONS);
+        if (this.phone?.isOpen) {
+          if ([...closeDown].some((k) => !padCloseHeld.has(k))) this.phone.close();
+          for (const k of down) heldPad.add(k);
+        }
+        padCloseHeld = closeDown;
         if (!gate.starting) {
           const fresh = [...down].find((k) => !heldPad.has(k));
           if (fresh && gate.pad()) begin(new Promise((r) => (padRelease = { key: fresh, r })));
@@ -363,15 +415,20 @@ export class TitleScreen {
     return hasBeenActive() !== true;
   }
 
-  // Set of "padIndex:button" strings for start-capable buttons currently held.
-  _pressedPadButtons() {
+  // Set of "padIndex:button" strings for the given (start-capable) buttons currently held.
+  _pressedPadButtons(buttons = PAD_START_BUTTONS) {
     const out = new Set();
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p || !p.connected) continue;
-      for (const b of PAD_START_BUTTONS) if (p.buttons[b]?.pressed) out.add(`${p.index}:${b}`);
+      for (const b of buttons) if (p.buttons[b]?.pressed) out.add(`${p.index}:${b}`);
     }
     return out;
+  }
+
+  // The phone button shows while a phone can join (the relay may answer after the card is up).
+  _syncPhone() {
+    if (this.phoneBtn) this.phoneBtn.hidden = !this.phone?.available;
   }
 
   // Create the card's elements once; _layout() sizes and places them.
@@ -406,6 +463,19 @@ export class TitleScreen {
     this.starringRow = div('cg-starring', [starring.el, pip.el]);
     this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el, this.starringRow])]);
     this.el.append(this.logo, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
+    this.phoneBtn = null;
+    if (this.phone) {
+      this.pieces.phone = new Piece('cg-pixel', (px) => renderPhoneBadge(px, PHONE_BUTTON));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cg-phone';
+      btn.title = PHONE_BUTTON_TIP;
+      btn.setAttribute('aria-label', PHONE_BUTTON_TIP);
+      btn.append(this.pieces.phone.el);
+      this.phoneBtn = btn;
+      this.el.append(btn);
+      this._syncPhone();
+    }
   }
 
   // Prompts for keys/clicks or for the touch controller; redraws them when that changes.
@@ -445,5 +515,13 @@ export class TitleScreen {
     p.press.el.style.top = p.wake.el.style.top = at(H * 0.73);
     p.prompt.el.style.top = p.wakePrompt.el.style.top = at(H * 0.73 + 16);
     p.hint.el.style.bottom = at(8);
+    if (this.phoneBtn) {
+      // The badge canvas carries 2 font px of padding on every side: the button hugs it.
+      const b = this.phoneBtn.style;
+      b.top = at(7);
+      b.right = at(7);
+      b.padding = `0 ${at(1)}`;
+      p.phone.el.style.margin = `${at(-0.5)} 0`;
+    }
   }
 }

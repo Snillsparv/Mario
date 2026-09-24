@@ -77,4 +77,42 @@ for Start; a gamepad Start begins right away.
 URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-time loop;
 driven through `window.__game`, see the docs).
 
+## Play with your phone as a controller
+
+Your phone can steer Pip in the game running on your computer, over your local Wi-Fi. This
+works only when the computer serves the game itself, because the phone and the game talk
+through a small relay in the local server:
+
+1. On the computer, run `npm run dev` (or `npm run build && npm run preview`). The server
+   listens on your network and prints a `Local` URL and one or more `Network` URLs.
+2. Open the `Local` URL (for example `http://localhost:5173/`) in a browser on the computer.
+3. On the title screen or the pause screen, press the phone button to show a QR code.
+4. Connect the phone to the same Wi-Fi network and scan the QR code with its camera. The
+   controller page opens and pairs with the game by its four-letter room code. Pip now
+   follows the phone; the keyboard and gamepads keep working as well.
+
+One phone controls a game at a time: a second phone that scans the code takes over from the
+first.
+
+If the phone can't connect:
+
+* The first time, Windows or macOS may ask whether Node.js may accept incoming network
+  connections. Allow it (on private networks is enough). Firewall or antivirus software can
+  also block the port (5173 for `dev`, 4173 for `preview`).
+* The phone and the computer must be on the same network. Guest Wi-Fi networks and some
+  office or public networks keep devices apart, and a VPN on either device can get in the
+  way too.
+* If the computer has several network adapters, the QR code may point at the wrong one. Open
+  one of the other `Network` addresses the terminal printed on the phone, followed by
+  `/pad.html?room=` and the room code (for example
+  `http://192.168.1.20:5173/pad.html?room=ABCD`).
+
+The hosted version (for example a claude.ai link, or any static web host) has no relay, so
+the phone button is hidden there. You can still open that link on the phone itself and play
+with the on-screen touch controls.
+
+The relay only runs while `npm run dev` or `npm run preview` is running. It accepts only pages
+served by that same server, and anyone on your network who knows the current room code
+could join as the controller.
+
 See `docs/ARCHITECTURE.md` for how the code is organised.

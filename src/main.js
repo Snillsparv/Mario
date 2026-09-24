@@ -4,6 +4,8 @@
 //   ?skipTitle=1   start playing immediately (no title screen, no intro fly-in)
 //   ?test=1        do not run the real-time loop; drive it via window.__game.step()
 //   ?mute=1        no audio
+//   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
+//                  leaves it off unless ?pad=1)
 //
 // Game flow (state.mode 'title' -> 'play' -> 'gameover' -> 'title' ...):
 //   * title: the camera orbits the grounds behind the title card. On a first visit the card
@@ -32,6 +34,8 @@ import { GameOverCard } from './ui/GameOverCard.js';
 import { DialogBox } from './ui/DialogBox.js';
 import { AlertBanner } from './ui/AlertBanner.js';
 import { TouchController } from './ui/TouchController.js';
+import { PhonePanel } from './ui/PhonePanel.js';
+import { RemotePad } from './net/RemotePad.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
 
@@ -75,6 +79,16 @@ async function start() {
   new AlertBanner(uiRoot, { events }); // flashes 'AI RACE' when the mode switches on
   // On-screen controller on touch screens (?touch=1 forces it): feeds input.setTouchState.
   const touch = new TouchController({ input, events, view });
+  // A phone on the same network as the controller, through the dev/preview server's relay
+  // (absent on a static host: the panel and its entry points then stay hidden).
+  const remotePad = new RemotePad({ input, events });
+  const phone = new PhonePanel(uiRoot, {
+    remotePad,
+    events,
+    hud,
+    canOpen: () => state.mode === 'title' || (state.mode === 'play' && state.paused),
+  });
+  if (!TEST || params.get('pad') === '1') remotePad.start();
   events.on('dialogClosed', () => {
     player.endReading?.();
     input.flush();
@@ -122,7 +136,7 @@ async function start() {
     state.mode = 'title';
     hud.setVisible(false);
     model.object3D.visible = false;
-    const title = new TitleScreen(uiRoot, { events, audio });
+    const title = new TitleScreen(uiRoot, { events, audio, phone });
     let raf = 0;
     const titleLoop = (t) => {
       const sec = t / 1000;
@@ -143,6 +157,7 @@ async function start() {
 
   // Begin play: with `intro`, the camera flies in and Pip drops in at the spawn.
   function startGame(intro) {
+    phone.close();
     state.mode = 'play';
     state.paused = false;
     state.started = true;
@@ -205,6 +220,10 @@ async function start() {
 
   function tick(controller) {
     if (state.mode !== 'play') return;
+    if (phone.isOpen) {
+      phone.update(controller); // the phone panel over the pause screen: Start / B close it
+      return;
+    }
     if (controller.START.pressed) {
       state.paused = !state.paused;
       hud.setPaused?.(state.paused);
@@ -282,6 +301,8 @@ async function start() {
     dialog,
     fx,
     touch,
+    remotePad,
+    phone,
     // Switch AI RACE mode directly (tests / debugging), as the floor button does.
     setDark(on) {
       events.emit('aiRaceButton', { on });
