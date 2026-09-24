@@ -372,20 +372,22 @@ function steps(kit, C) {
     kit.trim.box(X - hw, X + hw, B, B + PLINTH_H - i * rise, z0 - 2, z0 + tread, { bottom: false });
   }
   kit.trim.shade = null;
+  // Landing and ramp are one convex solid (a trapezoid in profile, extruded across). As two
+  // solids, the landing's front face and the ramp's back face met at zTop facing opposite
+  // ways: beside the steps they shoved the hero along z and masked the side face.
   const zTop = F + landing;
   const zFoot = zTop + 3 * tread + 20;
-  kit.solids.box(X - hw, X + hw, B, B + PLINTH_H, F, zTop, 'stone');
   kit.solids.solid(
     hexaPolys(
       [
-        [X - hw, B, zTop],
-        [X + hw, B, zTop],
+        [X - hw, B, F],
+        [X + hw, B, F],
         [X + hw, B, zFoot],
         [X - hw, B, zFoot],
-        [X - hw, B + PLINTH_H, zTop],
+        [X - hw, B + PLINTH_H, F],
+        [X + hw, B + PLINTH_H, F],
         [X + hw, B + PLINTH_H, zTop],
-        [X + hw, B, zFoot],
-        [X - hw, B, zFoot],
+        [X - hw, B + PLINTH_H, zTop],
       ],
       { bottom: false },
     ),

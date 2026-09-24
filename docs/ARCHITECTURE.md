@@ -95,6 +95,11 @@ Input (`src/core/input.js`): `poll()` once per tick; a key or pad button that go
 up between two polls still reads as held for one poll (`pressed`, then `released`);
 `sample()` per render frame latches pad buttons; `flush()` drops latched taps and makes held
 buttons not count as fresh presses; `setOverride(partialController)` for tests.
+Gamepads: every connected standard-mapping pad is read and merged (buttons OR'ed, the stick
+pushed furthest wins), so an idle or odd device at index 0 cannot hide the real controller;
+pads without the standard mapping are read only when no standard pad is connected (then the
+most recently active one). `input.getGamepads` can be replaced in tests. Mouse-drag orbit
+ends on mouseup, on window blur, and on the first move with neither drag button held.
 
 Test hooks: `?test=1` disables the real-time loop and the first title (the title still
 follows a game over, as in play) and exposes
@@ -449,3 +454,7 @@ camera_buzz`. Unknown names must be ignored silently.
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
 * `/preview.html?m=world` shows the whole level without the player.
+* Requirements: Node.js 20.19+ or 22.12+ (Vite 8); `tools/shot.mjs` and the browser tests
+  (`E2E=1 npm test`) need Playwright's Chromium (`npx playwright install chromium`).
+* `index.html` carries the tab icon inline (Pip's HUD face from `src/ui/icons.js` as an SVG
+  data URI), so no `/favicon.ico` is requested.

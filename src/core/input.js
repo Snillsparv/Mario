@@ -13,6 +13,13 @@
 // Enter/Esc = Start, mouse drag = camera orbit. Gamepad (standard mapping): left stick, A = A, X/B = B, triggers = Z,
 // right stick = C buttons, RB = R, Start = Start.
 //
+// Gamepads: every connected pad with the standard mapping is read and merged (buttons OR'ed,
+// the stick pushed furthest wins), so an idle or odd device ahead of the real controller in
+// navigator.getGamepads() (a virtual pad, a receiver that registers as a gamepad) cannot hide
+// it; the title accepts Start/A from any pad too. Pads without the standard mapping have
+// arbitrary button/axis layouts: they are read only when no standard pad is connected, and
+// then only the most recently active one (latest timestamp).
+//
 // Tests can inject input with setOverride({ stickX, stickY, A: true, ... }); overridden
 // buttons are treated as held and edge detection still works across polls.
 //
@@ -42,6 +49,10 @@ const KEY_ENTRIES = Object.entries(KEYMAP);
 
 const DEADZONE = 0.18;
 
+function browserGamepads() {
+  return typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+}
+
 function buttonRecord() {
   const r = {};
   for (const b of BUTTONS) r[b] = false;
@@ -60,6 +71,8 @@ export class Input {
     this.override = null;
     this.prev = buttonRecord();
     this.enabled = true;
+    this.getGamepads = browserGamepads; // replaceable (tests)
+    this._pads = []; // scratch: the pads read this poll/sample
 
     this._onKeyDown = (e) => {
       if (e.code in KEYMAP || /^Key[WASDQ]$/.test(e.code)) e.preventDefault();
@@ -70,6 +83,8 @@ export class Input {
     this._onBlur = () => {
       this.keys.clear();
       this.tapped.clear();
+      // A button released outside the unfocused window never sends mouseup here.
+      this.dragging = false;
     };
     this._onMouseDown = (e) => {
       if (e.button === 0 || e.button === 2) this.dragging = true;
@@ -79,6 +94,11 @@ export class Input {
     };
     this._onMouseMove = (e) => {
       if (!this.dragging) return;
+      // Neither drag button held any more (released while another window had focus).
+      if (typeof e.buttons === 'number' && (e.buttons & 3) === 0) {
+        this.dragging = false;
+        return;
+      }
       this.mouseDX += e.movementX || 0;
       this.mouseDY += e.movementY || 0;
     };
@@ -98,10 +118,21 @@ export class Input {
     this.override = state;
   }
 
-  _gamepad() {
-    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) if (p && p.connected) return p;
-    return null;
+  // The pads to read (see the header): all connected standard-mapping pads, else the most
+  // recently active connected pad. Returns a reused array.
+  _gamepads() {
+    const out = this._pads;
+    out.length = 0;
+    const pads = this.getGamepads() || [];
+    let other = null;
+    for (let i = 0; i < pads.length; i++) {
+      const p = pads[i];
+      if (!p || !p.connected) continue;
+      if (p.mapping === 'standard') out.push(p);
+      else if (!other || (p.timestamp || 0) > (other.timestamp || 0)) other = p;
+    }
+    if (out.length === 0 && other) out.push(other);
+    return out;
   }
 
   // Sets out[btn] = true for every mapped gamepad button currently held.
@@ -124,8 +155,8 @@ export class Input {
   // shorter than a 30 Hz tick still reaches the next poll().
   sample() {
     if (!this.enabled) return;
-    const pad = this._gamepad();
-    if (pad) this._padButtons(pad, this.padLatch);
+    const pads = this._gamepads();
+    for (let i = 0; i < pads.length; i++) this._padButtons(pads[i], this.padLatch);
   }
 
   // Forget latched taps and the previous button state (held buttons will not read as
@@ -164,17 +195,27 @@ export class Input {
         if (k.has(code) || tapped.has(code)) held[KEY_ENTRIES[i][1]] = true;
       }
 
-      const pad = this._gamepad();
-      if (pad) {
+      // The left stick pushed furthest across the pads read overrides the keys.
+      const pads = this._gamepads();
+      let px = 0;
+      let py = 0;
+      let pm = DEADZONE;
+      for (let i = 0; i < pads.length; i++) {
+        const pad = pads[i];
         const ax = pad.axes[0] || 0;
         const ay = -(pad.axes[1] || 0);
         const m = Math.hypot(ax, ay);
-        if (m > DEADZONE) {
-          const scaled = Math.min(1, (m - DEADZONE) / (1 - DEADZONE));
-          sx = (ax / m) * scaled;
-          sy = (ay / m) * scaled;
+        if (m > pm) {
+          pm = m;
+          px = ax;
+          py = ay;
         }
         this._padButtons(pad, held);
+      }
+      if (pm > DEADZONE) {
+        const scaled = Math.min(1, (pm - DEADZONE) / (1 - DEADZONE));
+        sx = (px / pm) * scaled;
+        sy = (py / pm) * scaled;
       }
     } else {
       for (const b of BUTTONS) held[b] = false;

@@ -112,6 +112,46 @@ test('entrance steps rise smoothly to the door landing', () => {
   assert.ok(Math.abs(prev - (C.baseY + 140)) < 1, `landing at the door is on the base course (${prev})`);
 });
 
+// The door steps' extent, read off the colliders: landing height, side edge, foot of the ramp.
+function doorSteps() {
+  const top = world.findFloor(C.x, C.baseY + 300, C.frontZ + 60).y;
+  let hw = 0;
+  while (hw < 1500 && world.findFloor(C.x + hw + 5, top + 10, C.frontZ + 60).y > top - 1) hw += 5;
+  let zTop = C.frontZ + 60;
+  while (world.findFloor(C.x, top + 10, zTop + 5).y > top - 0.5) zTop += 5;
+  let zFoot = zTop;
+  while (world.findFloor(C.x, top + 10, zFoot + 5).y > C.baseY + 0.5) zFoot += 5;
+  return { top, hw, zTop, zFoot };
+}
+
+test('beside the door steps their side is the only wall: nothing buried where the landing meets the ramp', () => {
+  const { top, hw, zTop, zFoot } = doorSteps();
+  assert.ok(Math.abs(top - (C.baseY + 140)) < 1 && hw > 300 && zTop > C.frontZ + 100 && zFoot > zTop + 150, 'found the steps');
+  // A knee probe (radius 24) touching either side, all along the landing's front half and the
+  // ramp, is pushed straight out: a face inside the steps (the landing's front meeting the
+  // ramp's back) would shove it along z and hide the side from it.
+  let probes = 0;
+  for (const s of [-1, 1]) {
+    for (let z = zTop - 20; z <= zFoot - 60; z += 5) {
+      const x = C.x + s * (hw + 10);
+      const r = world.findWalls(x, C.baseY, z, 30, 24);
+      probes++;
+      assert.ok(r.walls.length > 0, `side wall at ${x},${z}`);
+      assert.ok(Math.abs(r.z - z) < 0.01, `pushed ${(r.z - z).toFixed(1)} along z beside the steps at ${x},${z}`);
+      assert.ok(Math.abs(r.x - (C.x + s * (hw + 24))) < 0.01, `pushed out to ${r.x.toFixed(1)} beside the steps at ${x},${z}`);
+    }
+  }
+  assert.ok(probes > 60, `${probes} probes`);
+  // A horizontal ray just inside a side, from in front of the ramp toward the door, meets no
+  // wall until the base course under the landing's back.
+  for (const s of [-1, 1]) {
+    for (const h of [20, 70, 120]) {
+      const hit = world.raycast({ x: C.x + s * (hw - 5), y: C.baseY + h, z: zFoot + 200 }, { x: 0, y: 0, z: -1 }, 2000, { floors: false, ceilings: false });
+      assert.ok(hit && hit.point.z <= C.frontZ + 31, `wall buried in the steps at z ${hit?.point.z.toFixed(0)} (h ${h})`);
+    }
+  }
+});
+
 test('the bridge deck is a continuous wooden floor from the lawn to the island', () => {
   const yS = layout.groundHeight(BR.x, BR.southZ);
   const yN = layout.ISLAND_TOP;
