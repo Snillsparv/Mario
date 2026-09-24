@@ -12,7 +12,8 @@
 //
 // AI RACE mode (docs/ARCHITECTURE.md): a ground pound landing on the button (layout.AI_BUTTON,
 // AiButton.js) emits 'sfx' button_press and 'aiRaceButton' { on: !current }; main answers with
-// 'darkMode' { on }, which raises (or sinks) the beast (layout.KAIJU, RobotBeast.js). The beast
+// 'darkMode' { on }, which raises (or sinks) the beast, a mechanical lizard (layout.KAIJU,
+// RobotBeast.js), and turns the button's label to "STOP" (back to "AI RACE" when off). The beast
 // spits fireballs (Fireballs.js) that explode through `fx`, scorch the ground and set trees alight
 // through `level`, and hurt the hero (blast, direct hit, fire zones). Lightning ('lightning'
 // { strength }) flashes the beast's plates.
@@ -131,9 +132,11 @@ export class ObjectManager {
     this._draw(0, 1, null);
   }
 
-  // AI RACE mode switched (main's 'darkMode' event): the beast rises or sinks.
+  // AI RACE mode switched (main's 'darkMode' event): the beast rises or sinks, and the button's
+  // cap reads "STOP" while the mode is on ("AI RACE" while it is off).
   _setMode(on) {
     this.modeOn = on;
+    this.button?.setOn(on);
     this.beast?.setMode(on);
   }
 

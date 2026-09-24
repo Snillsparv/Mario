@@ -446,7 +446,8 @@ version and back. Everything is original: no existing monster, character or bran
 
 * **Toggle**: objects own the button (static collider, visual cap sinks when pressed). A
   ground pound landing on it (`player.action === 'ground_pound_land'` within its radius)
-  flips it and emits `'aiRaceButton' { on }`. main sets `state.dark`, emits
+  flips it and emits `'aiRaceButton' { on }`. The cap reads "AI RACE" while the mode is
+  off and "STOP" while it is on (pound it again to switch back). main sets `state.dark`, emits
   `'darkMode' { on }` and eases `state.darkT` 0..1 over 3 s, calling each tick while it
   changes: `level.setDarkness(t)` (every WorldPart's `setDarkness`), `view.setDarkness(t)`,
   `fx.setRain(t)`, `objects.setDarkness(t)`. Game over resets it to 0 (plus
@@ -462,8 +463,10 @@ version and back. Everything is original: no existing monster, character or bran
   random lightning (emits `'lightning' { strength }`; renderer flashes, audio thunders);
   `ignite(x, y, z, { radius, duration, intensity }) -> id`, `extinguish(id)`, `clearFires()`
   (flame/ember/smoke particles), `explode(x, y, z, { radius })`, `update(dt, time, camera)`.
-* **Monster** (objects): an original giant robot beast appears on the castle roof at
-  `layout.KAIJU` when the mode turns on (rising up with a roar), tracks Pip with its head
+* **Monster** (objects): Rustmaw, an original giant mechanical lizard (long low head with a
+  toothed hinged jaw, side-set red eye lenses, splayed clawed legs, small scale plates, a
+  long whip tail) that rears up onto the castle's front roof near `layout.KAIJU` when the
+  mode turns on (with a roar), tracks Pip with its neck and head
   and spits arcing fireballs at him. An impact explodes (`fx.explode`), leaves a fire patch
   (`fx.ignite`, a damaging zone for its duration) and a scorch mark, and sets nearby trees
   alight (`level.trees` canopies). A blast hits Pip for 2 wedges, touching fire for 1 with

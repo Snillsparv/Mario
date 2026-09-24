@@ -1,5 +1,5 @@
 // Procedural textures for the AI RACE mode objects: the floor button's cap (with "AI RACE" in
-// chunky block letters), its hazard-striped base, and the fire sprite atlas used by the
+// chunky block letters, or "STOP" while the mode is on), its hazard-striped base, and the fire sprite atlas used by the
 // fireballs, the monster's vents and eyes, sparks and steam. Painted at runtime on a canvas; in
 // node (no canvas) canvasTexture() returns an empty texture so the logic stays testable.
 
@@ -15,7 +15,20 @@ const GLYPHS = {
   R: ['####.', '#...#', '#...#', '####.', '#.#..', '#..#.', '#...#'],
   C: ['.####', '#....', '#....', '#....', '#....', '#....', '.####'],
   E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
+  S: ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
+  T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
+  O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  P: ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....'],
 };
+
+// What the cap says: how to switch the mode on, and (while it is on) how to switch it off.
+export const CAP_LABELS = { off: 'AI RACE', on: 'STOP' };
+
+// Whether every letter of `text` has a block glyph (spaces are gaps).
+export function hasGlyphs(text) {
+  for (const ch of text) if (ch !== ' ' && !GLYPHS[ch]) return false;
+  return true;
+}
 
 export const CAP_TEXTURE_SIZE = 256;
 // Radius of the painted disc in texels; the cap top maps its radius onto it.
@@ -24,7 +37,7 @@ export const CAP_DISC_RADIUS = 124;
 export const CAP_SIDE_UV = [0.5, 0.5 + 118 / 256];
 
 // Cells of a text line: [{ x, y }] in glyph-cell units, and its width in cells.
-function lineCells(text) {
+export function lineCells(text) {
   const cells = [];
   let cx = 0;
   for (const ch of text) {
@@ -59,10 +72,21 @@ function paintLine(ctx, text, cx, top, sx, sy) {
   each((x, y) => ctx.fillRect(x - 0.5, y + sy * 0.75, sx + 1, sy * 0.25 + 0.5));
 }
 
-// The cap's top: a red-orange disc with a darker bevel ring and "AI" over "RACE" in big block
-// letters. Canvas top = the far (north) side, so the text reads upright from the south, where
-// the hero approaches from the spawn.
-export function makeButtonCapTexture() {
+// Block-letter layouts of the cap labels: one entry per line [text, top, cell width, cell
+// height] (cells taller than wide: the cap is mostly seen at a grazing angle).
+const CAP_LAYOUTS = {
+  'AI RACE': [
+    ['AI', 36, 12.5, 15],
+    ['RACE', 150, 6.9, 9.6],
+  ],
+  STOP: [['STOP', 80, 8.8, 13.6]],
+};
+
+// The cap's top: a red-orange disc with a darker bevel ring and the label in big block letters:
+// "AI" over "RACE", or "STOP" across the middle (CAP_LABELS). Canvas top = the far (north)
+// side, so the text reads upright from the south, where the hero approaches from the spawn.
+// The texture's userData.label is the text painted on it.
+export function makeButtonCapTexture(label = CAP_LABELS.off) {
   const S = CAP_TEXTURE_SIZE;
   const tex = canvasTexture(
     S,
@@ -92,12 +116,12 @@ export function makeButtonCapTexture() {
         ctx.fillStyle = i % 2 ? 'rgba(255,190,140,0.10)' : 'rgba(90,10,0,0.10)';
         ctx.fillRect(c + Math.cos(a) * r, c + Math.sin(a) * r, 3, 3);
       }
-      paintLine(ctx, 'AI', c, 36, 12.5, 15);
-      paintLine(ctx, 'RACE', c, 150, 6.9, 9.6);
+      for (const [text, top, sx, sy] of CAP_LAYOUTS[label] ?? [[label, 100, 8, 12]]) paintLine(ctx, text, c, top, sx, sy);
     },
     { repeat: false },
   );
   tex.anisotropy = 4; // the cap is mostly seen at a grazing angle from the follow camera
+  tex.userData.label = label;
   return tex;
 }
 

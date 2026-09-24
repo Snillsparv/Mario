@@ -2,12 +2,16 @@
 // striped steel base. A ground pound landing on the cap presses it: the cap sinks (and the
 // floor under the hero with it), then pops back up after HOLD_TICKS so it can be pounded again.
 // Walking or jumping onto it does nothing. ObjectManager turns a press into the mode toggle.
+// The cap reads "AI RACE" while the mode is off and "STOP" while it is on (how to switch it
+// back); both cap textures are painted once at construction and swapped by setOn().
 //
 //   new AiButton({ spot: { x, z, radius }, collision, groundAt })
 //   update(player) -> true on the tick it is pressed          (30 Hz)
 //   animate(alpha, clock)                                      (render)
+//   setOn(on)       the mode switched: the cap's label follows ("STOP" / "AI RACE")
+//   label           the text on the cap now
 //   setDarkness(t)  0..1: the base dims, the cap glows and pulses (easy to find in the storm)
-//   reset()         cap up, ready
+//   reset()         cap up, ready, mode off ("AI RACE")
 //
 // Collision: static triangles added to the world at construction (CollisionWorld.addTriangles
 // works after finalize()): the base's side walls and top ring, and the cap's flat top. The cap
@@ -24,6 +28,7 @@ import { TAU } from '../core/math.js';
 import {
   makeButtonCapTexture,
   makeButtonBaseTexture,
+  CAP_LABELS,
   CAP_DISC_RADIUS,
   CAP_TEXTURE_SIZE,
   CAP_SIDE_UV,
@@ -129,6 +134,7 @@ export class AiButton {
     this.lastAction = null;
     this.darkT = 0;
     this.flash = 0; // brief brightening after a press (render)
+    this.on = false; // AI RACE mode as last reported by setOn()
 
     this.mesh = new THREE.Group();
     this.mesh.name = 'aiButton';
@@ -204,7 +210,9 @@ export class AiButton {
       cap.tri([0, t, 0], p0, p1, uvAt(0, 0), uvAt(p0[0], p0[2]), uvAt(p1[0], p1[2]), 0, 1, 0);
     }
     const capGeo = cap.build({ ambient: 0.8, diffuse: 0.3 });
-    this.capMaterial = new THREE.MeshBasicMaterial({ map: makeButtonCapTexture(), vertexColors: true });
+    // Both labels painted up front: switching is a map swap (no allocation, same shader).
+    this.capTextures = { off: makeButtonCapTexture(CAP_LABELS.off), on: makeButtonCapTexture(CAP_LABELS.on) };
+    this.capMaterial = new THREE.MeshBasicMaterial({ map: this.capTextures.off, vertexColors: true });
     this.capMesh = new THREE.Mesh(capGeo, this.capMaterial);
     this.capMesh.name = 'aiButtonCap';
     this.mesh.add(this.baseMesh, this.capMesh);
@@ -307,7 +315,18 @@ export class AiButton {
     this.darkT = t;
   }
 
+  // AI RACE mode switched on or off: the cap says how to switch it the other way.
+  setOn(on) {
+    this.on = !!on;
+    this.capMaterial.map = this.on ? this.capTextures.on : this.capTextures.off;
+  }
+
+  get label() {
+    return this.capMaterial.map.userData.label;
+  }
+
   reset() {
+    this.setOn(false);
     this.state = 'up';
     this.timer = 0;
     this.offset = 0;

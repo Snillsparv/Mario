@@ -7,9 +7,17 @@
 //   freeze=1                          stop the simulation after setup (repeatable screenshots)
 //   pause=1                           like the game's pause: no ticks, alpha keeps cycling
 //   title=1                           like the title screen: never update(), animate() only
-//   dark=1                            AI RACE mode: the robot beast rises on its block and shoots
-//                                     at the fake hero (view=beast frames it, view=button the switch)
+//   dark=1                            AI RACE mode: the robot lizard rises onto the castle roof and
+//                                     shoots at the fake hero (view=button frames the switch, which
+//                                     then reads STOP)
 //   pound=1                           the fake hero ground-pounds the AI RACE button once
+//   level=1                           the real level (castle, terrain, props) and its layout instead
+//                                     of the test lawn; implied by the view=beast* presets:
+//     view=beast|beastSpawn|beastSide|beastFront|beastClose|beastBack|beastButton
+//                                     the lizard from the courtyard (3/4), the spawn, the east side,
+//                                     straight in front, its head close up, behind, the button
+//   pose=charge|roar|rise:N           (with dark=1) freeze-frame a moment: mid-charge (jaw open,
+//                                     throat and dewlap glowing), mid-roar, or N ticks into the rise
 // Flat lawn with a round hill (for slope shadows), built into a small CollisionWorld, plus a
 // stone block standing in for the castle roof under the beast.
 
@@ -19,6 +27,7 @@ import { FRAME_DT } from '../../core/constants.js';
 import { ObjectManager } from '../../objects/ObjectManager.js';
 import { canvasTexture, tileableFbm, paintPixels } from '../../render/texgen.js';
 import { SUN_DIR } from '../../world/layout.js';
+import { buildLevel } from '../../world/level.js';
 
 const HILL = { x: 1300, z: -400, radius: 950, height: 380 };
 
@@ -54,16 +63,126 @@ const VIEWS = {
   flies: { pos: [-300, 350, 500], look: [-700, 250, -100] },
   oneup: { pos: [620, 170, 560], look: [500, 90, 250] },
   button: { pos: [-900, 420, 750], look: [-900, 40, 150] },
-  beast: { pos: [900, 1500, 2600], look: [0, 2400, -2800] },
 };
 
-export async function setup({ THREE, scene, params, camera }) {
-  scene.background = new THREE.Color(0xa8c8f0);
-  scene.fog = new THREE.Fog(0xa8c8f0, 8000, 30000);
+// Real-level camera presets (world units; the lizard's front feet stand at about (0, 2260, -1100)).
+const LEVEL_VIEWS = {
+  beast: { pos: [2000, 2800, 1700], look: [0, 3000, -1000] },
+  beastSpawn: { pos: [0, 700, 7000], look: [0, 2200, -1000] },
+  beastSide: { pos: [3900, 3300, -1400], look: [0, 2900, -1400] },
+  beastFront: { pos: [300, 2900, 2600], look: [0, 3100, -900] },
+  beastClose: { pos: [1500, 2800, 500], look: [0, 3000, -300] },
+  beastBack: { pos: [-2600, 5000, -4300], look: [0, 3000, -1400] },
+  beastButton: { pos: [-700, 520, 5300], look: [-950, 40, 4550] },
+};
+
+export async function setup(ctx) {
+  const { params } = ctx;
+  if (params.has('level') || (params.get('view') ?? '').startsWith('beast')) return setupLevel(ctx);
+  return setupLawn(ctx);
+}
+
+function addLights(THREE, scene) {
   // Same lights as the game renderer (N64Renderer): sun along SUN_DIR + hemisphere ambient.
   const sun = new THREE.DirectionalLight(0xfff3e0, 0.6 * Math.PI);
   sun.position.set(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z).multiplyScalar(10000);
   scene.add(sun, new THREE.HemisphereLight(0xffffff, 0x9a9a88, 0.62 * Math.PI));
+}
+
+function fakeHero(x, y, z) {
+  return {
+    pos: { x, y, z },
+    vel: { x: 0, y: 0, z: 0 },
+    action: 'idle',
+    health: 8,
+    coins: 0,
+    stars: 0,
+    takeDamage(n) {
+      this.health = Math.max(0, this.health - n);
+    },
+    collectCoin(v) {
+      this.coins += v;
+    },
+    collectStar() {
+      this.stars++;
+    },
+  };
+}
+
+// Steps the objects until the beast is in the requested moment (pose=charge|roar|rise:N).
+function runToPose(objects, pose, tick) {
+  const beast = objects.beast;
+  if (!beast || !pose) return;
+  if (pose.startsWith('rise')) {
+    const n = Number(pose.split(':')[1] ?? 50);
+    for (let i = 0; i < n; i++) tick();
+    return;
+  }
+  for (let i = 0; i < 900 && beast.state !== 'active'; i++) tick();
+  for (let i = 0; i < 120 && beast.roarT >= 0; i++) tick();
+  if (pose === 'roar') {
+    beast._roar();
+    for (let i = 0; i < 22; i++) tick();
+  } else if (pose === 'charge') {
+    for (let i = 0; i < 900 && !(beast.mode === 'charge' && beast.modeT >= 26); i++) tick();
+  }
+}
+
+// ?level=1 (and the beast views): the whole real level with the game's layout.
+async function setupLevel({ THREE, scene, params }) {
+  const dark = params.has('dark');
+  scene.background = new THREE.Color(dark ? 0x30363e : 0xa0c8ff);
+  scene.fog = new THREE.Fog(dark ? 0x30363e : 0xa0c8ff, 9000, 30000);
+  addLights(THREE, scene);
+  const level = buildLevel(scene);
+  const num = (k, d) => (params.has(k) ? Number(params.get(k)) : d);
+  const x = num('px', 0);
+  const z = num('pz', 5700);
+  const player = fakeHero(x, level.collision.findFloor(x, 1e5, z).y, z);
+  const events = new Events();
+  events.on('aiRaceButton', ({ on }) => events.emit('darkMode', { on }));
+  const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player, level });
+  const tick = () => objects.update({ player });
+  if (params.has('pound')) {
+    const b = objects.button;
+    const home = player.pos;
+    player.pos = { x: b.x, y: b.capTop0, z: b.z };
+    player.action = 'ground_pound_land';
+    tick();
+    player.action = 'idle';
+    player.pos = home;
+  }
+  if (dark) {
+    level.setDarkness(1);
+    objects.setDarkness(1);
+  }
+  for (let i = 0; i < num('ticks', 0); i++) tick();
+  runToPose(objects, dark ? params.get('pose') : null, tick);
+  const view = LEVEL_VIEWS[params.get('view')] ?? LEVEL_VIEWS.beast;
+  const freeze = params.has('freeze') || params.has('pose');
+  let acc = 0;
+  let last = null;
+  return {
+    camera: view,
+    objects,
+    update(dt, t) {
+      if (last === null) last = t;
+      if (!freeze) acc += Math.min(0.25, t - last);
+      last = t;
+      while (acc >= FRAME_DT) {
+        acc -= FRAME_DT;
+        tick();
+      }
+      level.update(t, window.__preview?.camera);
+      objects.animate(t, freeze ? 1 : acc / FRAME_DT, window.__preview?.camera);
+    },
+  };
+}
+
+async function setupLawn({ THREE, scene, params, camera }) {
+  scene.background = new THREE.Color(0xa8c8f0);
+  scene.fog = new THREE.Fog(0xa8c8f0, 8000, 30000);
+  addLights(THREE, scene);
 
   // Ground mesh doubles as the collision floor.
   const geo = new THREE.PlaneGeometry(8000, 8000, 80, 80).rotateX(-Math.PI / 2);
@@ -92,23 +211,7 @@ export async function setup({ THREE, scene, params, camera }) {
   collision.finalize();
 
   const num = (k, d) => (params.has(k) ? Number(params.get(k)) : d);
-  const player = {
-    pos: { x: num('px', 0), y: 0, z: num('pz', 1400) },
-    vel: { x: 0, y: 0, z: 0 },
-    action: 'idle',
-    health: 8,
-    coins: 0,
-    stars: 0,
-    takeDamage(n) {
-      this.health = Math.max(0, this.health - n);
-    },
-    collectCoin(v) {
-      this.coins += v;
-    },
-    collectStar() {
-      this.stars++;
-    },
-  };
+  const player = fakeHero(num('px', 0), 0, num('pz', 1400));
   player.pos.y = num('py', groundHeight(player.pos.x, player.pos.z));
 
   // Stand-in for the hero so pickups can be judged against its size.

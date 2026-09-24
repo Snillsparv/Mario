@@ -9,6 +9,8 @@ import { Events } from '../src/core/events.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
+import { BEAST } from '../src/objects/RobotBeast.js';
+import { RIG } from '../src/objects/robotBeastModel.js';
 
 const scene = new THREE.Scene();
 const level = buildLevel(scene);
@@ -113,17 +115,20 @@ test('every coin hangs clear of ceilings and walls', () => {
   }
 });
 
-// AI RACE mode on the real castle: the beast stands on the roof in front of the keep (layout.KAIJU),
-// and while it rises through the roof (or sinks back) nothing of it shows in front of the front
-// facade below the roof line (its neck and arms are tucked back until they clear it).
-test('the beast stands on the castle roof and never pokes out through the front facade', () => {
+// AI RACE mode on the real castle: the mechanical lizard sprawls along the front hall's roof in
+// front of the keep (layout.KAIJU): its four feet on the gable's tiles, its body long, low and
+// level along the ridge, its head out over the front facade, and nothing sunk into the castle
+// but the tail's root where it climbs over the block behind. While it rises through the roof
+// (or sinks back) nothing of it shows in front of the facade below the roof line (the neck and
+// front legs are tucked back until they clear it).
+test('the lizard lies on the castle roof, feet on the tiles, and never pokes out through the front facade', () => {
   const events = new Events();
   const player = { pos: { x: 0, y: 100, z: 5700 }, vel: { x: 0, y: 0, z: 0 }, action: 'idle', takeDamage() {}, collectCoin() {}, collectStar() {} };
   const objects = new ObjectManager({ scene: new THREE.Scene(), collision, events, layout: level.layout, player, fx: null, level });
   const beast = objects.beast;
   const { CASTLE, KAIJU } = level.layout;
   const roofLine = CASTLE.baseY + CASTLE.mainHeight;
-  assert.ok(beast.baseY > roofLine - 400 && beast.baseY < roofLine + 200, `stands on the roof (${beast.baseY.toFixed(0)})`);
+  assert.ok(beast.baseY > roofLine && beast.baseY < roofLine + 500, `stands on the roof (${beast.baseY.toFixed(0)})`);
   assert.ok(beast.z > KAIJU.z && beast.z < CASTLE.frontZ, 'in front of the keep, behind the facade');
   const v = new THREE.Vector3();
   let worst = -Infinity;
@@ -138,21 +143,54 @@ test('the beast stands on the castle roof and never pokes out through the front 
     }
   };
   events.emit('darkMode', { on: true });
-  for (let t = 0; t < 100; t++) {
+  // Up through the roof, the landing and the roar that follows it.
+  for (let t = 0; t < BEAST.RISE_TICKS + BEAST.ROAR_TICKS; t++) {
     objects.update({ player });
     objects.animate(0, 1, null);
     check();
   }
-  // Standing: the beast towers well over the roof line (~1600-2200 units tall).
+  assert.equal(beast.state, 'active');
   beast.root.updateMatrixWorld(true);
-  let top = -Infinity;
-  for (const part of beast.parts) {
-    const p = part.geometry.attributes.position;
-    for (let i = 0; i < p.count; i++) top = Math.max(top, v.fromBufferAttribute(p, i).applyMatrix4(part.matrixWorld).y);
+  // Each foot's sole rests on the roof tiles under it.
+  const roofAt = (x, z) => collision.raycast({ x, y: 30000, z }, { x: 0, y: -1, z: 0 }, 40000).point.y;
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const left = (p) => [-p[0], p[1], p[2]];
+  const soles = [
+    ['front left', beast.armL, sub(left(RIG.FOOT_F), left(RIG.SHOULDER))],
+    ['front right', beast.armR, sub(RIG.FOOT_F, RIG.SHOULDER)],
+    ['hind left', beast.hips, left(RIG.FOOT_H)],
+    ['hind right', beast.hips, RIG.FOOT_H],
+  ];
+  for (const [name, part, local] of soles) {
+    v.set(local[0], local[1], local[2]).applyMatrix4(part.matrixWorld);
+    const gap = v.y - roofAt(v.x, v.z);
+    assert.ok(Math.abs(gap) < 40, `${name} foot ${gap.toFixed(0)} off the roof`);
   }
-  assert.ok(top - beast.baseY > 1600 && top - beast.baseY < 2200, `height ${(top - beast.baseY).toFixed(0)}`);
+  // On the roof, not in it: no part sinks more than a claw's depth into the castle (the tail's
+  // root is allowed: it drapes over the edge of the block behind the front hall).
+  for (const part of beast.parts) {
+    if (part === beast.tailA) continue;
+    const p = part.geometry.attributes.position;
+    let deepest = 0;
+    for (let i = 0; i < p.count; i += 2) {
+      v.fromBufferAttribute(p, i).applyMatrix4(part.matrixWorld);
+      deepest = Math.max(deepest, roofAt(v.x, v.z) - v.y);
+    }
+    assert.ok(deepest < 90, `${part.name} sinks ${deepest.toFixed(0)} into the castle`);
+  }
+  // Long and low: the body level, far longer than it is tall, but towering over the roof line.
+  assert.ok(Math.abs(beast.torso.rotation.x) < 0.05, 'the body is level');
+  const box = new THREE.Box3().setFromObject(beast.root, true);
+  const height = box.max.y - beast.baseY;
+  const length = box.max.z - box.min.z;
+  assert.ok(height > 1200 && height < 1700, `height ${height.toFixed(0)}`);
+  assert.ok(length > 2.5 * height, `length ${length.toFixed(0)}`);
+  assert.ok(box.max.y > roofLine + 1400, 'it towers over the roof line');
+  // The head reaches out over the facade, above the roof line: the fireballs come from there.
+  const mouth = beast.mouthPos();
+  assert.ok(mouth.z > CASTLE.frontZ && mouth.y > roofLine + 300, JSON.stringify(mouth));
   events.emit('darkMode', { on: false });
-  for (let t = 0; t < 80; t++) {
+  for (let t = 0; t < BEAST.SINK_TICKS + 5; t++) {
     objects.update({ player });
     objects.animate(0, 1, null);
     check();

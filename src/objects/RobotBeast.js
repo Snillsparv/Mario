@@ -1,9 +1,12 @@
-// The Rustmaw: the original giant robot beast that climbs onto the castle roof in AI RACE mode
-// (geometry and look in robotBeastModel.js). It rises out of the castle with a roar when the mode
-// turns on, breathes and sways, tracks the hero with its neck and head, roars now and then, and
-// every few seconds charges its furnace throat and spits a fireball on a ballistic arc at where
-// the hero is heading. When the mode turns off it sinks back into the castle and is hidden (no
-// draw calls). It has no colliders.
+// The Rustmaw: the original giant mechanical lizard that climbs onto the castle roof in AI RACE
+// mode (geometry and look in robotBeastModel.js). When the mode turns on it heaves itself up out
+// of the front hall head first, slaps its front claws down on the roof one after the other and
+// roars; then it lies sprawled along the ridge, breathing, swaying its tail and bobbing its
+// head, tracks the hero with its neck and head, roars now and then (rearing up, jaw wide,
+// claws raised, tail thrashing), and every few seconds draws its head back with the jaw open
+// and the throat and dewlap glowing, then lunges and spits a fireball on a ballistic arc at
+// where the hero is heading. When the mode turns off it rears back and sinks into the castle
+// and is hidden (no draw calls). It has no colliders.
 //
 //   new RobotBeast({ anchor: layout.KAIJU, collision, events, fire, rng, launch })
 //   setMode(on)          start rising / sinking
@@ -11,28 +14,28 @@
 //   animate(alpha, clock) render: interpolated pose, glows
 //   reset()              hidden at once
 //
-// Placement: layout.KAIJU marks the keep; the beast stands STANCE_FORWARD in front of it, on
-// the front hall's roof, straddling its ridge with a foot on each flanking terrace (found by
-// raycasting down at the feet), so from the spawn it looms over the entrance and stays in view.
+// Placement: layout.KAIJU marks the keep; the beast's front feet stand STANCE_FORWARD in front
+// of it, on the front hall's gable roof (their height found by raycasting down at the feet),
+// the body along the ridge, the head out over the front facade toward the courtyard.
 //
 // Pose: the tick writes a few animation channels (CH) and the render interpolates them; idle
-// breathing, sway and the tail's swing are functions of the clock. Events: 'sfx' kaiju_roar,
+// breathing, head bob and the tail's sway are functions of the clock. Events: 'sfx' kaiju_roar,
 // fireball_charge, fireball_launch (with pos), and 'kaijuRoar' { pos } when it roars.
 
 import * as THREE from 'three';
 import { TAU, wrapAngle } from '../core/math.js';
 import { FRAME_DT } from '../core/constants.js';
-import { buildBeastGeometries, makeBeastMaterial, RIG } from './robotBeastModel.js';
+import { buildBeastGeometries, makeBeastMaterial, RIG, headPivot } from './robotBeastModel.js';
 import { FIRE } from './aiRaceTextures.js';
 import { RAMP, TINTS } from './FireSprites.js';
 
 export const BEAST = {
-  SCALE: 0.76,
-  STANCE_FORWARD: 800, // stand this far in front of layout.KAIJU (the keep)
-  HIDDEN_DEPTH: 2400, // below its standing height when hidden inside the castle
-  RISE_TICKS: 90, // ~3 s
+  SCALE: 1,
+  STANCE_FORWARD: 1200, // the front feet stand this far in front of layout.KAIJU (the keep)
+  HIDDEN_DEPTH: 3000, // below its standing height when hidden inside the castle
+  RISE_TICKS: 100, // ~3.3 s: up head first, then down onto the roof, claw by claw
   SINK_TICKS: 75,
-  ROAR_AT: 56, // rise tick the roar starts
+  ROAR_AT: 78, // rise tick the roar starts (after the claws land)
   ROAR_TICKS: 72,
   CHARGE_TICKS: 33, // ~1.1 s of glowing throat before the shot
   RECOVER_TICKS: 15,
@@ -44,8 +47,11 @@ export const BEAST = {
   FOV: 1.8, // it only attacks within this yaw of its facing (radians either side)
   GRACE: 75, // ticks after the hero (re)spawns before it shoots at him
   TURN: 0.05, // max tracking change per tick (radians)
-  BASE_LEAN: 0.28,
-  NECK_ARCH: -0.12,
+  TRACK_FROM: [1420, 1150], // where it looks from: forward of and above its front feet
+  CROUCH_PITCH: 0.95, // while crouched (rising, sinking) the body rears up this far...
+  CROUCH_NECK: 0.4, // ...the neck and head bend up with it (the snout points at the sky)...
+  CROUCH_HEAD: 0.2,
+  ARM_TUCK: 0.7, // ...and the front legs fold back along the chest
   HEAD_SCALE: 1.3, // head and jaw, relative to the rest of the rig
   GLOW_PUSH: 110, // glow sprites sit this far toward the camera from their landmark
 };
@@ -67,10 +73,28 @@ export const SHOT = {
 };
 
 // Animation channels (the tick writes CUR, the render lerps from PREV).
-const CH = { RISE: 0, CROUCH: 1, TWIST: 2, LEAN: 3, NECK_YAW: 4, NECK_PITCH: 5, HEAD_PITCH: 6, JAW: 7, ARMS: 8, CHARGE: 9, LUNGE: 10, POWER: 11, SHAKE: 12 };
-const N_CH = 13;
+const CH = {
+  RISE: 0,
+  CROUCH: 1,
+  TWIST: 2,
+  LEAN: 3,
+  NECK_YAW: 4,
+  NECK_PITCH: 5,
+  HEAD_PITCH: 6,
+  JAW: 7,
+  ARMS: 8,
+  CHARGE: 9,
+  LUNGE: 10,
+  POWER: 11,
+  SHAKE: 12,
+  HEAD_YAW: 13,
+  GRAB: 14, // 0..1 through the rise's claw-over-claw landing (1: feet planted)
+  TAIL: 15, // tail thrash
+};
+const N_CH = 16;
 
 const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+const clamp01 = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u);
 
 // Flight time (ticks) for a shot covering `dist` horizontally.
 export function flightTicks(dist) {
@@ -91,6 +115,7 @@ const _v = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _aim = { x: 0, y: 0, z: 0 };
 const _to = { x: 0, y: 0, z: 0 };
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 export class RobotBeast {
   constructor({ anchor, collision, events, fire, rng, launch }) {
@@ -133,15 +158,15 @@ export class RobotBeast {
     this._hide();
   }
 
-  // Height to stand at: the lower of the roof heights under the two feet.
+  // Height to stand at: the lower of the roof heights under the two front feet.
   _findStanceHeight(S) {
     const col = this.collision;
     const c = Math.cos(this.yaw);
     const s = Math.sin(this.yaw);
     let y = Infinity;
     for (const side of [-1, 1]) {
-      const lx = RIG.FOOT[0] * side * S;
-      const lz = RIG.FOOT[2] * S;
+      const lx = RIG.FOOT_F[0] * side * S;
+      const lz = RIG.FOOT_F[2] * S;
       const x = this.x + lx * c + lz * s;
       const z = this.z - lx * s + lz * c;
       const hit = col.raycast ? col.raycast({ x, y: 30000, z }, { x: 0, y: -1, z: 0 }, 40000) : null;
@@ -159,40 +184,45 @@ export class RobotBeast {
       m.name = name;
       if (pos) m.position.set(pos[0], pos[1], pos[2]);
       return m; // rigid parts: their bounding spheres stay valid, so off-screen parts are culled
-
     };
+    const W = RIG.WAIST;
+    const H = headPivot();
+    const shoulderL = [-RIG.SHOULDER[0], RIG.SHOULDER[1], RIG.SHOULDER[2]];
     this.root = new THREE.Group();
     this.root.name = 'robotBeast';
     this.root.scale.setScalar(S);
     this.root.rotation.y = this.yaw;
     this.root.position.set(this.x, this.baseY, this.z);
-    this.legs = mesh(geo.legs, 'beastLegs');
-    this.torso = mesh(geo.torso, 'beastTorso', RIG.WAIST);
-    this.neck = mesh(geo.neck, 'beastNeck', RIG.NECK);
+    this.hips = mesh(geo.hips, 'beastHips');
+    this.torso = mesh(geo.torso, 'beastTorso', W);
+    this.neck = mesh(geo.neck, 'beastNeck', sub3(RIG.NECK, W));
     this.neck.rotation.order = 'YXZ';
-    this.head = mesh(geo.head, 'beastHead', RIG.NECK_PTS[RIG.NECK_PTS.length - 1]);
+    this.head = mesh(geo.head, 'beastHead', sub3(H, RIG.NECK));
+    this.head.rotation.order = 'YXZ';
     this.head.scale.setScalar(BEAST.HEAD_SCALE);
+    this.headBase = this.head.position.clone();
     this.jaw = mesh(geo.jaw, 'beastJaw', RIG.JAW);
-    this.armL = mesh(geo.armL, 'beastArmL', [-RIG.SHOULDER[0], RIG.SHOULDER[1], RIG.SHOULDER[2]]);
-    this.armR = mesh(geo.armR, 'beastArmR', RIG.SHOULDER);
-    this.tailA = mesh(geo.tailA, 'beastTailA', RIG.TAIL);
-    this.tailB = mesh(geo.tailB, 'beastTailB', RIG.TAIL_A[RIG.TAIL_A.length - 1]);
+    this.armL = mesh(geo.armL, 'beastArmL', sub3(shoulderL, W));
+    this.armR = mesh(geo.armR, 'beastArmR', sub3(RIG.SHOULDER, W));
+    this.tailA = mesh(geo.tailA, 'beastTailA', RIG.TAIL_A[0]);
+    this.tailB = mesh(geo.tailB, 'beastTailB', sub3(RIG.TAIL_B[0], RIG.TAIL_A[0]));
     this.mouth = new THREE.Object3D();
     this.mouth.position.set(RIG.MOUTH[0], RIG.MOUTH[1], RIG.MOUTH[2]);
     this.head.add(this.jaw, this.mouth);
     this.neck.add(this.head);
     this.torso.add(this.neck, this.armL, this.armR);
     this.tailA.add(this.tailB);
-    this.root.add(this.legs, this.torso, this.tailA);
+    this.root.add(this.hips, this.torso, this.tailA);
     this.mesh = this.root;
-    this.parts = [this.legs, this.torso, this.neck, this.head, this.jaw, this.armL, this.armR, this.tailA, this.tailB];
+    this.parts = [this.hips, this.torso, this.neck, this.head, this.jaw, this.armL, this.armR, this.tailA, this.tailB];
     // Landmarks for glows and sparks, in their parts' local space.
+    const v = (p) => new THREE.Vector3(p[0], p[1], p[2]);
     this.marks = {
-      eyes: RIG.EYES.map((p) => [this.head, new THREE.Vector3(p[0], p[1], p[2] + 12)]),
-      beacon: [this.head, new THREE.Vector3(...RIG.BEACON)],
-      throat: [this.head, new THREE.Vector3(...RIG.THROAT)],
-      core: [this.torso, new THREE.Vector3(0, 390, 360)],
-      stacks: RIG.STACKS.map((p) => [this.torso, new THREE.Vector3(p[0], p[1] + 20, p[2])]),
+      eyes: RIG.EYES.map((p) => [this.head, v([p[0] * 1.14, p[1], p[2] + 8])]),
+      throat: [this.head, v(RIG.THROAT)],
+      dewlap: [this.jaw, v(sub3(RIG.DEWLAP, RIG.JAW))],
+      core: [this.torso, v(sub3(RIG.CORE, sub3(W, [0, 0, 40])))],
+      vents: RIG.VENTS.map((p, i) => (i < 2 ? [this.torso, v(sub3(p, W))] : [this.hips, v(p)])),
     };
   }
 
@@ -241,6 +271,7 @@ export class RobotBeast {
       if (this.state === 'hidden') {
         this.cur[CH.RISE] = -BEAST.HIDDEN_DEPTH;
         this.cur[CH.CROUCH] = 1;
+        this.cur[CH.GRAB] = 0;
         this.prev.set(this.cur);
       }
       this.state = 'rising';
@@ -307,9 +338,9 @@ export class RobotBeast {
     this._watch(pos);
 
     // Tracking targets: yaw and pitch from the head toward the hero's chest.
-    const hx = this.x + Math.sin(this.yaw) * 700;
-    const hz = this.z + Math.cos(this.yaw) * 700;
-    const hy = this.baseY + 1750;
+    const hx = this.x + Math.sin(this.yaw) * B.TRACK_FROM[0];
+    const hz = this.z + Math.cos(this.yaw) * B.TRACK_FROM[0];
+    const hy = this.baseY + B.TRACK_FROM[1];
     const dx = pos.x - hx;
     const dz = pos.z - hz;
     const far = dx * dx + dz * dz > 1e12;
@@ -318,10 +349,11 @@ export class RobotBeast {
     const horiz = Math.sqrt(dx * dx + dz * dz);
     let pitch = far ? 0.3 : Math.atan2(hy - (pos.y + 100), horiz + 1); // + = down
     pitch = pitch > 0.95 ? 0.95 : pitch < -0.3 ? -0.3 : pitch;
-    let twist = 0.3 * relYaw;
-    let neckYaw = 0.7 * relYaw;
+    const twist = 0.08 * relYaw;
+    const neckYaw = 0.55 * relYaw;
+    const headYaw = 0.35 * relYaw;
     let neckPitch = 0.35 * pitch;
-    let headPitch = 0.65 * pitch - B.BASE_LEAN;
+    let headPitch = 0.65 * pitch;
     let jaw = 0.04;
     let arms = 0;
     let lean = 0;
@@ -330,13 +362,19 @@ export class RobotBeast {
     let power = 1;
     let crouch = 0;
     let shake = 0;
+    let grab = 1;
+    let tail = 0;
 
     if (this.state === 'rising') {
+      // Up out of the front hall head first (done by 62 %), then down onto the ridge from 45 %
+      // to 80 %, the front claws reaching over and slamming down one after the other.
       const u = this.t / B.RISE_TICKS;
-      const e = 1 - (1 - smooth(u)) * (1 - smooth(u));
-      P[CH.RISE] = this.fromRise * (1 - e);
-      crouch = 1 - smooth((u - 0.5) / 0.4);
+      const r = 1 - smooth(u / 0.62);
+      P[CH.RISE] = this.fromRise * r * r;
+      crouch = 1 - smooth((u - 0.45) / 0.35);
+      grab = clamp01((u - 0.45) / 0.45);
       shake = u < 0.85 ? 1 - u : 0;
+      tail = 0.5 * (1 - u);
       power = this.t < 30 ? 0 : this.t < 44 ? ((this.t >> 1) % 3 === 0 ? 1 : 0.15) : 1;
       if (this.t === B.ROAR_AT) this._roar();
       if (this.t >= B.RISE_TICKS) {
@@ -352,6 +390,7 @@ export class RobotBeast {
       P[CH.RISE] = this.fromRise + (-B.HIDDEN_DEPTH - this.fromRise) * e;
       crouch = smooth(u / 0.3);
       shake = 0.6 * u;
+      tail = 0.4;
       power = u < 0.4 ? 1 : (this.t >> 1) % 2 ? 0.2 : u < 0.7 ? 0.8 : 0;
       charge = 0;
       this.roarT = -1;
@@ -379,25 +418,30 @@ export class RobotBeast {
           this.events.emit('sfx', { name: 'fireball_charge', pos: this.mouthPos() });
         }
       } else if (this.mode === 'charge') {
+        // Draw the head back and up, jaw opening, throat and dewlap glowing.
         this.attackIn--;
         const u = this.modeT / B.CHARGE_TICKS;
         charge = u * Math.sqrt(u);
-        jaw = 0.05 + 0.3 * u;
-        headPitch -= 0.18 * u;
+        jaw = 0.05 + 0.4 * u;
+        headPitch -= 0.15 * u;
+        neckPitch -= 0.08 * u;
         lunge = -0.6 * u;
-        lean = -0.05 * u;
+        lean = -0.04 * u;
+        tail = 0.3 * u;
         if (this.modeT >= B.CHARGE_TICKS) {
           if (canTarget) this._shoot(player);
           this.mode = 'recover';
           this.modeT = 0;
         }
       } else {
+        // Lunge: the head snaps forward and down, jaw wide, then settles.
         this.attackIn--;
         const u = this.modeT / B.RECOVER_TICKS;
         charge = u < 0.4 ? 1 - u / 0.4 : 0;
         jaw = 0.85 * (1 - smooth(u)) + 0.04;
         lunge = 1 - smooth(u);
         headPitch += 0.12 * (1 - u);
+        tail = 0.3 * (1 - u);
         if (this.modeT >= B.RECOVER_TICKS) {
           this.mode = 'idle';
           this.modeT = 0;
@@ -405,33 +449,38 @@ export class RobotBeast {
       }
     }
 
-    // A roar overrides the look: rear back, head up, jaw wide, arms spread.
+    // A roar overrides the look: rear up on the front legs, claws raised, head up, jaw wide,
+    // the tail thrashing.
     if (this.roarT >= 0) {
       const r = this.roarT;
       const w = smooth(r / 12) * (1 - smooth((r - (B.ROAR_TICKS - 18)) / 18));
       const quiver = Math.sin(r * 1.9) * 0.03;
-      headPitch += w * (-0.7 - headPitch + quiver);
-      neckPitch += w * (-0.35 - neckPitch);
+      headPitch += w * (-0.5 - headPitch + quiver);
+      neckPitch += w * (-0.3 - neckPitch);
       jaw += w * (1 - jaw);
       arms = w;
-      lean -= 0.14 * w;
+      lean -= 0.13 * w;
       charge += 0.25 * w;
+      tail += w * (1 - tail);
       if (++this.roarT >= B.ROAR_TICKS) this.roarT = -1;
     }
 
     const turn = B.TURN;
-    P[CH.TWIST] = this._approach(P[CH.TWIST], twist, turn);
+    P[CH.TWIST] = this._approach(P[CH.TWIST], twist, turn * 0.5);
     P[CH.NECK_YAW] = this._approach(P[CH.NECK_YAW], neckYaw, turn * 1.4);
+    P[CH.HEAD_YAW] = this._approach(P[CH.HEAD_YAW], headYaw, turn * 1.4);
     P[CH.NECK_PITCH] = this._approach(P[CH.NECK_PITCH], neckPitch, turn * 1.4);
     P[CH.HEAD_PITCH] = this._approach(P[CH.HEAD_PITCH], headPitch, turn * 2);
     P[CH.JAW] = this._approach(P[CH.JAW], jaw, 0.22);
     P[CH.ARMS] = this._approach(P[CH.ARMS], arms, 0.1);
     P[CH.LEAN] = this._approach(P[CH.LEAN], lean, 0.03);
     P[CH.LUNGE] = this._approach(P[CH.LUNGE], lunge, 0.35);
+    P[CH.TAIL] = this._approach(P[CH.TAIL], tail, 0.08);
     P[CH.CHARGE] = charge > 1 ? 1 : charge;
     P[CH.POWER] = power;
     P[CH.CROUCH] = crouch;
     P[CH.SHAKE] = shake;
+    P[CH.GRAB] = grab;
 
     this._sparks(tick);
   }
@@ -490,7 +539,8 @@ export class RobotBeast {
     this.events.emit('sfx', { name: 'fireball_launch', pos: from });
   }
 
-  // Sparks from the exhaust stacks (more while charging or roaring) and embers from the jaw.
+  // Sparks and smoke from the exhaust vents (more while charging or roaring) and embers
+  // dripping from the open jaw.
   _sparks(tick) {
     const fire = this.fire;
     if (!fire || this.state === 'hidden') return;
@@ -501,10 +551,10 @@ export class RobotBeast {
     const t0 = this.clockNow;
     this._pose(P, t0);
     this.root.updateMatrixWorld(true);
-    const stacks = this.marks.stacks;
-    for (let i = 0; i < stacks.length; i++) {
+    const vents = this.marks.vents;
+    for (let i = 0; i < vents.length; i++) {
       if (rng() > (busy ? 0.9 : 0.35)) continue;
-      this._mark(stacks[i], _v);
+      this._mark(vents[i], _v);
       const p = fire.spawn(t0, 0.55 + rng() * 0.5, FIRE.SPARK);
       if (!p) return;
       p.x = _v.x + (rng() - 0.5) * 40;
@@ -549,36 +599,46 @@ export class RobotBeast {
   }
 
   // Poses the rig from channels P at clock time `clock` (seconds). While crouched (rising or
-  // sinking through the roof) the neck points up and the arms are drawn back, so nothing that
-  // juts out past the front facade shows below the roof line.
+  // sinking through the roof) the body rears up about the hips with the neck and snout pointing
+  // at the sky and the front legs folded back, so nothing juts out past the front facade below
+  // the roof line.
   _pose(P, clock) {
     const B = BEAST;
-    const breath = Math.sin(clock * 1.7);
-    const sway = Math.sin(clock * 0.63);
+    const breath = Math.sin(clock * 1.5);
+    const sway = Math.sin(clock * 0.55);
+    const bob = Math.sin(clock * 1.25);
     const shake = P[CH.SHAKE];
     const crouch = P[CH.CROUCH];
+    const stand = 1 - crouch;
     const root = this.root;
     root.position.set(
       this.x + shake * 14 * Math.sin(clock * 41),
       this.baseY + P[CH.RISE] + shake * 10 * Math.sin(clock * 53),
       this.z + shake * 10 * Math.sin(clock * 37),
     );
-    const W = RIG.WAIST;
-    this.torso.position.set(W[0], W[1] - crouch * 200 + breath * 10, W[2] - crouch * 60);
-    this.torso.rotation.set(B.BASE_LEAN + P[CH.LEAN] - crouch * 0.2 + breath * 0.012, P[CH.TWIST] + sway * 0.03, sway * 0.015);
-    this.neck.rotation.set(B.NECK_ARCH + P[CH.NECK_PITCH] - crouch * 1.15 - breath * 0.01, P[CH.NECK_YAW] * (1 - crouch), 0);
-    const N = RIG.NECK_PTS[RIG.NECK_PTS.length - 1];
-    this.head.position.set(N[0], N[1], N[2] + P[CH.LUNGE] * 70);
-    this.head.rotation.set(P[CH.HEAD_PITCH] - crouch * 0.2, 0, sway * 0.02);
-    this.jaw.rotation.x = P[CH.JAW] * 0.72;
-    const arms = P[CH.ARMS] * (1 - crouch); // no arm waving until they clear the roof
-    const swing = Math.sin(clock * 1.1) * 0.04;
-    const tuck = crouch * 0.45;
-    this.armL.rotation.set(-arms * 0.9 + swing + tuck, 0, -arms * 0.55 - 0.05);
-    this.armR.rotation.set(-arms * 0.9 - swing + tuck, 0, arms * 0.55 + 0.05);
-    const tail = clock * 0.9;
-    this.tailA.rotation.set(0.04 * Math.sin(tail * 0.7), 0.12 * Math.sin(tail), 0);
-    this.tailB.rotation.set(0, 0.2 * Math.sin(tail - 0.9), 0.05 * Math.sin(tail - 0.4));
+    // Body: pitches about the hips (negative: the chest rises); the belly heaves with breath.
+    const pitch = P[CH.LEAN] - crouch * B.CROUCH_PITCH - breath * 0.008;
+    this.torso.rotation.set(pitch, P[CH.TWIST] + sway * 0.015, sway * 0.01);
+    const lunge = P[CH.LUNGE];
+    this.neck.rotation.set(stand * (P[CH.NECK_PITCH] + lunge * 0.22 + bob * 0.015) - crouch * B.CROUCH_NECK, P[CH.NECK_YAW] * stand, 0);
+    const hb = this.headBase;
+    this.head.position.set(hb.x, hb.y - lunge * 30, hb.z + lunge * 130);
+    this.head.rotation.set(stand * (P[CH.HEAD_PITCH] + bob * 0.03) - crouch * B.CROUCH_HEAD, P[CH.HEAD_YAW] * stand, sway * 0.03);
+    this.jaw.rotation.x = P[CH.JAW] * 0.75;
+    // Front legs: undo the body's pitch (the feet stay on the roof), fold back while crouched,
+    // reach up and over during the landing (left, then right), and lift, claws out, in a roar.
+    const arms = P[CH.ARMS] * stand;
+    const g = P[CH.GRAB];
+    const reachL = g > 0 && g < 0.6 ? Math.sin((g / 0.6) * Math.PI) : 0;
+    const reachR = g > 0.35 && g < 0.95 ? Math.sin(((g - 0.35) / 0.6) * Math.PI) : 0;
+    const fold = crouch * B.ARM_TUCK;
+    const shift = Math.sin(clock * 0.9) * 0.012;
+    this.armL.rotation.set(-pitch + fold - reachL * 0.8 + arms * 0.3 + shift, 0, -(reachL * 0.3 + arms * 0.4) + crouch * 0.25);
+    this.armR.rotation.set(-pitch + fold - reachR * 0.8 + arms * 0.3 - shift, 0, reachR * 0.3 + arms * 0.4 - crouch * 0.25);
+    // Tail: a slow sway that travels down to the tip, and a fast thrash when roused.
+    const thrash = P[CH.TAIL];
+    this.tailA.rotation.set(0.02 * thrash, 0.02 * Math.sin(clock * 0.6) + 0.035 * thrash * Math.sin(clock * 4.2), 0);
+    this.tailB.rotation.set(0.07 * thrash, 0.09 * Math.sin(clock * 0.6 - 0.9) + 0.13 * thrash * Math.sin(clock * 4.2 - 0.8), 0.02 * Math.sin(clock * 0.8));
   }
 
   animate(alpha, clock, camera = null) {
@@ -596,7 +656,7 @@ export class RobotBeast {
     u.uCharge.value = P[CH.CHARGE];
     u.uPower.value = P[CH.POWER];
     u.uFlash.value = since >= 0 && since < 0.6 ? this.flashStrength * 0.7 * (1 - since / 0.6) : 0;
-    this._glows(P, clock);
+    this._glows(P);
   }
 
   // Queues a glow sprite at _v (see _glowAt) with a linear tint; false when out of slots.
@@ -614,9 +674,9 @@ export class RobotBeast {
     return true;
   }
 
-  // Additive glows: the optic slits, the mast beacon, the furnace heart, the stack embers and
-  // the throat charge.
-  _glows(P, clock) {
+  // Additive glows: the side optics, the chest furnace, the exhaust vents, and the throat and
+  // dewlap while charging.
+  _glows(P) {
     if (!this.fire) return;
     const power = P[CH.POWER];
     const charge = P[CH.CHARGE];
@@ -624,22 +684,20 @@ export class RobotBeast {
     if (power > 0.05) {
       for (let i = 0; i < 2; i++) {
         this._glowAt(m.eyes[i], _v);
-        if (!this._glow(300, TINTS.eye, power)) return;
-      }
-      if (clock % 1.3 < 0.35) {
-        this._glowAt(m.beacon, _v);
-        if (!this._glow(160, TINTS.eye, power)) return;
+        if (!this._glow(280, TINTS.eye, power)) return;
       }
     }
     this._glowAt(m.core, _v);
-    if (!this._glow(300 + 380 * charge, TINTS.core, (0.5 + 0.5 * charge) * (0.4 + 0.6 * power))) return;
-    for (let i = 0; i < m.stacks.length; i++) {
-      this._glowAt(m.stacks[i], _v);
+    if (!this._glow(260 + 320 * charge, TINTS.core, (0.45 + 0.55 * charge) * (0.4 + 0.6 * power))) return;
+    for (let i = 0; i < m.vents.length; i++) {
+      this._glowAt(m.vents[i], _v);
       if (!this._glow(110 + 90 * charge, TINTS.ember, 0.35 + 0.5 * charge)) return;
     }
     if (charge > 0.02) {
       this._glowAt(m.throat, _v);
-      this._glow(200 + 520 * charge, TINTS.charge, charge);
+      if (!this._glow(200 + 520 * charge, TINTS.charge, charge)) return;
+      this._glowAt(m.dewlap, _v);
+      this._glow(160 + 320 * charge, TINTS.core, 0.8 * charge);
     }
   }
 }

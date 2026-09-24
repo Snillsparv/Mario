@@ -1,6 +1,7 @@
 // AI RACE mode objects in node: the floor button (only a ground-pound landing on its cap toggles
-// the mode, the cap and the floor under the hero sink and pop back up), the robot beast (rises
-// on 'darkMode', roars, tracks, shoots, sinks and hides; no colliders), the fireballs (ballistic
+// the mode, the cap and the floor under the hero sink and pop back up, the cap reads "AI RACE"
+// or "STOP"), the robot lizard (rises on 'darkMode', roars, tracks, shoots, sinks and hides; no
+// colliders), the fireballs (ballistic
 // aim, pool, expiry, ground / water / hero / tree impacts, blast and fire-zone damage, burning
 // trees), setDarkness, reset() and the draw-call budget.
 import { test } from 'node:test';
@@ -9,8 +10,10 @@ import * as THREE from 'three';
 import { CollisionWorld } from '../src/collision/CollisionWorld.js';
 import { Events } from '../src/core/events.js';
 import { NO_WATER } from '../src/core/constants.js';
+import { makeRng } from '../src/core/math.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { AiButton, BUTTON } from '../src/objects/AiButton.js';
+import { CAP_LABELS, hasGlyphs, lineCells } from '../src/objects/aiRaceTextures.js';
 import { RobotBeast, BEAST, SHOT, aimVelocity, flightTicks } from '../src/objects/RobotBeast.js';
 import { Fireballs, FIREBALL } from '../src/objects/Fireballs.js';
 import { FireSprites } from '../src/objects/FireSprites.js';
@@ -188,6 +191,58 @@ test('a pound needs the feet on top of the cap, within its rim', () => {
   assert.ok(!b.onCap({ x: BTN.x, y: top + 200, z: BTN.z }), 'high above it');
 });
 
+// The cap tells the hero how to switch the mode the other way: "AI RACE" while it is off,
+// "STOP" while it is on, whichever way the mode switched (a pound, window.__game.setDark(), a
+// preview's full darkness, game over).
+test('the cap reads AI RACE while the mode is off and STOP while it is on', () => {
+  const { objects, player, events, step } = setup();
+  const b = objects.button;
+  const painted = [b.capTextures.off, b.capTextures.on];
+  assert.notEqual(painted[0], painted[1]);
+  assert.equal(b.label, 'AI RACE');
+  assert.equal(painted[1].userData.label, 'STOP');
+  // A pound switches the mode on (main answers with 'darkMode').
+  player.pos = { x: BTN.x, y: b.capTop0, z: BTN.z };
+  player.action = 'ground_pound_land';
+  step();
+  assert.equal(objects.modeOn, true);
+  assert.equal(b.label, 'STOP');
+  player.action = 'idle';
+  step(BUTTON.HOLD_TICKS + BUTTON.RISE_TICKS);
+  assert.equal(b.state, 'up');
+  assert.equal(b.label, 'STOP', 'still STOP once the cap is back up');
+  player.action = 'ground_pound_land';
+  step();
+  assert.equal(objects.modeOn, false);
+  assert.equal(b.label, 'AI RACE');
+  // setDark(on) from tests.
+  events.emit('darkMode', { on: true });
+  assert.equal(b.label, 'STOP');
+  events.emit('darkMode', { on: false });
+  assert.equal(b.label, 'AI RACE');
+  // Full darkness without an event (previews) brings the beast, and the label with it.
+  objects.setDarkness(1);
+  assert.equal(b.label, 'STOP');
+  // Game over: reset() switches everything off (main may report the mode off afterwards too).
+  objects.reset();
+  assert.equal(b.label, 'AI RACE');
+  events.emit('darkMode', { on: false });
+  assert.equal(b.label, 'AI RACE');
+  events.emit('darkMode', { on: true });
+  assert.equal(b.label, 'STOP');
+  // Only the two textures painted at construction are ever shown.
+  assert.ok(painted.includes(b.capMaterial.map));
+});
+
+test('both cap labels are spelt in block glyphs that fit the cap', () => {
+  for (const label of [CAP_LABELS.off, CAP_LABELS.on]) assert.ok(hasGlyphs(label), label);
+  assert.ok(!hasGlyphs('Q'));
+  // STOP: four 5-wide letters with 1-cell gaps, every letter drawn.
+  const stop = lineCells('STOP');
+  assert.equal(stop.width, 23);
+  for (let k = 0; k < 4; k++) assert.ok(stop.cells.some((c) => c.x >= k * 6 && c.x < k * 6 + 5), `letter ${k}`);
+});
+
 // ---------------------------------------------------------------- beast
 
 test('the beast is hidden (no draw calls, no colliders) until the mode turns on', () => {
@@ -242,11 +297,22 @@ test('the beast tracks the hero with its neck and head', () => {
   player.pos = { x: -5000, y: 0, z: 3000 };
   step(BEAST.RISE_TICKS + 60);
   const beast = objects.beast;
-  const left = beast.neck.rotation.y + beast.torso.rotation.y;
+  const look = () => beast.torso.rotation.y + beast.neck.rotation.y + beast.head.rotation.y;
+  const left = look();
+  const neckLeft = beast.neck.rotation.y;
   player.pos = { x: 5000, y: 0, z: 3000 };
   step(60);
-  const right = beast.neck.rotation.y + beast.torso.rotation.y;
-  assert.ok(left < -0.4 && right > 0.4, `turns from ${left.toFixed(2)} to ${right.toFixed(2)}`);
+  const right = look();
+  assert.ok(left < -0.6 && right > 0.6, `turns from ${left.toFixed(2)} to ${right.toFixed(2)}`);
+  assert.ok(neckLeft < -0.3 && beast.neck.rotation.y > 0.3, 'the neck bends toward him');
+  // Down at a hero right under the facade, level toward one far away.
+  const pitch = () => beast.neck.rotation.x + beast.head.rotation.x;
+  player.pos = { x: 0, y: 0, z: 13000 };
+  step(60);
+  const far = pitch();
+  player.pos = { x: 0, y: 0, z: 1000 };
+  step(60);
+  assert.ok(pitch() > far + 0.4, `looks down from ${far.toFixed(2)} to ${pitch().toFixed(2)}`);
 });
 
 test('it charges (throat glow, sfx) and spits a fireball every few seconds', () => {
@@ -307,33 +373,43 @@ test('the ballistic solution lands exactly on its target after T ticks', () => {
   assert.ok(Math.hypot(p.x - to.x, p.y - to.y, p.z - to.z) < 1e-6);
 });
 
-// Where the shots land relative to the hero at impact, over two minutes of play.
+// Where the shots land relative to the hero at impact, over two minutes of play from each of
+// four starting spots, each with its own aim randomness (pooled, so one random stream's luck
+// does not decide the verdict).
 function shotSpread(move) {
-  const player = fakePlayer(600, 0, 5000);
-  const { objects, events, step } = setup({ player, trees: [] });
   const d = [];
-  events.on('sfx', (e) => {
-    if (e.name === 'fireball_explode') d.push(Math.hypot(e.pos.x - player.pos.x, e.pos.z - player.pos.z));
-  });
-  events.emit('darkMode', { on: true });
-  for (let t = 0; t < 30 * 120; t++) {
-    move(t, player.pos);
-    objects.update({ player });
+  for (const [x0, seed] of [
+    [600, 11],
+    [-900, 23],
+    [1800, 37],
+    [-2200, 41],
+  ]) {
+    const player = fakePlayer(x0, 0, 5000);
+    const { objects, events } = setup({ player, trees: [] });
+    objects.beast.rng = makeRng(seed);
+    events.on('sfx', (e) => {
+      if (e.name === 'fireball_explode') d.push(Math.hypot(e.pos.x - player.pos.x, e.pos.z - player.pos.z));
+    });
+    events.emit('darkMode', { on: true });
+    for (let t = 0; t < 30 * 120; t++) {
+      move(t, player.pos, x0);
+      objects.update({ player });
+    }
   }
   return d;
 }
 
 test('not unfair: about half of the shots land within 250 of a hero standing still or running straight', () => {
   const still = shotSpread(() => {});
-  const run = shotSpread((t, p) => {
-    p.x = -3500 + ((t * 20) % 7000);
+  const run = shotSpread((t, p, x0) => {
+    p.x = -3500 + ((t * 20 + x0 + 3500) % 7000);
   });
   for (const [name, d] of [
     ['still', still],
     ['running', run],
   ]) {
     const near = d.filter((x) => x < 250).length / d.length;
-    assert.ok(d.length >= 25, `${name}: ${d.length} shots`);
+    assert.ok(d.length >= 100, `${name}: ${d.length} shots`);
     assert.ok(near >= 0.4 && near <= 0.7, `${name}: ${(near * 100).toFixed(0)} % within 250`);
   }
   // A hero who keeps changing direction dodges most of them.
@@ -608,6 +684,7 @@ test('AI RACE hot paths avoid allocating constructs', () => {
   const hot = {
     'AiButton.update': AiButton.prototype.update,
     'AiButton.animate': AiButton.prototype.animate,
+    'AiButton.setOn': AiButton.prototype.setOn,
     'RobotBeast.update': RobotBeast.prototype.update,
     'RobotBeast._pose': RobotBeast.prototype._pose,
     'RobotBeast.animate': RobotBeast.prototype.animate,
