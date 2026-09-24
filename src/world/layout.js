@@ -237,6 +237,14 @@ export const SIGNS = [
   },
 ];
 
+// "AI RACE" floor button: ground-pound it to switch the grounds into (and back out of) the
+// stormy sci-fi horror version, with the robot monster on the castle. Objects owns it.
+export const AI_BUTTON = { x: -950, z: 4550, radius: 140 };
+
+// Where the robot monster stands in AI RACE mode: on the castle's main roof in front of
+// the keep, facing south over the courtyard (objects finds the roof height by raycast).
+export const KAIJU = { x: 0, z: -2300, yaw: 0 };
+
 export const STAR = { x: 0, z: -100, y: ISLAND_TOP + 450 }; // above the courtyard, in front of the entrance steps
 
 // Butterflies flutter around these spots; birds circle high overhead.

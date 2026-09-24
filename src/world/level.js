@@ -6,6 +6,10 @@
 //     colliders: Array<{ object3D?, positions?, surface?, terrain? }>,
 //     poles?: Array<{ x, z, y0, y1, radius }>,  // climbable (tree trunks)
 //     update?(time, camera)                     // per render frame animation (seconds)
+//     setDarkness?(t)                           // AI RACE mode crossfade, 0 = normal .. 1 = dark
+//     addScorch?(x, z, radius)                  // terrain: a burn mark on the ground
+//     clearScorches?()                          // terrain: remove all burn marks
+//     trees?: Array<{ x, z, groundY, trunkTop, canopy: { x, y, z, radius } }>  // props
 //   }
 
 import * as layout from './layout.js';
@@ -40,8 +44,20 @@ export function buildLevel(scene) {
     collision,
     parts,
     spawn: { x: layout.SPAWN.x, y: spawnY, z: layout.SPAWN.z, yaw: layout.SPAWN.yaw },
+    // Tree trunks and canopies (from props), e.g. for fires in AI RACE mode.
+    trees: parts.find((p) => p.trees)?.trees ?? [],
     update(time, camera) {
       for (const p of parts) p.update?.(time, camera);
+    },
+    // AI RACE mode: 0 = the sunny grounds, 1 = the stormy sci-fi horror version.
+    setDarkness(t) {
+      for (const p of parts) p.setDarkness?.(t);
+    },
+    addScorch(x, z, radius) {
+      for (const p of parts) p.addScorch?.(x, z, radius);
+    },
+    clearScorches() {
+      for (const p of parts) p.clearScorches?.();
     },
   };
 }

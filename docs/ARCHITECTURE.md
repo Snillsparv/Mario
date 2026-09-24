@@ -434,6 +434,41 @@ readable board faces `yaw`), with original text. Reading works like the classic 
   controller to Pip and the camera; on `'dialogClosed'` it calls `player.endReading()` and
   `input.flush()` so the closing press never becomes a jump or punch.
 
+## AI RACE mode (the stormy sci-fi horror grounds)
+
+A floor button labelled **AI RACE** (`layout.AI_BUTTON`) switches the grounds into a dark
+version and back. Everything is original: no existing monster, character or brand designs.
+
+* **Toggle**: objects own the button (static collider, visual cap sinks when pressed). A
+  ground pound landing on it (`player.action === 'ground_pound_land'` within its radius)
+  flips it and emits `'aiRaceButton' { on }`. main sets `state.dark`, emits
+  `'darkMode' { on }` and eases `state.darkT` 0..1 over 3 s, calling each tick while it
+  changes: `level.setDarkness(t)` (every WorldPart's `setDarkness`), `view.setDarkness(t)`,
+  `fx.setRain(t)`, `objects.setDarkness(t)`. Game over resets it to 0 (plus
+  `fx.clearFires()`, `level.clearScorches()`). `window.__game.setDark(on)` toggles it in tests.
+* **World** (`setDarkness(t)` on terrain, water, castle, props, sky): crossfade to a dead,
+  desaturated palette (grey-green grass, black-green water, charcoal rock), a storm sky
+  (low churning clouds, no sun), the castle's windows glowing sick red with pulsing
+  light strips/cables, trees withered and darkened. `terrain.addScorch(x, z, r)` /
+  `clearScorches()` draw burnt ground marks. Props export `trees` (canopy positions).
+* **Renderer** (`view.setDarkness(t)`, `view.flash(strength)`): dark storm fog and colour
+  grade; lightning flashes brighten the frame.
+* **Effects** (`src/fx/Effects.js`): `setRain(t)` camera-following rain with ground splashes;
+  random lightning (emits `'lightning' { strength }`; renderer flashes, audio thunders);
+  `ignite(x, y, z, { radius, duration, intensity }) -> id`, `extinguish(id)`, `clearFires()`
+  (flame/ember/smoke particles), `explode(x, y, z, { radius })`, `update(dt, time, camera)`.
+* **Monster** (objects): an original giant robot beast appears on the castle roof at
+  `layout.KAIJU` when the mode turns on (rising up with a roar), tracks Pip with its head
+  and spits arcing fireballs at him. An impact explodes (`fx.explode`), leaves a fire patch
+  (`fx.ignite`, a damaging zone for its duration) and a scorch mark, and sets nearby trees
+  alight (`level.trees` canopies). A blast hits Pip for 2 wedges, touching fire for 1 with
+  `player.takeDamage(n, fromPos, { fire: true })` (Pip's 'burn' reaction). It leaves when
+  the mode turns off.
+* **Audio**: rain and wind beds, thunder after lightning, an ominous original synth track,
+  the monster's mechanical roar, fireball launch/explosion, fire crackle, button clunk,
+  an alarm sting; birds stop while dark.
+* **UI**: a flashing "AI RACE" alert banner when the mode switches on.
+
 ## Objects (`src/objects/ObjectManager.js`)
 
 ```js

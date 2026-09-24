@@ -31,6 +31,7 @@ import { TitleScreen } from './ui/TitleScreen.js';
 import { GameOverCard } from './ui/GameOverCard.js';
 import { DialogBox } from './ui/DialogBox.js';
 import { ObjectManager } from './objects/ObjectManager.js';
+import { Effects } from './fx/Effects.js';
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
@@ -40,6 +41,8 @@ const START_LIVES = 4;
 // Ticks of the camera fly-in (CameraController INTRO_TICKS = 96) before Pip starts his
 // ~32-tick drop from INTRO_DROP, so he lands just as the camera settles behind him.
 const INTRO_HOLD_TICKS = 60;
+// How long the switch into (and out of) AI RACE mode takes.
+const DARK_FADE_SECONDS = 3;
 
 async function start() {
   const container = document.getElementById('game');
@@ -60,7 +63,9 @@ async function start() {
   const cam = new CameraController({ collision: level.collision, camera, events });
   const audio = new AudioEngine(events);
   if (params.has('mute')) audio.muted = true;
-  const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player });
+  // Rain, lightning, fire and explosions (AI RACE mode); objects use it for fireball impacts.
+  const fx = new Effects({ scene, events, collision: level.collision, layout: level.layout });
+  const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player, fx, level });
   const hud = new HUD(uiRoot, { events });
   // Sign dialogs: the Player enters 'reading' and emits 'signRead'; the box takes the input
   // until its last page, then Pip is released (the closing press never reaches him).
@@ -80,6 +85,8 @@ async function start() {
     gameOverPending: false, // a life was lost at x0: game over once the death plays out
     gameOvers: 0,
     dropHold: 0, // ticks Pip still waits (hidden, frozen) before dropping in
+    dark: false, // AI RACE mode requested (the button was ground-pounded)
+    darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
   let lastAction = player.action;
 
@@ -90,6 +97,18 @@ async function start() {
   events.on('oneUp', () => {
     state.lives++;
   });
+
+  // AI RACE mode: the objects' floor button toggles it; every system fades with darkT.
+  events.on('aiRaceButton', ({ on }) => {
+    state.dark = on;
+    events.emit('darkMode', { on });
+  });
+  function applyDarkness(t) {
+    level.setDarkness(t);
+    view.setDarkness?.(t);
+    fx.setRain(t);
+    objects.setDarkness?.(t);
+  }
 
   // Title card over a slow orbit of the grounds; resolves when the player presses start.
   // Until play starts, objects.animate() runs the objects' ambient clock from `sec` itself
@@ -164,6 +183,14 @@ async function start() {
     setTimeout(async () => {
       card.remove();
       objects.reset(); // also takes the star it awarded back off player.stars
+      if (state.dark || state.darkT > 0) {
+        state.dark = false;
+        state.darkT = 0;
+        events.emit('darkMode', { on: false });
+      }
+      applyDarkness(0);
+      fx.clearFires();
+      level.clearScorches();
       player.coins = 0;
       state.lives = START_LIVES;
       await runTitle();
@@ -180,6 +207,12 @@ async function start() {
     }
     if (state.paused) return;
     state.time += FRAME_DT;
+    const darkGoal = state.dark ? 1 : 0;
+    if (state.darkT !== darkGoal) {
+      const step = FRAME_DT / DARK_FADE_SECONDS;
+      state.darkT = darkGoal > state.darkT ? Math.min(1, state.darkT + step) : Math.max(0, state.darkT - step);
+      applyDarkness(state.darkT);
+    }
     if (dialog.isOpen) {
       dialog.update(controller);
       controller = neutralController(); // Pip and the camera wait while the box is up
@@ -223,6 +256,7 @@ async function start() {
     cam.apply(renderAlpha);
     level.update(state.time, camera);
     objects.animate(state.time, renderAlpha, camera);
+    fx.update(state.mode === 'play' && !state.paused ? dt : 0, state.time, camera);
     audio.update?.(dt);
     view.render();
   }
@@ -241,6 +275,11 @@ async function start() {
     audio,
     model,
     dialog,
+    fx,
+    // Switch AI RACE mode directly (tests / debugging), as the floor button does.
+    setDark(on) {
+      events.emit('aiRaceButton', { on });
+    },
     // Advance n simulation ticks with a fixed controller state (partial, like setOverride),
     // then draw once. The hero model is posed after every tick, as a 30 fps real-time run
     // would, so after a big step its pose blends, blinks and scarf have caught up instead of
