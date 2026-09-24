@@ -29,6 +29,7 @@ import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { GameOverCard } from './ui/GameOverCard.js';
+import { DialogBox } from './ui/DialogBox.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 
 const params = new URLSearchParams(location.search);
@@ -61,6 +62,13 @@ async function start() {
   if (params.has('mute')) audio.muted = true;
   const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player });
   const hud = new HUD(uiRoot, { events });
+  // Sign dialogs: the Player enters 'reading' and emits 'signRead'; the box takes the input
+  // until its last page, then Pip is released (the closing press never reaches him).
+  const dialog = new DialogBox(uiRoot, { events });
+  events.on('dialogClosed', () => {
+    player.endReading?.();
+    input.flush();
+  });
 
   const state = {
     mode: 'title', // 'title' | 'play' | 'gameover'
@@ -150,6 +158,7 @@ async function start() {
     state.mode = 'gameover';
     state.gameOvers++;
     hud.setPaused?.(false);
+    dialog.close();
     events.emit('gameOver');
     const card = new GameOverCard(uiRoot).show();
     setTimeout(async () => {
@@ -171,6 +180,10 @@ async function start() {
     }
     if (state.paused) return;
     state.time += FRAME_DT;
+    if (dialog.isOpen) {
+      dialog.update(controller);
+      controller = neutralController(); // Pip and the camera wait while the box is up
+    }
     if (state.dropHold > 0) {
       state.dropHold--; // Pip waits above the spawn; input is ignored
     } else {
@@ -225,6 +238,7 @@ async function start() {
     hud,
     audio,
     model,
+    dialog,
     // Advance n simulation ticks with a fixed controller state (partial, like setOverride),
     // then draw once. The hero model is posed after every tick, as a 30 fps real-time run
     // would, so after a big step its pose blends, blinks and scarf have caught up instead of

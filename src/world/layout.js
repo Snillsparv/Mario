@@ -176,6 +176,67 @@ export const RED_COINS = [
   { x: -6600, z: -3900 },
 ];
 
+// Readable wooden signs. Walk up to a sign's face and press B (J) to read it; `yaw` is the
+// direction the readable face looks (the reader stands in front of it). Each page is shown in
+// the dialog box in turn. All text is original to this game.
+export const SIGNS = [
+  {
+    id: 'welcome',
+    x: 430,
+    z: 5150,
+    yaw: Math.atan2(SPAWN.x - 430, SPAWN.z - 5150),
+    pages: [
+      'Welcome to the Castle Grounds!',
+      'Eight red coins are hidden around the grounds. Find them all and a star will appear before the castle door.',
+      'Coins also refill your power meter, so grab them when you are hurt.',
+    ],
+  },
+  {
+    id: 'moat',
+    x: -760,
+    z: 1640,
+    yaw: 0,
+    pages: [
+      'Castle Moat',
+      'The water is deep but calm. Press jump to swim a stroke, or hold it to kick along.',
+      'To climb back out, swim west to the pond and walk up its sandy shore.',
+    ],
+  },
+  {
+    id: 'pond',
+    x: -5600,
+    z: 500,
+    yaw: 0,
+    pages: [
+      'Waterfall Pool',
+      'Something red glitters at the bottom of the pool...',
+      'Watch your power meter while you are underwater, and come up for air before it runs out!',
+    ],
+  },
+  {
+    id: 'hill',
+    x: 5000,
+    z: 900,
+    yaw: -Math.PI / 4,
+    pages: [
+      'East Hill',
+      'Long jump: while running, crouch and then jump right away.',
+      'Wall kick: jump into a wall, then press jump again just as you touch it.',
+    ],
+  },
+  {
+    id: 'garden',
+    x: 2400,
+    z: -5000,
+    yaw: Math.PI / 2,
+    pages: [
+      'Back Garden',
+      'Trees can be climbed! Jump onto a trunk, then push up to shimmy to the top.',
+      'Press jump at the top to leap off.',
+    ],
+  },
+];
+
 export const STAR = { x: 0, z: -100, y: ISLAND_TOP + 450 }; // above the courtyard, in front of the entrance steps
 
 // Butterflies flutter around these spots; birds circle high overhead.

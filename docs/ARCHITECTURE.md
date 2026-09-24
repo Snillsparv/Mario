@@ -411,6 +411,23 @@ Gamepad presses are no user gesture, so a pad Start/A begins the game from eithe
 emits `sfx 'menu_select'`, fades the card out in 0.4 s, and `show()` resolves once the
 start key/button is released as well.
 
+## Signs and dialog (`layout.SIGNS`, Player, `src/ui/DialogBox.js`)
+
+`layout.SIGNS`: `[{ id, x, z, yaw, pages: [string] }]`, wooden signposts built by props (the
+readable board faces `yaw`), with original text. Reading works like the classic games:
+
+* Player: B pressed while grounded and not attacking, with a sign within reach in front of Pip
+  (Pip in front of the sign's face and facing it) -> action `'reading'` (anim `idle`, no
+  movement, input ignored), emits `'signRead' { sign }` instead of punching.
+  `player.endReading()` returns to idle.
+* `new DialogBox(uiRoot, { events })` opens on `'signRead'`, shows the pages one by one
+  (text typed out; A/B completes the page, then advances), emits `'dialogClosed' { sign }`
+  after the last page. `dialog.isOpen`, `dialog.update(controller)` (30 Hz, called by main
+  while open), `dialog.close()`.
+* main: while `dialog.isOpen` the tick feeds the controller to the dialog and a neutral
+  controller to Pip and the camera; on `'dialogClosed'` it calls `player.endReading()` and
+  `input.flush()` so the closing press never becomes a jump or punch.
+
 ## Objects (`src/objects/ObjectManager.js`)
 
 ```js
