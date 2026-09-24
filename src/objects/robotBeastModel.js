@@ -92,7 +92,7 @@ export const RIG = {
   FOOT: [1120, 60, 60], // foot centre (sole on y = 0)
   // Arm (arm space, left arm; x mirrored for the right)
   ELBOW: [120, -620, 300],
-  WRIST: [60, -1180, 700],
+  WRIST: [60, -1120, 590],
 };
 
 // ---------------------------------------------------------------- builder
