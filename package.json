@@ -2,7 +2,7 @@
   "name": "castle-grounds",
   "private": true,
   "version": "0.1.0",
-  "description": "An N64-style 3D platformer castle-grounds level, built from scratch with three.js",
+  "description": "A late-90s console-style 3D platformer castle-grounds level, built from scratch with three.js",
   "type": "module",
   "scripts": {
     "dev": "vite",

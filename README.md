@@ -68,7 +68,7 @@ browser once with `npx playwright install chromium`.
 | arrow keys, mouse drag | right stick, d-pad | camera (up from close: first-person look) |
 | C | RB | camera mode |
 | Enter / Esc | Start | pause (shows the controls) |
-| F1 / F2 / F3 | | debug overlay / N64 filter / 4:3 screen |
+| F1 / F2 / F3 | | debug overlay / retro filter / 4:3 screen |
 
 Any standard-mapping gamepad works (several connected pads are all read). On a first visit
 the title asks for any key, click or tap first (browsers only allow sound after one), then
