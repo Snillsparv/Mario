@@ -1,10 +1,10 @@
-// Robot lizard minions in node: spawn timing (10 s after the beast has fully risen, then every
-// ~5 s), the cap of five, spawn spots (700..1600 from the hero, on land only, clear of walls and
-// the castle door), the chase over the terrain and the shore, the wind-up and lunge-bite (1
-// wedge with knockback once per lunge, then a cooldown; never while he is invincible or
-// reading), defeat by an attack or a stomp (not by landing on one while knocked back), the
-// wreck blast, coin drops, burrowing when the mode ends, reset(), the single draw call and the
-// allocation rules of the hot paths.
+// Sporebot minions (mushroom-capped robots) in node: spawn timing (10 s after the beast has fully
+// risen, then every ~5 s), the limit of five, spawn spots (700..1600 from the hero, on land only,
+// clear of walls and the castle door), the chase over the terrain and the shore, the wind-up and
+// lunge-ram (1 wedge with knockback once per lunge, then a cooldown; never while he is invincible
+// or reading), defeat by an attack or a stomp on the cap (not by landing on one while knocked
+// back), the wreck blast, coin drops, burrowing when the mode ends, reset(), the single draw
+// call, the model's size and triangle budget and the allocation rules of the hot paths.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -305,7 +305,7 @@ test('an attack touching one wrecks it: flip, blast (fx.explode radius 120), sfx
   assert.equal(minions.alive, 0);
 });
 
-test('a stomp (falling onto its back) bounces the hero and wrecks it; landing on it while knocked back does not', () => {
+test('a stomp (falling onto its cap) bounces the hero and wrecks it; landing on it while knocked back does not', () => {
   for (const [action, wrecked] of [['fall', true], ['ground_pound', true], ['hurt', false]]) {
     const { minions } = swarm();
     const player = fakePlayer(0, 0, 0);
@@ -416,12 +416,58 @@ test('all minions are one draw call', () => {
   assert.ok(minions.mesh.isInstancedMesh);
   const pos = minions.mesh.geometry.attributes.position.array;
   assert.ok(pos.every(Number.isFinite));
-  // About 225 long, low to the ground.
+  // About 125 across (the cap, the tripod's feet under it), a little taller than wide.
   minions.mesh.geometry.computeBoundingBox();
   const bb = minions.mesh.geometry.boundingBox;
-  const len = bb.max.z - bb.min.z;
-  assert.ok(len > 200 && len < 250, `length ${len}`);
-  assert.ok(bb.max.y < 70, `height ${bb.max.y}`);
+  const wide = bb.max.x - bb.min.x;
+  const deep = bb.max.z - bb.min.z;
+  assert.ok(wide > 110 && wide < 140, `width ${wide}`);
+  assert.ok(deep > 110 && deep < 140, `depth ${deep}`);
+  assert.ok(bb.min.y >= -0.01, 'soles on y = 0');
+  assert.ok(bb.max.y > wide && bb.max.y < wide * 1.2, `height ${bb.max.y}`);
+  // The cap's top (stomps) and the eyes under its rim.
+  assert.ok(MINION_RIG.BACK <= bb.max.y && MINION_RIG.BACK > bb.max.y - 15);
+  assert.ok(MINION_RIG.EYE[1] < MINION_RIG.RIM_Y && MINION_RIG.EYE[1] > MINION_RIG.CAP_PIVOT);
+  // No heavier than the first minion design (1726 triangles).
+  assert.ok(pos.length / 9 <= 1726, `${pos.length / 9} triangles`);
+});
+
+test('two eye glows per minion, following the cap as it tips forward to attack', () => {
+  const glows = [];
+  const fire = {
+    glowSlot() {
+      const g = { x: 0, y: 0, z: 0, size: 0, a: 0 };
+      glows.push(g);
+      return g;
+    },
+    spawn: () => null,
+  };
+  const minions = new Minions({ collision: world(), events: new Events(), fire, rng: makeRng(3) });
+  const m = minions.spawnAt(0, 0, 0);
+  for (let t = 0; t < MINION.EMERGE + 1; t++) minions.update(fakePlayer(0, 0, 5000), null, t + 1, true);
+  // A still pose at the origin, facing +Z.
+  m.x = m.px = m.z = m.pz = m.y = m.py = 0;
+  m.yaw = m.pyaw = m.pitch = m.ppitch = m.roll = m.proll = m.sink = m.psink = 0;
+  m.stride = m.pstride = 0;
+  m.tilt = m.ptilt = 0;
+  m.crouch = m.pcrouch = 0;
+  glows.length = 0;
+  minions.animate(1, 0, null);
+  assert.equal(glows.length, 2);
+  const [l, r] = glows;
+  assert.ok(Math.abs(l.x + r.x) < 1e-6 && Math.abs(Math.abs(l.x) - MINION_RIG.EYE[0]) < 1e-6, 'a pair, side by side');
+  assert.ok(Math.abs(l.y - MINION_RIG.EYE[1]) < 1e-6 && Math.abs(l.z - MINION_RIG.EYE[2]) < 1e-6, 'at the lenses');
+  // Tipped forward: the eyes dip and swing ahead of their rest spot.
+  m.tilt = m.ptilt = 1;
+  glows.length = 0;
+  minions.animate(1, 0, null);
+  assert.ok(glows[0].y < MINION_RIG.EYE[1] - 10, `eyes dip: ${glows[0].y}`);
+  // Wrecked: the eyes go out.
+  minions._wreck(m, fakePlayer(0, 0, -300), false);
+  for (let t = 0; t < 16; t++) minions.update(fakePlayer(0, 0, 5000), null, 100 + t, true);
+  glows.length = 0;
+  minions.animate(1, 0, null);
+  assert.equal(glows.length, 0);
 });
 
 test('minion hot paths avoid allocating constructs', () => {
@@ -430,7 +476,7 @@ test('minion hot paths avoid allocating constructs', () => {
     'Minions._chase': Minions.prototype._chase,
     'Minions._move': Minions.prototype._move,
     'Minions._lunge': Minions.prototype._lunge,
-    'Minions._bites': Minions.prototype._bites,
+    'Minions._rams': Minions.prototype._rams,
     'Minions._struck': Minions.prototype._struck,
     'Minions._stomped': Minions.prototype._stomped,
     'Minions._wrecked': Minions.prototype._wrecked,

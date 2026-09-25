@@ -506,13 +506,21 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   kind }` while a punch, kick, jump kick, dive, belly slide (while fast), ground-pound
   landing or flight can hit something this tick (`kind` is the action name). `player.bounce(vy = 50)`: bounce up off an enemy Pip landed on
   (action `'jump'`, sfx `stomp`).
-* **Minions** (objects): 10 s after Rustmaw has risen, small original robot lizards burrow
-  out of the ground (dust burst) around Pip (700-1600 away, on land), up to 5 at a time,
-  a new one every ~5 s. They skitter after him and lunge-bite (1 wedge, knockback via
-  `player.takeDamage(1, pos)`). A hit from `player.getAttack()` or a stomp (Pip falling onto
-  one: `player.bounce()`) wrecks it in a small blast of sparks and scrap (`fx.explode`) and
-  may drop a coin. They leave when the mode turns off; `reset()` clears them. sfx
-  `minion_emerge`, `minion_bite`, `minion_wreck`, `stomp`.
+* **Minions** (objects): 10 s after Rustmaw has risen, Sporebots burrow out of the ground
+  (dust burst) around Pip (700-1600 away, on land), up to 5 at a time, a new one every ~5 s.
+  A Sporebot is a small original mushroom-shaped machine, ~120 across and ~130 tall
+  (`minionModel.js`): a wide, low dome cap of riveted gunmetal plates with rust seams, vent
+  fins and an exhaust stack, and a ring of red running lights round its rim; under the rim a
+  dark sensor band with two big round red lenses (they glow, and flare when it attacks); a
+  ribbed steel stem with a hazard-stripe band; three piston legs (a tripod) on round foot
+  pads. It scuttles after Pip on a tripod gait with its cap bobbing, winds up (crouches, tips
+  its cap forward, eyes flaring, sparks crackling round the rim) and lunges to ram him with
+  the cap (1 wedge, knockback via `player.takeDamage(1, pos)`). A hit from
+  `player.getAttack()` or a stomp (Pip falling onto its cap: `player.bounce()`) wrecks it: it
+  flips onto its cap, legs flailing, in a small blast of sparks and scrap (`fx.explode`), and
+  may drop a coin. They leave when the mode turns off; `reset()` clears them. All of them are
+  one InstancedMesh (legs and cap animated in the vertex shader) plus two eye glow sprites
+  each. sfx `minion_emerge`, `minion_bite` (the ram), `minion_wreck`, `stomp`.
 * **Locked castle** (objects): walking up to the castle door (in front of it, within ~150,
   facing it) plays sfx `evil_laugh` and shows a dialog via
   `events.emit('signRead', { sign: { id: 'castle_locked', pages: [...] } })`; it can trigger

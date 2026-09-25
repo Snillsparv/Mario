@@ -21,7 +21,7 @@
 //   view=box|boxLow|hat               the mystery box (lawn: from the side, from below) and the
 //                                     winged hat; hit=N: the fake hero bumps it N ticks before the
 //                                     first frame (hit=40: the hat hovers over it, hit=120: beside it)
-//   minions=N                         N robot lizard minions burst out of the lawn around the fake
+//   minions=N                         N mushroom-capped robot minions burst out of the lawn round the fake
 //                                     hero (view=minion: the first one close up, the camera
 //                                     following it as it runs; view=minions: the pack);
 //                                     wreck=N wrecks the first one N ticks before the first frame

@@ -1,12 +1,13 @@
-// Robot lizard minions of AI RACE mode: small original mechanical lizards (minionModel.js) that
-// burrow out of the ground around the hero once the Rustmaw has fully risen, skitter after
-// him and lunge-bite.
+// Sporebots, the minions of AI RACE mode: small original walking machines with a mushroom-like
+// build (minionModel.js: a riveted gunmetal dome cap, two red optic lenses under its rim, a
+// ribbed stem and three piston legs) that burrow out of the ground around the hero once the
+// Rustmaw has fully risen, scuttle after him and lunge to ram him with the cap.
 //
 //   new Minions({ collision, events, fx, fire, sparkles, shadows, shadowBase, rng, layout,
 //                 groundAt, onCoin })
 //   update(player, hero, tick, active, hold?)  30 Hz. active: the beast is up (ObjectManager);
 //                                       hero = the previous tick's { y, vy, air } of the player;
-//                                       hold: a dialog is up (Pip is frozen): no spawns or bites,
+//                                       hold: a dialog is up (Pip is frozen): no spawns or rams,
 //                                       they keep their distance
 //   animate(alpha, clock, camera)       render: instance matrices, gait attributes, shadows,
 //                                       eye glows
@@ -16,31 +17,33 @@
 // Timing: FIRST_DELAY ticks (10 s) after `active` turns on, then one every EVERY (~5 s) while
 // fewer than MAX_ALIVE are about. A spawn spot is 700..1600 from the hero, on the lawn or the
 // island (regionAt), on the real ground (not a roof, rock or tree), dry, clear of walls, the
-// castle door and the AI RACE button. It bursts out of the earth (clods, sfx minion_emerge).
+// castle door and the AI RACE button. It pushes up out of the earth cap first (clods, sfx
+// minion_emerge).
 //
-// AI: it turns toward the hero (weaving a little) and skitters over the terrain at 12..16 per
-// tick: the floor is followed with findFloor (steps up to STEP_UP; drops over STEP_DOWN, holes
-// and water are refused: it turns away along the edge, so it paces the shore), walls push it
-// out (findWalls), and the others are kept at arm's length. Within ATTACK_RANGE it winds up
-// (rears, jaw open, eye stripe flaring), then lunges in a short hop; if the snout meets the
-// hero he takes 1 wedge with knockback (player.takeDamage(1, minionPos)); not while he is
-// invincible, reading or dropping in. A cooldown follows.
+// AI: it turns toward the hero (weaving a little) and scuttles over the terrain at 12..16 per
+// tick on its tripod gait: the floor is followed with findFloor (steps up to STEP_UP; drops over
+// STEP_DOWN, holes and water are refused: it turns away along the edge, so it paces the shore),
+// walls push it out (findWalls), and the others are kept at arm's length. Within ATTACK_RANGE it
+// winds up (crouches on its legs, tips its cap forward, eyes flaring, sparks crackling round the
+// rim), then lunges in a short hop, cap first; if the cap's rim meets the hero he takes 1 wedge
+// with knockback (player.takeDamage(1, minionPos), sfx minion_bite); not while he is invincible,
+// reading or dropping in. A cooldown follows.
 //
-// Defeat: an attack of the hero's (player.getAttack() -> { x, y, z, radius }) touching its body,
-// or a stomp (the hero falling onto its back: player.bounce()). It flips over in a blast of
-// sparks and scrap (fx.explode radius 120, sfx minion_wreck), legs flailing, then vanishes;
-// DROP_CHANCE of the time a yellow coin appears there (onCoin(x, y, z)).
+// Defeat: an attack of the hero's (player.getAttack() -> { x, y, z, radius }) touching its body
+// (an upright capsule), or a stomp (the hero falling onto its cap: player.bounce()). It flips
+// onto its cap in a blast of sparks and scrap (fx.explode radius 120, sfx minion_wreck), legs
+// flailing, then vanishes; DROP_CHANCE of the time a yellow coin appears there (onCoin(x, y, z)).
 // When `active` turns off every minion burrows back down.
 //
-// Rendering: one InstancedMesh (one draw call) for all of them; eye glows go to the shared fire
-// sprites, shadows to the shared blob shadows (slots shadowBase + i). Per tick the minions
-// cost a few collision queries each (the small result objects are the only allocation); the
-// render path allocates nothing.
+// Rendering: one InstancedMesh (one draw call) for all of them; the two eye glows each go to the
+// shared fire sprites, shadows to the shared blob shadows (slots shadowBase + i). Per tick the
+// minions cost a few collision queries each (the small result objects are the only allocation);
+// the render path allocates nothing.
 
 import * as THREE from 'three';
 import { FRAME_DT, PLAYER_HEIGHT, PLAYER_RADIUS } from '../core/constants.js';
 import { TAU, wrapAngle, approachAngle } from '../core/math.js';
-import { buildMinionGeometry, makeMinionMaterial, MINION_RIG } from './minionModel.js';
+import { buildMinionGeometry, makeMinionMaterial, MINION_RIG, MINION_ANIM } from './minionModel.js';
 import { FIRE } from './aiRaceTextures.js';
 import { RAMP, TINTS } from './FireSprites.js';
 import { TINT } from './Sparkles.js';
@@ -60,12 +63,12 @@ export const MINION = {
   CLEARANCE: 90, // no wall this close to a spawn spot
   SPEED: [12, 16],
   TURN: 0.14,
-  STOP: 150, // closest approach outside a lunge
+  STOP: 130, // closest approach outside a lunge (centre to centre; the cap is ~63 across)
   HOLD_OFF: 450, // ... while the hero is reading, dying or dropping in
   STEP_UP: 70,
   STEP_DOWN: 160,
   WALL_Y: 30,
-  WALL_RADIUS: 45,
+  WALL_RADIUS: 55, // the cap's overhang keeps clear of walls
   SEPARATION: 130,
   ATTACK_RANGE: 250,
   ATTACK_HEIGHT: 160,
@@ -76,15 +79,15 @@ export const MINION = {
   LUNGE_SPEED: 21,
   LUNGE_VY: 15,
   GRAVITY: 3,
-  SNAP_AT: 6, // lunge tick the jaw snaps shut (sfx minion_bite)
-  BITE_RADIUS: 30,
-  BODY_RADIUS: 34, // body capsule, for the hero's attacks
-  BODY_BACK: 55, // capsule from this far behind the origin ...
-  BODY_FRONT: 70, // ... to this far ahead
-  STOMP_REACH: 32, // the feet axis within PLAYER_RADIUS + this of the back's line
+  STRIKE_AT: 6, // lunge tick the ram lands (sfx minion_bite), on the hero or thin air
+  RAM_RADIUS: 30, // round the cap's front rim
+  BODY_RADIUS: 55, // body capsule (upright, on the axis), for the hero's attacks ...
+  BODY_LOW: 30, // ... its axis from this height over the feet ...
+  BODY_HIGH: MINION_RIG.BACK - 50, // ... to this one (the capsule's top near the cap's)
+  STOMP_REACH: 36, // the feet axis within PLAYER_RADIUS + this of the cap's axis
   EMERGE: 27,
   BURROW: 24,
-  DEPTH: 110, // how deep they lie before emerging
+  DEPTH: 150, // how deep they lie before emerging (the whole machine under the turf)
   WRECK: 40,
   VANISH: 8,
   WRECK_VY: 15,
@@ -92,8 +95,9 @@ export const MINION = {
   WRECK_KNOCK: 7,
   FLIP_TICKS: 12,
   DROP_CHANCE: 0.3,
-  GAIT: 0.09, // gait radians per unit walked
-  PIVOT: MINION_RIG.BACK / 2, // pitch and roll turn about this height (a flipped one lies on its back)
+  GAIT: 0.085, // gait radians per unit walked
+  PIVOT: MINION_RIG.BACK / 2, // pitch and roll turn about this height (a flipped one lies on its cap)
+  SHADOW: 150, // blob shadow size
 };
 
 const ACTIVE = { emerging: 1, walk: 1, windup: 1, lunge: 1, recover: 1 };
@@ -101,6 +105,11 @@ const HITTABLE = { walk: 1, windup: 1, lunge: 1, recover: 1 };
 
 const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const clamp1 = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+// Cheap deterministic noise in 0..1 (effects that must not draw on the rng).
+const noise = (n) => {
+  const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return v - Math.floor(v);
+};
 
 // Is the hero blinking after a hit? (Player: tick < invincibleUntil; a plain boolean also works.)
 export function heroInvincible(p) {
@@ -139,8 +148,10 @@ function record(i) {
     pphase: 0,
     stride: 0,
     pstride: 0,
-    jaw: 0,
-    pjaw: 0,
+    tilt: 0, // cap tilt (1: tipped fully forward, below 0: back)
+    ptilt: 0,
+    crouch: 0, // legs bent (1), straight (0), stretched (below 0)
+    pcrouch: 0,
     flare: 0,
     pflare: 0,
     power: 1,
@@ -150,7 +161,7 @@ function record(i) {
     vz: 0,
     speed: 14,
     cooldown: 0,
-    bit: false,
+    rammed: false, // this lunge has already rammed the hero
     avoid: 0,
     turn: 1,
     blocked: 0,
@@ -192,7 +203,7 @@ export class Minions {
     this.nextSpawn = MINION.FIRST_DELAY;
     this.spawned = 0;
     this.wrecks = 0;
-    this.bites = 0;
+    this.rams = 0; // rams that hurt the hero
     this.camera = null;
     this.hold = false;
 
@@ -242,7 +253,7 @@ export class Minions {
   }
 
   _sfx(name, m) {
-    this.events.emit('sfx', { name, pos: { x: m.x, y: m.y + 40, z: m.z } });
+    this.events.emit('sfx', { name, pos: { x: m.x, y: m.y + 60, z: m.z } });
   }
 
   update(player, hero, tick, active, hold = false) {
@@ -300,7 +311,8 @@ export class Minions {
     m.pscale = m.scale;
     m.pphase = m.phase;
     m.pstride = m.stride;
-    m.pjaw = m.jaw;
+    m.ptilt = m.tilt;
+    m.pcrouch = m.crouch;
     m.pflare = m.flare;
     m.ppower = m.power;
   }
@@ -362,19 +374,20 @@ export class Minions {
     m.floorY = y;
     m.floorN = normal;
     m.yaw = yaw;
-    m.pitch = -0.7;
+    m.pitch = -0.5;
     m.roll = 0;
     m.sink = -M.DEPTH;
     m.scale = 1;
     m.phase = 0;
     m.stride = 0.6;
-    m.jaw = 0.3;
+    m.tilt = -0.4;
+    m.crouch = 0;
     m.flare = 0.6;
     m.power = 1;
     m.vx = m.vy = m.vz = 0;
     m.speed = M.SPEED[0] + this.rng() * (M.SPEED[1] - M.SPEED[0]);
     m.cooldown = 20;
-    m.bit = false;
+    m.rammed = false;
     m.avoid = 0;
     m.turn = this.rng() < 0.5 ? 1 : -1;
     m.blocked = 0;
@@ -403,7 +416,8 @@ export class Minions {
       m.t = 0;
       m.y = m.floorY;
       m.vy = 0;
-      m.jaw = 0;
+      m.tilt = 0;
+      m.crouch = 0;
     }
   }
 
@@ -414,7 +428,8 @@ export class Minions {
     const u = m.t / M.EMERGE;
     const e = 1 - (1 - u) * (1 - u);
     m.sink = -M.DEPTH * (1 - e);
-    m.pitch = -0.7 * (1 - smooth(u));
+    m.pitch = -0.5 * (1 - smooth(u));
+    m.tilt = -0.4 * (1 - smooth(u));
     m.phase += 0.55;
     m.stride = 0.8;
     m.flare = 0.6 * (1 - u);
@@ -424,7 +439,7 @@ export class Minions {
       m.t = 0;
       m.sink = 0;
       m.pitch = 0;
-      m.jaw = 0;
+      m.tilt = 0;
     }
   }
 
@@ -437,7 +452,9 @@ export class Minions {
     if (m.cooldown > 0) m.cooldown--;
     const away = this.hold || heroAway(player.action);
     const dy = p.y - m.y;
-    m.jaw += (0.08 * (1 + Math.sin(this.tick * 0.7 + m.seed * 9)) - m.jaw) * 0.3;
+    // The cap leans into the run and nods, scanning.
+    m.tilt += (0.12 * m.stride + 0.1 * Math.sin(this.tick * 0.23 + m.seed * 9) - m.tilt) * 0.3;
+    m.crouch *= 0.6;
     m.flare *= 0.8;
     if (!away && m.cooldown === 0 && d < M.ATTACK_RANGE && dy < M.ATTACK_HEIGHT && dy > -M.ATTACK_HEIGHT && !heroInvincible(player)) {
       m.state = 'windup';
@@ -514,20 +531,22 @@ export class Minions {
     const p = player.pos;
     const u = m.t / M.WINDUP;
     m.yaw = approachAngle(m.yaw, Math.atan2(p.x - m.x, p.z - m.z), 0.3);
-    m.pitch = -0.22 * u;
-    m.sink = -4 * u;
-    m.jaw = 0.95 * u;
+    m.pitch = -0.08 * u;
+    m.crouch = u;
+    m.tilt = 0.85 * u;
     m.flare = u;
     m.stride *= 0.6;
     m.phase += 0.2;
+    if ((m.t & 1) === 0) this._crackle(m);
     if (m.t >= M.WINDUP) {
       m.state = 'lunge';
       m.t = 0;
       m.sink = 0;
+      m.crouch = -0.6; // the legs kick it off
       m.vx = Math.sin(m.yaw) * M.LUNGE_SPEED;
       m.vz = Math.cos(m.yaw) * M.LUNGE_SPEED;
       m.vy = M.LUNGE_VY;
-      m.bit = false;
+      m.rammed = false;
     }
   }
 
@@ -553,20 +572,25 @@ export class Minions {
     m.y += m.vy;
     m.pitch = -m.vy * 0.018;
     m.stride = 0.3;
-    // The jaws snap shut on the hero (or at SNAP_AT on thin air): sfx minion_bite either way.
-    if (!m.bit && m.t <= M.SNAP_AT + 1 && this._bites(m, player)) {
-      m.bit = true;
+    m.crouch *= 0.7;
+    // The cap's rim rams the hero (or lands on thin air at STRIKE_AT): sfx minion_bite either way.
+    let strike = false;
+    if (!m.rammed && m.t <= M.STRIKE_AT + 1 && this._rams(m, player)) {
+      m.rammed = true;
+      strike = true;
       this._sfx('minion_bite', m);
       if (!this.hold && !heroAway(player.action) && !heroInvincible(player)) {
-        this.bites++;
+        this.rams++;
         player.takeDamage?.(1, { x: m.x, y: m.y, z: m.z });
       }
-    } else if (m.t === M.SNAP_AT && !m.bit) {
+    } else if (m.t === M.STRIKE_AT && !m.rammed) {
+      strike = true;
       this._sfx('minion_bite', m);
     }
-    const open = m.t < M.SNAP_AT && !m.bit;
-    m.jaw = open ? 1 : 0;
-    m.flare = open ? 1 : 0.4;
+    // Cap tipped forward and eyes blazing until the strike, a jolt on it, then easing back.
+    const charging = m.t < M.STRIKE_AT && !m.rammed;
+    m.tilt = strike ? 1.3 : charging ? 1 : 0.5 + (m.tilt - 0.5) * 0.75;
+    m.flare = charging || strike ? 1 : 0.4;
     if ((m.y <= m.floorY && m.vy < 0) || m.t >= M.LUNGE) {
       m.y = m.floorY;
       m.vy = 0;
@@ -575,23 +599,52 @@ export class Minions {
     }
   }
 
-  // Does the snout reach the hero's body (a capsule from his feet up)?
-  _bites(m, player) {
+  // Does the cap's front rim reach the hero's body (a capsule from his feet up)?
+  _rams(m, player) {
     const M = MINION;
     const p = player.pos;
-    const reach = MINION_RIG.SNOUT * 0.85;
+    const reach = MINION_RIG.FRONT * 0.85;
     const hx = m.x + Math.sin(m.yaw) * reach;
     const hz = m.z + Math.cos(m.yaw) * reach;
     const hy = m.y + MINION_RIG.BODY_Y;
     const dx = p.x - hx;
     const dz = p.z - hz;
-    const r = PLAYER_RADIUS + M.BITE_RADIUS;
+    const r = PLAYER_RADIUS + M.RAM_RADIUS;
     return dx * dx + dz * dz <= r * r && hy >= p.y - 20 && hy <= p.y + PLAYER_HEIGHT + 20;
+  }
+
+  // Sparks crackling off the rim during the wind-up (cheap noise, so the rng's sequence and the
+  // spawn spots do not depend on how often they attack).
+  _crackle(m) {
+    const fire = this.fire;
+    if (!fire) return;
+    const t0 = this.tick * FRAME_DT;
+    const r = MINION_RIG.RADIUS * 0.95;
+    const y = m.y + MINION_RIG.RIM_Y - 6;
+    for (let k = 0; k < 2; k++) {
+      const n = m.seed * 131 + m.t * 7 + k * 3;
+      const p = fire.spawn(t0, 0.14 + 0.12 * noise(n), FIRE.SPARK);
+      if (!p) return;
+      const a = m.yaw + (noise(n + 1) - 0.5) * 3.6; // round the front half of the rim
+      const sx = Math.sin(a);
+      const sz = Math.cos(a);
+      p.x = m.x + sx * r;
+      p.y = y;
+      p.z = m.z + sz * r;
+      p.vx = sx * (160 + 180 * noise(n + 2));
+      p.vy = 90 + 220 * noise(n + 3);
+      p.vz = sz * (160 + 180 * noise(n + 2));
+      p.gy = -1100;
+      p.size0 = 18 + 12 * noise(n + 4);
+      p.size1 = 4;
+      p.ramp = RAMP.spark;
+    }
   }
 
   _recover(m) {
     const M = MINION;
-    m.jaw *= 0.8;
+    m.tilt *= 0.8;
+    m.crouch *= 0.6;
     m.flare *= 0.8;
     m.pitch *= 0.6;
     m.stride *= 0.7;
@@ -615,25 +668,22 @@ export class Minions {
 
   // ------------------------------------------------------------------ defeat
 
-  // Does an attack sphere touch the body (a capsule along the heading)?
+  // Does an attack sphere touch the body (an upright capsule on the axis, BODY_LOW..BODY_HIGH
+  // over the feet)?
   _struck(m, atk) {
     const M = MINION;
-    const sx = Math.sin(m.yaw);
-    const sz = Math.cos(m.yaw);
-    const cy = m.y + m.sink + MINION_RIG.BODY_Y;
-    const ax = atk.x - m.x;
-    const az = atk.z - m.z;
-    let u = ax * sx + az * sz;
-    u = u < -M.BODY_BACK ? -M.BODY_BACK : u > M.BODY_FRONT ? M.BODY_FRONT : u;
-    const dx = ax - sx * u;
+    const base = m.y + m.sink;
+    let cy = atk.y;
+    cy = cy < base + M.BODY_LOW ? base + M.BODY_LOW : cy > base + M.BODY_HIGH ? base + M.BODY_HIGH : cy;
+    const dx = atk.x - m.x;
     const dy = atk.y - cy;
-    const dz = az - sz * u;
+    const dz = atk.z - m.z;
     const r = atk.radius + M.BODY_RADIUS;
     return dx * dx + dy * dy + dz * dz <= r * r;
   }
 
-  // Did the hero come down onto its back this tick? (Falling, his feet above the back on the
-  // previous tick and at or below it now, his feet axis over the body.)
+  // Did the hero come down onto its cap this tick? (Falling, his feet above the cap's top on the
+  // previous tick and at or below it now, his feet axis over the cap.)
   _stomped(m, player, hero) {
     const M = MINION;
     const p = player.pos;
@@ -644,14 +694,8 @@ export class Minions {
     const top = m.y + m.sink + MINION_RIG.BACK;
     const prevY = hero ? hero.y : p.y - vy;
     if (prevY < top - 20 || p.y > top + 25 || p.y < m.y - 40) return false;
-    const sx = Math.sin(m.yaw);
-    const sz = Math.cos(m.yaw);
-    const ax = p.x - m.x;
-    const az = p.z - m.z;
-    let u = ax * sx + az * sz;
-    u = u < -M.BODY_BACK ? -M.BODY_BACK : u > M.BODY_FRONT ? M.BODY_FRONT : u;
-    const dx = ax - sx * u;
-    const dz = az - sz * u;
+    const dx = p.x - m.x;
+    const dz = p.z - m.z;
     const r = PLAYER_RADIUS + M.STOMP_REACH;
     return dx * dx + dz * dz <= r * r;
   }
@@ -678,12 +722,13 @@ export class Minions {
     m.vy = stomped ? 8 : M.WRECK_VY;
     m.power = 0;
     m.flare = 0;
-    m.jaw = 0.8;
+    m.tilt = -0.6; // the cap knocked askew
+    m.crouch = 0;
     m.drop = this.rng() < M.DROP_CHANCE;
     this.wrecks++;
-    this.fx?.explode?.(m.x, m.y + 40, m.z, { radius: 120 });
+    this.fx?.explode?.(m.x, m.y + MINION_RIG.BODY_Y * 0.6, m.z, { radius: 120 });
     this._sfx('minion_wreck', m);
-    this.sparkles?.clods({ x: m.x, y: m.y + 30, z: m.z }, this.tick * FRAME_DT, TINT.scrap, 10, 1);
+    this.sparkles?.clods({ x: m.x, y: m.y + 50, z: m.z }, this.tick * FRAME_DT, TINT.scrap, 10, 1);
   }
 
   _wrecked(m) {
@@ -760,6 +805,8 @@ export class Minions {
   animate(alpha, clock, camera = null) {
     const list = this.list;
     const M = MINION;
+    const A = MINION_ANIM;
+    const R = MINION_RIG;
     const mesh = this.mesh;
     const a4 = this.anim.array;
     const b4 = this.anim2.array;
@@ -778,6 +825,10 @@ export class Minions {
       const scale = m.pscale + (m.scale - m.pscale) * alpha;
       const power = m.ppower + (m.power - m.ppower) * alpha;
       const flare = m.pflare + (m.flare - m.pflare) * alpha;
+      const phase = m.pphase + (m.phase - m.pphase) * alpha;
+      const stride = m.pstride + (m.stride - m.pstride) * alpha;
+      const tilt = m.ptilt + (m.tilt - m.ptilt) * alpha;
+      const crouch = m.pcrouch + (m.crouch - m.pcrouch) * alpha;
       _e.set(pitch, yaw, roll, 'YXZ');
       _q.setFromEuler(_e);
       _o.set(0, M.PIVOT * scale, 0).applyQuaternion(_q);
@@ -785,31 +836,41 @@ export class Minions {
       _s.set(scale, scale, scale);
       _m.compose(_p, _q, _s);
       mesh.setMatrixAt(n, _m);
-      a4[n * 4] = m.pphase + (m.phase - m.pphase) * alpha;
-      a4[n * 4 + 1] = m.pstride + (m.stride - m.pstride) * alpha;
-      a4[n * 4 + 2] = m.pjaw + (m.jaw - m.pjaw) * alpha;
-      a4[n * 4 + 3] = clock * (m.state === 'windup' ? 16 : 7) + m.seed * TAU;
+      a4[n * 4] = phase;
+      a4[n * 4 + 1] = stride;
+      a4[n * 4 + 2] = tilt;
+      a4[n * 4 + 3] = clock * (m.state === 'windup' ? 19 : 6) + m.seed * TAU;
       b4[n * 4] = power;
       b4[n * 4 + 1] = flare;
-      b4[n * 4 + 2] = m.state === 'windup' || m.state === 'wrecked' ? 0.55 : 0.18 + 0.25 * m.stride;
-      b4[n * 4 + 3] = 0;
+      b4[n * 4 + 2] = m.state === 'windup' ? 0.45 : m.state === 'wrecked' ? 0.8 : 0.15 + 0.2 * stride;
+      b4[n * 4 + 3] = crouch;
       n++;
       // Blob shadow (not while underground).
       if (this.shadows) {
         if (sink > -60 && m.floorN) {
           const h = y + sink - m.floorY;
-          this.shadows.place(this.shadowBase + m.i, x, m.floorY, z, m.floorN ?? UP, shadowSize(170 * scale, h > 0 ? h : 0));
+          this.shadows.place(this.shadowBase + m.i, x, m.floorY, z, m.floorN ?? UP, shadowSize(M.SHADOW * scale, h > 0 ? h : 0));
           m.shadow = true;
         } else if (m.shadow) {
           this.shadows.hide(this.shadowBase + m.i);
           m.shadow = false;
         }
       }
-      // Eye glow, pulled toward the camera so the head does not hide it.
+      // Two eye glows, following the cap's tilt and bob (as the vertex shader moves it), each
+      // pulled toward the camera so the lens ring does not hide it.
       if (fire && power > 0.05) {
-        const g = fire.glowSlot();
-        if (g) {
-          _o.set(MINION_RIG.EYE[0], MINION_RIG.EYE[1] - M.PIVOT, MINION_RIG.EYE[2]).multiplyScalar(scale).applyQuaternion(_q);
+        const ta = tilt * A.TILT;
+        const c = Math.cos(ta);
+        const sn = Math.sin(ta);
+        const ey = R.EYE[1] - R.CAP_PIVOT;
+        const ez = R.EYE[2];
+        const lift = stride * (A.BOB * Math.cos(3 * phase) + A.CAP_BOB * Math.cos(3 * phase - 0.9)) - crouch * A.CROUCH;
+        const ry = R.CAP_PIVOT + c * ey - sn * ez + lift - M.PIVOT;
+        const rz = sn * ey + c * ez;
+        for (let side = -1; side <= 1; side += 2) {
+          const g = fire.glowSlot();
+          if (!g) break;
+          _o.set(side * R.EYE[0], ry, rz).multiplyScalar(scale).applyQuaternion(_q);
           let gx = x + _o.x;
           let gy = y + sink + M.PIVOT * scale + _o.y;
           let gz = z + _o.z;
@@ -819,19 +880,19 @@ export class Minions {
             const cz = camera.position.z - gz;
             const len = Math.sqrt(cx * cx + cy * cy + cz * cz);
             if (len > 120) {
-              gx += (cx / len) * 40;
-              gy += (cy / len) * 40;
-              gz += (cz / len) * 40;
+              gx += (cx / len) * 24;
+              gy += (cy / len) * 24;
+              gz += (cz / len) * 24;
             }
           }
           g.x = gx;
           g.y = gy;
           g.z = gz;
-          g.size = (46 + 60 * flare) * scale;
+          g.size = (46 + 32 * flare) * scale;
           g.r = TINTS.eye[0];
           g.g = TINTS.eye[1];
           g.b = TINTS.eye[2];
-          g.a = power * (0.4 + 0.6 * flare);
+          g.a = power * (0.75 + 0.25 * flare);
         }
       }
     }

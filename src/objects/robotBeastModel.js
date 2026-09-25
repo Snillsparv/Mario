@@ -232,7 +232,7 @@ const _s = new THREE.Vector3();
 const _e = new THREE.Euler();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
-// Collects flat-shaded primitives into one non-indexed geometry with colour and emission.
+// (Also used by minionModel.js for the small mushroom-capped robot minions.)
 // (Also used by minionModel.js for the small robot lizards.)
 export class PartBuilder {
   constructor(seed) {
