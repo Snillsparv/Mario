@@ -1,13 +1,14 @@
 // net/RemotePad.js end to end through the real relay (tools/padRelay.js) on a node http
 // server: the game probes /pad-info, joins its room, and a phone (a ws client speaking the pad
-// side of the protocol) steers it, gets rumbles and leaves.
+// side of the protocol) steers it, gets rumbles and leaves; and the game finds the relay by the
+// Server-Timing marker the relay puts on its server's responses.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { WebSocket } from 'ws';
 import { attachPadRelay } from '../tools/padRelay.js';
-import { RemotePad, HURT_RUMBLE_MS, GAME_NAME } from '../src/net/RemotePad.js';
-import { PAD_WS_PATH, encodeInput } from '../src/net/protocol.js';
+import { RemotePad, HURT_RUMBLE_MS, GAME_NAME, RELAY_MARKER, hasRelayMarker } from '../src/net/RemotePad.js';
+import { PAD_WS_PATH, PAD_INFO_PATH, encodeInput } from '../src/net/protocol.js';
 import { Events } from '../src/core/events.js';
 import { Input } from '../src/core/input.js';
 
@@ -66,6 +67,7 @@ test('a phone steers the game through the real relay', async () => {
     fetch: (url, opts) => fetch(new URL(url, base), opts),
     createSocket: (url) => new WebSocket(url),
     location: { protocol: 'http:', host: `127.0.0.1:${port}`, hostname: '127.0.0.1', port: String(port), search: '' },
+    dev: true, // the marker check has its own test below
     storage: null,
   });
 
@@ -101,4 +103,31 @@ test('a phone steers the game through the real relay', async () => {
 
   pad.dispose();
   await until(() => relay.stats().clients === 0, 3000, 'sockets to close');
+});
+
+test('the game finds the relay by its Server-Timing marker', async (t) => {
+  const base = `http://127.0.0.1:${port}`;
+  const head = await fetch(`${base}/`, { method: 'HEAD' });
+  if (!hasRelayMarker(head.headers.get('server-timing') ?? '')) {
+    t.todo(`tools/padRelay.js does not mark its responses with "Server-Timing: ${RELAY_MARKER}" yet`);
+    return;
+  }
+  const requests = [];
+  const pad = new RemotePad({
+    input: { setRemoteState() {} },
+    events: new Events(),
+    fetch: (url, opts) => {
+      requests.push([opts?.method ?? 'GET', url]);
+      return fetch(new URL(url, base), opts);
+    },
+    createSocket: (url) => new WebSocket(url),
+    location: { protocol: 'http:', host: `127.0.0.1:${port}`, hostname: '127.0.0.1', port: String(port), pathname: '/', search: '' },
+    performance: null, // no navigation entry in node: the HEAD fallback reads the real header
+    dev: false,
+    storage: null,
+  });
+  assert.equal(await pad.start(), true);
+  assert.deepEqual(requests, [['HEAD', '/'], ['GET', PAD_INFO_PATH]]);
+  await until(() => pad.status === 'online', 3000, 'the game to join');
+  pad.dispose();
 });

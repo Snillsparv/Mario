@@ -1,11 +1,12 @@
 // The pad page's small parts: the game code from the URL and the code keys
 // (src/pad/codeEntry.js), the status texts (src/pad/statusStrip.js) and the guarded phone
-// features (src/pad/device.js: vibration, wake lock, fullscreen) with stand-in browser objects.
+// features (src/pad/device.js: vibration, keeping the screen on, fullscreen) with stand-in
+// browser objects.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { roomFromSearch, editCode, ROOM_LETTERS, CODE_LENGTH } from '../src/pad/codeEntry.js';
 import { statusView } from '../src/pad/statusStrip.js';
-import { vibrate, keepAwake, canFullscreen, isFullscreen, toggleFullscreen } from '../src/pad/device.js';
+import { vibrate, keepAwake, needsAudibleVideo, canFullscreen, isFullscreen, toggleFullscreen } from '../src/pad/device.js';
 import { makeRoomCode, isRoomCode } from '../src/net/protocol.js';
 
 describe('game code', () => {
@@ -45,13 +46,17 @@ describe('game code', () => {
 test('status texts', () => {
   assert.deepEqual(statusView('connecting', { room: 'ABCD' }), { text: 'Connecting...', tone: 'busy' });
   assert.deepEqual(statusView('connected', { room: 'ABCD' }), { text: 'Connected to game ABCD', tone: 'ok' });
-  assert.match(statusView('waiting', { room: 'ABCD' }).text, /^Game ABCD not found, waiting/);
+  assert.equal(statusView('waiting', { room: 'ABCD' }).text, 'Game ABCD not found yet');
   assert.equal(statusView('reconnecting', { failures: 1 }).text, 'Reconnecting...');
-  assert.match(statusView('reconnecting', { failures: 3 }).text, /^Reconnecting\.\.\. is the game running\?/);
-  assert.equal(statusView('replaced', { room: 'ABCD' }).action, 'retry');
+  assert.equal(statusView('reconnecting', { failures: 3 }).text, 'Reconnecting... game on?');
+  const replaced = statusView('replaced', { room: 'ABCD' });
+  assert.equal(replaced.action, 'retry');
+  assert.match(replaced.text, /tap to rejoin$/, 'the way back is in the text, and at its end');
   for (const s of ['idle', 'connecting', 'waiting', 'connected', 'reconnecting', 'replaced', 'stopped']) {
-    const v = statusView(s, { room: 'ABCD', failures: 5 });
-    assert.ok(v.text.length > 0 && v.text.length <= 40, `${s}: short enough for a phone's strip`);
+    // The strip of a 320 px phone has room for about 26 characters (the widest code: WMWM);
+    // tests/pad-browser.test.js measures the real thing.
+    const v = statusView(s, { room: 'WMWM', failures: 5 });
+    assert.ok(v.text.length > 0 && v.text.length <= 26, `${s}: "${v.text}" short enough for a phone's strip`);
     assert.ok(['ok', 'wait', 'busy', 'off'].includes(v.tone));
   }
 });
@@ -132,6 +137,193 @@ describe('phone features (guarded)', () => {
     await tick();
     assert.equal(none.held(), false);
     none.release();
+  });
+
+  // A stand-in page for the video fallback: canvas streams, <video>, Web Audio, timers.
+  function fakePage({ webkit = false, captureStream = true, gestureNeeded = webkit } = {}) {
+    const listeners = {};
+    const log = [];
+    let gesture = false;
+    const track = (kind) => ({ kind, stopped: false, stop() { this.stopped = true; } });
+    const body = { children: [], appendChild: (el) => (body.children.push(el), (el.parentNode = body)) };
+    const doc = {
+      visibilityState: 'visible',
+      body,
+      addEventListener: (type, fn) => ((listeners[type] ??= new Set()).add(fn)),
+      removeEventListener: (type, fn) => listeners[type]?.delete(fn),
+      createElement(tag) {
+        if (tag === 'canvas') {
+          const c = { getContext: () => ({ fillRect: () => log.push('paint') }) };
+          if (captureStream) c.captureStream = () => ({ getVideoTracks: () => [track('video')] });
+          return c;
+        }
+        assert.equal(tag, 'video');
+        const attrs = {};
+        const v = {
+          paused: true,
+          muted: false,
+          style: {},
+          setAttribute: (k, val) => (attrs[k] = val),
+          attrs,
+          play() {
+            v.paused = false;
+            if (gestureNeeded && !v.muted && !gesture) {
+              v.paused = true;
+              return Promise.reject(new Error('NotAllowedError'));
+            }
+            return Promise.resolve();
+          },
+          pause: () => (v.paused = true),
+          remove: () => body.children.splice(body.children.indexOf(v), 1),
+        };
+        return v;
+      },
+    };
+    const contexts = [];
+    class FakeAudioContext {
+      constructor() {
+        this.state = 'suspended';
+        contexts.push(this);
+      }
+      resume() {
+        if (gesture) this.state = 'running';
+        return gesture ? Promise.resolve() : Promise.reject(new Error('NotAllowedError'));
+      }
+      suspend() {
+        this.state = 'suspended';
+        return Promise.resolve();
+      }
+      close() {
+        this.state = 'closed';
+        return Promise.resolve();
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect() {} };
+      }
+      createOscillator() {
+        return { connect() {}, start() {} };
+      }
+    }
+    FakeAudioContext.prototype.createMediaStreamDestination = () => ({ stream: { getAudioTracks: () => [track('audio')] } });
+    const timers = new Set();
+    const win = {
+      MediaStream: class {
+        constructor(tracks) {
+          this.tracks = tracks;
+        }
+        getTracks() {
+          return this.tracks;
+        }
+      },
+      AudioContext: FakeAudioContext,
+      HTMLVideoElement: { prototype: webkit ? { webkitSetPresentationMode() {} } : {} },
+      setInterval: (fn) => (timers.add(fn), fn),
+      clearInterval: (id) => timers.delete(id),
+    };
+    const nav = webkit ? { audioSession: { type: 'auto' } } : {};
+    const fire = (type) => {
+      gesture = ['touchend', 'pointerup', 'click'].includes(type);
+      [...(listeners[type] ?? [])].forEach((fn) => fn());
+      gesture = false;
+    };
+    return { doc, win, nav, fire, log, timers, contexts, listeners, video: () => body.children[0] };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  test('keep awake without the wake lock API (http on the LAN), Chromium: a muted stream video, playing at once', async () => {
+    const page = fakePage();
+    assert.equal(needsAudibleVideo(page.win), false);
+    const awake = keepAwake(page);
+    assert.equal(awake.mode, 'video');
+    const v = page.video();
+    assert.ok(v, 'a video in the page');
+    assert.equal(v.muted, true);
+    assert.equal(v.playsInline, true);
+    assert.equal(v.attrs.playsinline, '', 'not the full-screen player on phones');
+    assert.match(v.style.cssText, /position:fixed/);
+    assert.match(v.style.cssText, /width:2px;height:2px/);
+    assert.match(v.style.cssText, /left:0;bottom:0/, 'inside the view (Chromium wants it on screen)');
+    assert.match(v.style.cssText, /pointer-events:none/);
+    assert.deepEqual(v.srcObject.getTracks().map((t) => t.kind), ['video']);
+    assert.equal(page.contexts.length, 0, 'no audio');
+    await settle();
+    assert.equal(awake.held(), true, 'muted: no tap needed');
+    assert.equal(page.timers.size, 1, 'the canvas is repainted now and then');
+    // Hidden: paused (no screen to keep on); shown: playing again.
+    page.doc.visibilityState = 'hidden';
+    page.fire('visibilitychange');
+    assert.equal(v.paused, true);
+    assert.equal(awake.held(), false);
+    assert.equal(page.timers.size, 0);
+    page.fire('click');
+    assert.equal(v.paused, true, 'not while hidden');
+    page.doc.visibilityState = 'visible';
+    page.fire('visibilitychange');
+    await settle();
+    assert.equal(awake.held(), true);
+    // Released: gone, the stream stopped, no listeners left.
+    const tracks = v.srcObject.getTracks();
+    awake.release();
+    assert.equal(page.video(), undefined);
+    assert.ok(tracks.every((t) => t.stopped));
+    assert.equal(page.timers.size, 0);
+    assert.equal(page.listeners.visibilitychange.size, 0);
+    assert.equal(page.listeners.touchend.size, 0);
+    page.fire('click');
+    assert.equal(page.video(), undefined, 'stays released');
+  });
+
+  test('keep awake, WebKit (iPhone): the video plays with a silent audio track, started by a tap', async () => {
+    const page = fakePage({ webkit: true });
+    assert.equal(needsAudibleVideo(page.win), true);
+    const awake = keepAwake(page);
+    await settle();
+    const v = page.video();
+    assert.equal(v.muted, false, 'WebKit keeps the screen on only for a video with sound');
+    assert.deepEqual(v.srcObject.getTracks().map((t) => t.kind).sort(), ['audio', 'video']);
+    assert.equal(page.contexts.length, 1);
+    assert.equal(page.nav.audioSession.type, 'ambient', "the phone's music keeps playing");
+    assert.equal(awake.held(), false, 'refused before a tap');
+    page.fire('touchend');
+    await settle();
+    assert.equal(v.paused, false);
+    assert.equal(page.contexts[0].state, 'running');
+    assert.equal(awake.held(), true);
+    page.fire('touchend'); // already playing: nothing new
+    assert.equal(page.contexts.length, 1);
+    page.doc.visibilityState = 'hidden';
+    page.fire('visibilitychange');
+    assert.equal(awake.held(), false);
+    assert.equal(page.contexts[0].state, 'suspended');
+    awake.release();
+    assert.equal(page.contexts[0].state, 'closed');
+  });
+
+  test('keep awake: the wake lock API wins where the page has it; nothing at all where neither works', () => {
+    const page = fakePage();
+    const api = keepAwake({ ...page, nav: { wakeLock: { request: () => new Promise(() => {}) } } });
+    assert.equal(api.mode, 'api');
+    assert.equal(page.video(), undefined, 'no video when the API is there');
+    api.release();
+    const none = keepAwake(fakePage({ captureStream: false }));
+    assert.equal(none.mode, null);
+    assert.equal(none.held(), false);
+    none.release();
+    const noAudio = fakePage({ webkit: true });
+    delete noAudio.win.AudioContext;
+    assert.equal(keepAwake(noAudio).mode, null, 'WebKit without Web Audio: the video would not help');
+    const oldWebAudio = fakePage({ webkit: true });
+    delete oldWebAudio.win.AudioContext.prototype.createMediaStreamDestination;
+    assert.equal(keepAwake(oldWebAudio).mode, null, 'no audio streams (iOS before 14.5)');
+    // A piece that fails while it is built: no throw, no half-built video left behind.
+    const broken = fakePage();
+    const make = broken.doc.createElement;
+    broken.doc.createElement = (tag) => (tag === 'video' ? null : make(tag));
+    const b = keepAwake(broken);
+    assert.equal(b.held(), false);
+    broken.fire('click');
+    assert.equal(broken.video(), undefined);
+    b.release();
   });
 
   test('fullscreen: offered only where the page can go fullscreen; toggles', async () => {

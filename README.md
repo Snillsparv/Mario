@@ -94,6 +94,10 @@ through a small relay in the local server:
 One phone controls a game at a time: a second phone that scans the code takes over from the
 first.
 
+If there is no phone button, the server is not reachable from other devices: it was started
+with `--host localhost` or `--host 127.0.0.1` (which keeps it on this computer only; start it
+without that, or with `--host`), or the computer is not connected to a network.
+
 If the phone can't connect:
 
 * The first time, Windows or macOS may ask whether Node.js may accept incoming network
@@ -110,6 +114,9 @@ If the phone can't connect:
 The hosted version (for example a claude.ai link, or any static web host) has no relay, so
 the phone button is hidden there. You can still open that link on the phone itself and play
 with the on-screen touch controls.
+
+`npm run build` puts the controller page next to the game: `dist/pad.html`, with its own small
+script, so the game itself is still a single script and the phone never loads it.
 
 The relay only runs while `npm run dev` or `npm run preview` is running. It accepts only pages
 served by that same server, and anyone on your network who knows the current room code

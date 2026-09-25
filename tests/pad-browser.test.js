@@ -1,10 +1,13 @@
 // The phone's controller page (pad.html) in a real browser against the real relay (the dev
 // server's tools/padRelay.js plugin) with a stand-in game on a `ws` socket: the page joins,
 // touches reach the game, rumble reaches the phone, the layout fills the screen in both
-// orientations, and the code screen works. Opt-in: E2E=1 (Vite + headless Chromium, ~20 s).
+// orientations, the code screen works, another phone can take over and this one rejoin, and
+// on the computer's LAN address (the phone's real case: not a secure page, no wake lock API)
+// the page keeps the screen on with its video. Opt-in: E2E=1 (Vite + headless Chromium, ~30 s).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { decodeInput, PAD_WS_PATH } from '../src/net/protocol.js';
@@ -22,8 +25,16 @@ before(async () => {
   server = await createServer({ root, logLevel: 'error', server: { port: 0, host: '127.0.0.1', hmr: false } });
   await server.listen();
   base = server.resolvedUrls.local[0].replace(/\/$/, '');
-  browser = await chromium.launch();
+  // No proxy (the LAN address below must be reached directly; Chromium would still send its
+  // WebSockets through a proxy named in the environment).
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/proxy/i.test(k)));
+  browser = await chromium.launch({ env, args: ['--no-proxy-server'] });
 }, { timeout: 120000 });
+
+// This machine's first LAN address (what the game's QR code points the phone at).
+const lan = Object.values(os.networkInterfaces())
+  .flat()
+  .find((a) => a && a.family === 'IPv4' && !a.internal)?.address;
 
 after(async () => {
   await browser?.close();
@@ -31,8 +42,8 @@ after(async () => {
 });
 
 // A stand-in game in room `room`: records what arrives, can send rumble / hello.
-async function fakeGame(room) {
-  const ws = new WebSocket(base.replace(/^http/, 'ws') + PAD_WS_PATH);
+async function fakeGame(room, origin = base) {
+  const ws = new WebSocket(origin.replace(/^http/, 'ws') + PAD_WS_PATH);
   const got = [];
   ws.on('message', (d) => got.push(JSON.parse(d.toString())));
   await new Promise((r) => ws.on('open', r));
@@ -41,7 +52,7 @@ async function fakeGame(room) {
   return { ws, got, inputs, send: (m) => ws.send(JSON.stringify(m)) };
 }
 
-async function phonePage(width, height, url) {
+async function phonePage(width, height, url, { origin = base, init } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   const errors = [];
@@ -53,7 +64,8 @@ async function phonePage(width, height, url) {
     window.__vib = [];
     Object.defineProperty(navigator, 'vibrate', { value: (ms) => (window.__vib.push(ms), true), configurable: true });
   });
-  await page.goto(base + url, { waitUntil: 'load', timeout: 120000 });
+  if (init) await page.addInitScript(init);
+  await page.goto(origin + url, { waitUntil: 'load', timeout: 120000 });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
   const cdp = await context.newCDPSession(page);
   const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y, id]) => ({ x, y, id })) });
@@ -116,7 +128,7 @@ test('pad.html?room=: full-screen controller, touches reach the game, rumble rea
 
     // The game goes away: waiting; the LED turns amber.
     game.ws.close();
-    await until(() => page.evaluate(() => /not found, waiting/.test(document.querySelector('.pad-strip-text').textContent)));
+    await until(() => page.evaluate(() => document.querySelector('.pad-strip-text').textContent === 'Game HJKM not found yet'));
     assert.equal(await page.evaluate(() => document.querySelector('.cg-pad').dataset.link), 'waiting');
 
     // Landscape: the wide layout, the strip moves to the top middle, touches still work.
@@ -162,5 +174,138 @@ test('pad.html without a code: letter keys, CONNECT, then the controller', { ski
   } finally {
     game.ws.close();
     await context.close();
+  }
+});
+
+test('another phone takes over: this one says so in full, greys its controls, and rejoins with a tap', { skip, timeout: 120000 }, async () => {
+  const game = await fakeGame('WMWM');
+  const a = await phonePage(360, 740, '/pad.html?room=WMWM');
+  let b;
+  try {
+    await until(() => a.page.evaluate(() => window.__pad.link.status === 'connected'));
+    b = await phonePage(390, 844, '/pad.html?room=WMWM');
+    await until(() => a.page.evaluate(() => window.__pad.link.status === 'replaced'));
+    const seen = await a.page.evaluate(() => {
+      const t = document.querySelector('.pad-strip-text');
+      const plate = document.querySelector('.pad-plate');
+      return {
+        text: t.textContent,
+        fits: t.scrollWidth <= t.clientWidth,
+        plate: getComputedStyle(plate).display,
+        cap: plate.querySelector('.pad-plate-cap').textContent,
+        rejoin: getComputedStyle(plate.querySelector('.pad-plate-rejoin')).display,
+        grey: getComputedStyle(document.querySelector('.cg-pad .cg-tc-btn.cg-tc-A')).filter,
+      };
+    });
+    assert.equal(seen.text, 'Taken over · tap to rejoin');
+    assert.ok(seen.fits, 'the whole text shows');
+    assert.equal(seen.plate, 'flex');
+    assert.equal(seen.cap, 'TAKEN OVER');
+    assert.equal(seen.rejoin, 'flex');
+    assert.match(seen.grey, /saturate/, 'the controls look off');
+    // The plate is the big rejoin button; the other phone is now the one taken over.
+    await a.page.tap('.pad-plate');
+    await until(() => a.page.evaluate(() => window.__pad.link.status === 'connected'));
+    await until(() => b.page.evaluate(() => window.__pad.link.status === 'replaced'));
+    await until(() => a.page.evaluate(() => getComputedStyle(document.querySelector('.cg-pad .cg-tc-btn.cg-tc-A')).filter === 'none'));
+    // In landscape (no plate) the strip text rejoins.
+    await b.page.setViewportSize({ width: 844, height: 390 });
+    await b.page.waitForFunction(() => window.__pad.tc.layout.mode === 'landscape');
+    await b.page.tap('.pad-strip-text');
+    await until(() => b.page.evaluate(() => window.__pad.link.status === 'connected'));
+    // Every status text fits the strip of a small phone, in both orientations.
+    for (const [w, h] of [[320, 568], [568, 320]]) {
+      await a.page.setViewportSize({ width: w, height: h });
+      await a.page.waitForFunction((mode) => window.__pad.tc.layout.mode === mode, w > h ? 'landscape' : 'portrait');
+      const cut = await a.page.evaluate(async () => {
+        const { statusView } = await import('/src/pad/statusStrip.js');
+        const t = document.querySelector('.pad-strip-text');
+        const bad = [];
+        for (const s of ['connecting', 'waiting', 'connected', 'reconnecting', 'replaced', 'stopped']) {
+          window.__pad.strip.set(s, { room: 'WMWM', failures: 5 });
+          if (t.scrollWidth > t.clientWidth) bad.push(`${statusView(s, { room: 'WMWM', failures: 5 }).text} ${t.scrollWidth}>${t.clientWidth}`);
+        }
+        return bad;
+      });
+      assert.deepEqual(cut, [], `${w}x${h}`);
+    }
+    assert.deepEqual([...a.errors, ...b.errors], []);
+  } finally {
+    game.ws.close();
+    await a.context.close();
+    await b?.context.close();
+  }
+});
+
+test('on the LAN address (not a secure page, no wake lock API): joins, and a playing video keeps the screen on', { skip: skip || (!lan && 'no LAN address on this machine'), timeout: 120000 }, async () => {
+  // The phone's real case: the dev server on every interface, the page at http://<LAN address>.
+  const { createServer } = await import('vite');
+  const lanServer = await createServer({ root, logLevel: 'error', server: { port: 0, host: lan, hmr: false } });
+  await lanServer.listen();
+  const origin = `http://${lan}:${lanServer.httpServer.address().port}`;
+  const game = await fakeGame('LNPQ', origin);
+  const pages = [];
+  try {
+    // What Chromium itself asks of a video before it keeps the screen on (VideoWakeLock):
+    // playing, with video frames, at least 75 % of it in view; stream videos may be small.
+    const awakeState = (page) =>
+      page.evaluate(async () => {
+        const v = document.querySelector('video.pad-awake');
+        const ratio = await new Promise((r) => {
+          const io = new IntersectionObserver((e) => (io.disconnect(), r(e.at(-1).intersectionRatio)));
+          io.observe(v);
+        });
+        return {
+          secure: isSecureContext,
+          api: 'wakeLock' in navigator,
+          mode: window.__pad.awake.mode,
+          held: window.__pad.awake.held(),
+          paused: v.paused,
+          muted: v.muted,
+          ready: v.readyState,
+          time: v.currentTime,
+          frames: v.videoWidth,
+          kinds: v.srcObject.getTracks().map((t) => `${t.kind}:${t.readyState}`).sort(),
+          ratio,
+        };
+      });
+
+    const chromium = await phonePage(390, 844, '/pad.html?room=lnpq', { origin });
+    pages.push(chromium);
+    await until(() => chromium.page.evaluate(() => window.__pad.link?.status === 'connected'));
+    let st = await awakeState(chromium.page);
+    assert.equal(st.secure, false);
+    assert.equal(st.api, false, 'no wake lock API on a plain http page');
+    assert.equal(st.mode, 'video');
+    await until(async () => (await awakeState(chromium.page)).time > 0.5);
+    st = await awakeState(chromium.page);
+    assert.equal(st.held, true, 'muted: playing without a tap');
+    assert.equal(st.paused, false);
+    assert.equal(st.muted, true);
+    assert.ok(st.ready >= 2 && st.frames > 0, 'frames arrive');
+    assert.deepEqual(st.kinds, ['video:live']);
+    assert.ok(st.ratio > 0.75, `in view (${st.ratio})`);
+
+    // WebKit's rule (the iPhone), in this browser: a video with sound, started by a tap.
+    const webkit = await phonePage(390, 844, '/pad.html?room=LNPQ', {
+      origin,
+      init: () => {
+        HTMLVideoElement.prototype.webkitSetPresentationMode = function () {};
+      },
+    });
+    pages.push(webkit);
+    st = await awakeState(webkit.page);
+    assert.equal(st.muted, false);
+    assert.deepEqual(st.kinds, ['audio:live', 'video:live']);
+    assert.equal(st.held, false, 'sound needs a tap first');
+    await webkit.touch('touchStart', [[195, 400, 1]]);
+    await webkit.touch('touchEnd', []);
+    await until(async () => (await awakeState(webkit.page)).held);
+    await until(async () => (await awakeState(webkit.page)).time > 0.5);
+    assert.deepEqual([...chromium.errors, ...webkit.errors], []);
+  } finally {
+    game.ws.close();
+    for (const p of pages) await p.context.close();
+    await lanServer.close();
   }
 });

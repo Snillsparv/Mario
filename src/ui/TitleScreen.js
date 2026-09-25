@@ -23,9 +23,10 @@
 // click on the card ('touchPress' / 'touchRelease' events); its first tap unlocks audio
 // through the same pointer listeners as any tap.
 //
-// Phone controller (options.phone, a ui/PhonePanel.js): while a phone can join, a small phone
-// button in the top-right corner opens the panel (so does P). While the panel is up the card
-// ignores keys, clicks, taps and pads, except that a fresh pad Start / A / B closes the panel.
+// Phone controller (options.phone, a ui/PhonePanel.js): while a phone can join (and the touch
+// controller is not shown), a small phone button in the top-right corner opens the panel (so
+// does P). While the panel is up the card ignores keys, clicks, taps and pads, except that a
+// fresh Start / A / B on a gamepad or on the phone closes the panel.
 // A connected phone's START or A ('remotePress' / 'remoteRelease' from net/RemotePad.js) starts
 // the game like a gamepad (no user gesture: audio stays as it is).
 
@@ -59,8 +60,10 @@ const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
 const PAD_START_BUTTONS = [9, 0]; // standard mapping: Start, A
 const PAD_CLOSE_BUTTONS = [9, 0, 1, 2]; // Start, A, B, X: close the phone panel
-// Phone-controller buttons that start the game (net/RemotePad.js 'remotePress').
+// Phone-controller buttons that start the game (net/RemotePad.js 'remotePress'), and those
+// that close the phone panel while it is up.
 const REMOTE_START_BUTTONS = new Set(['START', 'A']);
+const REMOTE_CLOSE_BUTTONS = new Set(['START', 'A', 'B']);
 const FADE_MS = 400;
 const RELEASE_TIMEOUT_MS = 2000; // never wait forever for a key-up that got lost (blur)
 
@@ -350,12 +353,12 @@ export class TitleScreen {
         let remoteHeld = null;
         cleanups.push(
           this.events.on('remotePress', (e) => {
-            if (!e || !REMOTE_START_BUTTONS.has(e.button) || gate.starting) return;
+            if (!e || gate.starting) return;
             if (this.phone?.isOpen) {
-              this.phone.close();
+              if (REMOTE_CLOSE_BUTTONS.has(e.button)) this.phone.close();
               return;
             }
-            if (gate.pad()) begin(new Promise((r) => (remoteHeld = { button: e.button, r })));
+            if (REMOTE_START_BUTTONS.has(e.button) && gate.pad()) begin(new Promise((r) => (remoteHeld = { button: e.button, r })));
           }),
           this.events.on('remoteRelease', (e) => {
             if (remoteHeld && e?.button === remoteHeld.button) remoteHeld.r();
@@ -426,9 +429,10 @@ export class TitleScreen {
     return out;
   }
 
-  // The phone button shows while a phone can join (the relay may answer after the card is up).
+  // The phone button shows while a phone can join (the relay may answer after the card is up),
+  // except with the touch controller (the game is then played on this touch screen itself).
   _syncPhone() {
-    if (this.phoneBtn) this.phoneBtn.hidden = !this.phone?.available;
+    if (this.phoneBtn) this.phoneBtn.hidden = !this.phone?.available || !!this.touch;
   }
 
   // Create the card's elements once; _layout() sizes and places them.
@@ -492,6 +496,7 @@ export class TitleScreen {
     text(wake, BIG_FONT, on ? TOUCH_UNLOCK_PRESS : UNLOCK_PRESS, 1.2, 'gold');
     text(wakePrompt, SMALL_FONT, on ? TOUCH_UNLOCK_PROMPT : UNLOCK_PROMPT, 1, 'white');
     text(hint, SMALL_FONT, on ? TOUCH_TITLE_HINT : TITLE_HINT, 1, 'white');
+    this._syncPhone();
     if (relayout) this._layout();
   }
 

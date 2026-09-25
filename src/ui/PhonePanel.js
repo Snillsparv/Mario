@@ -53,7 +53,7 @@ const QR_LIGHT = '#ffffff';
 const CSS = `
 .pp-shade { position:absolute; inset:0; display:none; pointer-events:auto; background:rgba(0,0,14,0.5); }
 .pp-panel { position:absolute; display:none; pointer-events:auto; box-sizing:border-box; cursor:default;
-  background:rgba(8,10,40,0.92); border:var(--b) solid rgba(255,230,150,0.6); border-radius:calc(var(--u) * 5);
+  background:#080a28; border:var(--b) solid rgba(255,230,150,0.6); border-radius:calc(var(--u) * 5);
   box-shadow:0 calc(var(--u) * 3) calc(var(--u) * 10) rgba(0,0,20,0.55); user-select:none; -webkit-user-select:none;
   animation:pp-in 0.16s ease-out; }
 .pp-open > .pp-shade, .pp-open > .pp-panel { display:block; }

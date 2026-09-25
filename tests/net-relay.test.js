@@ -8,9 +8,13 @@ import { WebSocket, WebSocketServer } from 'ws';
 import padRelay, {
   attachPadRelay,
   padPageUrls,
+  padInfo,
+  isLoopbackHost,
   CLOSE_CODES,
   RELAY_LIMITS,
+  RELAY_MARKER,
 } from '../tools/padRelay.js';
+import { RELAY_MARKER as GAME_RELAY_MARKER, hasRelayMarker } from '../src/net/RemotePad.js';
 import { PAD_WS_PATH, PAD_INFO_PATH, encodeInput } from '../src/net/protocol.js';
 
 const FAKE_IFS = {
@@ -22,10 +26,13 @@ const FAKE_IFS = {
   ],
 };
 
-// A plain http server with the relay attached (the way the Vite hooks attach it).
-async function startServer(options = {}) {
+// A plain http server with the relay attached (the way the Vite hooks attach it), on
+// `listenHost`. `options.networkInterfaces: null` keeps the machine's real ones.
+async function startServer(options = {}, listenHost = '127.0.0.1') {
   const server = http.createServer();
-  const relay = attachPadRelay(server, { networkInterfaces: () => FAKE_IFS, ...options });
+  const relayOptions = { networkInterfaces: () => FAKE_IFS, ...options };
+  if (relayOptions.networkInterfaces === null) delete relayOptions.networkInterfaces;
+  const relay = attachPadRelay(server, relayOptions);
   server.on('request', (req, res) => relay.middleware(req, res));
   // Like Vite's close: destroy every open socket (upgraded ones too), then close.
   const sockets = new Set();
@@ -33,7 +40,7 @@ async function startServer(options = {}) {
     sockets.add(s);
     s.on('close', () => sockets.delete(s));
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise((r) => server.listen(0, listenHost, r));
   const { port } = server.address();
   return {
     server,
@@ -432,12 +439,136 @@ describe('pad page urls', () => {
     ]);
   });
 
-  test('host header fallback (sanitised) and no interfaces', () => {
-    assert.deepEqual(padPageUrls({ interfaces: {}, port: 5173, host: 'localhost:5173' }), [
-      'http://localhost:5173/pad.html',
+  test('host header fallback (sanitised), never a loopback one; no interfaces', () => {
+    assert.deepEqual(padPageUrls({ interfaces: {}, port: 5173, host: 'mybox.local:5173' }), [
+      'http://mybox.local:5173/pad.html',
     ]);
+    for (const host of ['localhost:5173', 'LOCALHOST', 'app.localhost:5173', '127.0.0.1:5173', '127.1.2.3', '[::1]:5173', '0.0.0.0:5173', '[::]:5173']) {
+      assert.deepEqual(padInfo({ interfaces: {}, port: 5173, host }), { urls: [], reason: 'no-network' }, host);
+    }
     assert.deepEqual(padPageUrls({ interfaces: {}, port: 5173, host: 'a b/"<x>' }), []);
     assert.deepEqual(padPageUrls({ interfaces: null, port: 5173 }), []);
+  });
+
+  test('only the addresses the server listens on', () => {
+    const base = { interfaces: FAKE_IFS, port: 5173, host: 'localhost:5173' };
+    const all = ['http://192.168.1.20:5173/pad.html', 'http://172.17.0.1:5173/pad.html'];
+    for (const address of [undefined, '', '::', '0.0.0.0', '::ffff:0.0.0.0']) {
+      assert.deepEqual(padInfo({ ...base, address }), { urls: all, reason: null }, String(address));
+    }
+    // Loopback only (--host 127.0.0.1 / --host localhost): nothing a phone could open.
+    for (const address of ['127.0.0.1', '127.0.1.1', '::1', '::ffff:127.0.0.1', '0:0:0:0:0:0:0:1']) {
+      assert.deepEqual(padInfo({ ...base, address }), { urls: [], reason: 'loopback' }, address);
+    }
+    // ...unless the page itself came in under a name a phone can use (a proxy or tunnel).
+    assert.deepEqual(padInfo({ ...base, address: '127.0.0.1', host: 'pip.example:8080' }), {
+      urls: ['http://pip.example:8080/pad.html'],
+      reason: null,
+    });
+    // One address (--host 192.168.1.20): only that one.
+    for (const address of ['192.168.1.20', '::ffff:192.168.1.20']) {
+      assert.deepEqual(padPageUrls({ ...base, address }), ['http://192.168.1.20:5173/pad.html']);
+    }
+    // One IPv6 address: no IPv4 URL answers there; the Host header's still does.
+    assert.deepEqual(padInfo({ ...base, address: 'fe80::1' }), { urls: [], reason: 'no-network' });
+    assert.deepEqual(padPageUrls({ ...base, address: 'fe80::1', host: '[fe80::1]:5173' }), ['http://[fe80::1]:5173/pad.html']);
+  });
+
+  test('loopback names', () => {
+    for (const h of ['localhost', 'a.localhost', 'localhost.', '127.0.0.1', '[::1]', '::', '::0001', '::ffff:127.0.0.1', '0.0.0.0']) {
+      assert.equal(isLoopbackHost(h), true, h);
+    }
+    for (const h of ['192.168.1.20', 'mybox.local', 'localhostx', '::10', '1::', 'fe80::1', '10.0.0.1', '', null]) {
+      assert.equal(isLoopbackHost(h), false, String(h));
+    }
+  });
+});
+
+describe('pad-info on a real listening socket', () => {
+  test('a server on 127.0.0.1 offers no URL and says why', async () => {
+    const srv = await startServer({ networkInterfaces: null });
+    try {
+      const { res, body } = await getJson(srv.port, PAD_INFO_PATH);
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(JSON.parse(body), { urls: [], reason: 'loopback' });
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  test('a server on every interface offers the reachable ones', async (t) => {
+    const srv = await startServer({ networkInterfaces: null }, '0.0.0.0');
+    try {
+      const info = JSON.parse((await getJson(srv.port, PAD_INFO_PATH)).body);
+      if (!info.urls.length) {
+        assert.equal(info.reason, 'no-network');
+        t.skip('no network address on this machine');
+        return;
+      }
+      assert.equal(info.reason, undefined);
+      for (const u of info.urls) {
+        const url = new URL(u);
+        assert.equal(url.pathname, '/pad.html');
+        assert.equal(url.port, String(srv.port));
+        assert.equal(isLoopbackHost(url.hostname), false, u);
+      }
+      // The first one (the QR code's) really answers.
+      const first = new URL(info.urls[0]);
+      const answer = await new Promise((resolve, reject) => {
+        http.get({ host: first.hostname, port: first.port, path: PAD_INFO_PATH }, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        }).on('error', reject);
+      });
+      assert.equal(answer, 200);
+    } finally {
+      await srv.stop();
+    }
+  });
+});
+
+describe('relay marker', () => {
+  test('every response carries Server-Timing: pad-relay (what the game looks for)', async () => {
+    assert.equal(RELAY_MARKER, GAME_RELAY_MARKER);
+    const srv = await startServer();
+    try {
+      for (const [path, method, status] of [
+        ['/', 'HEAD', 404],
+        ['/index.html', 'GET', 404],
+        [PAD_INFO_PATH, 'GET', 200],
+        [PAD_INFO_PATH, 'POST', 405],
+      ]) {
+        const { res } = await getJson(srv.port, path, method);
+        assert.equal(res.statusCode, status, `${method} ${path}`);
+        assert.ok(hasRelayMarker(res.headers['server-timing']), `${method} ${path}`);
+      }
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  test('added to a Server-Timing header already there, once', () => {
+    const server = http.createServer();
+    const relay = attachPadRelay(server, { networkInterfaces: () => ({}) });
+    const res = (initial) => {
+      const headers = new Map(initial ? [['server-timing', initial]] : []);
+      return {
+        getHeader: (k) => headers.get(k.toLowerCase()),
+        setHeader: (k, v) => headers.set(k.toLowerCase(), v),
+        headers,
+      };
+    };
+    const a = res('db;dur=53');
+    relay.middleware({ url: '/x' }, a, () => {});
+    assert.equal(a.headers.get('server-timing'), 'db;dur=53, pad-relay');
+    const b = res('pad-relay;desc="x"');
+    relay.middleware({ url: '/x' }, b, () => {});
+    assert.equal(b.headers.get('server-timing'), 'pad-relay;desc="x"');
+    const sent = { getHeader: () => undefined, setHeader: () => { throw new Error('sent'); } };
+    let passed = false;
+    relay.middleware({ url: '/x' }, sent, () => (passed = true));
+    assert.equal(passed, true, 'headers already sent: passed on anyway');
+    relay.close();
   });
 });
 
@@ -458,16 +589,15 @@ describe('vite integration', () => {
     assert.equal(server.listenerCount('upgrade'), 0);
   });
 
-  test('vite.config.js: relay plugin, LAN hosts, pad page in the build when present', async () => {
+  test('vite.config.js: relay plugin, LAN hosts, the game alone in the main build', async () => {
     const { default: config } = await import('../vite.config.js');
     assert.ok(config.plugins.some((p) => p && p.name === 'pad-relay'));
+    const padBuild = config.plugins.find((p) => p && p.name === 'pad-page-build');
+    assert.ok(padBuild, 'the pad page is built by its own build (tests/net-relay-build.test.js)');
+    assert.equal(padBuild.apply, 'build');
     assert.equal(config.server.host, true);
     assert.equal(config.preview.host, true);
-    const input = config.build.rolldownOptions.input;
-    assert.equal(input.main, 'index.html');
-    const { existsSync } = await import('node:fs');
-    const hasPad = existsSync(new URL('../pad.html', import.meta.url));
-    assert.equal(input.pad, hasPad ? 'pad.html' : undefined);
+    assert.deepEqual(config.build.rolldownOptions.input, { main: 'index.html' });
   });
 
   test('on a real Vite dev server: pad-info, relay and HMR websocket side by side', async (t) => {
@@ -495,6 +625,11 @@ describe('vite integration', () => {
     const info = await getJson(port, PAD_INFO_PATH, 'GET', { accept: 'text/html' });
     assert.equal(info.res.statusCode, 200);
     assert.equal(JSON.parse(info.body).urls[0], `http://192.168.1.20:${port}/pad.html`);
+    // Vite's own responses carry the relay marker too.
+    const page = await getJson(port, '/', 'GET', { accept: 'text/html' });
+    assert.equal(page.res.statusCode, 200);
+    assert.match(page.body, /<title>t<\/title>/);
+    assert.ok(hasRelayMarker(page.res.headers['server-timing']));
 
     const game = await join(port, 'game', 'VITE');
     const pad = await join(port, 'pad', 'VITE');

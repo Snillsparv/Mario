@@ -12,8 +12,9 @@
 //   * rumble from the game (Pip hurt): vibration where the phone allows it (not iPhones), and
 //     the controller's LED flashes. The LED also shows the link: green connected, amber waiting
 //     for the game, red connecting / lost.
-//   * the screen stays on while the page shows (wake lock); no scrolling, zooming, selection
-//     or long-press menus.
+//   * the screen stays on while the page shows (pad/device.js keepAwake: the wake lock API on a
+//     secure page, else - the usual http://<LAN address> case - a tiny playing video); no
+//     scrolling, zooming, selection or long-press menus.
 //
 // Loads only the controller and the protocol (no three.js, no game code).
 
@@ -31,6 +32,8 @@ const CSS = `
   animation: pad-blink 1.2s steps(2, jump-none) infinite; }
 .cg-pad[data-link="connecting"] .cg-tc-led, .cg-pad[data-link="reconnecting"] .cg-tc-led, .cg-pad[data-link="replaced"] .cg-tc-led,
 .cg-pad[data-link="stopped"] .cg-tc-led { background:#c9523f; box-shadow: 0 0 4px 1px rgba(201,82,63,0.6), inset 0 -1px 1px rgba(0,0,0,0.3); }
+/* Another phone has the game: the controls go grey until this one rejoins. */
+.cg-pad[data-link="replaced"] :is(.cg-tc-btn, .cg-tc-knob, .cg-tc-dpad, .cg-tc-rock) { filter: saturate(0.15) brightness(0.62); }
 .cg-pad.pad-hit .cg-tc-led { background:#ff5a3c; box-shadow: 0 0 12px 4px rgba(255,90,60,0.95); animation:none; }
 `;
 
@@ -41,7 +44,7 @@ function main() {
   style.textContent = CSS;
   document.head.appendChild(style);
   lockGestures(document);
-  keepAwake();
+  const awake = keepAwake();
 
   const events = new Events();
   let link = null;
@@ -56,7 +59,7 @@ function main() {
     onFullscreen: () => toggleFullscreen(),
     onRetry: () => link?.retryNow(),
   });
-  const plate = new CodePlate(document.body);
+  const plate = new CodePlate(document.body, { onRejoin: () => link?.retryNow() });
   const entry = new CodeEntry(document.body, { onSubmit: (code) => play(code) });
 
   // Press buzzes are short and must not cut a rumble from the game short.
@@ -148,6 +151,7 @@ function main() {
     strip,
     plate,
     entry,
+    awake,
   };
   window.__ready = true;
 }

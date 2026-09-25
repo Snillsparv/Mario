@@ -1,8 +1,11 @@
 // A recessed label plate on the portrait controller body (layout.panel: the room above the
 // controls) showing the game code, lit while connected, and a hint that the phone can be
-// turned for the wide layout. Touches pass through it.
+// turned for the wide layout. Touches pass through it, except when another phone has taken
+// the game over ('replaced'): then it says so and the whole plate is a big "tap to rejoin"
+// button (the status strip's text does the same, and is what screen readers get).
 //
-//   const plate = new CodePlate(parent); plate.place(layout.panel | null); plate.set(room, status)
+//   const plate = new CodePlate(parent, { onRejoin }); plate.place(layout.panel | null);
+//   plate.set(room, status)
 
 const CSS = `
 .pad-plate { position:fixed; z-index:25; display:none; box-sizing:border-box; pointer-events:none;
@@ -17,15 +20,26 @@ const CSS = `
 .pad-plate[data-link="connected"] .pad-plate-code { color:#e6fbf7; text-shadow: 0 0 14px rgba(111,232,216,0.55), 0 -1px 0 rgba(0,0,0,0.5); }
 .pad-plate[data-link="waiting"] .pad-plate-code { color:#b39a62; }
 .pad-plate-hint { font-size:0.24em; letter-spacing:0.03em; color:#6a6f84; }
+.pad-plate-rejoin { display:none; align-items:center; gap:0.4em; font-size:max(0.3em, 12px); font-weight:800; letter-spacing:0.04em;
+  padding:0.4em 1em; border-radius:999px; color:#fff; background: linear-gradient(180deg, #d8634d, #b4432f);
+  box-shadow: 0 2px 0 #6f2519, 0 3px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3); white-space:nowrap; }
+.pad-plate-rejoin svg { width:1.15em; height:1.15em; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+.pad-plate[data-link="replaced"] { pointer-events:auto; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.pad-plate[data-link="replaced"] .pad-plate-cap { color:#e08a78; }
+.pad-plate[data-link="replaced"] .pad-plate-hint { display:none !important; }
+.pad-plate[data-link="replaced"] .pad-plate-rejoin { display:flex; }
+.pad-plate[data-link="replaced"]:active .pad-plate-rejoin { transform: translateY(2px); box-shadow: 0 0 0 #6f2519, 0 1px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3); }
 .pad-plate-hint svg { width:1.2em; height:1.2em; vertical-align:-0.28em; margin-right:0.35em; fill:none; stroke:currentColor; stroke-width:1.6;
   stroke-linecap:round; stroke-linejoin:round; }
 `;
 
 // A phone outline with a turn arrow (original line icon).
+// A circular arrow (rejoin), original.
+const REJOIN_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M11.8 1.8v2.9H8.9"/></svg>';
 const TURN_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="5" width="7" height="10" rx="1.4"/><path d="M8 2.2a5.5 5.5 0 0 1 5.8 5.3"/><path d="M12.2 6.2l1.6 1.4 1.4-1.7"/></svg>';
 
 export class CodePlate {
-  constructor(parent) {
+  constructor(parent, { onRejoin } = {}) {
     if (!document.getElementById('pad-plate-css')) {
       const style = document.createElement('style');
       style.id = 'pad-plate-css';
@@ -36,11 +50,18 @@ export class CodePlate {
     root.className = 'pad-plate';
     root.setAttribute('aria-hidden', 'true'); // the strip reads out the same
     root.innerHTML = `<div class="pad-plate-cap">GAME CODE</div><div class="pad-plate-code"></div>
-      <div class="pad-plate-hint">${TURN_ICON}Turn sideways for the wide layout</div>`;
+      <div class="pad-plate-hint">${TURN_ICON}Turn sideways for the wide layout</div>
+      <div class="pad-plate-rejoin">${REJOIN_ICON}Tap to rejoin</div>`;
+    this.cap = root.querySelector('.pad-plate-cap');
     this.code = root.querySelector('.pad-plate-code');
     this.hint = root.querySelector('.pad-plate-hint');
     this.rect = null;
     this.visible = false;
+    root.addEventListener('click', () => {
+      if (root.dataset.link === 'replaced') onRejoin?.();
+    });
+    // Not the controller's touches (like the status strip).
+    root.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
     parent.appendChild(root);
   }
 
@@ -62,6 +83,7 @@ export class CodePlate {
   set(room, status) {
     this.code.textContent = room ?? '';
     this.root.dataset.link = status ?? '';
+    this.cap.textContent = status === 'replaced' ? 'TAKEN OVER' : 'GAME CODE';
   }
 
   setVisible(on) {

@@ -527,6 +527,47 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   A, B, Z, R, START, CU, CD, CL, CR })` (merged like a gamepad in `poll()`/`sample()`); a tap
   also unlocks audio on the title.
 
+## Phone as a controller over the local network
+
+A phone on the same Wi-Fi can steer Pip in the game running on the computer. It needs the
+game served locally (`npm run dev`, or `npm run build && npm run preview`): the hosted/static
+build has no relay, so every phone feature stays hidden there.
+
+* **Protocol** (`src/net/protocol.js`, shared by all parts): `PAD_WS_PATH` (`/pad-ws`),
+  `PAD_INFO_PATH` (`/pad-info`), `PAD_PAGE` (`pad.html`), 4-letter room codes
+  (`makeRoomCode`, `isRoomCode`), messages `join { role: 'game'|'pad', room }`,
+  `input { s: [stickX, stickY, buttonBits] }` (`encodeInput` / `decodeInput`, bits in
+  `PAD_BUTTONS` order), `rumble { ms }`, `hello { name }`, `peer { connected }`.
+* **Relay** (`tools/padRelay.js`, a Vite plugin for both the dev and preview servers,
+  `server.host` / `preview.host` = true): a `ws` WebSocket endpoint on `/pad-ws` (Vite's HMR
+  socket is untouched), one game + one pad per room (a newcomer replaces the old one), pad
+  `input` validated and forwarded to the game, game `rumble`/`hello` to the pad, `peer`
+  notices both ways. `GET /pad-info` -> `{ urls }`: the pad page URL for each LAN IPv4
+  address the server really listens on (empty with `reason: 'loopback'` for a loopback-only
+  server). Every response carries `Server-Timing: pad-relay`, which is how the game knows a
+  relay exists. Limits (`RELAY_LIMITS`): 1 KB messages, 60 msgs/s per socket (4x that closes
+  it with 1008), 50 rooms, 200 sockets, 10 s to join, 10 s heartbeats; pages from other
+  origins are refused. Close codes (`CLOSE_CODES`): 4000 replaced (do not auto-reconnect),
+  4001 bad join, 4002 join timeout, 4003 relay full.
+* **Pad page** (`pad.html`, `src/pad/*`; built as its own ~85 kB page, no three.js): the
+  touch controller in standalone mode (`new TouchController({ standalone: true, sink })`,
+  full-screen portrait and landscape layouts), a room-code entry screen when the URL has no
+  `?room=`, a status strip (tap to rejoin after being replaced), sends button changes at
+  once, stick moves at most every 33 ms and the whole state every 100 ms, reconnects with
+  backoff, vibrates on `rumble`, keeps the screen awake where the browser allows it.
+* **Game side**: `input.setRemoteState(state | null)` is its own input channel, merged like
+  the touch state (buttons OR'ed, taps shorter than a tick still count; the phone's stick
+  wins when pushed at least as far). `new RemotePad({ input, events })`
+  (`src/net/RemotePad.js`) probes `/pad-info`, keeps a room code (it survives a reload),
+  joins as 'game', applies the phone's input, releases it when the phone leaves or goes
+  silent for 1.5 s, and sends `rumble` when Pip is hurt; events `'phonePad' { connected,
+  available, room, padUrl }` and `'remotePress' / 'remoteRelease' { button }` (the title
+  starts from the phone's START/A). `?pad=0` turns it off, `?pad=1` forces it (`?test=1`
+  skips it). `PhonePanel` (`src/ui/PhonePanel.js`, `phoneLogic.js`): the pairing panel with a
+  QR code of the pad URL (`qrcode-generator`), the URL, the room code and the connection
+  status, opened from a phone button on the title or the pause screen (P); a small badge
+  while a phone is connected.
+
 ## Objects (`src/objects/ObjectManager.js`)
 
 ```js
@@ -579,6 +620,8 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
+| `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
+| `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title starts on START/A) |
 | `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,
@@ -594,9 +637,10 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/` (one ~850 kB / ~250 kB gzip bundle by
-  design, plus the ~13 kB title-logo worker; `vite.config.js` raises `chunkSizeWarningLimit`
-  to 900 kB accordingly).
+  `npm run build` — production build into `dist/`: the game as one bundle by design (~1.2 MB,
+  ~370 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1400 kB), then
+  the phone's `pad.html` built separately into the same folder (~85 kB, its own copy of the
+  touch controller and protocol). `npm run preview` serves it with the phone relay.
 * `node tools/shot.mjs --url "/preview.html?m=<area>&cam=x,y,z&look=x,y,z" --out shots/x.png`
   — headless screenshot of a preview page (prints browser errors).
 * `node tools/shot.mjs --url "/?test=1" --actions '[{"step":30,"input":{"stickY":1}},{"shot":"shots/a.png"},{"eval":"__game.snapshot()"}]'`

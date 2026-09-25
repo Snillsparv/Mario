@@ -6,17 +6,18 @@
 //   strip.place(rect); strip.set(status, { room, failures }); strip.setVisible(bool)
 
 // Text and tone for a PadLink status (tone: 'ok' | 'wait' | 'busy' | 'off'). `action`:
-// tapping the text retries ('retry').
+// tapping the text retries ('retry'). The texts are short enough for the strip on a small phone
+// (about 190 px of room at 320 px wide); StatusStrip also shrinks the type a little if needed.
 export function statusView(status, { room = '', failures = 0 } = {}) {
   switch (status) {
     case 'connected':
       return { text: `Connected to game ${room}`, tone: 'ok' };
     case 'waiting':
-      return { text: `Game ${room} not found, waiting...`, tone: 'wait' };
+      return { text: `Game ${room} not found yet`, tone: 'wait' };
     case 'reconnecting':
-      return { text: failures >= 3 ? 'Reconnecting... is the game running?' : 'Reconnecting...', tone: 'off' };
+      return { text: failures >= 3 ? 'Reconnecting... game on?' : 'Reconnecting...', tone: 'off' };
     case 'replaced':
-      return { text: 'Another phone took over. Tap to rejoin', tone: 'off', action: 'retry' };
+      return { text: 'Taken over · tap to rejoin', tone: 'off', action: 'retry' };
     case 'stopped':
       return { text: 'Disconnected', tone: 'off' };
     default:
@@ -40,6 +41,8 @@ const CSS = `
 .pad-strip[data-tone="busy"] .pad-strip-dot { background:#8fa4d8; animation: pad-blink 0.8s steps(2, jump-none) infinite; }
 .pad-strip[data-tone="off"] .pad-strip-dot { background:#e0604b; box-shadow:0 0 6px 1px rgba(224,96,75,0.6); }
 .pad-strip[data-tone="off"] .pad-strip-text { color:#f0c2b8; }
+.pad-strip-text.pad-fit1 { font-size:12px; }
+.pad-strip-text.pad-fit2 { font-size:11px; letter-spacing:0; }
 .pad-strip[data-action="retry"] .pad-strip-text { text-decoration: underline; text-underline-offset:3px; cursor:pointer; }
 @keyframes pad-blink { 50% { opacity:0.25; } }
 .pad-strip-btn { flex:none; width:30px; height:24px; border-radius:999px; border:0; padding:0; margin:0; cursor:pointer;
@@ -91,6 +94,7 @@ export class StatusStrip {
     s.top = `${Math.round(rect.y)}px`;
     s.width = `${Math.round(rect.w)}px`;
     s.height = `${Math.round(rect.h)}px`;
+    this._fit();
   }
 
   set(status, info) {
@@ -100,9 +104,22 @@ export class StatusStrip {
     if (v.action) this.root.dataset.action = v.action;
     else delete this.root.dataset.action;
     this.root.dataset.status = status;
+    this._fit();
   }
 
   setVisible(on) {
     this.root.classList.toggle('pad-on', !!on);
+    this._fit();
+  }
+
+  // A text that does not fit the strip at 13 px gets 12 px, then 11 px, before it is cut.
+  _fit() {
+    const t = this.text;
+    if (!this.root.classList.contains('pad-on')) return; // not laid out
+    t.classList.remove('pad-fit1', 'pad-fit2');
+    if (t.scrollWidth <= t.clientWidth) return;
+    t.classList.add('pad-fit1');
+    if (t.scrollWidth <= t.clientWidth) return;
+    t.classList.replace('pad-fit1', 'pad-fit2');
   }
 }

@@ -4,8 +4,9 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RemotePad,
-  shouldProbe,
-  isLocalHost,
+  probeMode,
+  hasRelayMarker,
+  RELAY_MARKER,
   parsePadInfo,
   withRoom,
   reconnectDelay,
@@ -89,7 +90,12 @@ function okJson(body) {
   return { ok: true, status: 200, json: async () => body };
 }
 
-function setup({ fetchImpl, location = LOC, storage = null } = {}) {
+// A page served by the relay's server: its navigation entry carries the relay's marker.
+const MARKED = { getEntriesByType: (type) => (type === 'navigation' ? [{ serverTiming: [{ name: RELAY_MARKER, duration: 0, description: '' }] }] : []) };
+// A page from a server without the relay.
+const UNMARKED = { getEntriesByType: (type) => (type === 'navigation' ? [{ serverTiming: [] }] : []) };
+
+function setup({ fetchImpl, location = LOC, storage = null, performance = MARKED, dev = false } = {}) {
   const timers = fakeTimers();
   const events = new Events();
   const states = [];
@@ -107,6 +113,8 @@ function setup({ fetchImpl, location = LOC, storage = null } = {}) {
     events,
     fetch,
     location,
+    performance,
+    dev,
     timers,
     rng,
     storage,
@@ -147,24 +155,25 @@ afterEach(() => {
 // ---- helpers -----------------------------------------------------------------------------------
 
 describe('probe rules and helpers', () => {
-  test('local servers are probed, public https hosts are not', () => {
-    assert.equal(shouldProbe({ protocol: 'http:', hostname: 'localhost', port: '5173' }), true);
-    assert.equal(shouldProbe({ protocol: 'http:', hostname: 'example.com', port: '' }), true, 'plain http: a dev server');
-    assert.equal(shouldProbe({ protocol: 'https:', hostname: 'someone.github.io', port: '' }), false);
-    assert.equal(shouldProbe({ protocol: 'https:', hostname: '192.168.0.4', port: '' }), true);
-    assert.equal(shouldProbe({ protocol: 'https:', hostname: 'devbox', port: '' }), true);
-    assert.equal(shouldProbe({ protocol: 'https:', hostname: 'example.com', port: '4173' }), true);
-    assert.equal(shouldProbe({ protocol: 'file:', hostname: '', port: '' }), false);
-    assert.equal(shouldProbe({ protocol: 'https:', hostname: 'x.io', port: '', search: '?pad=1' }), true, '?pad=1 forces it');
-    assert.equal(shouldProbe({ protocol: 'http:', hostname: 'localhost', port: '5173', search: '?pad=0' }), false, '?pad=0 turns it off');
-    assert.equal(shouldProbe(null), false);
+  test('probe modes: ?pad=0 off, ?pad=1 forced, http(s) pages by marker', () => {
+    assert.equal(probeMode({ protocol: 'http:', hostname: 'localhost', port: '5173' }), 'marker');
+    assert.equal(probeMode({ protocol: 'https:', hostname: 'someone.github.io', port: '' }), 'marker');
+    assert.equal(probeMode({ protocol: 'file:', hostname: '', port: '' }), 'off');
+    assert.equal(probeMode({ protocol: 'https:', hostname: 'x.io', port: '', search: '?pad=1' }), 'force', '?pad=1 forces it');
+    assert.equal(probeMode({ protocol: 'http:', hostname: 'localhost', port: '5173', search: '?pad=0' }), 'off', '?pad=0 turns it off');
+    assert.equal(probeMode({ protocol: 'http:', search: '?test=1&pad=0' }), 'off');
+    assert.equal(probeMode(null), 'off');
   });
 
-  test('local host names', () => {
-    for (const h of ['localhost', '127.0.0.1', '10.0.0.8', '172.20.1.1', '192.168.1.20', 'pc.local', 'mypc', '[::1]', 'fd12:3456::1']) {
-      assert.equal(isLocalHost(h), true, h);
-    }
-    for (const h of ['example.com', '8.8.8.8', '172.32.0.1', 'user.github.io', '']) assert.equal(isLocalHost(h), false, h);
+  test('relay marker in a Server-Timing header or a serverTiming list', () => {
+    assert.equal(RELAY_MARKER, 'pad-relay');
+    assert.equal(hasRelayMarker('pad-relay'), true);
+    assert.equal(hasRelayMarker('db;dur=53, pad-relay ;desc="relay"'), true);
+    assert.equal(hasRelayMarker('pad-relays, cache;desc="pad-relay"'), false);
+    assert.equal(hasRelayMarker(''), false);
+    assert.equal(hasRelayMarker(null), false);
+    assert.equal(hasRelayMarker([{ name: 'db' }, { name: 'pad-relay' }]), true);
+    assert.equal(hasRelayMarker([]), false);
   });
 
   test('pad info parsing keeps http(s) URLs only', () => {
@@ -234,11 +243,65 @@ describe('no relay: unavailable and silent', () => {
     assert.deepEqual(consoleCalls, []);
   });
 
-  test('a public static host is not even asked', async () => {
-    const t = setup({ location: { protocol: 'https:', host: 'someone.github.io', hostname: 'someone.github.io', port: '', search: '' } });
+  test('a page from a server without the relay makes no request at all', async () => {
+    for (const location of [LOC, { protocol: 'https:', host: 'someone.github.io', hostname: 'someone.github.io', port: '', search: '' }]) {
+      const t = setup({ location, performance: UNMARKED });
+      assert.equal(await t.pad.start(), false);
+      assert.equal(t.fetchCalls.length, 0, 'no /pad-info request that could 404 in the console');
+      assert.equal(t.pad.available, false);
+      assert.equal(t.pad.status, 'unavailable');
+      assert.deepEqual(t.log, []);
+    }
+    assert.deepEqual(consoleCalls, []);
+  });
+
+  test('without server timings it reads the marker off a HEAD of the page itself', async () => {
+    const noTimings = [{ getEntriesByType: () => [{}] }, { getEntriesByType: () => [] }, null];
+    for (const performance of noTimings) {
+      for (const marked of [true, false]) {
+        const t = setup({
+          performance,
+          location: { ...LOC, pathname: '/game/', search: '?mute=1' },
+          fetchImpl: async (url, opts) =>
+            opts?.method === 'HEAD'
+              ? { ok: true, status: 200, headers: new Headers(marked ? { 'Server-Timing': 'pad-relay' } : { Server: 'SimpleHTTP/0.6' }) }
+              : okJson(INFO),
+        });
+        assert.equal(await t.pad.start(), marked);
+        assert.equal(t.fetchCalls[0].opts.method, 'HEAD');
+        assert.deepEqual(t.fetchCalls.map((c) => c.url), marked ? ['/game/?mute=1', PAD_INFO_PATH] : ['/game/?mute=1']);
+      }
+    }
+    assert.deepEqual(consoleCalls, []);
+  });
+
+  test('a failing or silent HEAD counts as no relay', async () => {
+    const t = setup({
+      performance: null,
+      fetchImpl: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
     assert.equal(await t.pad.start(), false);
-    assert.equal(t.fetchCalls.length, 0);
-    assert.equal(t.pad.available, false);
+    assert.deepEqual(t.fetchCalls.map((c) => c.url), ['/']);
+    const u = setup({ performance: null, fetchImpl: () => new Promise(() => {}) });
+    const done = u.pad.start();
+    await Promise.resolve();
+    u.timers.advance(5000);
+    assert.equal(await done, false);
+    assert.equal(u.fetchCalls.length, 1);
+    assert.deepEqual(consoleCalls, []);
+  });
+
+  test('the dev server and ?pad=1 skip the marker check', async () => {
+    for (const opts of [{ dev: true }, { location: { ...LOC, search: '?pad=1' } }]) {
+      const t = setup({ ...opts, performance: UNMARKED });
+      assert.equal(await t.pad.start(), true);
+      assert.deepEqual(t.fetchCalls.map((c) => c.url), [PAD_INFO_PATH]);
+    }
+    const off = setup({ dev: true, location: { ...LOC, search: '?pad=0' } });
+    assert.equal(await off.pad.start(), false);
+    assert.equal(off.fetchCalls.length, 0);
   });
 
   test('start() probes once', async () => {

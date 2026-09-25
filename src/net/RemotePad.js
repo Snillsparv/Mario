@@ -10,11 +10,15 @@
 //   remotePad.connected         // a phone is in the room
 //   remotePad.dispose()
 //
-// start() GETs PAD_INFO_PATH with a short timeout. Any failure (static host: 404, an HTML
-// fallback page, no answer, bad JSON, no URLs) leaves `available` false and is silent: nothing is
-// logged. Pages that are obviously on a public static host (https, public host name, default
-// port) skip the probe altogether, so they do not even show a failed request (?pad=1 forces
-// the probe, ?pad=0 turns the phone controller off).
+// start() looks for the relay without a request that can fail, so a static host (which has no
+// relay) never shows a failed request in the console: the relay marks every response of the
+// server it runs in with a `Server-Timing: pad-relay` header (RELAY_MARKER), which the game
+// reads off this page's own navigation entry (or, where a browser keeps Server-Timing to secure
+// contexts, e.g. a LAN address over plain http, off a HEAD of this page, which the server just
+// served). Only a marked page (or the Vite dev server, which always runs the relay) then GETs
+// PAD_INFO_PATH, with a short timeout. Any failure (no answer, bad JSON, no URLs) leaves
+// `available` false and is silent: nothing is logged. ?pad=1 skips the marker check,
+// ?pad=0 turns the phone controller off.
 //
 // When available it creates a room code, opens a WebSocket to PAD_WS_PATH on the page's host,
 // joins as 'game' and reconnects with a growing, jittered delay whenever the socket drops (the
@@ -46,36 +50,31 @@ export const CLOSE_REPLACED = 4000; // tools/padRelay.js CLOSE_CODES.REPLACED
 const ROOM_KEY = 'castleGrounds.padRoom';
 const OPEN = 1; // WebSocket.OPEN
 
-// Host names that point into a local network (or this machine).
-export function isLocalHost(hostname = '') {
-  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
-  if (!h) return false;
-  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.home.arpa')) return true;
-  if (!h.includes('.') && !h.includes(':')) return true; // an intranet name ('mypc')
-  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])];
-    return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
-  }
-  return h === '::1' || /^f[cd][0-9a-f]{2}:/.test(h) || /^fe80:/.test(h);
-}
+// The Server-Timing metric the relay (tools/padRelay.js) puts on every response of its server.
+export const RELAY_MARKER = 'pad-relay';
 
-// Whether to look for the relay at all. `loc`: { protocol, hostname, port, search }.
-// The dev / preview server is plain http (or a LAN address / explicit port); a public https host
-// without a port is a static deployment, which has no relay.
-export function shouldProbe(loc) {
-  if (!loc) return false;
+// How to look for the relay from a page at `loc` ({ protocol, search }): 'off' (?pad=0, or a
+// page not served over http(s)), 'force' (?pad=1: ask PAD_INFO_PATH whatever the server is) or
+// 'marker' (ask only when the server marks its responses with RELAY_MARKER).
+export function probeMode(loc) {
+  if (!loc) return 'off';
   let flag = null;
   try {
     flag = new URLSearchParams(loc.search || '').get('pad');
   } catch {
     flag = null;
   }
-  if (flag === '0') return false;
-  if (flag !== null) return true;
-  if (loc.protocol === 'http:') return true;
-  if (loc.protocol !== 'https:') return false; // file:, extensions, ...
-  return !!loc.port || isLocalHost(loc.hostname);
+  if (flag === '0') return 'off';
+  if (flag !== null) return 'force';
+  return loc.protocol === 'http:' || loc.protocol === 'https:' ? 'marker' : 'off';
+}
+
+// Whether server timings carry RELAY_MARKER: a Server-Timing header value
+// ('pad-relay, db;dur=53') or a navigation entry's serverTiming list ([{ name }]).
+export function hasRelayMarker(timing) {
+  if (Array.isArray(timing)) return timing.some((m) => m?.name === RELAY_MARKER);
+  if (typeof timing !== 'string') return false;
+  return timing.split(',').some((metric) => metric.split(';')[0].trim() === RELAY_MARKER);
 }
 
 // The relay's socket URL on the server that served the page.
@@ -126,14 +125,18 @@ function browserStorage() {
 }
 
 export class RemotePad {
-  // Injectable for tests: fetch, createSocket(url), location, timers { setTimeout,
-  // clearTimeout }, rng(), storage (sessionStorage-like), infoTimeoutMs.
-  constructor({ input, events, fetch, createSocket, location, timers, rng, storage, infoTimeoutMs = INFO_TIMEOUT_MS } = {}) {
+  // Injectable for tests: fetch, createSocket(url), location, performance ({ getEntriesByType }),
+  // dev (served by the Vite dev server), timers { setTimeout, clearTimeout }, rng(), storage
+  // (sessionStorage-like), infoTimeoutMs.
+  constructor({ input, events, fetch, createSocket, location, performance, dev, timers, rng, storage, infoTimeoutMs = INFO_TIMEOUT_MS } = {}) {
     this.input = input;
     this.events = events;
     this.fetch = fetch ?? (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
     this.createSocket = createSocket ?? ((url) => new WebSocket(url));
     this.location = location ?? globalThis.location ?? null;
+    this.performance = performance === undefined ? (globalThis.performance ?? null) : performance;
+    // The dev server always runs the relay (vite.config.js); in Node import.meta.env is unset.
+    this.dev = dev ?? !!import.meta.env?.DEV;
     this.timers = timers ?? { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (id) => clearTimeout(id) };
     this.rng = rng ?? Math.random;
     this.storage = storage === undefined ? browserStorage() : storage;
@@ -206,8 +209,35 @@ export class RemotePad {
 
   async _probe() {
     const loc = this.location;
-    if (!this.fetch || !loc || !shouldProbe(loc)) return [];
+    const mode = probeMode(loc);
+    if (!this.fetch || mode === 'off') return [];
     this.status = 'probing';
+    if (mode === 'marker' && !this.dev && !(await this._relayMarked())) return [];
+    const info = await this._request(PAD_INFO_PATH, { cache: 'no-store', headers: { Accept: 'application/json' } }, (res) =>
+      res.ok ? res.json() : null, // an HTML fallback page throws in json()
+    );
+    return parsePadInfo(info);
+  }
+
+  // Whether the server that served this page carries the relay (RELAY_MARKER on its responses).
+  async _relayMarked() {
+    let nav = null;
+    try {
+      nav = this.performance?.getEntriesByType?.('navigation')?.[0] ?? null;
+    } catch {
+      nav = null;
+    }
+    if (nav && Array.isArray(nav.serverTiming)) return hasRelayMarker(nav.serverTiming);
+    // Server timings are not exposed here (some browsers keep them to secure contexts): read the
+    // header off this page itself, which cannot 404 (the server has just served it).
+    const loc = this.location;
+    const page = `${loc.pathname || '/'}${loc.search || ''}`;
+    const header = await this._request(page, { method: 'HEAD', cache: 'no-store' }, (res) => res.headers?.get?.('server-timing') ?? '');
+    return hasRelayMarker(header);
+  }
+
+  // fetch(url, opts) -> read(response), or null on any failure or after infoTimeoutMs (aborted).
+  async _request(url, opts, read) {
     const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     let timer = null;
     const timeout = new Promise((resolve) => {
@@ -222,16 +252,15 @@ export class RemotePad {
     });
     const request = (async () => {
       try {
-        const res = await this.fetch(PAD_INFO_PATH, { cache: 'no-store', signal: ctrl?.signal, headers: { Accept: 'application/json' } });
-        if (!res || !res.ok) return null;
-        return await res.json(); // an HTML fallback page throws here
+        const res = await this.fetch(url, { ...opts, signal: ctrl?.signal });
+        return res ? await read(res) : null;
       } catch {
         return null;
       }
     })();
-    const info = await Promise.race([request, timeout]);
+    const out = await Promise.race([request, timeout]);
     this.timers.clearTimeout(timer);
-    return parsePadInfo(info);
+    return out;
   }
 
   _loadRoom() {
