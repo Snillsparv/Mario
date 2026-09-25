@@ -19,6 +19,7 @@ export const KIND = Object.freeze({
   DROPLET: 9, // rain splash droplet
   BOLT: 10, // lightning segment core
   BOLT_GLOW: 11, // lightning segment halo
+  DUST: 12, // billowing grey-brown dust (a heavy landing; alpha blended)
 });
 
 export const MODE = Object.freeze({ BILLBOARD: 0, STREAK: 1, GROUND: 2 });
@@ -38,6 +39,7 @@ export const KIND_INFO = [
   { shape: SHAPE.GLOW, mode: MODE.STREAK, alpha: 0, fog: 1 }, // DROPLET
   { shape: SHAPE.LINE, mode: MODE.STREAK, alpha: 0, fog: 0 }, // BOLT
   { shape: SHAPE.LINE, mode: MODE.STREAK, alpha: 0, fog: 0 }, // BOLT_GLOW
+  { shape: SHAPE.SMOKE, mode: MODE.BILLBOARD, alpha: 1, fog: 1 }, // DUST
 ];
 
 // True for kinds drawn in the alpha-blended group (drawn before the additive ones).
@@ -94,6 +96,9 @@ const SPARK_RGB = bakeColors([0, 2.8, 2.3, 1.4, 0.5, 2.0, 0.9, 0.25, 1, 1.2, 0.3
 // Smoke: dark grey, lit orange from below by the fire while young.
 const SMOKE_RGB = bakeColors([0, 0.485, 0.205, 0.1, 0.25, 0.1125, 0.1025, 0.0975, 1, 0.19, 0.19, 0.2]);
 
+// Dust: dry grey-brown, lighter while it billows out, settling to a dull grey.
+const DUST_RGB = bakeColors([0, 0.4, 0.36, 0.31, 0.4, 0.3, 0.28, 0.25, 1, 0.22, 0.22, 0.22]);
+const DUST_ALPHA = bakeCurve((f) => smooth(f / 0.06) * (1 - f) ** 1.4 * 0.8);
 const FLAME_ALPHA = bakeCurve((f) => smooth(f / 0.1) * (1 - smooth((f - 0.55) / 0.45)));
 const FLAME_GROW = bakeCurve((f) => 0.75 + 0.25 * smooth(f / 0.2)); // quick swell, then thinner
 const SMOKE_ALPHA = bakeCurve((f) => smooth(f / 0.15) * (1 - f) ** 1.2 * 0.78);
@@ -210,6 +215,14 @@ export function particleStyle(pool, i, out) {
       out.g = 0.72;
       out.b = 0.85;
       a = (1 - f) * 0.8 * heat;
+      break;
+    }
+    case KIND.DUST: {
+      out.r = DUST_RGB[c];
+      out.g = DUST_RGB[c + 1];
+      out.b = DUST_RGB[c + 2];
+      a = DUST_ALPHA[k] * heat;
+      size = s0 + (s1 - s0) * EASE_OUT3[k];
       break;
     }
     case KIND.BOLT: {

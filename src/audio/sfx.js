@@ -913,6 +913,55 @@ export const SFX = {
     return 2.2;
   },
 
+  // ---- AI RACE mode's tech takeover (server halls dropping out of the sky, rising out of
+  // the ground)
+
+  // A unit about to drop (played at its landing spot as the red marker appears): three urgent
+  // two-tone beeps, closer together each time, over the whistle of something big falling out
+  // of the sky and a rush of air swelling toward the impact.
+  hall_warn(ctx, out, t, { p }) {
+    for (const [dt, f] of [[0, 1480], [0.3, 1480], [0.52, 1976], [0.68, 1976]]) {
+      tone(ctx, out, t + dt, { wave: 'square', freq: f * p, dur: 0.09, gain: 0.075, attack: 0.004, hold: 0.05 });
+      tone(ctx, out, t + dt, { wave: 'triangle', freq: f * 0.5 * p, dur: 0.09, gain: 0.07, attack: 0.004, hold: 0.05 });
+    }
+    const whistle = tone(ctx, out, t + 0.12, { freq: [[0, 2700 * p], [1.3, 480 * p]], dur: 1.35, gain: 0.1, attack: 0.35, hold: 0.6 });
+    lfo(ctx, whistle.detune, t + 0.12, 1.35, { rate: 9, depth: 18 });
+    noise(ctx, out, t + 0.2, { filter: 'lowpass', freq: [[0, 180], [1.2, 900]], dur: 1.3, gain: 0.2, attack: 1.0, kind: 'brown' });
+    noise(ctx, out, t + 0.5, { freq: [[0, 900], [1.0, 2600]], q: 0.9, dur: 1.0, gain: 0.06, attack: 0.8 });
+    return 1.55;
+  },
+
+  // A server hall slamming into the ground: a deep boom with a sub thump, a crash of low
+  // noise, two clanging steel partial sets (the frame ringing), a sharp crack, a short grind
+  // of metal settling and debris pattering down.
+  hall_impact(ctx, out, t, { p, dist = 0 }) {
+    const near = clamp(1 - (dist - 1500) / 9000, 0.3, 1);
+    tone(ctx, out, t, { freq: 78 * p, to: 28, glide: 0.6, dur: 1.25, gain: 0.34, attack: 0.003 });
+    tone(ctx, out, t, { freq: 46 * p, dur: 0.9, gain: 0.12, attack: 0.004 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 500 + 1500 * near], [1.3, 110]], dur: 1.4, gain: 0.32, attack: 0.003, kind: 'brown' });
+    bell(ctx, out, t + 0.012, { freq: 171 * p, dur: 1.3, gain: 0.075 * (0.6 + 0.4 * near), partials: METAL });
+    bell(ctx, out, t + 0.03, { freq: 263 * p, dur: 1.0, gain: 0.05 * (0.6 + 0.4 * near), partials: METAL });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2000, dur: 0.05, gain: 0.16 * near, attack: 0.001 });
+    grind(ctx, out, t + 0.14, { freq: [[0, 1100], [0.45, 600]], q: 3, dur: 0.5, gain: 0.07, rate: 38, attack: 0.02 });
+    crackles(ctx, out, t + 0.1, { count: 16, span: 1.3, gain: 0.08 * near, lo: 700, hi: 2800, front: 1.7 });
+    return 1.75;
+  },
+
+  // A unit grinding up out of the ground (and, pitched down, sinking back into it): a low
+  // hydraulic rumble, a ratcheting grind of steel on earth climbing in pitch, a hydraulic
+  // whine and hiss, and a heavy clunk as it locks in place.
+  hall_rise(ctx, out, t, { p }) {
+    noise(ctx, out, t, { filter: 'lowpass', freq: 230 * p, dur: 1.55, gain: 0.4, attack: 0.18, hold: 0.9, kind: 'brown' });
+    grind(ctx, out, t + 0.05, { freq: [[0, 360 * p], [1.35, 640 * p]], q: 2.2, dur: 1.4, gain: 0.15, rate: 23, attack: 0.15 });
+    const whine = tone(ctx, out, t + 0.1, { wave: 'triangle', freq: [[0, 72 * p], [1.3, 126 * p]], dur: 1.35, gain: 0.1, attack: 0.25, hold: 0.8 });
+    lfo(ctx, whine.detune, t + 0.1, 1.35, { rate: 6, depth: 25 });
+    noise(ctx, out, t + 0.2, { filter: 'highpass', freq: 3200, dur: 1.2, gain: 0.05, attack: 0.3, hold: 0.6 });
+    tone(ctx, out, t + 1.45, { freq: 125 * p, to: 48 * p, glide: 0.18, dur: 0.28, gain: 0.3, attack: 0.002 });
+    noise(ctx, out, t + 1.45, { filter: 'lowpass', freq: 900, dur: 0.12, gain: 0.2, attack: 0.002 });
+    bell(ctx, out, t + 1.46, { freq: 210 * p, dur: 0.45, gain: 0.05, partials: METAL });
+    return 1.8;
+  },
+
   // Trying the locked castle door: an original villain's laugh ('mwa-ha-ha-haaa', formant
   // synthesis: see laughVoice) booming out of a big stone hall with a slapback echo, over a
   // low rumble swelling up from the castle's depths.
@@ -963,4 +1012,7 @@ export const SFX_INFO = {
   minion_wreck: { gap: 0.05, max: 3 },
   minions_stinger: { gap: 4, duck: { music: 0.45, amb: 1, seconds: 1.8 } },
   evil_laugh: { range: 2, gap: 3, max: 1, hall: true, duck: { music: 0.4, amb: 0.45, seconds: 2.4 } },
+  hall_warn: { range: 2.5, gap: 0.3, max: 2 }, // heard across the grounds: a unit is coming down
+  hall_impact: { range: 2.5, gap: 0.1, max: 3 },
+  hall_rise: { range: 2, gap: 0.25, max: 2 },
 };

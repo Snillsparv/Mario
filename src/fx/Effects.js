@@ -8,6 +8,10 @@
 //   fx.clearFires()                            every fire, blast and splash gone at once (reset)
 //   fx.isBurning(id)                           still alight (not yet dying down)
 //   fx.explode(x, y, z, { radius = 250 })      one-shot fiery blast (~0.8 s)
+//   fx.dust(x, y, z, { hw, hd, yaw, radius, count, sparks, debris })
+//                                              a heavy landing: dust billowing out from a
+//                                              footprint (hw x hd turned by yaw, or a circle of
+//                                              `radius`), metal sparks, debris, a ground ring
 //   fx.strike(strength?)                       a lightning strike now (tests, scripted scenes)
 //   fx.update(dt, time, camera)                per render frame; dt = 0 freezes everything
 //   fx.lightningFlash                          current flash brightness 0..1 (decays)
@@ -309,6 +313,144 @@ export class Effects {
         P.life[i] = 0.45;
         P.rot[i] = rng() * TAU;
       }
+    }
+    this.dirty = true;
+  }
+
+  // A heavy landing at (x, y, z) (y = the ground): `count` dust puffs thrown out from the edge
+  // of a footprint (half sizes hw, hd turned by yaw; a circle of `radius` when they are 0),
+  // rolling out `radius` further and settling over ~2 s, `sparks` bright metal sparks and
+  // `debris` chunks from its edge, and a faint shockwave ring on the ground.
+  dust(x, y, z, { hw = 0, hd = 0, yaw = 0, radius = 250, count = 20, sparks = 0, debris = 0 } = {}) {
+    const P = this.pool;
+    const rng = this.rng;
+    const R = Math.max(40, radius);
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    const rect = hw > 0 && hd > 0;
+    const per = rect ? 4 * (hw + hd) : TAU;
+    // A point on the edge (and its outward direction) at fraction q of the way round.
+    const edge = (q, out) => {
+      let lx;
+      let lz;
+      let nx;
+      let nz;
+      if (!rect) {
+        const a = q * TAU;
+        nx = Math.cos(a);
+        nz = Math.sin(a);
+        out.x = x + nx * R * 0.3;
+        out.z = z + nz * R * 0.3;
+        out.y = nx;
+        out.w = nz;
+        return out;
+      }
+      let d = q * per;
+      if (d < 2 * hw) {
+        lx = -hw + d;
+        lz = hd;
+        nx = 0;
+        nz = 1;
+      } else if ((d -= 2 * hw) < 2 * hd) {
+        lx = hw;
+        lz = hd - d;
+        nx = 1;
+        nz = 0;
+      } else if ((d -= 2 * hd) < 2 * hw) {
+        lx = hw - d;
+        lz = -hd;
+        nx = 0;
+        nz = -1;
+      } else {
+        d -= 2 * hw;
+        lx = -hw;
+        lz = -hd + d;
+        nx = -1;
+        nz = 0;
+      }
+      out.x = x + lx * c + lz * s;
+      out.z = z - lx * s + lz * c;
+      out.y = nx * c + nz * s; // outward, world x
+      out.w = -nx * s + nz * c; // outward, world z
+      return out;
+    };
+    const e = { x: 0, y: 0, z: 0, w: 0 };
+    for (let k = 0; k < count; k++) {
+      const i = P.alloc();
+      if (i < 0) break;
+      edge((k + rng() * 0.8) / count, e);
+      const sp = R * (1.3 + rng() * 1.2);
+      const side = (rng() - 0.5) * 0.6;
+      P.kind[i] = KIND.DUST;
+      P.px[i] = e.x;
+      P.py[i] = y + 30 + rng() * 40;
+      P.pz[i] = e.z;
+      P.vx[i] = (e.y - e.w * side) * sp;
+      P.vz[i] = (e.w + e.y * side) * sp;
+      P.vy[i] = R * (0.25 + rng() * 0.5);
+      P.drag[i] = 2.4;
+      P.accel[i] = R * 0.08;
+      P.wind[i] = 0.35;
+      P.size0[i] = R * (0.22 + rng() * 0.1);
+      P.size1[i] = R * (0.6 + rng() * 0.35);
+      P.life[i] = 1.3 + rng() * 0.9;
+      P.age[i] = -rng() * 0.08;
+      P.rot[i] = rng() * TAU;
+      P.spin[i] = (rng() - 0.5) * 1.4;
+      P.heat[i] = 0.85 + rng() * 0.15;
+      P.seed[i] = rng();
+    }
+    for (let k = 0; k < sparks; k++) {
+      const i = P.alloc();
+      if (i < 0) break;
+      edge(rng(), e);
+      const sp = R * (2 + rng() * 3);
+      P.kind[i] = KIND.SPARK;
+      P.px[i] = e.x;
+      P.py[i] = y + 20 + rng() * 60;
+      P.pz[i] = e.z;
+      P.vx[i] = (e.y + (rng() - 0.5) * 0.8) * sp;
+      P.vz[i] = (e.w + (rng() - 0.5) * 0.8) * sp;
+      P.vy[i] = R * (1.5 + rng() * 3);
+      P.drag[i] = 1.2;
+      P.accel[i] = -2000;
+      P.size0[i] = 4 + rng() * 3;
+      P.size1[i] = P.size0[i] * 0.5;
+      P.stretch[i] = 0.035;
+      P.life[i] = 0.35 + rng() * 0.5;
+      P.seed[i] = rng();
+    }
+    for (let k = 0; k < debris; k++) {
+      const i = P.alloc();
+      if (i < 0) break;
+      edge(rng(), e);
+      const sp = R * (1 + rng() * 1.5);
+      P.kind[i] = KIND.DEBRIS;
+      P.px[i] = e.x;
+      P.py[i] = y + 20;
+      P.pz[i] = e.z;
+      P.vx[i] = e.y * sp;
+      P.vz[i] = e.w * sp;
+      P.vy[i] = R * (1.5 + rng() * 2);
+      P.drag[i] = 0.4;
+      P.accel[i] = -2400;
+      P.size0[i] = P.size1[i] = 7 + rng() * 9;
+      P.rot[i] = rng() * TAU;
+      P.spin[i] = (rng() - 0.5) * 18;
+      P.life[i] = 0.7 + rng() * 0.5;
+      P.seed[i] = rng();
+    }
+    const i = P.alloc();
+    if (i >= 0) {
+      P.kind[i] = KIND.SHOCKWAVE;
+      P.px[i] = x;
+      P.py[i] = y + 6;
+      P.pz[i] = z;
+      P.size0[i] = Math.max(hw, hd, R * 0.3);
+      P.size1[i] = Math.max(hw, hd) + R * 2;
+      P.life[i] = 0.5;
+      P.heat[i] = 0.35;
+      P.rot[i] = rng() * TAU;
     }
     this.dirty = true;
   }
