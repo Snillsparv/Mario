@@ -124,6 +124,13 @@ async function start() {
     state.dark = on;
     events.emit('darkMode', { on });
   });
+  // Rustmaw thrown off the roof and wrecked: the mode ends as if STOP was pressed (the storm
+  // clears over the usual fade, the button pops back up; objects put the reward star out).
+  events.on('bossDefeated', () => {
+    if (!state.dark) return;
+    state.dark = false;
+    events.emit('darkMode', { on: false });
+  });
   function applyDarkness(t) {
     level.setDarkness(t);
     view.setDarkness?.(t);

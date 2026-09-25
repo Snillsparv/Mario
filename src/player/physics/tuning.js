@@ -244,3 +244,65 @@ export const FLY_TILT_EASE = 0.15; // after a flight, a fall / bonk eases out of
 export const BOUNCE_VY = 50;
 export const BOUNCE_HELD_VY = 68;
 export const BOUNCE_FLY_PITCH = -0.4; // a stomp in flight noses the flight up at least this much
+
+// Rustmaw's tail (actions/tail.js, objects/RobotBeast.js). B grabs the coupling with Pip's feet
+// within TAIL_GRAB_REACH of the spot to hold it from (TAIL_GRAB_REACH_Y in height); he steps
+// there over TAIL_STEP_TICKS. Stick circles (pushed at least TAIL_STICK_MIN; steps over
+// TAIL_STICK_STEP_MAX radians in a tick ignored; the first TAIL_DIR_TURN picks the direction)
+// speed the spin up by TAIL_SPIN_GAIN per radian of stick turn (~0.05 a circle) up to
+// TAIL_SPIN_MAX rad/tick; it winds down by TAIL_SPIN_DECAY per tick while the stick does not
+// turn. TAIL_SPIN_START starts the haul (the beast is hauled up for TAIL_RAISE_TICKS); after it a
+// spin below TAIL_SPIN_OUT lets go. TAIL_HOLD_TICKS holding without spinning and the beast tears
+// loose. The throw's follow-through lasts TAIL_THROW_TICKS. (RobotBeast decides the throw: at
+// least its GRAB.THROW_MIN, else it twists free and knocks Pip back.)
+export const TAIL_GRAB_REACH = 190;
+export const TAIL_GRAB_REACH_Y = 90;
+export const TAIL_STEP_TICKS = 5;
+export const TAIL_STICK_MIN = 0.5;
+export const TAIL_STICK_STEP_MAX = 2.2;
+export const TAIL_DIR_TURN = 1.2;
+export const TAIL_SPIN_GAIN = 0.008;
+export const TAIL_SPIN_MAX = 0.3;
+export const TAIL_SPIN_DECAY = 0.0022;
+export const TAIL_SPIN_START = 0.02;
+export const TAIL_SPIN_OUT = 0.035;
+export const TAIL_RAISE_TICKS = 36;
+export const TAIL_HOLD_TICKS = 150;
+export const TAIL_THROW_TICKS = 22;
+
+// Cannon (actions/cannon.js, objects/Cannon.js). Stepping onto its loading pad, Pip hops into
+// the barrel (CANNON_HOP_TICKS), the barrel lowers from its rest pitch to CANNON_START_PITCH
+// (CANNON_SETTLE_TICKS, input waits), then the stick aims it: yaw all round, pitch within
+// CANNON_MIN_PITCH..CANNON_MAX_PITCH, at up to CANNON_YAW_RATE / CANNON_PITCH_RATE per tick at
+// full stick (the stick's square: small pushes aim finely), a ratchet click every
+// CANNON_CLICK_ANGLE of turning. A fires: Pip leaves the muzzle at CANNON_SPEED along the
+// barrel and flies a ballistic arc under CANNON_GRAVITY (a floaty lob, like the long jump's),
+// sub-stepped every CANNON_SUB_STEP units (at most CANNON_MAX_SUB_STEPS a tick) so nothing is
+// tunnelled through. B or Z instead swings the barrel back to rest (CANNON_UNLOAD_RATE) and he
+// climbs out over CANNON_OUT_TICKS. A landing from a shot never hurts and keeps at most
+// CANNON_LAND_MAX_SPEED (on a roof too steep to stand on, falls in the next CANNON_SLIDE_GRACE
+// ticks, sliding off it, never hurt either); from CANNON_CONTROL_TICKS into the shot Z
+// ground-pounds, B dives. With
+// the winged hat the shot takes off into flight at its peak, keeping up to CANNON_FLY_MAX_SPEED.
+// Shots are held CANNON_EDGE_MARGIN inside the level's perimeter (layout.PERIMETER), above the
+// cliffs too.
+export const CANNON_HOP_TICKS = 22;
+export const CANNON_HOP_RISE = 260; // the hop's arc rises this far over the higher end
+export const CANNON_SETTLE_TICKS = 14;
+export const CANNON_START_PITCH = 40 * DEG;
+export const CANNON_MIN_PITCH = 5 * DEG;
+export const CANNON_MAX_PITCH = 80 * DEG;
+export const CANNON_YAW_RATE = 1.6 * DEG;
+export const CANNON_PITCH_RATE = 1.1 * DEG;
+export const CANNON_CLICK_ANGLE = 3 * DEG;
+export const CANNON_UNLOAD_RATE = 4 * DEG;
+export const CANNON_OUT_TICKS = 20;
+export const CANNON_SPEED = 140;
+export const CANNON_GRAVITY = 2;
+export const CANNON_SUB_STEP = 10;
+export const CANNON_MAX_SUB_STEPS = 24;
+export const CANNON_LAND_MAX_SPEED = 8;
+export const CANNON_CONTROL_TICKS = 6;
+export const CANNON_FLY_MAX_SPEED = 100;
+export const CANNON_EDGE_MARGIN = 120;
+export const CANNON_SLIDE_GRACE = 150;

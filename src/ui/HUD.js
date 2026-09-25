@@ -1,6 +1,9 @@
 // N64-style HUD: lives (Pip's face × n) top-left, coins and stars top-right, the power
 // meter top-centre, a red-coin number pop-up and the pause screen. Everything is drawn into
 // one canvas at device resolution from a 320x240 logical grid.
+// While the cannon's aiming view is up ('cannonView' { on }, camera/cannon.js) a reticle marks
+// the middle of the picture (where the barrel points) with a hint line under it (fire / climb
+// out, in the bindings of the controls in use).
 //
 //   const hud = new HUD(uiRoot, { events });   // events optional (red-coin pop-ups)
 //   hud.update({ lives, coins, stars, health, showPower, breath, paused })   // 30 Hz
@@ -13,9 +16,9 @@
 // and the red-coin number age by frame time only while not paused, so they freeze with
 // the game instead of running out behind the pause screen.
 
-import { BIG_FONT } from './bitmapFont.js';
+import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { ICONS } from './icons.js';
-import { SpriteCache, drawText, drawIcon, textCanvas } from './raster.js';
+import { SpriteCache, drawText, drawIcon, textCanvas, textWidth } from './raster.js';
 import { PowerMeterLogic, drawPowerMeter, isLowHealth } from './powerMeter.js';
 import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME } from './hudLogic.js';
 import { drawPauseScreen, gamepadConnected } from './pauseScreen.js';
@@ -27,6 +30,14 @@ const MARGIN = 18; // logical px from the screen edge
 const TOP = 13; // logical y of the icon row
 const ICON = 14; // icon size without outline
 const METER_R = 27; // power meter radius (logical px)
+// The cannon's reticle (logical px): a ring, four ticks outside it, a dot in the middle.
+const RETICLE = { r: 12, tick: [16, 23], light: '#f4e7c6', accent: '#39d6c8', dark: 'rgba(12,16,22,0.9)' };
+// The hint under it, per controls legend kind: [key, action] pairs.
+const CANNON_HINTS = {
+  keys: [['Space / K', 'Fire'], ['J', 'Climb out']],
+  pad: [['A', 'Fire'], ['B', 'Climb out']],
+  touch: [['A', 'Fire'], ['B', 'Climb out']],
+};
 
 export class HUD {
   constructor(root, { events } = {}) {
@@ -46,6 +57,9 @@ export class HUD {
     this.unsub = events?.on('coin', (e) => {
       if (e?.red) this.showRedCoin(e.index);
     });
+    this.cannonView = false; // the cannon's aiming view is up: reticle and hint
+    this.cannonHints = 'keys';
+    this.unsubCannon = events?.on('cannonView', (e) => this.setCannonView(!!e?.on));
 
     if (typeof document === 'undefined') return; // logic-only use (node tests)
     this.el = document.createElement('div');
@@ -110,6 +124,13 @@ export class HUD {
     Object.assign(this.el.style, boxStyle(vp));
   }
 
+  // The cannon's aiming view went up / down (the reticle shows while it is up).
+  setCannonView(on) {
+    this.cannonView = !!on;
+    if (this.cannonView) this.cannonHints = touchUi.active ? 'touch' : gamepadConnected() ? 'pad' : 'keys';
+    this.dirty = true;
+  }
+
   // Big number near the screen centre when a red coin is collected (1..8).
   showRedCoin(index) {
     this.redCoins = Number.isFinite(index) ? index : this.redCoins + 1;
@@ -119,6 +140,7 @@ export class HUD {
 
   dispose() {
     this.unsub?.();
+    this.unsubCannon?.();
     if (!this.el) return;
     cancelAnimationFrame(this._raf);
     this._resizeObserver.disconnect();
@@ -176,6 +198,54 @@ export class HUD {
     this._drawCounters();
     if (!this.paused) this._drawMeter(now);
     if (this.redPopup && !this.paused) this._drawRedCoin();
+    if (this.cannonView && !this.paused) this._drawReticle();
+  }
+
+  // The cannon's reticle in the middle of the picture: a pixel ring with a dark outline, four
+  // teal ticks round it and a dot, and the fire / climb-out hint low on the screen.
+  _drawReticle() {
+    const { ctx, cache, s, W, H } = this;
+    const R = RETICLE;
+    const cx = Math.round(W / 2);
+    const cy = Math.round(H / 2);
+    const px = (x, y, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.round((cx + x) * s), Math.round((cy + y) * s), Math.ceil(s), Math.ceil(s));
+    };
+    // Rings: the outline (two px wide) under the light one.
+    const reach = R.r + 2;
+    for (const [band, color] of [[1.5, R.dark], [0.55, R.light]]) {
+      for (let y = -reach; y <= reach; y++) {
+        for (let x = -reach; x <= reach; x++) if (Math.abs(Math.hypot(x, y) - R.r) <= band) px(x, y, color);
+      }
+    }
+    // Ticks (outlined), the dot.
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (let k = R.tick[0] - 1; k <= R.tick[1] + 1; k++) {
+        for (let w = -1; w <= 1; w++) px(dx * k + dy * w, dy * k + dx * w, R.dark);
+      }
+      for (let k = R.tick[0]; k <= R.tick[1]; k++) px(dx * k, dy * k, R.accent);
+    }
+    for (let y = -2; y <= 1; y++) for (let x = -2; x <= 1; x++) px(x, y, R.dark);
+    for (let y = -1; y <= 0; y++) for (let x = -1; x <= 0; x++) px(x, y, R.light);
+    // Hint line near the bottom: key in gold, action in white, the pairs spaced apart.
+    const hints = CANNON_HINTS[this.cannonHints] ?? CANNON_HINTS.keys;
+    const gap = 4 * s;
+    const spacing = 14 * s;
+    const widths = hints.map(([k, a]) => textWidth(SMALL_FONT, k, s) + gap + textWidth(SMALL_FONT, a, s));
+    const total = widths.reduce((a, b) => a + b, 0) + spacing * (hints.length - 1);
+    let x = Math.round((W / 2) * s - total / 2);
+    const y = Math.round((H - 26) * s);
+    // On a dark translucent strip, readable over the barrel and the sky alike.
+    const padX = 6 * s;
+    const padY = 3 * s;
+    ctx.fillStyle = 'rgba(8,10,40,0.62)';
+    ctx.fillRect(x - padX, y - padY, total + 2 * padX, SMALL_FONT.height * s + 2 * padY);
+    hints.forEach(([key, action], i) => {
+      drawText(ctx, cache, SMALL_FONT, key, x, y, { px: s, style: 'key' });
+      drawText(ctx, cache, SMALL_FONT, action, x + textWidth(SMALL_FONT, key, s) + gap, y, { px: s, style: 'white' });
+      x += widths[i] + spacing;
+    });
   }
 
   // Icon × number, with an optional bump (hop + scale) on the number.

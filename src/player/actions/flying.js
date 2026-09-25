@@ -1,6 +1,8 @@
 // Winged-hat flight (action 'flying', anim 'fly'). While player.wingHat is on, a triple jump
-// (at its peak, airborne.js; arg.apex) or the flip jump off a tree top takes off into it
-// (automatic.js pole_top; arg.fromPole: the pole jumped off, not grabbed again). Tank controls
+// (at its peak, airborne.js; arg.apex), the flip jump off a tree top (automatic.js pole_top;
+// arg.fromPole: the pole jumped off, not grabbed again) or a cannon shot (at its peak,
+// cannon.js; arg.cannon: its speed kept up to CANNON_FLY_MAX_SPEED) takes off into it. Tank
+// controls
 // with the raw stick, like swimming: stick up = nose down (dive, gains speed), stick down = nose up
 // (climb, drains speed; the wings flap; a stick still pushed up from the run-up is read as
 // neutral until it is let go, FLY_LATCH_STICK), stick left / right banks and the heading turns in
@@ -19,10 +21,11 @@ import { landFromAir } from './common.js';
 import { enterWater } from './submerged.js';
 
 // Sub-steps per tick at air speed s: each moves at most ~10 units (the classic quarter steps
-// move up to ~19 at the fastest fall), so walls, floors and ceilings can't be skipped at 70.
+// move up to ~19 at the fastest fall), so walls, floors and ceilings can't be skipped at 70
+// (nor at the up to CANNON_FLY_MAX_SPEED a flight from a cannon shot starts with).
 const MAX_SUB_STEP = 10;
 function subSteps(s) {
-  return clamp(Math.ceil(s / MAX_SUB_STEP), 4, 8);
+  return clamp(Math.ceil(s / MAX_SUB_STEP), 4, 12);
 }
 
 // The rim of the level: the XZ extent of its floors (a rectangle; holes and ragged bits of
@@ -157,7 +160,10 @@ const flying = {
       p.grabCooldownUntil = p.tick + T.GRAB_COOLDOWN;
       p.letGoPole = pole;
     }
-    p.flySpeed = clamp(Math.max(T.FLY_LAUNCH_SPEED, p.forwardVel), T.FLY_MIN_SPEED, T.FLY_MAX_SPEED);
+    // (arg.cannon: from a cannon shot's peak, which keeps up to CANNON_FLY_MAX_SPEED of its speed;
+    // the overspeed only bleeds off, see update.)
+    const top = arg?.cannon ? T.CANNON_FLY_MAX_SPEED : T.FLY_MAX_SPEED;
+    p.flySpeed = clamp(Math.max(T.FLY_LAUNCH_SPEED, p.forwardVel), T.FLY_MIN_SPEED, top);
     p.flyPitch = T.FLY_LAUNCH_PITCH;
     p.flyBank = 0;
     p.flapTimer = 0;
@@ -189,7 +195,7 @@ const flying = {
     if (sinP >= 0) s += T.FLY_DIVE_ACCEL * sinP;
     else if (!launching) s += T.FLY_CLIMB_DRAIN * sinP;
     s -= s * T.FLY_DRAG;
-    p.flySpeed = Math.min(s, T.FLY_MAX_SPEED);
+    p.flySpeed = Math.min(s, Math.max(T.FLY_MAX_SPEED, p.flySpeed)); // (a cannon's overspeed: no gain)
     if (p.flySpeed < T.FLY_STALL_SPEED) return endFlight(p);
 
     // Wing flaps while climbing (not while gliding or diving).

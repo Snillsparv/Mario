@@ -20,12 +20,12 @@
 // spawn, the way the player looks), accepted greedily per unit type (halls first: they need
 // the most room; then rows; towers fill up to SLOT_RULES.MAX) when the footprint keeps clear of
 // everything that matters (SLOT_RULES: the spawn, the castle door and courtyard, the AI RACE
-// button, the mystery box, signs, trees and their canopies, the star, coins and red coins, the
-// 1-up gem, both paths, the fences, water, the island's edges and the castle, the perimeter
-// cliffs, steep ground) and a wide corridor from every other unit. The collision world confirms
-// each footprint (and a margin round it): bare ground, no walls, no object floors (rocks,
-// bushes, trunks, signs, the button, the box). Arrival order: outward from the moat's front, so
-// the takeover spreads from the castle toward the spawn and the corners.
+// button, the mystery box, the cannon, signs, trees and their canopies, the star, coins and
+// red coins, the 1-up gem, both paths, the fences, water, the island's edges and the castle,
+// the perimeter cliffs, steep ground) and a wide corridor from every other unit. The collision
+// world confirms each footprint (and a margin round it): bare ground, no walls, no object
+// floors (rocks, bushes, trunks, signs, the button, the box). Arrival order: outward from the
+// moat's front, so the takeover spreads from the castle toward the spawn and the corners.
 //
 // Schedule (HALL): FIRST_DELAY ticks after the mode turns on, then a new unit every EVERY
 // ticks, each gap SPEEDUP shorter down to EVERY_MIN, at the first free slot (in planned order)
@@ -80,6 +80,7 @@ export const SLOT_RULES = {
   STAR: 900,
   BUTTON: 800,
   BOX: 850,
+  CANNON: 1100, // the cannon's centre (its drum, loading pad and exit spot reach ~800 out)
   SIGN: 550,
   TREE: 160, // beyond the canopy radius
   TREE_CANOPY: 360, // canopy radius when the level's trees are not known
@@ -214,6 +215,7 @@ function protectedSpots(layout, trees, rules, extra) {
   add(layout.STAR, R.STAR);
   add(layout.AI_BUTTON, R.BUTTON);
   add(layout.MYSTERY_BOX, R.BOX);
+  add(layout.CANNON, R.CANNON);
   for (const s of layout.SIGNS ?? []) add(s, R.SIGN);
   if (trees?.length) for (const t of trees) add(t, (t.canopy?.radius ?? R.TREE_CANOPY) + R.TREE);
   else for (const t of layout.TREES ?? []) add(t, R.TREE_CANOPY + R.TREE);

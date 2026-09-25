@@ -199,6 +199,11 @@ but below the castle walls; was 2600). Further exports used by the terrain and o
 `regionHeight(region, x, z)`, and the terrain facet grid `FACET` (500) / `facetFlip(i, j)`.
 An optional `ONE_UP = { x, z }` places the hidden 1-up gem (ObjectManager reads it; the
 default spot is 800 behind the castle's back wall).
+`CANNON = { x, z, yaw, pad }` places the cannon (see "Cannon"; `yaw`: its barrel's rest
+direction, toward the keep; `pad`: its loading pad's direction off `yaw`), and `KEEP_TOP =
+{ x, z, y, halfX, halfZ, towerR, eaveR }` describes the top of the castle, the keep's flat
+roof walkway round the base of the round upper tower (castle/building.js), where a ring of
+coins (`COINS` entries with `y`) and the `'keep_top'` sign wait.
 
 ### Look guidelines (all world parts)
 
@@ -229,6 +234,8 @@ player.floor ({ y, surface }), player.beginIntro()  // optional spawn drop-in
 player.collectCoin(value)      // +coins, heals 1 wedge per coin value
 player.collectStar()           // stars++, triggers the celebration action
 player.takeDamage(wedges, fromPos, { fire }?)  // fire: true -> the 'burn' hot-foot hop
+player.enterCannon(cannon)     // climb into a cannon (objects call it: see "Cannon")
+player.cannon                  // { desc, phase, yaw, pitch, inside, ... } once in a cannon
 ```
 
 Cross-module writes: `objects.reset()` takes the star it awarded back off `player.stars`
@@ -262,7 +269,8 @@ jump, fall, land, double_jump, triple_jump, backflip, sideflip, long_jump, dive,
 belly_slide, butt_slide, ground_pound_spin, ground_pound_fall, ground_pound_land,
 wallkick, bonk, hurt, fall_damage, ledge_hang, ledge_climb, pole_hold, pole_climb,
 pole_jump, punch1, punch2, kick, jump_kick, swim_idle, swim_stroke, swim_flutter,
-water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn, fly`.
+water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn, fly,
+cannon_shot`.
 
 Tree tops: climbing past the top of a tree's pole enters action `pole_top` (anim
 `pole_handstand`, a handstand on the crown). During it `RenderState.pos` is the pole tip
@@ -302,6 +310,7 @@ cam.playerInput(c)  // controller for player.update (stick and A/B/Z withheld in
 cam.hideHero        // don't draw the hero (first person, or no room behind him)
 cam.underwater      // the rendered camera position is below the water surface
 cam.celebration     // the star-celebration swing state ({ ..., returning }) or null
+cam.cannonView      // the cannon's aiming view is up (mode 'cannon', see "Cannon")
 ```
 
 Swimmer under a low cover (`src/camera/cover.js`, `COVER_*` in `cameraConfig.js`): when a
@@ -395,6 +404,7 @@ activation) and `pause` / `unpause` (duck + sfx).
 
 ```js
 const hud = new HUD(uiRootElement, { events })  // subscribes to 'coin' (red-coin numbers use coin.index)
+                                                //   and 'cannonView' (the cannon's reticle)
 hud.update({ lives, coins, stars, health, showPower, breath, paused }); hud.setPaused(bool)
 hud.setVisible(bool)          // hidden behind the title (hud.visible; hidden HUDs skip repaints)
 hud.setViewport(rect | null)
@@ -424,8 +434,9 @@ start key/button is released as well.
 
 ## Signs and dialog (`layout.SIGNS`, Player, `src/ui/DialogBox.js`)
 
-`layout.SIGNS`: `[{ id, x, z, yaw, pages: [string] }]`, wooden signposts built by props (the
-readable board faces `yaw`), with original text. Reading works like the classic games:
+`layout.SIGNS`: `[{ id, x, z, yaw, y?, pages: [string] }]`, wooden signposts built by props (the
+readable board faces `yaw`; a sign with `y` stands on that floor instead of the lawn: the one on
+top of the keep), with original text. Reading works like the classic games:
 
 * Player: B pressed while grounded and not attacking, with a sign within reach in front of Pip
   (Pip in front of the sign's face and facing it) -> action `'reading'` (anim `idle`, no
@@ -495,7 +506,8 @@ original designs). Objects own it (built when `layout.KAIJU` exists, like the be
   the lights partly shine through the storm fog.
 * **Slots** (`planSlots(layout, { collision, trees })`, deterministic, `SLOT_RULES`): ~30
   footprints over the lawn, planned at construction (~30 ms). Each keeps clear of the spawn
-  (1200), the castle door (1800), the star, the AI RACE button, the mystery box, signs, trees
+  (1200), the castle door (1800), the star, the AI RACE button, the mystery box, the cannon
+  (1100 from its centre: its drum, loading pad and exit spot), signs, trees
   and their canopies, coins and red coins, the 1-up gem, both paths (their half width + 220),
   the bridge, the fences, water (350), the island, the perimeter cliffs (700) and steep ground
   (≤ 150 height difference under a footprint), with a 650 corridor to every other unit; the
@@ -602,6 +614,83 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   A, B, Z, R, START, CU, CD, CL, CR })` (merged like a gamepad in `poll()`/`sample()`); a tap
   also unlocks audio on the title.
 
+## Cannon (the east lawn, up to the top of the castle)
+
+An original cannon on the east lawn (`layout.CANNON`) shoots Pip up onto the castle's roofs and
+the very top of the keep (`layout.KEEP_TOP`). All original designs.
+
+* **Object** (`src/objects/Cannon.js`, look in `cannonModel.js`; the ObjectManager builds it
+  from `layout.CANNON`, before the server halls): a round drum of weathered stone blocks sunk
+  in the lawn with a brass swivel ring on top; a squat teal-painted iron turret with a cream
+  stripe and brass rivets that turns on it (yaw), iron cheeks with brass trunnion caps and a
+  well for the breech; a thick dark-iron barrel (pitch) with a knob behind the breech, teal and
+  cream painted bands between brass hoops, a brass lip and a dark bore. Beside it the loading
+  pad: a stone slab with a brass rim, a pulsing teal ring and a compass rose, and a teal and
+  cream pennant fluttering on a pole. Flat-shaded, baked vertex colours (the turning parts bake
+  a fixed top light in their own frames); one material for three draw calls (base with pad and
+  pennant, turret, barrel; ~2.2k triangles): the ring's glow and the pennant's flutter are
+  shader uniforms. `setDarkness(t)` dims the stone and iron with the storm; the ring keeps
+  glowing. Idle, the barrel rests pointing up toward the keep (`restYaw`, 70°); while Pip is
+  in it follows his aim; after a shot it holds a moment, then swings back. Static colliders:
+  the drum (flat top 60 up, hop onto it), a column round the turret and breech (flat top at
+  the barrel's top) and the pad's top (a 14-unit lip, stepped onto).
+* **In and out**: standing on the pad's top while it is armed calls
+  `player.enterCannon(cannon.desc)` (`desc = { x, y, z` (the barrel's pivot), `muzzle, restYaw,
+  restPitch, exit }`); the pad disarms while he is in and re-arms once he has stood off it.
+  Action `'cannon'` (group automatic, `actions/cannon.js`; `player.cannon.phase`): `hop` (a
+  scripted leap over the breech, head first into the muzzle; sfx `cannon_enter`), `settle` (the
+  barrel lowers to `CANNON_START_PITCH`), `aim`, `unload` (B or Z: the barrel swings back to
+  rest) and `out` (a hop down to `desc.exit`, beside the pad, landing normally). Inside
+  (`player.cannon.inside`) he is parked in the turret and immune to damage.
+* **Aim**: the stick turns the barrel (yaw all round, pitch 5°..80°, `CANNON_YAW_RATE` /
+  `CANNON_PITCH_RATE` at full push, the stick's square so small pushes aim finely; stick up
+  raises it), sfx `cannon_turn` (a ratchet click) every `CANNON_CLICK_ANGLE` of turning.
+* **Fire** (A): action `'cannon_shot'` (group airborne, anim `'cannon_shot'`: laid out flat
+  like a dart, mittens thrust ahead, a slow corkscrew roll; RenderState pitch follows the arc).
+  He leaves the muzzle at `CANNON_SPEED` along the barrel (`'cannonFire' { pos, yaw, pitch,
+  dir }`, sfx `cannon_fire`, and `cannon_whoosh` not positional) and flies a ballistic arc
+  under `CANNON_GRAVITY` (a floaty lob), sub-stepped every `CANNON_SUB_STEP` units, so no wall,
+  floor, ceiling or trunk is tunnelled through. Falling past a ledge grabs it, a trunk in reach
+  is hugged, a grazing wall is slid along, a wall met head-on (or a spot without room) bonks
+  him softly off (`soft_bonk`), and the level's perimeter holds him `CANNON_EDGE_MARGIN`
+  inside it, above the cliffs too. He lands on his feet (a hard landing's squat, at most
+  `CANNON_LAND_MAX_SPEED`), never hurt: `player.flightFall` covers the shot and every fall
+  after it until he lands, and a shot that lands on a roof too steep to stand on (a tower's
+  cone) makes falls in the next `CANNON_SLIDE_GRACE` ticks safe too (`player.cannonSafeUntil`,
+  read by `landFromAir`). From `CANNON_CONTROL_TICKS` in, Z ground-pounds and B dives. The
+  flying body is an attack (`getAttack().kind === 'cannon_shot'`: minions, the mystery box).
+* **Winged hat**: with the hat on, the shot takes off into flight (`'flying'`, `{ apex, cannon
+  }`) at its peak (once it rises slower than `FLY_APEX_VY`), keeping its speed up to
+  `CANNON_FLY_MAX_SPEED` (such an overspeed only bleeds off by drag; flying.js sub-steps up to
+  12 a tick): a steep shot soars over the keep's banner.
+* **Camera** (`src/camera/cannon.js`, `CANNON_CAM_*` in `cameraConfig.js`): mode `'cannon'`
+  while he is in the barrel (settle, aim): the camera rides with the barrel, `CANNON_CAM_BACK`
+  behind its pivot along the bore and `CANNON_CAM_UP` over it (square to it), kept
+  `CANNON_CAM_CLEAR` over the floor, looking exactly along the barrel, so the middle of the
+  picture is where it points and the barrel shows below, turning and tilting with the aim.
+  `cam.hideHero` while he is inside; C buttons and R buzz; `getYaw()` is the aim's yaw. It
+  glides in (`BLEND_TICKS`) once he has dropped in and back out to the orbit behind the barrel
+  when he climbs out, or straight into the flight camera for a shot (`FLY_ACTION` includes
+  `'cannon_shot'`). Emits `'cannonView' { on }`. The shake (`src/camera/shake.js`) jolts the
+  view on `'cannonFire'` (`SHAKE.CANNON`).
+* **HUD** (`'cannonView'`): a pixel reticle in the middle of the picture (a ring, four teal
+  ticks, a dot) and a hint strip near the bottom ("Space / K Fire, J Climb out"; "A Fire,
+  B Climb out" with a pad or the touch controller).
+* **Effects**: `fx.muzzle(x, y, z, dx, dy, dz, { radius })` (a flash, a tongue of fire and
+  sparks along the bore, a ring of smoke rolling out) when it fires; the barrel recoils and
+  springs back.
+* **The top of the castle** (`KEEP_TOP`, castle/building.js's keep): its flat roof walkway at
+  3260, round the round upper tower (the tower's roof eave overhangs to 529 of the 600/650 half
+  sizes; its steep cone funnels a shot down onto the walkway), with a ring of 8 yellow coins
+  (560 from the tower's axis) and the `'keep_top'` sign in front of the tower. From the start
+  aim (straight at the keep, 40°) raising the barrel to 48°..68° lands him up there (e.g. 12
+  ticks at full push: 53°); other aims reach the wings' and the rear block's roofs.
+* **AI RACE mode**: the cannon works the same; server halls keep 1100 clear of it
+  (`SLOT_RULES.CANNON`), minions never burst out within `MINION.CANNON_CLEAR` (950) of it.
+* **Touch and phone controllers** send the same stick and A / B / Z: nothing extra.
+* **Cost**: three draw calls and ~2.2k triangles where it is in view (+3 calls next to it, +2
+  from the spawn); a shot's sub-steps cost ~15 air steps a tick.
+
 ## Phone as a controller over the local network
 
 A phone on the same Wi-Fi can steer Pip in the game running on the computer. It needs the
@@ -699,6 +788,8 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
 | `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title starts on START/A) |
 | `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
+| `cannonFire` | `{ pos, yaw, pitch, dir }` (`pos`: the muzzle's mouth, `dir`: along the barrel) | player (fired out of the cannon); the cannon recoils and puts the muzzle blast (fx), main's camera shake jolts the view |
+| `cannonView` | `{ on }` | camera (the cannon's aiming view went up / down); the HUD shows its reticle |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,
 wallkick, dive, ground_pound, ground_pound_land, punch1, punch2, kick, jump_kick, land,
@@ -707,7 +798,8 @@ bonk, hurt, ledge_grab, climb, swim, splash, water_exit, coin, red_coin, star_ap
 star_get, one_up, pause, menu_select`, plus `footstep, life_lost, unpause, camera_move,
 camera_buzz`, and the dialog box's `dialog_open, text_blip, dialog_next, dialog_close`, and
 AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
-fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`.
+fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
+cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`.
 Unknown names must be ignored silently.
 
 ## Tooling

@@ -323,10 +323,11 @@ test('a signpost at every layout.SIGNS entry: a solid box you can stand on', () 
   for (const sign of L.SIGNS) {
     const face = sign.yaw;
     const c = { x: sign.x + Math.sin(face) * SIGN_BOX.centreZ, z: sign.z + Math.cos(face) * SIGN_BOX.centreZ };
-    const ground = L.groundHeight(sign.x, sign.z);
+    const ground = sign.y ?? L.groundHeight(sign.x, sign.z);
     assert.ok(Math.abs(landingHeight(c.x, c.z) - (ground + SIGN_BOX.top)) < 1, `${sign.id}: sign top`);
     assert.equal(world.findFloor(c.x, ground + 1000, c.z).surface?.terrain, 'wood', `${sign.id}: wooden top`);
-    for (let k = 0; k < 8; k++) {
+    // (A raised sign, on the keep's roof, is walked up to in tests/cannon.test.js.)
+    for (let k = 0; k < (sign.y === undefined ? 8 : 0); k++) {
       const a = (k / 8) * Math.PI * 2;
       const end = walk({ x: c.x + Math.cos(a) * 400, z: c.z + Math.sin(a) * 400 }, c, 8);
       // Distance outside the box, in the sign's frame (soft corners allowed for).
@@ -347,7 +348,7 @@ test('every sign board faces its yaw and carries dark writing strokes on its fro
   for (const sign of L.SIGNS) {
     const fx = Math.sin(sign.yaw);
     const fz = Math.cos(sign.yaw);
-    const y = L.groundHeight(sign.x, sign.z) + 125; // between the writing lines
+    const y = (sign.y ?? L.groundHeight(sign.x, sign.z)) + 125; // between the writing lines
     const hit = firstHit([sign.x + fx * 300, y, sign.z + fz * 300], [sign.x, y, sign.z], wood);
     assert.ok(hit, `${sign.id}: board seen from the front`);
     const n = hit.face.normal;

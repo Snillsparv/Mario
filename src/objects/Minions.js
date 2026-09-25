@@ -59,6 +59,7 @@ export const MINION = {
   SPAWN_MAX: 1600,
   SPAWN_TRIES: 10,
   DOOR_CLEAR: 800, // no spawns this close to the castle door (the porch and courtyard)
+  CANNON_CLEAR: 950, // ...nor this close to the cannon (layout.CANNON: its drum, pad and exit spot)
   GROUND_TOLERANCE: 60, // spawn floor within this of the analytic ground
   CLEARANCE: 90, // no wall this close to a spawn spot
   SPEED: [12, 16],
@@ -197,6 +198,9 @@ export class Minions {
     const c = layout.CASTLE;
     this.door = Number.isFinite(c?.frontZ) ? { x: c.x ?? 0, z: c.frontZ } : null;
     this.keepOut = layout.AI_BUTTON ? [{ x: layout.AI_BUTTON.x, z: layout.AI_BUTTON.z, r: (layout.AI_BUTTON.radius ?? 140) + 120 }] : [];
+    // The cannon (Cannon.js): nothing bursts out of its emplacement, its loading pad or the spot
+    // Pip climbs out onto.
+    if (layout.CANNON) this.keepOut.push({ x: layout.CANNON.x, z: layout.CANNON.z, r: MINION.CANNON_CLEAR });
     this.list = Array.from({ length: MINION.POOL }, (_, i) => record(i));
     this._crushFrom = { pos: { x: 0, y: 0, z: 0 } }; // crush(): the knock-away centre
     this.tick = 0;

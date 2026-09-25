@@ -202,8 +202,9 @@ export const CELEBRATE_RETURN_TICKS = 24; // ...and back
 // (no jump band). The flight camera blends in over FLY_IN_TICKS as he takes off and back out to the
 // follow camera over FLY_OUT_TICKS once the flight ends (every setting eases, no pop). The collider
 // is tolerant meanwhile (CameraCollider.tolerant): it lifts over a blocker rather than dollying in,
-// and dollies gently when it must.
-export const FLY_ACTION = /^flying$/;
+// and dollies gently when it must. A cannon shot ('cannon_shot', Pip flying head first along his
+// arc) gets the same camera behind his heading.
+export const FLY_ACTION = /^(flying|cannon_shot)$/;
 export const FLY_IN_TICKS = 12;
 export const FLY_OUT_TICKS = 30;
 export const FLY_DIST = [1150, 1700]; // per zoom step (at speed the orbit centre's lag adds ~150)
@@ -288,3 +289,13 @@ export const LOOKUP_IN_RATE = 0.04; // easing per tick in (~2 s)...
 export const LOOKUP_OUT_RATE = 0.05; // ...and out...
 export const LOOKUP_MIN_STEP = 0.002; // ...by at least this much of the weight per tick (it arrives)...
 export const LOOKUP_ACCEL = 0.004; // ...its speed changing by at most this per tick (it sets off gently)
+
+// Cannon view (cannon.js, CameraController mode 'cannon'): while Pip sits in the cannon the
+// camera rides with the barrel, CANNON_CAM_BACK behind its pivot along the bore and
+// CANNON_CAM_UP over it (square to the bore), looking along the barrel (at a point
+// CANNON_LOOK_DIST out), kept CANNON_CAM_CLEAR over the floor; the HUD's reticle marks the
+// middle of the picture. Blends in and out over BLEND_TICKS (the first-person glide's).
+export const CANNON_CAM_BACK = 430;
+export const CANNON_CAM_UP = 215;
+export const CANNON_CAM_CLEAR = 90;
+export const CANNON_LOOK_DIST = 4000;

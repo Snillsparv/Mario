@@ -61,7 +61,9 @@ export function fallOff(p) {
 // landing action. opts: { next = 'land', chain, ticks, safe (no fall damage), pound }.
 // Fast landings from beyond HARD_FALL_HEIGHT hurt (more beyond BIG_FALL_HEIGHT) unless the
 // landing is safe, a ground pound or the end of a fall that started in a flight
-// (p.flightFall); a slippery floor turns the smaller of those falls into
+// (p.flightFall), or comes within CANNON_SLIDE_GRACE of a cannon shot landing on a roof too
+// steep to stand on (p.cannonSafeUntil: sliding off it is part of that landing, cannon.js);
+// a slippery floor turns the smaller of those falls into
 // a harmless hard landing. Returns true (run the landing action now) when a button was
 // pressed on the touchdown tick, so that press still counts (jump chains, punches, slides).
 export function landFromAir(p, opts = {}) {
@@ -69,7 +71,7 @@ export function landFromAir(p, opts = {}) {
   const fast = p.vel.y < -T.FALL_DAMAGE_MIN_VY;
   p.vel.y = 0;
   const surface = p.floor.surface;
-  const safe = opts.safe || opts.pound || p.flightFall;
+  const safe = opts.safe || opts.pound || p.flightFall || p.cannonSafeUntil > p.tick;
   const hardFall = !safe && fast && fall > T.HARD_FALL_HEIGHT;
   const bigFall = fall > T.BIG_FALL_HEIGHT;
   const damage = !hardFall ? 0 : bigFall ? T.BIG_FALL_DAMAGE : isSlippery(p.floor) ? 0 : T.HARD_FALL_DAMAGE;

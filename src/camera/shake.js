@@ -1,7 +1,8 @@
 // A small camera shake for heavy impacts (AI RACE mode's server halls slamming down: the
-// 'hallImpact' { pos, strength } event). Rotation only, applied after the camera controller
-// has placed the camera for the frame: the position (and so the collider's clearance, the
-// water test and the listener) is untouched, the view just jolts for a moment.
+// 'hallImpact' { pos, strength } event; the cannon firing: 'cannonFire' { pos }, at strength
+// SHAKE.CANNON). Rotation only, applied after the camera controller has placed the camera for
+// the frame: the position (and so the collider's clearance, the water test and the listener)
+// is untouched, the view just jolts for a moment.
 //
 //   const shake = new CameraShake(events)
 //   shake.kick(strength, pos?)     strength 0..1; fainter the farther pos is from the camera
@@ -12,6 +13,7 @@ export const SHAKE = {
   DECAY: 5.5, // per second
   NEAR: 1500, // full strength within this distance of the camera ...
   FAR: 9000, // ... fading out to nothing here
+  CANNON: 0.8, // the cannon's boom (strength, at its mouth)
 };
 
 export class CameraShake {
@@ -24,6 +26,10 @@ export class CameraShake {
     this.pz = 0;
     this.hasPos = false;
     events?.on?.('hallImpact', (e) => this.kick(e?.strength ?? 1, e?.pos ?? null));
+    events?.on?.('cannonFire', (e) => this.kick(SHAKE.CANNON, e?.pos ?? null));
+    // Rustmaw slamming down on its perch or crashing to the ground after a throw (strength up
+    // to 3: a big jolt; objects/RobotBeast.js).
+    events?.on?.('bossImpact', (e) => this.kick(e?.strength ?? 1, e?.pos ?? null));
   }
 
   kick(strength = 1, pos = null) {

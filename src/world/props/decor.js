@@ -253,10 +253,12 @@ function addBush(kit, layout, { x, z, r, h }, i, rng) {
 
 // Square post with a plank board whose front faces sign.yaw, painted with a few lines of
 // dark "writing" squiggles (shaped like the words of its text, but no real letters), into
-// the wood builder, and its SIGN_BOX collider.
+// the wood builder, and its SIGN_BOX collider. A sign with a `y` stands on that floor instead of
+// the lawn (the one on the castle keep's roof, layout.SIGNS 'keep_top'): no ground shadow then.
 function addSignpost(kit, layout, sign) {
   const { x, z, yaw } = sign;
-  const ground = layout.groundHeight(x, z);
+  const raised = Number.isFinite(sign.y);
+  const ground = raised ? sign.y : layout.groundHeight(x, z);
   const frame = placement(x, ground, z, yaw, 1, 1, 1);
   // Box centred at local (cx, cy, cz); uv = face uv * scale, optionally swapped so the grain
   // (texture v) runs along the box's width.
@@ -279,7 +281,7 @@ function addSignpost(kit, layout, sign) {
   const cx = x + Math.sin(yaw) * centreZ;
   const cz = z + Math.cos(yaw) * centreZ;
   solidBox(kit.colliders.wood, cx, cz, yaw, halfWidth, halfDepth, ground - 80, ground + top);
-  kit.shadow(x, z, 110, 0.6);
+  if (!raised) kit.shadow(x, z, 110, 0.6);
 }
 
 // Writing on a sign's board (local frame: front at z = 20, x -85..85, y 99..191): a centred

@@ -8,8 +8,11 @@ import { AIR_ANIMS } from './anims/air.js';
 import { ACTION_ANIMS } from './anims/actions.js';
 import { CLIMB_ANIMS } from './anims/climb.js';
 import { WATER_ANIMS } from './anims/water.js';
+import { CANNON_ANIMS } from './anims/cannon.js';
+import { TAIL_ANIMS } from './anims/tail.js';
 
-export const ANIMS = { ...GROUND_ANIMS, ...AIR_ANIMS, ...ACTION_ANIMS, ...CLIMB_ANIMS, ...WATER_ANIMS };
+export const ANIMS = { ...GROUND_ANIMS, ...AIR_ANIMS, ...ACTION_ANIMS, ...CLIMB_ANIMS, ...WATER_ANIMS, ...CANNON_ANIMS };
+Object.assign(ANIMS, TAIL_ANIMS); // Rustmaw's tail (actions/tail.js): tail_hold, tail_spin, tail_throw
 
 export const ANIM_NAMES = Object.keys(ANIMS);
 

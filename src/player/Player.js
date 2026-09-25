@@ -10,6 +10,7 @@ import * as T from './physics/tuning.js';
 import { UP } from './physics/slopes.js';
 import { ACTIONS, enterWater } from './actions/index.js';
 import { attackZone } from './actions/attacks.js';
+import { tryGrabTail } from './actions/tail.js';
 
 // Actions during which water entry is not checked (they position the hero themselves).
 const NO_WATER_CHECK = new Set(['death', 'ledge_hang', 'ledge_climb', 'pole', 'pole_top', 'spawn']);
@@ -112,6 +113,16 @@ export class Player {
     this.flightFall = false; // airborne since a flight: the landing never hurts (see afterTick)
     this.stompBounce = false; // the current jump is a bounce() (no jump cut on releasing A)
     this.attack = { x: 0, y: 0, z: 0, radius: 0, kind: '' }; // getAttack's reused result
+    // Rustmaw's tail grip (objects set it: RobotBeast.grip; null = no beast) and the spin
+    // while holding it (actions/tail.js).
+    this.tailGrip = null;
+    this.tailSpeed = 0;
+    this.tailDir = 0;
+    this.tailRelease = -1;
+    // The cannon (actions/cannon.js): { desc, phase, yaw, pitch, inside, ... } once he climbed in;
+    // falls until this tick are safe (a shot that landed on a roof too steep to stand on).
+    this.cannon = null;
+    this.cannonSafeUntil = 0;
 
     this.health = T.MAX_HEALTH;
     this.coins = 0;
@@ -147,6 +158,8 @@ export class Player {
       enterWater(this);
     }
 
+    // B next to Rustmaw's tail coupling grabs it (actions/tail.js) instead of a punch or dive.
+    if (c.B.pressed && this.tailGrip !== null) tryGrabTail(this);
     for (let i = 0; i < MAX_CHAINED_ACTIONS; i++) {
       if (!ACTIONS[this.action].update(this, c)) break;
     }
@@ -416,6 +429,18 @@ export class Player {
     return true;
   }
 
+  // Climb into a cannon (objects/Cannon.js calls it when Pip steps onto its loading pad):
+  // action 'cannon' (actions/cannon.js) with its descriptor { x, y, z (the barrel's pivot),
+  // muzzle, restYaw, restPitch, exit: { x, y, z } }. Refused (false) while swimming, dying,
+  // reading, dropping in, holding on to something or already in one.
+  enterCannon(cannon) {
+    if (!cannon) return false;
+    const group = ACTIONS[this.action].group;
+    if (group === 'submerged' || group === 'automatic' || NO_BOUNCE.has(this.action)) return false;
+    this.setAction('cannon', cannon);
+    return true;
+  }
+
   // The celebration plays on the ground: grabbed in mid-air, the hero drops first (star_fall).
   collectStar() {
     this.stars++;
@@ -429,6 +454,7 @@ export class Player {
   // right under him or not given). In water the usual knockback.
   takeDamage(wedges = 1, fromPos = null, opts = null) {
     if (this.tick < this.invincibleUntil || this.action === 'death' || this.action === 'spawn') return false;
+    if (this.action === 'cannon') return false; // in (or hopping into / out of) the cannon: out of reach
     this.invincibleUntil = this.tick + T.INVINCIBLE_TICKS;
     this.loseHealth(wedges);
     if (this.action === 'death') return true;

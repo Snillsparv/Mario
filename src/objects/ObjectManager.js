@@ -30,17 +30,25 @@
 // sky or grinding up out of the ground at planned slots over the grounds, one every few
 // seconds, spreading glowing circuitry over the ground around them (ServerHalls.js); they are
 // solid (their colliders wait parked far below the world) and sink back when the mode ends.
+// The beast's tail ends in a glowing coupling on the rear roof: the hero grabs it, spins and
+// throws the beast off the castle (RobotBeast.js, actions/tail.js; player.tailGrip is set to
+// the beast's grip record). The crash emits 'bossDefeated' (main ends the mode as if STOP was
+// pressed) and, once the wreck has sunk away, a reward star rises there (BossStar.js; once per
+// game, collected like the red-coin star; reset() takes it back).
 //
 // Mystery box (layout.MYSTERY_BOX, MysteryBox.js): bumped from below or punched it releases the
 // winged hat (player.giveWingHat). Castle door (layout.CASTLE, CastleDoor.js): walking up to it
 // plays 'evil_laugh' and opens the dialog ('signRead' { sign: { id: 'castle_locked', ... } }).
+// Cannon (layout.CANNON, Cannon.js): standing on its loading pad puts Pip in the barrel
+// (player.enterCannon); the barrel follows his aim and recoils when he fires ('cannonFire').
 //
 // Everything animates on the simulation clock (ticks + alpha), so pausing the game freezes the
 // objects too. Before the first update() (the title screen shows the level behind it), and
 // again after reset() until the next update(), animate() runs that clock from the caller's
 // time instead (ambient()): ambient motion only (no pickups), and play then carries on from
 // there without a jump. Seven draw calls in total: coins, sparkles, shadows, star, 1-up,
-// butterflies, birds; plus the button (base, cap), the mystery box (frame, crystal back and
+// butterflies, birds; plus the button (base, cap), the cannon (base, turret, barrel), the
+// mystery box (frame, crystal back and
 // front; the hat's three only while it is out) and, only while AI RACE mode shows them, the
 // beast (nine rig parts), fireball cores, their ground markers, the fire sprites, the
 // minions (one instanced draw) and the server halls (one instanced draw per unit type out, plus
@@ -76,6 +84,8 @@ import { MysteryBox } from './MysteryBox.js';
 import { Minions } from './Minions.js';
 import { CastleDoor } from './CastleDoor.js';
 import { ServerHalls } from './ServerHalls.js';
+import { BossStar } from './BossStar.js';
+import { Cannon } from './Cannon.js';
 
 const STAR_SHADOW = 150;
 const STAR_GLOW = 360;
@@ -118,7 +128,8 @@ export class ObjectManager {
     const dropShadow0 = coinCount + 2;
     const boxShadow = dropShadow0 + COIN_DROPS; // box, hat
     const minionShadow0 = boxShadow + 2;
-    this.shadows = new BlobShadows(minionShadow0 + (layout.KAIJU ? MINION_SLOTS : 0));
+    // (With the beast: the minions' slots, then one for its reward star, BossStar.js.)
+    this.shadows = new BlobShadows(minionShadow0 + (layout.KAIJU ? MINION_SLOTS + 1 : 0));
     this.coins = new CoinField({ layout, collision, groundAt, shadows: this.shadows, drops: COIN_DROPS, dropShadow0 });
     this.sparkles = new Sparkles(this.rng);
     this.star = new Star(makeStarEnvMap());
@@ -136,6 +147,9 @@ export class ObjectManager {
       ? new MysteryBox({ spot: layout.MYSTERY_BOX, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowSlots: [boxShadow, boxShadow + 1], groundAt, buildHat })
       : null;
     this.door = Number.isFinite(layout.CASTLE?.frontZ) ? new CastleDoor({ castle: layout.CASTLE, collision, events }) : null;
+    // The cannon (Cannon.js): its pad puts Pip in the barrel (before the server halls, whose
+    // planning keeps clear of it).
+    this.cannon = layout.CANNON ? new Cannon({ spot: layout.CANNON, collision, events, groundAt: layout.groundHeight ?? null, fx }) : null;
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -154,6 +168,11 @@ export class ObjectManager {
         fire: this.fire,
         rng,
         launch: (x, y, z, vx, vy, vz) => balls.launch(x, y, z, vx, vy, vz),
+        fx, // (the tail grab: the crash's blast and dust, its scorch, where a throw may land)
+        level,
+        layout,
+        // A thrown beast does not come down on a server hall that is out or on its way.
+        blocked: (x, z, margin) => this.halls !== null && this.halls.units.some((u) => u.state !== 0 && this.halls.near(u, x, z, margin)),
       });
       this.minions = new Minions({
         collision,
@@ -180,6 +199,12 @@ export class ObjectManager {
     } else {
       this.fire = this.fireballs = this.beast = this.minions = this.halls = null;
     }
+    // Grabbing the beast's tail (actions/tail.js reads player.tailGrip), and the reward star
+    // for throwing it off the roof (BossStar.js: once per game, at the crash site).
+    if (this.beast && player) player.tailGrip = this.beast.grip;
+    this.bossStar = this.beast
+      ? new BossStar({ events, collision, sparkles: this.sparkles, shadows: this.shadows, shadowSlot: minionShadow0 + MINION_SLOTS, envMap: this.star.mesh.material.envMap })
+      : null;
     events.on?.('darkMode', (e) => this._setMode(!!e?.on));
     // A dialog box is up (a sign, the locked door): Pip is frozen, so the minions and the beast
     // hold off until it closes, and fireballs already in flight (their blasts, fire zones) spare
@@ -194,6 +219,8 @@ export class ObjectManager {
     for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.box, this.beast, this.fireballs, this.minions, this.halls, this.fire]) {
       if (part) this.group.add(part.mesh);
     }
+    if (this.cannon) this.group.add(this.cannon.mesh);
+    if (this.bossStar) this.group.add(this.bossStar.mesh);
     scene.add(this.group);
     this._draw(0, 1, null);
   }
@@ -223,6 +250,7 @@ export class ObjectManager {
     this.darkT = t;
     this.button?.setDarkness(t);
     this.box?.setDarkness(t);
+    this.cannon?.setDarkness(t);
     this.halls?.setDarkness(t);
     const calm = t < 0.5;
     this.butterflies.mesh.visible = calm;
@@ -269,10 +297,12 @@ export class ObjectManager {
     this.modeOn = false;
     this.button?.reset();
     this.beast?.reset();
+    this.bossStar?.reset(); // (hidden again, and taken back off the hero's star count)
     this.fireballs?.clear();
     this.minions?.clear();
     this.halls?.clear();
     this.box?.reset();
+    this.cannon?.reset();
     this.door?.reset();
     this.hero.valid = false;
     this.dialogOpen = false;
@@ -317,12 +347,16 @@ export class ObjectManager {
     const hero = this.hero.valid ? this.hero : null;
     if (this.box !== null) this.box.update(player, hero, this.tick, this.cameraYaw);
     if (this.door !== null) this.door.update(player);
+    if (this.cannon !== null) this.cannon.update(player, this.tick);
     if (this.beast !== null) {
+      if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
       this.beast.update(player, this.tick);
+      this.bossStar.update(player, this.beast, this.time, this.tick);
       this.fireballs.update(player, this.tick, this.dialogOpen);
       if (this.dialogOpen && this.beast.grace < 45) this.beast.grace = 45;
       this.minions.update(player, hero, this.tick, this.modeOn && this.beast.state === 'active', this.dialogOpen);
-      this.halls.update(player, this.tick, this.dialogOpen);
+      // (No new hall arrives while the thrown beast is in the air: its landing spot stays clear.)
+      this.halls.update(player, this.tick, this.dialogOpen || this.beast.state === 'thrown');
     }
     this._rememberHero(player);
   }
@@ -440,9 +474,12 @@ export class ObjectManager {
       else _toCam.set(0, 0, 0);
       this.sparkles.setGlow(r.x + _toCam.x, r.y + _toCam.y, r.z + _toCam.z, STAR_GLOW * r.scale, 0.55);
     }
+    // Rustmaw's reward star (the halo is the red-coin star's while that one shows).
+    if (this.bossStar !== null) this.bossStar.animate(clock, alpha, camera, !star.active);
     this.sparkles.animate(clock);
     if (this.button !== null) this.button.animate(alpha, clock);
     if (this.box !== null) this.box.animate(alpha, clock);
+    if (this.cannon !== null) this.cannon.animate(alpha, clock);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);

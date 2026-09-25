@@ -1,6 +1,7 @@
 // The star: an original chunky five-pointed star (puffy, bevelled, gold with a metallic sheen
 // and an emissive glow). Hidden until spawned; rises in a spiral to its spot, then spins and
-// bobs until the hero touches it.
+// bobs until the hero touches it. Used for the red-coin star and for Rustmaw's reward star
+// (BossStar.js).
 
 import * as THREE from 'three';
 import { TAU } from '../core/math.js';
@@ -60,11 +61,13 @@ export function buildStarGeometry({ outer = 95, inner = 44, thickness = 40, edge
   return geo;
 }
 
+// Several stars can exist at once (the red-coin star, Rustmaw's reward star: BossStar.js), each
+// its own instance; `opts.color` / `opts.emissive` tint one differently.
 export class Star {
-  constructor(envMap) {
+  constructor(envMap, { color = 0xffc81e, emissive = 0x7a4c00 } = {}) {
     const material = new THREE.MeshPhongMaterial({
-      color: 0xffc81e,
-      emissive: 0x7a4c00,
+      color,
+      emissive,
       specular: 0xfff2c0,
       shininess: 40,
       envMap,

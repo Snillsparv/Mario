@@ -40,6 +40,8 @@ browser once with `npx playwright install chromium`.
   and he drops back in at the start; losing one at ×0 is GAME OVER. A **1-up gem** is hidden
   somewhere on the grounds and gives an extra life.
 * **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it.
+* **The cannon** on the east lawn shoots Pip onto the castle's roofs, all the way up to the top
+  of the keep, where a ring of coins and a sign wait. Step onto its glowing pad to climb in.
 
 ### Moves
 
@@ -58,6 +60,7 @@ browser once with `npx playwright install chromium`.
 | climb trees | jump into a tree trunk to hug it: stick up climbs, down slides, jump leaps off, crouch lets go |
 | swim | jump to stroke, hold jump to kick along; at the surface pull back and jump to leap out, crouch (or push up and jump) to dive |
 | fly | with the winged hat (from the crystal box), triple jump (or flip off a tree top): Pip takes off at the top of the jump and climbs. Like an aeroplane: pull back to climb, push forward to dive, left/right to bank. The run-up's forward push counts as "level" until you let go once. Crouch to drop |
+| cannon | step onto the glowing pad beside the cannon: Pip hops into the barrel. Aim with the stick (up raises the barrel; the reticle shows where it points), jump fires, attack or crouch climbs back out. Mid-shot, crouch ground-pounds and attack dives; a landing from a shot never hurts. With the winged hat the shot turns into flight at its peak |
 
 ## Controls
 

@@ -191,14 +191,14 @@ describe('reading signs', () => {
 });
 
 describe('layout signs', () => {
-  test('the Player reads layout.SIGNS by default, standing at the ground height', () => {
+  test('the Player reads layout.SIGNS by default, standing at the ground height (or their own y)', () => {
     assert.ok(SIGNS.length > 0);
     const flatWorld = createSim((b) => b.ground(30000)).world;
     const p = new Player({ collision: flatWorld, events: null, spawn: { x: 0, y: 0, z: 0 } });
     assert.equal(p.signs.length, SIGNS.length);
     for (const [i, e] of p.signs.entries()) {
       assert.equal(e.sign, SIGNS[i]);
-      assert.equal(e.y, groundHeight(SIGNS[i].x, SIGNS[i].z));
+      assert.equal(e.y, SIGNS[i].y ?? groundHeight(SIGNS[i].x, SIGNS[i].z));
     }
     const none = new Player({ collision: flatWorld, events: null, spawn: { x: 0, y: 0, z: 0 }, signs: [] });
     assert.equal(none.signs.length, 0);

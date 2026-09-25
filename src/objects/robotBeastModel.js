@@ -11,8 +11,9 @@
 // hinged lower jaw, both jaws lined with steel teeth. Under the chin hangs a V-shaped ribbed
 // throat dewlap. Louvred exhaust vents sit on the shoulders and two exhaust pipes on the hips;
 // a furnace grille glows in the chest. A long whip tail of tapering segments trails away and
-// curls at its tip. The palate, tongue plate, throat vent, dewlap and chest furnace glow
-// furnace-orange as it charges a shot.
+// ends in a tow coupling: a hazard-striped collar with two struts and a thick crossbar that
+// glows orange and pulses (uGrip) while the hero can grab it. The palate, tongue plate, throat
+// vent, dewlap and chest furnace glow furnace-orange as it charges a shot.
 //
 // The rig is a handful of rigid parts (one mesh = one draw call each), all sharing one
 // flat-shaded Lambert material with vertex colours and an extra per-vertex emission attribute:
@@ -24,7 +25,8 @@
 //
 // Fitted to the castle (layout.KAIJU): the feet grip the front hall's gable slopes, the belly
 // rests on its ridge, the neck rises over the front facade and the tail climbs over the block
-// behind, around the right side of the keep, and down onto the east wing's roof.
+// behind, around the right side of the keep, and runs on back along the rear block's flat roof,
+// its coupling a hand's height over the walkway (RIG.GRIP; RobotBeast's tail grab).
 
 import * as THREE from 'three';
 import { makeRng } from '../core/math.js';
@@ -59,6 +61,9 @@ const E_GRILLE = [0.85, 1.6];
 const E_CORE = [1.2, 1.4];
 const E_THROAT = [0.2, 2.4];
 const E_DEWLAP = [0.12, 2.2];
+// The tow coupling's glow: a little always (power), and a pulse from uGrip (a negative y
+// channel reads uGrip instead of uCharge, see makeBeastMaterial).
+const E_GRIP = [0.7, -1.9];
 
 // Rig landmarks (rig space unless noted; x mirrored for the left side where a single side is
 // given). See the header for the frame.
@@ -141,13 +146,15 @@ export const RIG = {
     [178, 160],
     [150, 136],
   ],
+  // The tail's end runs on back along the rear block's flat roof, a hand's height over the
+  // walkway, and ends in the glowing tow coupling (GRIP) that the hero can grab.
   TAIL_B: [
     [725, 1180, -1330],
     [800, 1040, -1700],
     [900, 600, -2000],
     [1000, 230, -2270],
-    [1060, 365, -2520],
-    [1070, 585, -2640],
+    [1055, 186, -2560],
+    [1080, 188, -2800],
   ],
   TAIL_B_R: [
     [150, 136],
@@ -155,8 +162,12 @@ export const RIG = {
     [108, 96],
     [86, 76],
     [64, 57],
-    [42, 38],
+    [48, 44],
   ],
+  // The tow coupling at the tail's tip: a collar, two struts and a crossbar (the grip, whose
+  // centre is GRIP) GRIP_REACH past the tip along the last tail segment, GRIP_HALF wide.
+  GRIP: [1090, 191, -2894],
+  GRIP_HALF: 58,
 };
 
 // The head pivot in rig space (the neck's tip).
@@ -878,14 +889,37 @@ function buildTailPart(points, radii, seed, tip) {
     { a: Math.PI / 2 - 0.55, w, l: w * 1.05, h: w * 0.28 },
     { a: Math.PI / 2 + 0.55, w, l: w * 1.05, h: w * 0.28 },
   ], { stagger: 0.2, dir: -1, taper: tip ? 0.62 : 0.2 });
-  if (tip) {
-    // A short blade on the tip.
-    const a = points[n - 1];
-    const p = points[n];
-    const u = norm3(sub3(p, a));
-    b.cone(p, add3(p, mul3(u, 160)), radii[n][0], 6, RUST_DARK);
-  }
+  if (tip) tailCoupling(b, points[n], RIG.GRIP, radii[n][0]);
   return b.build(points[0]);
+}
+
+// The tow coupling on the tail's tip (the hero's grip): a hazard-striped collar clamped on
+// the last segment, two steel struts and a thick crossbar whose centre is `grip`, the bar and
+// the collar's rim glowing orange (E_GRIP: they pulse while it can be grabbed, see uGrip).
+function tailCoupling(b, tip, grip, r) {
+  const u = norm3(sub3(grip, tip)); // along the tail, out of the tip
+  const side = norm3(cross3(u, [0, 1, 0]));
+  const up = cross3(side, u);
+  const half = RIG.GRIP_HALF;
+  // Collar: a dark clamp band with hazard and rust rings and a glowing rim at its mouth.
+  b.cyl(add3(tip, mul3(u, -40)), add3(tip, mul3(u, 26)), r + 14, r + 16, 8, GUN_DARK);
+  b.ring(add3(tip, mul3(u, -18)), tip, r + 20, 16, HAZARD, E_NONE);
+  b.ring(add3(tip, mul3(u, 6)), add3(tip, u), r + 20, 14, RUST, E_JOINT);
+  b.ring(add3(tip, mul3(u, 28)), add3(tip, mul3(u, 29)), r + 8, 10, EMBER, E_GRIP);
+  // A cap plate with a bolt boss, then the struts out to the bar ends.
+  b.cyl(add3(tip, mul3(u, 26)), add3(tip, mul3(u, 40)), r + 4, r - 6, 8, STEEL_DARK);
+  const base = add3(tip, mul3(u, 36));
+  for (const s of [-1, 1]) {
+    const from = add3(base, mul3(side, s * (r - 10)));
+    const to = add3(grip, mul3(side, s * (half - 8)));
+    b.cyl(from, to, 12, 11, 6, STEEL);
+    b.ball(to, 17, RUST_DARK, E_NONE);
+  }
+  b.cyl(add3(base, mul3(up, r - 16)), add3(lerp3(base, grip, 0.6), mul3(up, 10)), 8, 7, 5, STEEL_DARK);
+  // The crossbar (what the hero holds), thick and glowing, with dark end caps.
+  const ends = [add3(grip, mul3(side, -half)), add3(grip, mul3(side, half))];
+  b.cyl(ends[0], ends[1], 15, 15, 8, EMBER, E_GRIP);
+  for (const e of ends) b.cyl(add3(e, mul3(side, e === ends[0] ? -10 : -2)), add3(e, mul3(side, e === ends[0] ? 2 : 10)), 20, 20, 8, GUN_DARK);
 }
 
 // ---------------------------------------------------------------- material
@@ -901,6 +935,7 @@ export function makeBeastMaterial() {
     uCharge: { value: 0 },
     uPower: { value: 0 },
     uFlash: { value: 0 },
+    uGrip: { value: 0 },
     uRim: { value: new THREE.Color(0.3, 0.36, 0.5) },
     uFogScale: { value: 0.35 },
   };
@@ -911,12 +946,12 @@ export function makeBeastMaterial() {
       .replace('#include <common>', '#include <common>\nattribute vec2 aEmit;\nvarying vec2 vEmit;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvEmit = aEmit;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uCharge;\nuniform float uPower;\nuniform float uFlash;\nuniform vec3 uRim;\nuniform float uFogScale;\nvarying vec2 vEmit;')
+      .replace('#include <common>', '#include <common>\nuniform float uCharge;\nuniform float uPower;\nuniform float uFlash;\nuniform float uGrip;\nuniform vec3 uRim;\nuniform float uFogScale;\nvarying vec2 vEmit;')
       .replace(
         '#include <emissivemap_fragment>',
         [
           '#include <emissivemap_fragment>',
-          '\ttotalEmissiveRadiance += diffuseColor.rgb * (vEmit.x * uPower + vEmit.y * uCharge + uFlash);',
+          '\ttotalEmissiveRadiance += diffuseColor.rgb * (vEmit.x * uPower + max(vEmit.y, 0.0) * uCharge + max(-vEmit.y, 0.0) * uGrip + uFlash);',
           '\tfloat rimK = 1.0 - abs(dot(normal, normalize(vViewPosition)));',
           '\ttotalEmissiveRadiance += uRim * (rimK * rimK);',
         ].join('\n'),

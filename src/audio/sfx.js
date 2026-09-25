@@ -970,6 +970,53 @@ export const SFX = {
     noise(ctx, out, t, { filter: 'lowpass', freq: 140, dur: 2.4, gain: 0.14, attack: 0.5, kind: 'brown' });
     return 3.4;
   },
+
+  // ---- The cannon (objects/Cannon.js, player actions/cannon.js)
+
+  // Dropping into the barrel: a hollow iron 'thunk' (a low body and a knock) with the tube
+  // ringing a moment after it (a resonant hollow 'bwong' and the iron's own partials).
+  cannon_enter(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 150 * p, to: 62 * p, glide: 0.1, dur: 0.18, gain: 0.34, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 1200, dur: 0.05, gain: 0.22, attack: 0.001 });
+    noise(ctx, out, t + 0.004, { freq: 290 * p, q: 9, dur: 0.45, gain: 0.3, attack: 0.004 });
+    bell(ctx, out, t + 0.006, { freq: 196 * p, dur: 0.55, gain: 0.07, partials: METAL });
+    tone(ctx, out, t + 0.01, { wave: 'triangle', freq: 392 * p, to: 370 * p, dur: 0.3, gain: 0.05, attack: 0.004 });
+    return 0.6;
+  },
+
+  // One click of the barrel's ratchet as it is aimed: a dry pawl click, a tiny iron ping and a
+  // soft knock (repeated every few degrees of turning, so short and quiet).
+  cannon_turn(ctx, out, t, { p }) {
+    const f = rand(0.94, 1.06) * p;
+    noise(ctx, out, t, { filter: 'highpass', freq: 2600 * f, dur: 0.012, gain: 0.12, attack: 0.0006 });
+    tone(ctx, out, t, { freq: 1500 * f, to: 1350 * f, dur: 0.045, gain: 0.035, attack: 0.001 });
+    tone(ctx, out, t, { freq: 230 * f, to: 150 * f, dur: 0.04, gain: 0.09, attack: 0.001 });
+    return 0.07;
+  },
+
+  // Firing: a sharp crack and a huge low boom (a sub-bass drop under a roaring blast of low
+  // noise that opens and closes), the iron barrel ringing, then the smoke's rumble rolling
+  // away with a scatter of crackles.
+  cannon_fire(ctx, out, t, { p }) {
+    noise(ctx, out, t, { filter: 'highpass', freq: 1800, dur: 0.06, gain: 0.2, attack: 0.001 });
+    noise(ctx, out, t, { freq: 700, q: 0.8, dur: 0.16, gain: 0.26, attack: 0.001 });
+    tone(ctx, out, t, { freq: 96 * p, to: 30, glide: 0.5, dur: 0.95, gain: 0.34, attack: 0.002 });
+    tone(ctx, out, t, { freq: 52 * p, dur: 0.7, gain: 0.12, attack: 0.004 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 2600], [0.25, 700], [1.4, 110]], dur: 1.45, gain: 0.34, attack: 0.002, kind: 'brown' });
+    bell(ctx, out, t + 0.015, { freq: 132 * p, dur: 1.1, gain: 0.06, partials: METAL });
+    noise(ctx, out, t + 0.25, { filter: 'lowpass', freq: 260, dur: 1.2, gain: 0.14, attack: 0.3, kind: 'brown' });
+    crackles(ctx, out, t + 0.05, { count: 12, span: 0.9, gain: 0.05, lo: 600, hi: 2400, front: 1.6 });
+    return 1.6;
+  },
+
+  // Flying out of the cannon: air rushing past, rising to a roar and fading as the shot
+  // slows, fluttering (a wind texture: band-passed noise riding a sweep) over a low rush.
+  cannon_whoosh(ctx, out, t, { p }) {
+    feathers(ctx, out, t, { freq: [[0, 700 * p], [0.35, 2300 * p], [1.5, 600 * p]], q: 0.9, dur: 1.6, gain: 0.22, attack: 0.18, rate: 17, depth: 0.25, settle: 0.8 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 500], [0.4, 900], [1.5, 200]], dur: 1.6, gain: 0.2, attack: 0.25, kind: 'brown' });
+    noise(ctx, out, t + 0.05, { filter: 'highpass', freq: 4200, dur: 0.9, gain: 0.04, attack: 0.2 });
+    return 1.7;
+  },
 };
 
 // The cached buffers and waves the rarer sounds would otherwise make on their first play (a
@@ -1015,4 +1062,8 @@ export const SFX_INFO = {
   hall_warn: { range: 2.5, gap: 0.3, max: 2 }, // heard across the grounds: a unit is coming down
   hall_impact: { range: 2.5, gap: 0.1, max: 3 },
   hall_rise: { range: 2, gap: 0.25, max: 2 },
+  cannon_enter: { gap: 0.2, max: 1 },
+  cannon_turn: { gap: 0.05, max: 2 }, // the ratchet, every few degrees of aiming
+  cannon_fire: { range: 2.5, gap: 0.3, max: 1 }, // heard across the grounds
+  cannon_whoosh: { gap: 0.3, max: 1 },
 };

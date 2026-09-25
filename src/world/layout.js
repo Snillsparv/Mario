@@ -81,6 +81,20 @@ export const CASTLE = {
 // (terrain paints it; it tucks slightly under the facade so no grass shows at the wall base).
 export const COURTYARD = { minX: -1050, maxX: 1050, minZ: CASTLE.frontZ - 80, maxZ: ISLAND.maxZ + 200, radius: 160 };
 
+// The top of the castle: the square keep's flat roof walkway (castle/building.js: the keep is
+// 2 * halfX wide and 2 * halfZ deep, centred at x, z; its walkway is at y) round the base of
+// the round upper tower (radius towerR; its roof's eave overhangs to eaveR, 674 above the
+// walkway). Reached with the cannon (CANNON); a ring of coins and a sign wait up there.
+export const KEEP_TOP = {
+  x: CASTLE.x,
+  z: CASTLE.frontZ - 1950,
+  y: CASTLE.baseY + CASTLE.mainHeight + 1200,
+  halfX: 600,
+  halfZ: 650,
+  towerR: 420,
+  eaveR: 529,
+};
+
 // Dirt/stone walking path from spawn to the bridge, and a loop around the front lawn.
 export const PATHS = [
   {
@@ -162,6 +176,12 @@ export const COINS = [
   ...[0, 1, 2, 3, 4, 5].map((i) => ({ x: 4600 + i * 320, z: -1450 - i * 175 })),
   // along the island front courtyard
   ...[-1, 0, 1].map((i) => ({ x: i * 700, z: -50 })),
+  // a ring round the round tower on top of the keep (KEEP_TOP), the cannon's prize
+  ...Array.from({ length: 8 }, (_, i) => ({
+    x: KEEP_TOP.x + Math.sin((i / 8) * Math.PI * 2) * 560,
+    z: KEEP_TOP.z + Math.cos((i / 8) * Math.PI * 2) * 560,
+    y: KEEP_TOP.y + 60,
+  })),
 ];
 
 // Red coins: collect all 8 to make the star appear at STAR.
@@ -178,7 +198,8 @@ export const RED_COINS = [
 
 // Readable wooden signs. Walk up to a sign's face and press B (J) to read it; `yaw` is the
 // direction the readable face looks (the reader stands in front of it). Each page is shown in
-// the dialog box in turn. All text is original to this game.
+// the dialog box in turn. All text is original to this game. A sign with a `y` stands on that
+// floor instead of the lawn (the one on top of the keep).
 export const SIGNS = [
   {
     id: 'welcome',
@@ -235,6 +256,19 @@ export const SIGNS = [
       'Press jump at the top to leap off.',
     ],
   },
+  {
+    // On the castle's very top (KEEP_TOP), in front of the round tower, facing the front.
+    id: 'keep_top',
+    x: KEEP_TOP.x,
+    z: KEEP_TOP.z + KEEP_TOP.towerR + 35,
+    y: KEEP_TOP.y,
+    yaw: 0,
+    pages: [
+      'Top of the Keep',
+      'What a landing! Few explorers have ever stood this high above the grounds.',
+      'The whole of the grounds is spread out below you. Mind the edge on your way down!',
+    ],
+  },
 ];
 
 // "AI RACE" floor button: ground-pound it to switch the grounds into (and back out of) the
@@ -248,6 +282,17 @@ export const KAIJU = { x: 0, z: -2300, yaw: 0 };
 // A floating mystery box (hit it from below) that releases the winged hat: y is the
 // height of the box's underside above the ground, low enough to bump with a standing jump.
 export const MYSTERY_BOX = { x: 1300, z: 4300, y: 340, size: 130 };
+
+// The cannon on the east lawn (objects/Cannon.js): its barrel rests pointing up toward the
+// keep (yaw); step onto its glowing loading pad (`pad`: its direction off yaw, to the
+// cannon's left-rear, toward the spawn) to climb in, then aim and fire yourself onto the
+// castle's roofs and the top of the keep (KEEP_TOP).
+export const CANNON = {
+  x: 3400,
+  z: 2700,
+  yaw: Math.atan2(KEEP_TOP.x - 3400, KEEP_TOP.z - 2700),
+  pad: (120 * Math.PI) / 180,
+};
 
 export const STAR = { x: 0, z: -100, y: ISLAND_TOP + 450 }; // above the courtyard, in front of the entrance steps
 

@@ -1,9 +1,10 @@
 // Where Pip's attacks can hit this tick (player.getAttack, read by objects after the tick):
 // a sphere { x, y, z, radius, kind } in front of or around him, or null. `kind` names the
 // move: 'punch1' | 'punch2' | 'kick' (the punch combo's steps), 'jump_kick', 'dive',
-// 'belly_slide' (only while still sliding fast), 'ground_pound_land' (the landing ticks) and
-// 'flying' (the flying body, see flying.js). Timings count the ticks since the move (or the
-// combo step) began, the current tick being 1 (actionTimer after the tick).
+// 'belly_slide' (only while still sliding fast), 'ground_pound_land' (the landing ticks),
+// 'flying' (the flying body, see flying.js) and 'cannon_shot' (the same, shot out of the
+// cannon). Timings count the ticks since the move (or the combo step) began, the current tick
+// being 1 (actionTimer after the tick).
 
 import { CENTER } from '../model/dims.js';
 
@@ -56,6 +57,8 @@ export function attackZone(p, out) {
       return p.actionTimer <= POUND.to ? zone(p, out, 'ground_pound_land', POUND) : null;
     case 'flying':
       return zone(p, out, 'flying', FLY);
+    case 'cannon_shot': // shot out of the cannon: the body flying head first (actions/cannon.js)
+      return zone(p, out, 'cannon_shot', FLY);
     default:
       return null;
   }

@@ -12,6 +12,10 @@
 //                                              a heavy landing: dust billowing out from a
 //                                              footprint (hw x hd turned by yaw, or a circle of
 //                                              `radius`), metal sparks, debris, a ground ring
+//   fx.muzzle(x, y, z, dx, dy, dz, { radius })
+//                                              a cannon firing along (dx, dy, dz) from its
+//                                              mouth: a flash, a hot tongue of fire, sparks
+//                                              and a ring of smoke rolling out (~2 s)
 //   fx.strike(strength?)                       a lightning strike now (tests, scripted scenes)
 //   fx.update(dt, time, camera)                per render frame; dt = 0 freezes everything
 //   fx.lightningFlash                          current flash brightness 0..1 (decays)
@@ -451,6 +455,120 @@ export class Effects {
       P.life[i] = 0.5;
       P.heat[i] = 0.35;
       P.rot[i] = rng() * TAU;
+    }
+    this.dirty = true;
+  }
+
+  // A cannon firing from its mouth at (x, y, z) along (dx, dy, dz): a white flash, a short
+  // tongue of fire and sparks shooting out along the bore, and a ring of grey smoke rolling
+  // out round the mouth and drifting up (dust puffs), plus a few puffs trailing the shot.
+  muzzle(x, y, z, dx, dy, dz, { radius = 130 } = {}) {
+    const P = this.pool;
+    const rng = this.rng;
+    const R = Math.max(30, radius);
+    const l = Math.hypot(dx, dy, dz) || 1;
+    dx /= l;
+    dy /= l;
+    dz /= l;
+    // A basis across the bore: u = d x up (or x when firing straight up), v = u x d.
+    let ux = -dz;
+    let uz = dx;
+    let ul = Math.hypot(ux, uz);
+    if (ul < 1e-3) {
+      ux = 1;
+      uz = 0;
+      ul = 1;
+    }
+    ux /= ul;
+    uz /= ul;
+    const vx = -uz * dy;
+    const vy = uz * dx - ux * dz;
+    const vz = ux * dy;
+    let i = P.alloc();
+    if (i >= 0) {
+      P.kind[i] = KIND.FLASH;
+      P.px[i] = x + dx * R * 0.5;
+      P.py[i] = y + dy * R * 0.5;
+      P.pz[i] = z + dz * R * 0.5;
+      P.size0[i] = R * 0.6;
+      P.size1[i] = R * 1.8;
+      P.life[i] = 0.22;
+      P.rot[i] = rng() * TAU;
+    }
+    for (let k = 0; k < 8; k++) {
+      i = P.alloc();
+      if (i < 0) break;
+      const s = R * (5 + rng() * 6);
+      const jx = (rng() - 0.5) * 0.3;
+      const jy = (rng() - 0.5) * 0.3;
+      P.kind[i] = KIND.FIREBALL;
+      P.px[i] = x;
+      P.py[i] = y;
+      P.pz[i] = z;
+      P.vx[i] = (dx + ux * jx + vx * jy) * s;
+      P.vy[i] = (dy + vy * jy) * s;
+      P.vz[i] = (dz + uz * jx + vz * jy) * s;
+      P.drag[i] = 8;
+      P.accel[i] = R * 0.4;
+      P.size0[i] = R * (0.3 + rng() * 0.15);
+      P.size1[i] = R * (0.6 + rng() * 0.25);
+      P.life[i] = 0.22 + rng() * 0.18;
+      P.rot[i] = rng() * TAU;
+      P.spin[i] = (rng() - 0.5) * 4;
+      P.seed[i] = rng();
+    }
+    for (let k = 0; k < 18; k++) {
+      i = P.alloc();
+      if (i < 0) break;
+      const s = R * (8 + rng() * 8);
+      const jx = (rng() - 0.5) * 0.7;
+      const jy = (rng() - 0.5) * 0.7;
+      P.kind[i] = KIND.SPARK;
+      P.px[i] = x;
+      P.py[i] = y;
+      P.pz[i] = z;
+      P.vx[i] = (dx + ux * jx + vx * jy) * s;
+      P.vy[i] = (dy + vy * jy) * s;
+      P.vz[i] = (dz + uz * jx + vz * jy) * s;
+      P.drag[i] = 2;
+      P.accel[i] = -1600;
+      P.size0[i] = 4 + rng() * 3;
+      P.size1[i] = P.size0[i] * 0.5;
+      P.stretch[i] = 0.03;
+      P.life[i] = 0.3 + rng() * 0.4;
+      P.seed[i] = rng();
+    }
+    // Smoke: a ring rolling out round the mouth, then puffs pushed on along the bore.
+    for (let k = 0; k < 22; k++) {
+      i = P.alloc();
+      if (i < 0) break;
+      const ring = k < 14;
+      const a = (k / 14) * TAU + rng() * 0.4;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const rx = ring ? ux * ca + vx * sa : dx;
+      const ry = ring ? vy * sa : dy;
+      const rz = ring ? uz * ca + vz * sa : dz;
+      const s = ring ? R * (1.6 + rng() * 0.8) : R * (2 + rng() * 5);
+      const along = ring ? R * (0.4 + rng() * 0.8) : 0;
+      P.kind[i] = KIND.DUST;
+      P.px[i] = x + dx * R * 0.2;
+      P.py[i] = y + dy * R * 0.2;
+      P.pz[i] = z + dz * R * 0.2;
+      P.vx[i] = rx * s + dx * along;
+      P.vy[i] = ry * s + dy * along + R * 0.2;
+      P.vz[i] = rz * s + dz * along;
+      P.drag[i] = 2.2;
+      P.accel[i] = R * 0.25;
+      P.wind[i] = 0.4;
+      P.size0[i] = R * (0.35 + rng() * 0.15);
+      P.size1[i] = R * (1.1 + rng() * 0.6);
+      P.life[i] = 1.5 + rng() * 1.1;
+      P.age[i] = -rng() * 0.06;
+      P.rot[i] = rng() * TAU;
+      P.spin[i] = (rng() - 0.5) * 1.4;
+      P.heat[i] = 1.1 + rng() * 0.3;
+      P.seed[i] = rng();
     }
     this.dirty = true;
   }

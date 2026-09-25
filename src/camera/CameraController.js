@@ -29,13 +29,19 @@
 // pitch; C-left/right and R buzz) and back out once the flight ends. AI RACE mode (lookup.js,
 // 'darkMode' events): near the castle front the view tilts up (and, closer in, moves out and
 // widens) so the robot beast's head on the roof is in the picture with the hero.
+// Cannon (cannon.js, mode 'cannon'): while the hero sits in the cannon's barrel the view glides to
+// just behind and above its breech and looks along the barrel (the HUD's reticle marks where it
+// points: 'cannonView' { on } events), with the hero hidden; firing (or climbing out) glides
+// back to the orbit behind the barrel, the flight camera for a shot ('cannon_shot').
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
 //   cam.firstPerson          first-person look is active
 //   cam.playerInput(c)       controller to pass to player.update() (stick and A/B/Z withheld
 //                            while first-person look uses them, so the hero stands still)
-//   cam.hideHero             the hero model should not be drawn (first person, or no room)
+//   cam.hideHero             the hero model should not be drawn (first person, no room, or he
+//                            is inside the cannon)
+//   cam.cannonView           the cannon view is active (mode 'cannon')
 //   cam.underwater           the rendered camera position is below the water surface
 // and apply() publishes camera.userData.focus: the interpolated point LOOK_HEIGHT above the
 // hero's feet (null while there is no hero to keep in view: first person, title, intro), which
@@ -51,6 +57,8 @@ import { Cover } from './cover.js';
 import { Sight } from './sight.js';
 import { FlightCam } from './flight.js';
 import { LookUp } from './lookup.js';
+import { BossCam } from './bossCam.js';
+import { cannonAiming, cannonInside, cannonPose } from './cannon.js';
 import { introPose, makeIntroPath, smootherstep, titleOrbitPose } from './cinematics.js';
 import * as layout from '../world/layout.js';
 import * as K from './cameraConfig.js';
@@ -73,7 +81,7 @@ export class CameraController {
     this.look = new THREE.Vector3(); // orbit look point (tighter lag than the pivot)
     this.anchor = new THREE.Vector3(); // unobstructed orbit position (drives the leash)
 
-    this.mode = 'follow'; // 'follow' | 'hero' | 'first_person' | 'intro'
+    this.mode = 'follow'; // 'follow' | 'hero' | 'first_person' | 'intro' | 'cannon'
     this.orbitMode = 'follow'; // orbit mode to return to after first-person / intro
     this.zoom = 0;
     this.yaw = Math.PI; // orbit yaw: direction from the hero to the camera
@@ -99,10 +107,12 @@ export class CameraController {
     this.sight = new Sight(collision, this.collider); // swimmer round a corner, trapped camera (sight.js)
     this.flight = new FlightCam(collision); // winged-hat flight camera blend (flight.js)
     this.lookUp = new LookUp(events); // AI RACE mode: tilt up at the beast on the roof (lookup.js)
+    this.bossCam = new BossCam(collision, events); // holding / whirling / throwing Rustmaw (bossCam.js)
     this._probe = null; // collider copy that runs a C-button rotation ahead (_rotationTraps)
     this._probeAnchor = new THREE.Vector3();
     this._probeOut = new THREE.Vector3();
     this.titleShot = false; // the title orbit is on screen (no hero)
+    this.heroInCannon = false; // the hero is inside the cannon's barrel (hidden, cannon.js)
 
     this.hero = {
       x: 0, y: 0, z: 0, velX: 0, velY: 0, velZ: 0, speed: 0, faceYaw: 0, pitch: 0, action: '',
@@ -131,9 +141,15 @@ export class CameraController {
     return this.star.state;
   }
 
-  // The camera sits at the hero's eye (first person) or found no room outside its head.
+  // The camera sits at the hero's eye (first person) or found no room outside its head, or the
+  // hero is inside the cannon.
   get hideHero() {
-    return (this.firstPerson && !this.blend) || this.collider.insideHero;
+    return (this.firstPerson && !this.blend) || this.collider.insideHero || this.heroInCannon;
+  }
+
+  // The cannon view (cannon.js) is active.
+  get cannonView() {
+    return this.mode === 'cannon';
   }
 
   // Controller the hero should see this tick: first-person look takes over the stick and the
@@ -150,6 +166,8 @@ export class CameraController {
 
   // Snap behind the hero (level start, respawn), or to the nearest open side if walled in.
   reset(player) {
+    if (this.mode === 'cannon') this.events?.emit('cannonView', { on: false });
+    this.heroInCannon = cannonInside(player);
     this.hero.submerged = false;
     this.cover.ticks = 0;
     const hero = this._readHero(player, true);
@@ -160,6 +178,7 @@ export class CameraController {
     this.star.reset();
     this.sight.reset();
     this.lookUp.reset();
+    this.bossCam.reset();
     this.titleShot = false;
     this.mode = this.orbitMode;
     this.zoom = 0;
@@ -213,14 +232,23 @@ export class CameraController {
     this.prevFov = this.fov;
     this.cut = false;
 
+    this.heroInCannon = cannonInside(player);
+    if (this.mode !== 'intro') {
+      const aiming = cannonAiming(player);
+      if (aiming && this.mode !== 'cannon') this._enterCannon();
+      else if (!aiming && this.mode === 'cannon') this._exitCannon(hero, player);
+    }
     if (this.mode === 'intro') {
       this._updateIntro(hero);
     } else {
       this._handleButtons(c, hero);
       if (this.mode === 'first_person') this._updateFirstPerson(c, hero);
+      else if (this.mode === 'cannon') this._updateCannon(hero, player);
       else this._updateOrbit(c, hero);
     }
     this._applyBlend(hero);
+    // Rustmaw's tail grab (bossCam.js): blended over the orbit's pose while it lasts.
+    if (this.mode !== 'intro' && this.mode !== 'first_person') this.bossCam.update(this, hero);
     this._finishTick(this.cut);
   }
 
@@ -245,7 +273,7 @@ export class CameraController {
     // (Inline: a helper taking `a` would box it on every call.)
     const ud = cam.userData;
     if (!ud) return;
-    if (this.titleShot || this.mode === 'intro' || this.mode === 'first_person') {
+    if (this.titleShot || this.mode === 'intro' || this.mode === 'first_person' || this.mode === 'cannon') {
       ud.focus = null;
       return;
     }
@@ -282,6 +310,11 @@ export class CameraController {
   // ------------------------------------------------------------------ input
 
   _handleButtons(c, hero) {
+    if (this.mode === 'cannon') {
+      // (The view is the barrel's: the camera buttons have nothing to turn.)
+      if (c.R.pressed || c.CL.pressed || c.CR.pressed || c.CU.pressed || c.CD.pressed) this._sfx('camera_buzz');
+      return;
+    }
     if (this.mode === 'first_person') {
       if (c.CD.pressed || c.A.pressed || c.B.pressed || !this._canLook(hero)) this._exitFirstPerson(hero);
       return;
@@ -638,6 +671,48 @@ export class CameraController {
     pos.set(hero.x + fx * forward, hero.y + K.EYE_HEIGHT + (back / K.FP_HANDOVER_BACK) * K.FP_HANDOVER_RISE, hero.z + fz * forward);
     const cp = Math.cos(this.fp.pitch) * K.FP_LOOK_DIST;
     target.set(pos.x + fx * cp, pos.y - Math.sin(this.fp.pitch) * K.FP_LOOK_DIST, pos.z + fz * cp);
+  }
+
+  // Glide from wherever the camera is into the cannon view (the hero just dropped into the
+  // barrel); the orbit mode to come back to is kept.
+  _enterCannon() {
+    if (this.mode === 'first_person') this.mode = this.orbitMode;
+    this.mode = 'cannon';
+    this.tween = null;
+    this._startBlend(this.pos, this.target);
+    this.events?.emit('cannonView', { on: true });
+  }
+
+  _updateCannon(hero, player) {
+    this._easeFov(K.FOV); // (the look-up's wider view narrows back)
+    this.focusY = hero.y;
+    cannonPose(player.cannon, this.pos, this.target, this.collision);
+  }
+
+  // Leave the cannon view (a shot, or climbing out): glide from it to the orbit behind the
+  // barrel, straight into the flight camera for a shot.
+  _exitCannon(hero, player) {
+    const pos = this.pos.clone();
+    const target = this.target.clone();
+    const aimYaw = player.cannon?.yaw ?? hero.faceYaw;
+    this.mode = this.orbitMode;
+    this.zoom = 0;
+    const cfg = K.ORBIT_MODES[this.orbitMode];
+    const flying = K.FLY_ACTION.test(hero.action);
+    this.flight.reset(flying, cfg.pitch[0], hero.pitch);
+    this.dist = flying ? K.FLY_DIST[0] : cfg.dist[0];
+    this.basePitch = flying ? this.flight.pitch : cfg.pitch[0];
+    this.aimPitch = flying ? K.FLY_AIM : cfg.aim[0];
+    this.pitchOffset = 0;
+    this.squeezePitch = 0;
+    this.slideRate = 0;
+    this.restTicks = 0;
+    this.focusY = hero.y;
+    this._snapToHero(hero);
+    this._setOrbitYaw(aimYaw + Math.PI);
+    this.collider.stepValid = false; // (its last pose is from before the cannon view: no speed limit)
+    this._startBlend(pos, target);
+    this.events?.emit('cannonView', { on: false });
   }
 
   _updateIntro(hero) {
