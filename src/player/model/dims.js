@@ -20,8 +20,8 @@ export const SHOULDER_Y = 27; // shoulders above the torso joint
 export const SHOULDER_X = 18;
 export const UPPER_ARM = 16;
 export const FOREARM = 15;
-export const HAND_OFFSET = 5; // wrist -> centre of the mitten
-export const HAND_R = 7.4; // mitten radius
+export const HAND_OFFSET = 6.5; // wrist -> centre of the mitten
+export const HAND_R = 9.4; // mitten radius (big cartoon mittens)
 
 export const HEAD_R = 30;
 export const HEAD_CY = 27; // head centre above the head joint

@@ -141,12 +141,12 @@ function buildArm(side) {
   // The mitten and its flared cuff hang off their own wrist joint, which punches swell.
   const wrist = group(0, -D.FOREARM, 0);
   elbow.add(wrist);
-  wrist.add(mesh(new THREE.CylinderGeometry(5, 7, 6, 8, 1, true), 'glove', 0, 2, 0)); // flared cuff
+  wrist.add(mesh(new THREE.CylinderGeometry(5.2, 8.2, 7, 8, 1, true), 'glove', 0, 1.5, 0)); // flared cuff
   const hand = group(0, -D.HAND_OFFSET, 0);
   hand.name = 'hand'; // marker at the mitten centre (its mesh merges into the wrist)
   wrist.add(hand);
-  hand.add(mesh(ellipsoid(D.HAND_R, 8.2, 7), 'glove'));
-  hand.add(mesh(ellipsoid(3, 3.8, 3, 6, 4), 'glove', -side * 3.5, 2.5, 5.5)); // thumb
+  hand.add(mesh(ellipsoid(D.HAND_R, 10.4, 8.9), 'glove'));
+  hand.add(mesh(ellipsoid(3.8, 4.8, 3.8, 6, 4), 'glove', -side * 4.5, 3.2, 7)); // thumb
   return { shoulder, elbow, wrist, hand };
 }
 

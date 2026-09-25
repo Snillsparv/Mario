@@ -18,7 +18,7 @@ import {
 
 const HANG_FEET = 104; // Pip's boots dangle this far below the lip...
 const HANG_BACK = 22; // ...with his origin this far out from the wall face.
-const GRIP = { x: 21, y: 5, z: 5 }; // mitten centres: on the top, just past the edge
+const GRIP = { x: 22, y: 7, z: 6 }; // mitten centres: on the top, just past the edge (big mittens rest a little higher)
 const CLIMB_INSET = 65; // typical distance the Player moves Pip in from the hang spot
 
 // Where rs.pos is in the lip frame at climb progress u (0 = hanging).
