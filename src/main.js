@@ -1,16 +1,19 @@
 // Entry point: wires every system together and runs the fixed 30 Hz simulation.
 //
 // URL flags (for development and automated tests):
-//   ?skipTitle=1   start playing immediately (no title screen, no intro fly-in)
-//   ?test=1        do not run the real-time loop; drive it via window.__game.step()
+//   ?skipTitle=1   start playing immediately (no title screen, no face screen, no intro fly-in)
+//   ?test=1        do not run the real-time loop; drive it via window.__game.step() (no menus)
+//   ?face=1 / 0    open the face screen at once, without the title card / leave it out
 //   ?mute=1        no audio
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
 //
-// Game flow (state.mode 'title' -> 'play' -> 'gameover' -> 'title' ...):
+// Game flow (state.mode 'title' -> 'face' -> 'play' -> 'gameover' -> 'title' ...):
 //   * title: the camera orbits the grounds behind the title card. On a first visit the card
 //     asks for any key first (that press unlocks audio and the title music), then for Start;
 //     a gamepad Start begins from either phase (see ui/TitleScreen.js).
+//   * face: Pip's big stretchy head to pull about (ui/FaceScreen.js, its own scene drawn by
+//     the renderer instead of the world; the title music plays on); Start goes on to play.
 //   * intro: the camera flies in from above the castle while Pip waits, hidden, above the
 //     spawn; he drops in once the camera is nearly down, so his landing plays in frame.
 //   * respawn (health ran out, or out of bounds): the camera snaps behind the spawn and Pip
@@ -31,6 +34,8 @@ import { N64Renderer } from './render/N64Renderer.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { TitleScreen } from './ui/TitleScreen.js';
+import { FaceScreen } from './ui/FaceScreen.js';
+import { menuPlan } from './ui/face/stretch.js';
 import { GameOverCard } from './ui/GameOverCard.js';
 import { DialogBox } from './ui/DialogBox.js';
 import { AlertBanner } from './ui/AlertBanner.js';
@@ -42,7 +47,8 @@ import { Effects } from './fx/Effects.js';
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
-const SKIP_TITLE = params.has('skipTitle') || TEST;
+// The menus before play: the title card, then the face screen (none with ?test / ?skipTitle).
+const MENUS = menuPlan(location.search);
 
 const START_LIVES = 4;
 // Ticks of the camera fly-in (CameraController INTRO_TICKS = 96) before Pip starts his
@@ -97,7 +103,7 @@ async function start() {
   });
 
   const state = {
-    mode: 'title', // 'title' | 'play' | 'gameover'
+    mode: 'title', // 'title' | 'face' | 'play' | 'gameover'
     frame: 0, // simulated (unpaused) ticks
     time: 0, // simulation clock in seconds; stands still while paused
     paused: false,
@@ -110,6 +116,8 @@ async function start() {
     darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
   let lastAction = player.action;
+  let face = null; // the face screen while it shows
+  const inMenu = () => state.mode === 'title' || state.mode === 'face';
 
   events.on('lifeLost', () => {
     if (state.lives === 0) state.gameOverPending = true;
@@ -162,6 +170,18 @@ async function start() {
     cancelAnimationFrame(raf);
     // Audio: TitleScreen unlocks on the start press, and AudioEngine's 'gameStart' handler
     // unlocks with sticky user activation (not after a gamepad-only start, which is no gesture).
+  }
+
+  // Pip's big stretchy face after the title card (ui/FaceScreen.js): the renderer draws its
+  // own scene instead of the world (nothing here ticks or draws meanwhile); resolves once
+  // Start has been pressed and released. The title track plays on until 'gameStart'.
+  async function runFace() {
+    state.mode = 'face';
+    hud.setVisible(false);
+    model.object3D.visible = false;
+    face = new FaceScreen(uiRoot, { events, audio, view });
+    await face.show();
+    face = null;
   }
 
   // Begin play: with `intro`, the camera flies in and Pip drops in at the spawn.
@@ -224,6 +244,7 @@ async function start() {
       player.coins = 0;
       state.lives = START_LIVES;
       await runTitle();
+      if (MENUS.face) await runFace();
       startGame(true);
     }, GAME_OVER_SECONDS * 1000);
   }
@@ -314,6 +335,9 @@ async function start() {
     touch,
     remotePad,
     phone,
+    get face() {
+      return face; // the FaceScreen while it shows (test hooks: see ui/FaceScreen.js), else null
+    },
     // Switch AI RACE mode directly (tests / debugging), as the floor button does.
     setDark(on) {
       events.emit('aiRaceButton', { on });
@@ -327,12 +351,12 @@ async function start() {
       for (let i = 0; i < n; i++) {
         input.setOverride(controllerState ?? {});
         tick(input.poll());
-        if (i < n - 1 && state.mode !== 'title') poseHero(FRAME_DT); // draw() poses the last
+        if (i < n - 1 && !inMenu()) poseHero(FRAME_DT); // draw() poses the last
         // Effects (rain, fires, blasts) advance every tick too, not once per batch.
         if (i < n - 1 && state.mode === 'play' && !state.paused) fx.update(FRAME_DT, state.time, camera);
       }
       input.setOverride(null);
-      if (state.mode !== 'title') draw(FRAME_DT);
+      if (!inMenu()) draw(FRAME_DT);
     },
     render() {
       draw(0);
@@ -362,10 +386,11 @@ async function start() {
   };
 
   cam.reset(player);
-  if (SKIP_TITLE) {
+  if (!MENUS.title && !MENUS.face) {
     startGame(false);
   } else {
-    await runTitle();
+    if (MENUS.title) await runTitle();
+    if (MENUS.face) await runFace();
     startGame(true);
   }
 
@@ -381,8 +406,8 @@ async function start() {
     const dt = Math.min(0.25, (now - last) / 1000);
     last = now;
     input.sample(); // latch gamepad flicks between ticks
-    if (state.mode === 'title') {
-      acc = 0; // the title loop draws; the simulation waits
+    if (inMenu()) {
+      acc = 0; // the title loop / face screen draws; the simulation waits
     } else {
       acc += dt;
       let steps = 0;

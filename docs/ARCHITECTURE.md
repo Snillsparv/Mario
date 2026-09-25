@@ -34,7 +34,7 @@ copied from anywhere (in particular, never copy or transliterate decompiled game
 Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox),
 `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`.
 
-Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …`:
+Game flow, `state.mode` `'title' → 'face' → 'play' → 'gameover' → 'title' …`:
 
 ```
 title:    new TitleScreen(uiRoot, { events, audio }).show()   (requests the 'title' track)
@@ -50,6 +50,13 @@ title:    new TitleScreen(uiRoot, { events, audio }).show()   (requests the 'tit
           rAF: level.update(t), objects.animate(t), cam.titleOrbit(t), cam.apply(1), view.render()
           (until play starts, objects.animate() runs the objects' ambient clock from t itself:
           birds and butterflies move, nothing can be picked up; see Objects)
+face:     new FaceScreen(uiRoot, { events, audio, view }).show()   (see "Face screen")
+          Pip's big stretchy head in a scene of its own, drawn by view.setView(scene, camera)
+          instead of the world (nothing in main ticks or draws meanwhile); the title track
+          plays on; show() resolves once Start (Enter/Space/Esc, pad Start/A, touch START/A,
+          phone START/A, a click on its hint line) has been pressed and released
+          (menuPlan(location.search), ui/face/stretch.js: no title/face with ?test / ?skipTitle;
+          ?face=1 opens the face screen without the title card; ?face=0 leaves it out)
 start:    hud.setVisible(true); player.beginIntro(); cam.startIntro(player)
           dropHold = 60 ticks: Pip waits hidden above the spawn while the 96-tick fly-in runs,
           then drops (~32 ticks) and lands as the camera settles behind him
@@ -62,8 +69,8 @@ lives:    4 at start; 'lifeLost' at x0 -> once the death plays out: mode 'gameov
           'gameOver' (audio plays the 'game_over' jingle), new GameOverCard(uiRoot).show()
           over the frozen world for GAME_OVER_SECONDS (3.2 s, core/constants.js); then
           card.remove(), objects.reset(), player.coins = 0, lives = 4 — all *before* the
-          title, so the title backdrop already shows the new game's world — then the title
-          and start (with the intro) as above
+          title, so the title backdrop already shows the new game's world — then the title,
+          the face screen and start (with the intro) as above
 ```
 
 Simulation and rendering:
@@ -110,7 +117,9 @@ posed after every tick with dt = 1/30 s, like a 30 fps real-time run, so pose bl
 and the scarf have caught up after a big step), `render()` (draw with dt 0),
 `snapshot()`, `startGame(intro = true)` (replay the intro flow), and `player`, `camera`,
 `level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`,
-`neutralController`. `?skipTitle=1` skips the title/intro. `?mute=1` disables audio.
+`neutralController`, `face` (the FaceScreen while it shows, else null). `?skipTitle=1` skips
+the title, the face screen and the intro. `?face=1` opens the face screen at once (no title
+card), `?face=0` leaves it out. `?mute=1` disables audio.
 `window.__ready` is set once play starts (after the title without `?skipTitle`).
 In `?test=1` nothing requests animation frames while the GAME OVER card shows, so headless
 Chromium does not advance its CSS fade (it stays transparent until something paints, e.g. a
@@ -132,7 +141,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Camera | `src/camera/*` | CameraController |
 | Renderer | `src/render/N64Renderer.js`, `src/render/post/*` (texgen/materials are shared helpers) | N64Renderer |
 | Audio | `src/audio/*` | AudioEngine |
-| HUD/title | `src/ui/*` (incl. `logoWorker.js`, the title logo's off-thread renderer) | HUD, TitleScreen |
+| HUD/title | `src/ui/*` (incl. `logoWorker.js`, the title logo's off-thread renderer, and `face/*`, the face screen's head, art and logic) | HUD, TitleScreen, FaceScreen |
 | Objects | `src/objects/*` | ObjectManager |
 
 Each area also owns `src/dev/previews/<area>.js` (preview page) and `tests/<area>*.test.js`.
@@ -390,7 +399,13 @@ view.isUnderwater                 // the camera is below the water surface
 view.viewport                     // picture rectangle in CSS px (4:3 pillarbox)
 view.onViewportChange(fn) -> unsubscribe; view.alignOverlay(element)  // keep DOM overlays on the picture
 view.setN64Mode(on); view.setPillarbox(on); view.setDebugOverlay(on)
+view.setView(scene, camera)       // draw another scene (a menu: the face screen) instead of the
+                                  // world, through the same retro filter; its camera's aspect
+                                  // follows the picture; setView() = back to the world
 ```
+
+While a `setView()` scene is drawn the world's underwater fog, storm grade and lightning flash
+are left out (`drawView()`), and the F1 overlay's mode line shows only the size.
 
 Underwater (`src/render/post/underwater.js`, `UnderwaterFog`): while the camera is below the
 water surface (per `setWaterLevelFn`) the scene fog is swapped for a short-range blue-green
@@ -437,6 +452,7 @@ hud.setVisible(bool)          // hidden behind the title (hud.visible; hidden HU
 hud.setViewport(rect | null)
 const title = new TitleScreen(uiRootElement, { events, audio }); await title.show()  // can be shown again
 title.setViewport(rect | null)
+const face = new FaceScreen(uiRootElement, { events, audio, view }); await face.show()  // "Face screen"
 const card = new GameOverCard(uiRootElement).show()  // dark screen + gold GAME OVER, fades in
 card.setViewport(rect | null); card.remove(); card.shown   // remove() at once; show() again ok
 ```
@@ -458,6 +474,82 @@ Gamepad presses are no user gesture, so a pad Start/A begins the game from eithe
 (without creating audio). The start press calls `audio.unlock()` (keyboard/pointer only),
 emits `sfx 'menu_select'`, fades the card out in 0.4 s, and `show()` resolves once the
 start key/button is released as well.
+
+## Face screen (`src/ui/FaceScreen.js`, `src/ui/face/*`)
+
+Between the title card and play, like a classic N64 start screen's toy but with our own hero:
+Pip's big 3D head fills the picture, bobbing, swaying, blinking and watching the pointer, and
+any bit of it can be grabbed and pulled about. Everything is original: Pip's own design, a mitten
+pointer, a sky backdrop, synthesized sounds and our own texts.
+
+* **Head** (`face/pipHead.js`, `PipHead`): the in-game head (`rig.js` buildHead / buildHat: the
+  same shapes, sizes, placement, palette; `HAT_POS` / `HAT_ROT` imported) rebuilt at a much
+  higher density (skull 112x84 segments, a 128-segment brim, …) plus the scarf's collar under
+  the chin, all in head-centre space. Two meshes: the skull with the painted face, and every
+  other part merged into one vertex-coloured mesh (`DoubleSide`). ~45.6k triangles.
+* **Face** (`face/faceArt.js`): the in-game painting (`faceTexture.js` `paintFace`, exported
+  with `FACE_DESIGN`) repainted at 8 px per design px over the front of the head only (`CROP`;
+  the skull's uv is the in-game head's, remapped onto the window, clamped to skin outside it),
+  one texture per expression, uploaded when the screen opens. Open-eyed expressions are painted
+  without irises: the skull's fragment shader draws them (`IRIS_GLSL`: the painting's iris
+  gradient, pupil and catch lights, clipped to the eye white) at `uPipIris.xy`, so the eyes
+  follow the pointer (with none about they drift back and wander).
+* **Deformation** (`face/stretch.js`, shared by both materials through `onBeforeCompile`):
+  up to `STRETCH.HANDLES` (8) handles, each a grab point in rest space, a radius and an offset;
+  every vertex moves by `sum_i offset_i * falloff(|position - grab_i| / radius_i)` with
+  `falloff(d) = (1 - d^2)^3` (1 at the grab point, 0 from one radius on, flat at both ends), from
+  its rest position in head space, so skin, hair, hat, ears, nose and scarf always move together.
+  Normals go through the cofactor of the deformation's Jacobian. Radius `STRETCH.RADIUS` (19),
+  `NOSE_RADIUS` (8.5: the nose pulls out alone, the eyes beside it stay) and `BRIM_RADIUS` (24)
+  by where it was grabbed (`grabRadius`).
+* **Springs**: a held handle follows its target (a stiff 6 Hz spring, so a fast pull lags a hair
+  and carries momentum); offsets are soft-limited to `STRETCH.MAX` (72, ~2.4 head radii).
+  Released, it springs back through rest with a lightly damped 3.1 Hz wobble (ζ 0.12, a jelly
+  jiggle over ~2 s) and frees its slot once settled; several wobble at once. A grab takes a free
+  slot, else the released one with the least wobble left; none while all eight are held.
+* **Controls**: pressing on the head picks the point under the pointer on the *shown* surface
+  (the CPU applies the same field to the rest positions and raycasts, `raycast()`), and the
+  pull target is where the pointer meets that point's depth plane, plus a bulge toward the
+  viewer (35 % of the drag, up to 26), in head space, so the grabbed point stays under the
+  pointer while the head bobs. A drag on the sky turns the head (`HeadTurn`: yaw ±1.0, pitch
+  ±0.5, soft-clamped, a 1.4 Hz spring back on release); the wheel, a pinch (two fingers on the
+  sky) or +/- zoom (`Zoom`, 0.8..1.35, eased); two fingers on the face pull two handles; a quick
+  tap pokes it (a boop on the nose); a pad's stick or the arrow keys turn it too. Mouse right
+  button: always turn.
+* **Reactions** (`FaceMood`): blinks every 2.2-5.2 s at rest; while pulled a surprised face
+  (eyes still following the hand), wide-eyed alarm past 42 % of `MAX`, a wince past 86 %; a
+  giggle while released handles wobble; a dazed double blink after a big wobble. Sounds (sfx
+  events): `face_grab` on a grab, `face_stretch` (a rubbery creak) each time a pull grows by
+  another 7 units (pitch and level rising with it), `face_boing` on release (lower and longer the
+  further it was pulled), `face_boop` for a tap on the nose, `menu_select` on Start, a soft
+  boing as the head pops in. All panned by where they happen.
+* **Pointer** (`face/mitten.js`): a pixel-art cream mitten (the HUD icons' outline and shadow),
+  open while it hovers, a fist while it pulls; a DOM element over the overlay (`cursor: none`),
+  shown for the mouse only.
+* **Backdrop** (`face/backdrop.js`): one fullscreen triangle, procedural: the sky's blues
+  (`world/sky.js`), two layers of soft cumulus drifting slowly, a warm glow behind the head,
+  hazy green hills along the bottom. Drawn first, no depth.
+* **Drawing**: its own `THREE.Scene` (a key light from the upper left and the game's hemisphere
+  fill) and camera (fov 30, framed to show ≥ 96 units tall and 118 wide, head a little above
+  the middle), handed to the game's renderer with `view.setView(scene, camera)`: the retro
+  filter (quantise, dither, video blur) applies. Draw calls: backdrop, skull, parts (+ the post
+  pass). Enter / leave: the head pops in on an underdamped spring; on Start it spins away while
+  a warm-white curtain washes over, which then fades off the game's first frames.
+* **Input** stays inside: pointer / wheel listeners on its overlay (`touch-action: none`,
+  pointer capture), keys in the capture phase (the Start key never reaches `Input`),
+  `touchPress` / `touchRelease`, `remotePress` / `remoteRelease` and gamepads polled every frame
+  (buttons held when it appeared are ignored until released); `show()` resolves after the start
+  key/button is released too, and main's `startGame()` flushes the input. Leaving removes every
+  listener and disposes every geometry, material and texture (`renderer.info.memory` returns
+  to where it was).
+* **Hint** (`face/faceText.js`, SMALL_FONT): "Drag Pip's face! · Enter to play" ("START to play"
+  with a pad, "START or tap here to play" with the touch controller) in a pill that is itself a
+  start button, and "Drag the sky to turn him · wheel / pinch to zoom" above it.
+* **Hooks**: `face.state()`, `project(x, y, z)` / `projectShare()` (a head-space point on screen),
+  `displacementAt(x, y, z)`, `pointer(type, fx, fy, { id, pointerType, button })` (scripted
+  pointers through the real handlers), `timeScale` and `advance(seconds)` (freeze an exact moment
+  for a screenshot), `stretch`, `turn`, `zoom`, `head`. Preview: `/preview.html?m=face`
+  (`&n64=0`, `&box=1`, `&sound=1`, `&touch=1`; `window.__face`).
 
 ## Signs and dialog (`layout.SIGNS`, Player, `src/ui/DialogBox.js`)
 
@@ -852,7 +944,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 
 | name | payload | emitted by |
 |---|---|---|
-| `sfx` | `{ name, pos?, volume?, pitch? }` | anyone; audio plays it |
+| `sfx` | `{ name, pos?, volume?, pitch?, pan? }` | anyone; audio plays it (`pan`: a non-positional sound's stereo position, the face screen) |
 | `footstep` | `{ terrain, pos, speed }` | player |
 | `land` | `{ terrain, pos, hard }` | player |
 | `splash` | `{ pos, big }` | player |
@@ -873,7 +965,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `bossDefeated` | `{ pos, water }` | objects (Rustmaw crashed); main ends AI RACE mode as if STOP was pressed |
 | `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
 | `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
-| `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title starts on START/A) |
+| `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title and the face screen go on on START/A) |
 | `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
 | `cannonFire` | `{ pos, yaw, pitch, dir }` (`pos`: the muzzle's mouth, `dir`: along the barrel) | player (fired out of the cannon); the cannon recoils and puts the muzzle blast (fx), main's camera shake jolts the view |
 | `cannonView` | `{ on }` | camera (the cannon's aiming view went up / down); the HUD shows its reticle |
@@ -888,7 +980,8 @@ AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launc
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
 cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, and Rustmaw's tail grab's
 `tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
-(`boss_whoosh` once per whirl turn, its `pitch` rising with the spin).
+(`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), and the face screen's
+`face_grab, face_stretch, face_boing, face_boop` (with `pitch`, `volume` and `pan`).
 Unknown names must be ignored silently.
 
 ## Tooling
@@ -904,6 +997,9 @@ Unknown names must be ignored silently.
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
 * `/preview.html?m=world` shows the whole level without the player.
+* `/preview.html?m=face` shows the face screen alone (Start shows it again); scripted pulls for
+  shot.mjs: `{"eval":"__face.pointer('down', 0.6, 0.55)"}`, `{"eval":"__face.pointer('move',
+  0.8, 0.6)"}`, `{"wait":500}`, `{"shot":"shots/pull.png"}` (see the preview's header).
 * Requirements: Node.js 20.19+ or 22.12+ (Vite 8); `tools/shot.mjs` and the browser tests
   (`E2E=1 npm test`) need Playwright's Chromium (`npx playwright install chromium`).
 * `index.html` carries the tab icon inline (Pip's HUD face from `src/ui/icons.js` as an SVG

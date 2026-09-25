@@ -30,6 +30,7 @@ browser once with `npx playwright install chromium`.
 
 ## How to play
 
+* **Before you start**, the title's Start brings up Pip's big stretchy face: grab and pull his cheeks, nose, ears or hat brim (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start again to play (`?face=0` skips it, `?face=1` opens it directly).
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and
   grab it.

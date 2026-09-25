@@ -37,8 +37,9 @@ after(async () => {
 });
 
 // Logs AudioEngine music calls and, per press, the card's phase; `padStartMs`: a fake
-// gamepad holds Start from that many ms after the title appears, for 700 ms.
-function hooks({ padStartMs = 0 } = {}) {
+// gamepad holds Start from that many ms after the title appears, for 700 ms (and again from
+// `padAgainMs`, for the face screen that follows the title).
+function hooks({ padStartMs = 0, padAgainMs = 0 } = {}) {
   window.__log = [];
   const card = () => {
     const el = document.querySelector('.cg-title');
@@ -55,7 +56,8 @@ function hooks({ padStartMs = 0 } = {}) {
     console.log(`TITLE_SHOWN ${card()}`);
   }).observe(document, { childList: true, subtree: true });
   if (padStartMs) {
-    const held = () => shownAt > 0 && performance.now() - shownAt > padStartMs && performance.now() - shownAt < padStartMs + 700;
+    const within = (from) => from > 0 && performance.now() - shownAt > from && performance.now() - shownAt < from + 700;
+    const held = () => shownAt > 0 && (within(padStartMs) || within(padAgainMs));
     navigator.getGamepads = () => [
       { index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: i === 9 && held(), value: 0 })) },
     ];
@@ -96,6 +98,12 @@ test('first press starts the title music; a second Start press begins the game',
   assert.equal(s.track, 'title', 'the title music plays');
   assert.ok(s.log.some(([k, n]) => k === 'startMusic' && n === 'title'), JSON.stringify(s.log));
   await page.keyboard.press('Enter', { delay: 80 });
+  // The face screen (ui/FaceScreen.js) comes next, the title music playing on; Start again plays.
+  await page.waitForFunction(() => window.__game?.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 60000 });
+  await page.waitForTimeout(500);
+  s = await state(page);
+  assert.equal(s.track, 'title', 'the title music plays on over the face screen');
+  await page.keyboard.press('Enter', { delay: 80 });
   await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 30000 });
   await page.waitForTimeout(500);
   s = await state(page);
@@ -104,17 +112,21 @@ test('first press starts the title music; a second Start press begins the game',
 });
 
 test('a gamepad Start begins from the locked card (pad presses cannot unlock audio)', { skip, timeout: 240000 }, async () => {
-  const { page, phase } = await openTitle('', { padStartMs: 1500 });
+  const { page, phase } = await openTitle('', { padStartMs: 1500, padAgainMs: 8000 });
   assert.equal(phase, 'locked');
   await page.waitForTimeout(4000); // no page.evaluate before the pad press: it would unlock
   const s = await state(page);
-  assert.equal(s.mode, 'play', JSON.stringify(s));
+  assert.equal(s.mode, 'face', JSON.stringify(s));
+  // The pad's second Start leaves the face screen for play.
+  await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 30000 });
   await page.close();
 });
 
 test('with ?mute=1 there is nothing to unlock: the first Start press begins', { skip, timeout: 240000 }, async () => {
   const { page, phase } = await openTitle('?mute=1');
   assert.equal(phase, 'ready');
+  await page.keyboard.press('Enter', { delay: 80 });
+  await page.waitForFunction(() => window.__game?.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 60000 });
   await page.keyboard.press('Enter', { delay: 80 });
   await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 30000 });
   await page.close();

@@ -13,6 +13,8 @@ const FRONT = W * 0.25;
 const EYE_DX = 11;
 const EYE_Y = 61;
 const INK = '#3a2210';
+// The painting's layout in design px (read by the face screen's big head, ui/face/faceArt.js).
+export const FACE_DESIGN = Object.freeze({ W, H, SCALE, FRONT, EYE_DX, EYE_Y, INK });
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
@@ -201,7 +203,8 @@ const MOUTHS = {
   },
 };
 
-function paintFace(ctx, name) {
+// Paints expression `name` in design px (scaled by SCALE onto the context's current transform).
+export function paintFace(ctx, name) {
   const [eyes, mouth, brows = 'plain'] = EXPRESSIONS[name];
   ctx.scale(SCALE, SCALE);
   ctx.fillStyle = hex(COLORS.skin);

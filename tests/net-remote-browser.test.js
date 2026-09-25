@@ -152,6 +152,9 @@ test('title and pause: panel, pairing, phone START / stick / B, rumble, leaving'
     await page.waitForTimeout(400);
     assert.equal((await panelState(page)).mode, 'title', 'B is no start press');
     await phone.tap('START');
+    // The face screen follows the title: the phone's START goes on from it too.
+    await page.waitForFunction(() => window.__game.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 60000 });
+    await phone.tap('START');
     await page.waitForFunction(() => window.__game.state.mode === 'play', null, { timeout: 30000 });
     await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
     await until(() => page.evaluate(() => window.__game.player.action !== 'spawn'), 60000, 'the drop-in');

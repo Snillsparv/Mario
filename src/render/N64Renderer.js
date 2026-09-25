@@ -9,6 +9,9 @@
 //   Underwater: when the camera is below the water surface the fog switches to a short
 //     blue-green one and the sky dome is tinted toward it (surface heights from
 //     layout.waterLevelAt unless setWaterLevelFn overrides it).
+//   setView(scene, camera): draw another scene through its own camera instead of the world (a
+//     menu scene: the face screen, ui/FaceScreen.js), with the same retro filter; the camera's
+//     aspect follows the picture. setView() goes back to the world.
 //   Storm (AI RACE mode, post/storm.js): setDarkness(t) crossfades the fog (above and under
 //     water) and the actor lights to the storm's, and grades the picture (desaturated, darker,
 //     cold teal, deep shadows); flash(strength) brightens the whole frame for a lightning
@@ -95,6 +98,8 @@ export class N64Renderer {
     this.initStorm();
     this.debug = new DebugOverlay();
     this.waterLevelFn = waterLevelAt;
+    this.viewScene = null; // setView(): a scene drawn instead of the world ...
+    this.viewCamera = null; // ... through this camera
     this.viewport = { x: 0, y: 0, width: 1, height: 1 }; // CSS px inside the container
     this.viewportListeners = new Set();
     this.pixelRatio = 1;
@@ -265,6 +270,21 @@ export class N64Renderer {
     key.position.copy(d).normalize().multiplyScalar(1000); // shines toward the target at the origin
   }
 
+  // Draw `scene` through `camera` instead of the world (the storm grade, lightning flash and
+  // underwater fog stay with the world); the camera's aspect follows the picture. No arguments:
+  // back to the world.
+  setView(scene = null, camera = null) {
+    this.viewScene = scene && camera ? scene : null;
+    this.viewCamera = this.viewScene ? camera : null;
+    this.fitCamera(this.viewCamera);
+  }
+
+  fitCamera(camera) {
+    if (!camera?.isPerspectiveCamera) return;
+    camera.aspect = this.viewport.width / this.viewport.height;
+    camera.updateProjectionMatrix();
+  }
+
   // fn(x, z) -> water surface height or NO_WATER (e.g. collision.waterLevelAt).
   setWaterLevelFn(fn) {
     this.waterLevelFn = fn;
@@ -350,6 +370,7 @@ export class N64Renderer {
 
     camera.aspect = vp.width / vp.height;
     camera.updateProjectionMatrix();
+    this.fitCamera(this.viewCamera);
 
     this.internal = internalResolution(vp.width, vp.height, this.internalHeight);
     this.target.setSize(this.internal.width, this.internal.height);
@@ -367,6 +388,10 @@ export class N64Renderer {
 
   // Draws the current scene and camera state (also used to repaint after a resize).
   draw() {
+    if (this.viewScene) {
+      this.drawView();
+      return;
+    }
     const { renderer, scene, camera } = this;
     this.underwater.update(isBelowWater(camera.position, this.waterLevelFn));
 
@@ -404,11 +429,27 @@ export class N64Renderer {
     renderer.render(scene, camera);
   }
 
+  // The setView() scene, through the retro filter in N64 mode (ungraded).
+  drawView() {
+    const { renderer, viewScene, viewCamera } = this;
+    renderer.info.reset();
+    if (!this.n64) {
+      renderer.render(viewScene, viewCamera);
+      return;
+    }
+    renderer.setRenderTarget(this.target);
+    renderer.render(viewScene, viewCamera);
+    renderer.setRenderTarget(null);
+    this.pass.setGrade(0, 0);
+    this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
+  }
+
   // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater'.
   describeMode() {
     const size = this.n64
       ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
       : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
+    if (this.viewScene) return size + (this.pillarbox ? ' 4:3' : '');
     return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '');
   }
 
