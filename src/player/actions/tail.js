@@ -157,8 +157,11 @@ const tailHold = {
     hold(p);
     if (p.actionTimer < 2) return false;
     if (c.Z.pressed) {
+      // Let go (the same press does not also crouch).
       p.tailSpeed = 0;
-      return p.setAction('idle');
+      p.pressGuard = true;
+      p.setAction('idle');
+      return false;
     }
     if (c.B.pressed) return p.setAction('tail_throw');
     if (spinUp(p)) p.tailIdle = 0;

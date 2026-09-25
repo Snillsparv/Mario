@@ -40,6 +40,16 @@ browser once with `npx playwright install chromium`.
   and he drops back in at the start; losing one at ×0 is GAME OVER. A **1-up gem** is hidden
   somewhere on the grounds and gives an extra life.
 * **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it.
+* **Beating Rustmaw** (the giant mechanical lizard on the castle roof in AI RACE mode): its tail
+  runs back over the keep onto the flat roof behind it and ends in a glowing orange coupling.
+  Get up there (fly with the winged hat, or take the cannon), walk up behind the coupling and
+  press **attack** to grab it (it cannot spit fireballs while you hold on). **Rotate the stick in
+  circles**: Pip hauls the beast off the roof and whirls it round over the castle, faster with
+  every circle (listen to the whoosh climb). Press **attack** again to throw it: with enough spin
+  (about three circles) it flies off the castle and crashes down, which ends AI RACE mode and
+  leaves a **star** at the crash site. Let go too early and it twists free, slams back onto its
+  perch and knocks Pip back; crouch lets go, and holding on without spinning it tears loose.
+  Start AI RACE again for a rematch (the star is only won once per game).
 * **The cannon** on the east lawn shoots Pip onto the castle's roofs, all the way up to the top
   of the keep, where a ring of coins and a sign wait. Step onto its glowing pad to climb in.
 
@@ -60,6 +70,7 @@ browser once with `npx playwright install chromium`.
 | climb trees | jump into a tree trunk to hug it: stick up climbs, down slides, jump leaps off, crouch lets go |
 | swim | jump to stroke, hold jump to kick along; at the surface pull back and jump to leap out, crouch (or push up and jump) to dive |
 | fly | with the winged hat (from the crystal box), triple jump (or flip off a tree top): Pip takes off at the top of the jump and climbs. Like an aeroplane: pull back to climb, push forward to dive, left/right to bank. The run-up's forward push counts as "level" until you let go once. Crouch to drop |
+| grab & throw a tail | attack next to Rustmaw's glowing tail coupling grabs it; rotate the stick in circles to spin (faster each circle), attack again to throw; crouch lets go |
 | cannon | step onto the glowing pad beside the cannon: Pip hops into the barrel. Aim with the stick (up raises the barrel; the reticle shows where it points), jump fires, attack or crouch climbs back out. Mid-shot, crouch ground-pounds and attack dives; a landing from a shot never hurts. With the winged hat the shot turns into flight at its peak |
 
 ## Controls

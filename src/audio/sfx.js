@@ -962,6 +962,91 @@ export const SFX = {
     return 1.8;
   },
 
+  // ---- Rustmaw's tail: grab, haul, whirl, throw, crash (objects/RobotBeast.js)
+
+  // Grabbing the tow coupling: a heavy steel clank (a thud under two clanging partial sets and
+  // a hard contact click) and the coupling's links rattling after it.
+  tail_grab(ctx, out, t, { p }) {
+    thud(ctx, out, t, { freq: 260 * p, to: 110 * p, dur: 0.12, gain: 0.34 });
+    bell(ctx, out, t + 0.004, { freq: 420 * p, dur: 0.55, gain: 0.12, partials: METAL });
+    bell(ctx, out, t + 0.03, { freq: 611 * p, dur: 0.4, gain: 0.07, partials: METAL });
+    noise(ctx, out, t, { filter: 'highpass', freq: 3800, dur: 0.02, gain: 0.18, attack: 0.001 });
+    crackles(ctx, out, t + 0.05, { count: 9, span: 0.28, gain: 0.07, lo: 2500, hi: 6000, front: 1.4 });
+    return 0.6;
+  },
+
+  // Torn off the ridge: steel grinding over the roof tiles, a strained clang, a deep rumble and
+  // the rush of air as the beast is hauled up into the sky.
+  boss_haul(ctx, out, t, { p }) {
+    grind(ctx, out, t, { freq: [[0, 300 * p], [0.7, 540 * p], [1.3, 360 * p]], q: 2.5, dur: 1.3, gain: 0.16, rate: 19, attack: 0.05 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 120], [0.5, 380], [1.3, 140]], dur: 1.35, gain: 0.32, attack: 0.15, kind: 'brown' });
+    noise(ctx, out, t + 0.25, { freq: [[0, 300], [0.9, 1600]], q: 0.8, dur: 1, gain: 0.2, attack: 0.6 });
+    bell(ctx, out, t, { freq: 140 * p, dur: 0.9, gain: 0.07, partials: METAL });
+    crackles(ctx, out, t + 0.05, { count: 14, span: 0.9, gain: 0.07, lo: 700, hi: 2600, front: 1.5 });
+    return 1.4;
+  },
+
+  // One turn of the whirl (the engine gets the pitch rising with the spin): a big rush of air
+  // swelling and falling away as the beast sweeps past, over a low droning 'vwomm'.
+  boss_whoosh(ctx, out, t, { p }) {
+    noise(ctx, out, t, { freq: [[0, 300 * p], [0.22, 1500 * p], [0.5, 480 * p]], q: 1.1, dur: 0.52, gain: 0.32, attack: 0.2 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 200 * p], [0.25, 640 * p], [0.5, 180 * p]], dur: 0.5, gain: 0.24, attack: 0.18, kind: 'brown' });
+    tone(ctx, out, t, { wave: 'triangle', freq: [[0, 70 * p], [0.22, 120 * p], [0.48, 60 * p]], dur: 0.48, gain: 0.13, attack: 0.2 });
+    return 0.55;
+  },
+
+  // Letting go: a heave (a low push), the coupling springing free with a ringing twang, and a
+  // huge whoosh as the beast is flung away.
+  boss_throw(ctx, out, t, { p }) {
+    thud(ctx, out, t, { freq: 120 * p, to: 55 * p, dur: 0.2, gain: 0.3 });
+    noise(ctx, out, t, { freq: [[0, 400], [0.18, 2600], [0.9, 350]], q: 0.9, dur: 0.95, gain: 0.36, attack: 0.12 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 500], [1, 120]], dur: 1, gain: 0.26, attack: 0.05, kind: 'brown' });
+    tone(ctx, out, t + 0.12, { wave: 'triangle', freq: [[0, 180 * p], [0.05, 900 * p], [0.5, 640 * p]], dur: 0.5, gain: 0.08, attack: 0.003 });
+    bell(ctx, out, t + 0.12, { freq: 760 * p, dur: 0.6, gain: 0.08, partials: METAL });
+    return 1.05;
+  },
+
+  // The beast slamming back down on its perch (it twisted free): a deep boom, a crunch of
+  // stone, steel clanging and rubble pattering down.
+  boss_slam(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 85 * p, to: 32, glide: 0.5, dur: 1, gain: 0.36, attack: 0.003 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 1600], [1.1, 120]], dur: 1.15, gain: 0.34, attack: 0.003, kind: 'brown' });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2200, dur: 0.05, gain: 0.18, attack: 0.001 });
+    bell(ctx, out, t + 0.01, { freq: 190 * p, dur: 1, gain: 0.08, partials: METAL });
+    bell(ctx, out, t + 0.05, { freq: 297 * p, dur: 0.7, gain: 0.05, partials: METAL });
+    crackles(ctx, out, t + 0.08, { count: 16, span: 1.1, gain: 0.08, lo: 600, hi: 2600, front: 1.7 });
+    return 1.3;
+  },
+
+  // Thrown down and wrecked: an enormous crash. A sub-shaking boom, a blast of fire (a roaring
+  // low noise), a sharp crack, the whole steel hulk clanging (three low partial sets), a long
+  // grinding scrape of scrap as it settles, and debris raining down for a couple of seconds.
+  boss_crash(ctx, out, t, { p, dist = 0 }) {
+    const near = clamp(1 - (dist - 1500) / 12000, 0.35, 1);
+    tone(ctx, out, t, { freq: 62 * p, to: 24, glide: 0.9, dur: 1.9, gain: 0.34, attack: 0.003 });
+    tone(ctx, out, t, { freq: 38 * p, dur: 1.3, gain: 0.14, attack: 0.004 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 500 + 2200 * near], [2, 90]], dur: 2.1, gain: 0.34, attack: 0.003, kind: 'brown' });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 800 + 3200 * near, to: 300, dur: 0.5, gain: 0.26 * near, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2000, dur: 0.06, gain: 0.2 * near, attack: 0.001 });
+    bell(ctx, out, t + 0.01, { freq: 118 * p, dur: 2, gain: 0.07, partials: METAL });
+    bell(ctx, out, t + 0.06, { freq: 173 * p, dur: 1.5, gain: 0.05, partials: METAL });
+    bell(ctx, out, t + 0.14, { freq: 251 * p, dur: 1.1, gain: 0.04, partials: METAL });
+    grind(ctx, out, t + 0.3, { freq: [[0, 900], [1.2, 380]], q: 3, dur: 1.3, gain: 0.08, rate: 27, attack: 0.05 });
+    crackles(ctx, out, t + 0.1, { count: 30, span: 2.2, gain: 0.09 * near, lo: 600, hi: 3000, front: 1.8 });
+    return 2.6;
+  },
+
+  // Thrown into the water: a huge splash (a deep plunge under a wide spray), steam hissing up
+  // off the hot hulk, and big bubbles gurgling as it sinks.
+  boss_splash(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 70 * p, to: 28, glide: 0.6, dur: 0.9, gain: 0.34, attack: 0.003 });
+    noise(ctx, out, t, { freq: [[0, 3000], [1.2, 400]], q: 0.6, dur: 1.3, gain: 0.4, attack: 0.01 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 700, to: 150, dur: 1, gain: 0.3, attack: 0.005, kind: 'brown' });
+    noise(ctx, out, t + 0.3, { filter: 'highpass', freq: 2400, to: 4600, dur: 1.6, gain: 0.16, attack: 0.1 });
+    for (let i = 0; i < 12; i++) plip(ctx, out, t + rand(0.2, 1.9), rand(250, 700) * p, 0.07);
+    return 2.2;
+  },
+
   // Trying the locked castle door: an original villain's laugh ('mwa-ha-ha-haaa', formant
   // synthesis: see laughVoice) booming out of a big stone hall with a slapback echo, over a
   // low rumble swelling up from the castle's depths.
@@ -1062,6 +1147,14 @@ export const SFX_INFO = {
   hall_warn: { range: 2.5, gap: 0.3, max: 2 }, // heard across the grounds: a unit is coming down
   hall_impact: { range: 2.5, gap: 0.1, max: 3 },
   hall_rise: { range: 2, gap: 0.25, max: 2 },
+  // Rustmaw's tail grab: the whirl and the crash carry across the grounds (the beast is huge).
+  tail_grab: { gap: 0.2, max: 1 },
+  boss_haul: { range: 2.5, gap: 0.5, max: 1 },
+  boss_whoosh: { range: 2.5, gap: 0.15, max: 2 },
+  boss_throw: { range: 2, gap: 0.5, max: 1 },
+  boss_slam: { range: 3, gap: 0.3, max: 2 },
+  boss_crash: { range: 4, gap: 1, max: 1, duck: { music: 0.4, amb: 0.6, seconds: 1.6 } },
+  boss_splash: { range: 3, gap: 1, max: 1 },
   cannon_enter: { gap: 0.2, max: 1 },
   cannon_turn: { gap: 0.05, max: 2 }, // the ratchet, every few degrees of aiming
   cannon_fire: { range: 2.5, gap: 0.3, max: 1 }, // heard across the grounds

@@ -115,12 +115,13 @@ export const GRAB = {
   FLAIL_ROLL: 0.22, // roll wobble while whirling
   THROW_MIN: 0.15, // spin (rad/tick) a throw needs
   RELEASE_GRACE: 75, // ticks after it is let go before it shoots again
-  HOLD_ROAR: 50, // a held beast roars this often (ticks)...
+  HOLD_ROAR: 50, // a held beast starts another roar this often (ticks) once the last is over
   // The throw's flight: ballistic under THROW_GRAVITY, its waist's apex THROW_APEX over the
-  // castle's top (T within THROW_T), levelling out of the whirl, spinning and rolling (FLY_*),
-  // turned onto its back along the nearest wall over the last CRASH_BLEND ticks. The landing
-  // spot keeps LAND_MARGIN clear of the castle's footprint and LAND_EDGE inside the level's
-  // perimeter; lying on its back its waist is LAND_REST over the ground.
+  // castle's top (T within THROW_T), levelling out of the whirl, spinning and rolling (FLY_*;
+  // both scaled to end lined up with the wreck), set down on its back over the last CRASH_BLEND
+  // ticks. The landing spot keeps LAND_MARGIN clear of the castle's footprint (LAND_MARGIN_FRONT
+  // in front) and LAND_EDGE inside the level's perimeter, with room for the wreck (WRECK_*,
+  // LAND_*: _wreckFit); lying on its back its waist is LAND_REST over the ground.
   THROW_GRAVITY: 5,
   THROW_APEX: 2600, // the waist's apex over the castle's top (layout.CASTLE.keepTopY)
   THROW_T: [50, 110],
@@ -282,6 +283,8 @@ const B0 = vec(RIG.TAIL_B[0]);
 const GRIP_B = vec(sub3(RIG.GRIP, RIG.TAIL_B[0])); // the grip in tailB's space
 const B0_A = vec(sub3(RIG.TAIL_B[0], RIG.TAIL_A[0])); // tailB's pivot in tailA's space
 const TIP_B = vec(sub3(RIG.TAIL_B[RIG.TAIL_B.length - 1], RIG.TAIL_B[0])); // the tail's tip
+const GRIP_B_DIR = GRIP_B.clone().normalize();
+const HELD_AXIS = vec(RIG.GRIP).sub(A0).normalize(); // tail root to coupling (root space)
 const BACK = new THREE.Vector3(0, 0, -1);
 const TAIL_A_STRAIGHT = new THREE.Quaternion().setFromUnitVectors(B0_A.clone().normalize(), BACK);
 const TAIL_B_STRAIGHT = new THREE.Quaternion().setFromUnitVectors(
@@ -1580,14 +1583,17 @@ export class RobotBeast {
     // only quivers with the strain.
     const thrash = P[CH.TAIL];
     if (this.state === 'held') {
-      const q = 0.004 * Math.sin(clock * 23);
-      this.tailA.rotation.set(q, q * 0.5, 0);
-      this.tailB.rotation.set(-q, 0, q);
+      // Held: its tail thrashes, swinging round the line from its root to the coupling like a
+      // skipping rope, so the end stays put in the hero's hands.
+      const psi = 0.075 * Math.sin(clock * 5.5) + 0.03 * Math.sin(clock * 9.1);
+      this.tailA.quaternion.setFromAxisAngle(HELD_AXIS, psi);
+      this.tailB.quaternion.setFromAxisAngle(GRIP_B_DIR, 0.05 * Math.sin(clock * 19));
       return;
     }
     const aYaw = 0.02 * Math.sin(clock * 0.6) + 0.035 * thrash * Math.sin(clock * 4.2);
-    this.tailA.rotation.set(0.02 * thrash, aYaw, 0);
-    this.tailB.rotation.set(0.05 * thrash, -1.3 * aYaw + 0.012 * Math.sin(clock * 0.7 - 0.9) + 0.03 * thrash * Math.sin(clock * 5.1 - 0.8), 0.02 * Math.sin(clock * 0.8));
+    const aLift = 0.03 * thrash * (1 + Math.sin(clock * 5.3));
+    this.tailA.rotation.set(aLift, aYaw, 0);
+    this.tailB.rotation.set(-1.5 * aLift, -1.3 * aYaw + 0.012 * Math.sin(clock * 0.7 - 0.9) + 0.03 * thrash * Math.sin(clock * 5.1 - 0.8), 0.02 * Math.sin(clock * 0.8));
   }
 
   // The free pose: the limbs from the channels (flailing), the tail pulled straight by fk, and

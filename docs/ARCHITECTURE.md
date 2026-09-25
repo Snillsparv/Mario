@@ -270,7 +270,20 @@ belly_slide, butt_slide, ground_pound_spin, ground_pound_fall, ground_pound_land
 wallkick, bonk, hurt, fall_damage, ledge_hang, ledge_climb, pole_hold, pole_climb,
 pole_jump, punch1, punch2, kick, jump_kick, swim_idle, swim_stroke, swim_flutter,
 water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn, fly,
-cannon_shot`.
+cannon_shot, tail_hold, tail_spin, tail_throw`.
+
+Rustmaw's tail (`src/player/actions/tail.js`, see "AI RACE mode"): objects set
+`player.tailGrip` (the beast's grip record, `null` without a beast); B next to the glowing
+coupling (feet within `TAIL_GRAB_REACH` of the spot to hold it from) starts action
+`tail_hold` (anim `tail_hold`: both mittens on the coupling's bar, leaning back, heels dug in)
+instead of a punch or dive; stick circles build `player.tailSpeed` (rad/tick, faster with each
+turn, winding down when the stick stops) and start `tail_spin` (anim `tail_spin`: the hands rise
+along the taut tail as the beast is hauled up, then he spins on the spot, `faceYaw` turning by
+`tailDir * tailSpeed`); B lets go (`tail_throw`, anim `tail_throw`: the fling and a fist; the
+beast reads `player.tailRelease`, the spin it was let go at). Z in `tail_hold` lets go; holding on
+without spinning for `TAIL_HOLD_TICKS`, or the beast going away, tears it loose (a stumble, no
+damage); a spin that runs down lets go on its own (a weak throw). All three are 'automatic'
+actions: Pip never moves (his own spin cannot fling him off the roof) and takes no fall damage.
 
 Tree tops: climbing past the top of a tree's pole enters action `pole_top` (anim
 `pole_handstand`, a handstand on the crown). During it `RenderState.pos` is the pole tip
@@ -325,6 +338,15 @@ Star celebration (`src/camera/celebration.js`, `CELEBRATE_*`): while the hero da
 to dance) the orbit swings round to a three-quarter front view and moves in, then swings back
 to where it was once the dance ends, unless the player moves the hero or turns the camera
 first. The camera buttons wait for the dance and take over during the swing back.
+
+Rustmaw's tail grab (`src/camera/bossCam.js`, `BOSS_CAM`): `cam.bossCam.update(cam, hero)` runs
+after the orbit's tick and blends its own pose over the orbit's (the orbit keeps running
+underneath, as in the intro; its weight `w` eases in and out): while Pip holds the tail
+(`tail_*` actions) it backs off and rises behind him over the roof's parapet, and as he hauls
+the beast up it moves far back and up and looks up past him with a wider view (the beast
+whirling round high over the castle); on `'bossThrown'` it chases the beast along its flight
+(behind and above it, clear of what lies under it) and holds on the wreck until the reward star
+starts to rise, then hands back to the orbit. Nothing changes while `w` is 0.
 
 Keeping the hero in view (`src/camera/CameraCollider.js`, `src/camera/sight.js`):
 * A C-left/C-right press first runs the swing ahead on a copy of the collider; if the hero
@@ -483,6 +505,58 @@ version and back. Everything is original: no existing monster, character or bran
   alight (`level.trees` canopies). A blast hits Pip for 2 wedges, touching fire for 1 with
   `player.takeDamage(n, fromPos, { fire: true })` (Pip's 'burn' reaction). It leaves when
   the mode turns off.
+* **Grabbing its tail and throwing it off the roof** (objects `RobotBeast.js`, player
+  `actions/tail.js`, camera `bossCam.js`, `BossStar.js`). Its tail climbs round the keep's east
+  side and runs on back along the rear block's flat roof (walkway at 2360); its end is a tow
+  coupling (`RIG.GRIP`: a hazard-striped collar, two struts, a thick crossbar) glowing orange
+  and pulsing (the material's `uGrip`, a glow sprite) a hand's height over the walkway. Pip gets
+  up there with the winged hat's flight (or a cannon shot). The beast answers his actions
+  (`beast.grip` is shared with him as `player.tailGrip`):
+  * `'held'` (B grabs it, `tail_hold`): it stays on its perch but struggles: roars again and
+    again, looks back over its shoulder, claws scrabbling, body shaking, its tail thrashing like
+    a skipping rope round the line from its root to his hands (the end stays put); **no
+    fireballs**. Let go (Z, a hit, held too long): back to its business after an angry roar,
+    `GRAB.RELEASE_GRACE` ticks before it shoots again.
+  * `'haul'` (the spin starts, `tail_spin`): over `TAIL_RAISE_TICKS` it is torn off the ridge
+    and hauled up into the whirl along a scripted path (`GRAB.HAUL` keys: bearing, elevation,
+    how straight the tail is, roll; front legs tucked), swinging up east of the keep's spire and
+    rolling onto its back; meanwhile it leads Pip's facing (`grip.lead` / `grip.yaw`).
+  * `'whirl'`: the coupling in his hands (`RobotBeast.hand`, from his feet and facing and
+    `TAIL_HANDS`), the tail pulled straight, the whole beast swings round him along his facing,
+    its body `GRAB.THETA` (68°) above the horizontal, belly up and limbs flailing: high enough
+    that nothing of it touches the keep, its spire or the towers at any bearing (the lowest
+    obstacle clearance is the test). A `boss_whoosh` each turn, its pitch rising with the spin.
+  * `'thrown'` (B at `GRAB.THROW_MIN` = 0.15 rad/tick or more: about three stick circles): it
+    flies off along the swing's tangent to a landing spot on that line (swung further round if
+    need be) at least `LAND_MARGIN` outside the castle's footprint (`LAND_MARGIN_FRONT` in
+    front of it), inside the perimeter, on level ground clear of trees, rocks and server halls,
+    or in water, where its wreck fits (`_wreckFit`). The flight (`flightPoint`): ballistic up
+    to `THROW_APEX` over the keep's top, its way across eased in and out (it shoots up out of
+    the whirl, levelling out over the roof, then drops onto the spot), spinning flat and
+    barrel-rolling, flailing and roaring, lined up along the nearest wall before it comes down
+    on its back. `'bossThrown' { flight, to, water }`.
+  * A weaker throw (or the spin running down, or a hit while whirled): it twists free (`'fall'`)
+    and arcs back onto its perch, slamming down (dust, `boss_slam`, `'bossImpact'`), and Pip is
+    knocked back 1 wedge toward the roof's inside (a throw with no spin at all: its tail slams
+    down on the roof).
+  * `'wrecked'`: on the ground a giant blast of fire, sparks, scrap and dust (`fx.explode` x3,
+    `fx.dust`, a fire, `level.addScorch`), `boss_crash` and a strong camera shake
+    (`'bossImpact' { strength: 3 }`); in water a huge splash and steam (`boss_splash`). Then
+    `'bossDefeated' { pos, water }`: main ends AI RACE mode as if STOP was pressed (the storm
+    clears over the usual fade, the button pops back to "AI RACE", minions and server halls go
+    away). It lies on its back, smoking and sparking, optics dying, then sinks away
+    (`GRAB.WRECK_TICKS + SCRAP_TICKS`) and `beast.starDue` puts out the **reward star**
+    (`BossStar.js`: a second, original star, warmer and redder, spiralling up out of the crash
+    site; collected like the red-coin star: `player.collectStar()`, the celebration,
+    `'starCollected' { pos, boss: true }`; once per game). The next AI RACE brings a repaired
+    beast back to its perch, to be beaten again (no second star). `objects.reset()` hides both,
+    takes the star back off `player.stars` and lets it be won again.
+  * No new server hall arrives while the beast flies (its landing spot stays clear).
+  * Camera (`src/camera/bossCam.js`, blended over the orbit by CameraController after its tick):
+    holding on, it backs off and rises over the roof's parapet; whirling, far back and up,
+    looking up past Pip at the beast circling over the castle (wider field of view); thrown, it
+    chases the beast along its flight (behind and above it) down to the crash and holds on the
+    wreck until the star starts to rise, then hands back.
 * **Audio**: rain and wind beds, thunder after lightning, an ominous original synth track,
   the monster's mechanical roar, fireball launch/explosion, fire crackle, button clunk,
   an alarm sting; birds stop while dark.
@@ -745,7 +819,8 @@ objects.started                             // an update() ran since constructio
 
 `reset()` (always present; main calls it after GAME OVER, before the title): all yellow and
 red coins come back (red count 0), the star is hidden until the next full red set, the 1-up
-gem returns, live sparkles vanish, and the star it awarded is taken back off `player.stars`.
+gem returns, live sparkles vanish, and the star it awarded is taken back off `player.stars`
+(so is Rustmaw's reward star, `BossStar.js`, which can then be won again).
 The tick clock keeps running (birds and butterflies carry on where they are).
 
 `ambient(time)`: until the first `update()` (and again after `reset()`), `animate()` drives the
@@ -762,6 +837,10 @@ waterTop })`; optional `waterTop` (default `Infinity`) is the highest water surf
 so the water query is skipped over floors above it; ObjectManager passes
 `layout.WATER_LEVEL`) and
 circling birds (`new Birds(BIRD_CIRCLES, { collision, rng })`, circles `{ x, z, y, radius }`).
+A second star, Rustmaw's reward (`new BossStar({ events, collision, sparkles, shadows,
+shadowSlot, envMap })`, a `Star` instance of its own: `new Star(envMap, { color, emissive })`),
+rises out of the crash site after the tail throw (see "AI RACE mode"); the objects set
+`player.tailGrip` to the beast's grip record.
 Everything animates on the simulation clock, so pausing freezes it.
 
 ## Events (`src/core/events.js`)
@@ -784,6 +863,9 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `hallImpact` | `{ pos, strength, kind }` (`kind` `'drop'`: a server hall slammed down, strength 1; `'rise'`: one started grinding up, 0.35) | objects (tech takeover); main's camera shake jolts the view |
+| `bossThrown` | `{ flight, to, water }` (`flight`: `{ x0, y0, z0, vx, vy, vz, T, g }`, `RobotBeast.flightPoint(flight, t)` is its waist t ticks on; `to`: the crash site) | objects (Pip threw Rustmaw); the boss camera chases it |
+| `bossImpact` | `{ pos, strength, kind }` (`'slam'`: back down on its perch, 0.8-1.3; `'crash'` / `'splash'`: thrown down, 3 / 2) | objects (Rustmaw); main's camera shake jolts the view |
+| `bossDefeated` | `{ pos, water }` | objects (Rustmaw crashed); main ends AI RACE mode as if STOP was pressed |
 | `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
 | `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
 | `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title starts on START/A) |
@@ -799,7 +881,9 @@ star_get, one_up, pause, menu_select`, plus `footstep, life_lost, unpause, camer
 camera_buzz`, and the dialog box's `dialog_open, text_blip, dialog_next, dialog_close`, and
 AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
-cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`.
+cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, and Rustmaw's tail grab's
+`tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
+(`boss_whoosh` once per whirl turn, its `pitch` rising with the spin).
 Unknown names must be ignored silently.
 
 ## Tooling
