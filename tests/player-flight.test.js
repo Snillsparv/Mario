@@ -49,7 +49,12 @@ describe('winged hat: take-off', () => {
     assert.deepEqual(hatEvents(s), [true]);
     assert.ok(s.sfx().includes('powerup'));
     assert.equal(s.p.wingHat, T.WING_HAT_SECONDS * 30);
-    assert.equal(tripleJump(s), 'flying');
+    // The flip goes up first and takes off into flight at its peak.
+    assert.equal(tripleJump(s), 'triple_jump');
+    const flipY = s.p.pos.y;
+    const n = s.until(40, {}, (p) => p.action !== 'triple_jump');
+    assert.equal(s.p.action, 'flying', `took off after ${n} ticks`);
+    assert.ok(s.p.pos.y > flipY + 400, `at the flip's peak (${s.p.pos.y.toFixed(0)})`);
     const rs = s.p.getRenderState(1);
     assert.equal(rs.anim, 'fly');
     assert.equal(rs.wingHat, true);
@@ -64,8 +69,49 @@ describe('winged hat: take-off', () => {
     // The take-off climbs well above a triple jump before levelling into a glide.
     let top = 0;
     s.run(60, {}, (p) => ((top = Math.max(top, p.pos.y)), p.action === 'flying'));
-    assert.ok(top > 500, `take-off peak ${top}`);
+    assert.ok(top > 1000, `take-off peak ${top}`);
     assert.equal(s.p.action, 'flying');
+  });
+
+  test("the run-up's stick still held forward doesn't dive the take-off into the ground; once let go, up dives", () => {
+    const s = sim(flat);
+    s.p.giveWingHat();
+    tripleJump(s);
+    s.until(40, { stickY: 1 }, (p) => p.action !== 'triple_jump');
+    assert.equal(s.p.action, 'flying');
+    assert.equal(s.p.flyStickLatch, true);
+    let top = 0;
+    s.run(90, { stickY: 1 }, (p) => ((top = Math.max(top, p.pos.y)), p.action === 'flying'));
+    assert.equal(s.p.action, 'flying', 'still flying 3 s later with the stick held');
+    assert.ok(top > 1000, `climbed away (peak ${top.toFixed(0)})`);
+    assert.ok(s.p.flyPitch < 0.2, `a glide, not a dive (pitch ${s.p.flyPitch.toFixed(2)})`);
+    // Let go, then push up again: now it dives.
+    s.run(2, {});
+    assert.equal(s.p.flyStickLatch, false);
+    s.run(20, { stickY: 1 });
+    assert.ok(s.p.flyPitch > 0.8, `diving (pitch ${s.p.flyPitch.toFixed(2)})`);
+  });
+
+  test('a stick pulled back or left alone at the take-off is not latched', () => {
+    for (const stickY of [0, -1]) {
+      const s = sim(flat);
+      s.p.giveWingHat();
+      tripleJump(s);
+      s.until(40, { stickY }, (p) => p.action !== 'triple_jump');
+      assert.equal(s.p.action, 'flying');
+      assert.equal(s.p.flyStickLatch, false);
+    }
+  });
+
+  test('with the hat on, a triple jump cut short before its peak (a ground pound) never flies', () => {
+    const s = sim(flat);
+    s.p.giveWingHat();
+    tripleJump(s);
+    s.run(3, { stickY: 1 });
+    s.run(1, { Z: true });
+    assert.equal(s.p.action, 'ground_pound');
+    s.until(100, {}, (p) => p.grounded);
+    assert.notEqual(s.p.action, 'flying');
   });
 
   test('the tree-top flip jump flies off with the hat on', () => {

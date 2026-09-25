@@ -207,6 +207,12 @@ export const STAR_GRAB_MAX_VY = 10; // a star grabbed while rising only carries 
 // into a fall.
 export const WING_HAT_SECONDS = 40;
 export const WING_HAT_ENDING_SECONDS = 3; // RenderState.wingHatEnding: the last seconds (blink)
+// With the hat on, the triple jump flips up first and takes off into flight at its peak (once
+// it rises slower than FLY_APEX_VY), so the climb starts high above the ground.
+export const FLY_APEX_VY = 6;
+// A stick pushed up (dive) further than FLY_LATCH_STICK at the take-off is read as neutral until
+// it is let go once: the run-up's push doesn't dive the fresh flight into the ground.
+export const FLY_LATCH_STICK = 0.3;
 export const FLY_LAUNCH_SPEED = 40;
 export const FLY_LAUNCH_PITCH = -0.9; // nose up (~52 deg; radians, pitch > 0 = nose down)
 export const FLY_LAUNCH_TICKS = 16; // the take-off climbs at the launch pitch without losing speed (~500 up)

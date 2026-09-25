@@ -1,8 +1,9 @@
-// Winged-hat flight (action 'flying', anim 'fly'). While player.wingHat is on, a triple jump or
-// the flip jump off a tree top takes off into it (common.js jumpFromGround, automatic.js
-// pole_top; arg.fromPole: the pole jumped off, not grabbed again). Tank controls with the
-// raw stick, like swimming: stick up = nose down (dive, gains speed), stick down = nose up
-// (climb, drains speed; the wings flap), stick left / right banks and the heading turns in
+// Winged-hat flight (action 'flying', anim 'fly'). While player.wingHat is on, a triple jump
+// (at its peak, airborne.js; arg.apex) or the flip jump off a tree top takes off into it
+// (automatic.js pole_top; arg.fromPole: the pole jumped off, not grabbed again). Tank controls
+// with the raw stick, like swimming: stick up = nose down (dive, gains speed), stick down = nose up
+// (climb, drains speed; the wings flap; a stick still pushed up from the run-up is read as
+// neutral until it is let go, FLY_LATCH_STICK), stick left / right banks and the heading turns in
 // proportion to the bank. The air speed p.flySpeed runs along the heading and pitch
 // (p.flyPitch, > 0 nose down; p.flyBank, > 0 right side down), shown by RenderState.pitch /
 // roll. Endings: too slow (a stall), Z, or the hat running out -> freefall; a wall ahead ->
@@ -160,16 +161,21 @@ const flying = {
     p.flyPitch = T.FLY_LAUNCH_PITCH;
     p.flyBank = 0;
     p.flapTimer = 0;
+    p.flyStickLatch = p.rawStickY > T.FLY_LATCH_STICK;
     p.grounded = false;
     p.comboJump = null;
     applyFlightVelocity(p);
-    p.sfx('triple_jump');
+    if (!arg?.apex) p.sfx('triple_jump'); // from a triple jump's peak: its flip already whooshed
   },
   update(p, c) {
     if (p.wingHat <= 0 || c.Z.pressed) return endFlight(p);
 
     // Steering: the take-off holds its climb for FLY_LAUNCH_TICKS unless the stick dives.
-    const sy = p.rawStickY;
+    let sy = p.rawStickY;
+    if (p.flyStickLatch) {
+      if (sy <= T.FLY_LATCH_STICK) p.flyStickLatch = false;
+      else sy = 0;
+    }
     const launching = p.actionTimer < T.FLY_LAUNCH_TICKS;
     const want = launching && sy <= 0 ? T.FLY_LAUNCH_PITCH : targetPitch(sy);
     p.flyPitch = approach(p.flyPitch, want, T.FLY_PITCH_RATE);

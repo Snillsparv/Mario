@@ -143,13 +143,22 @@ const doubleJump = airAction(
   { ...JUMPY, lateLongJump: true, anim: 'double_jump', controlHeight: true, land: { chain: 'double' } },
 );
 
-const tripleJump = airAction(
+// With the winged hat on, the flip takes off into flight at its peak (FLY_APEX_VY): the
+// flight's climb starts from the top of the jump, not from the ground.
+const tripleJumpBase = airAction(
   (p) => {
     takeOff(p, T.TRIPLE_JUMP_VY, p.forwardVel * T.JUMP_KEEP_FV);
     p.sfx('triple_jump');
   },
   { ...JUMPY, anim: 'triple_jump', land: { ticks: T.FLIP_LAND_TICKS } },
 );
+const tripleJump = {
+  ...tripleJumpBase,
+  update(p, c) {
+    if (p.wingHat > 0 && p.vel.y <= T.FLY_APEX_VY) return p.setAction('flying', { apex: true });
+    return tripleJumpBase.update(p, c);
+  },
+};
 
 const backflip = airAction(
   (p) => {

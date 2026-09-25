@@ -333,6 +333,8 @@ test("the real Player's flight over the grounds: take-off from a triple jump, th
     tick({ stickY: 1, A: true });
     for (let n = 0; k < 2 && !p.grounded && n < 100; n++) tick({ stickY: 1, A: true });
   }
+  // The flip takes off into flight at its peak (the run-up's stick still held).
+  for (let n = 0; p.action === 'triple_jump' && n < 40; n++) tick({ stickY: 1 });
   assert.equal(p.action, 'flying', 'took off');
   // Glide, bank right, bank left, porpoise; dive a little whenever slow, keep between 700 and 1800.
   const keep = (stickX, want) => ({ stickX, stickY: want ?? (p.flySpeed < 30 ? 0.7 : p.pos.y < 700 ? -0.6 : p.pos.y > 1800 ? 0.5 : 0) });
@@ -392,15 +394,18 @@ function realFlight(x, z) {
     tick({ stickY: 1, A: true });
     for (let n = 0; k < 2 && !p.grounded && n < 100; n++) tick({ stickY: 1, A: true });
   }
-  const keep = (stickX, h) => ({ stickX, stickY: p.flySpeed < 25 ? 0.6 : p.pos.y < h - 100 ? -0.7 : p.pos.y > h + 100 ? 0.5 : 0 });
+  for (let n = 0; p.action === 'triple_jump' && n < 40; n++) tick({ stickY: 1 }); // up to the flip's peak
+  const keep = (stickX, h) => ({ stickX, stickY: p.flySpeed < 25 ? 0.6 : p.pos.y < h - 100 ? -0.7 : p.pos.y > h + 100 && p.flySpeed < 45 ? 0.5 : 0 });
   return { p, cam, m, tick, keep, sfx };
 }
 
 test('flying at the castle door and turning away below the roof: the camera keeps out of the facade, sees him all the way and comes round behind him smoothly', () => {
   // (The case that used to swing the camera into the facade: pinned against it, scraped along it
   // and lifted into the door balcony, with the hero out of sight.)
-  for (const [gap, side] of [[900, -1], [900, 1], [1100, -1], [1300, 1]]) {
-    const { p, cam, m, tick, keep } = realFlight(0, 3200);
+  // (The take-off at the triple jump's peak arrives at ~40 air speed: a full-bank U-turn needs
+  // ~1000 in front of the door balcony, so the tightest turns start 1100 out.)
+  for (const [gap, side] of [[1100, -1], [1100, 1], [1300, -1], [1300, 1]]) {
+    const { p, cam, m, tick, keep } = realFlight(0, 3800);
     assert.equal(p.action, 'flying', 'took off');
     while (p.action === 'flying' && p.pos.z > L.CASTLE.frontZ + gap) tick(keep(0, 800), 'approach');
     const from = m.rows.length;
@@ -431,7 +436,7 @@ test('flying at the castle door and turning away below the roof: the camera keep
 
 test('full-bank circles in front of the castle below the roofs: always in sight, off the walls, no lurches', () => {
   for (const [h, side] of [[500, -1], [900, 1]]) {
-    const { p, m, tick, keep } = realFlight(0, 3000);
+    const { p, m, tick, keep } = realFlight(0, 3600);
     while (p.action === 'flying' && p.pos.z > 600) tick(keep(0, h), 'approach');
     const from = m.rows.length;
     m.maxJerk = m.maxTurnAccel = 0;

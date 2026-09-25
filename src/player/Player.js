@@ -108,6 +108,7 @@ export class Player {
     this.flyPitch = 0; // > 0 nose down
     this.flyBank = 0; // > 0 right side down
     this.flapTimer = 0;
+    this.flyStickLatch = false; // the take-off's held dive push, read as neutral until let go
     this.flightFall = false; // airborne since a flight: the landing never hurts (see afterTick)
     this.stompBounce = false; // the current jump is a bounce() (no jump cut on releasing A)
     this.attack = { x: 0, y: 0, z: 0, radius: 0, kind: '' }; // getAttack's reused result

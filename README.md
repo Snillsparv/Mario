@@ -56,6 +56,7 @@ browser once with `npx playwright install chromium`.
 | ledge grab | automatic when Pip falls past the edge of a ledge he faces: jump or push toward it to climb up, crouch or pull back to let go |
 | climb trees | jump into a tree trunk to hug it: stick up climbs, down slides, jump leaps off, crouch lets go |
 | swim | jump to stroke, hold jump to kick along; at the surface pull back and jump to leap out, crouch (or push up and jump) to dive |
+| fly | with the winged hat (from the crystal box), triple jump (or flip off a tree top): Pip takes off at the top of the jump and climbs. Like an aeroplane: pull back to climb, push forward to dive, left/right to bank. The run-up's forward push counts as "level" until you let go once. Crouch to drop |
 
 ## Controls
 

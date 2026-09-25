@@ -9,7 +9,7 @@ import { gaitStride } from '../model/strides.js';
 
 // Single, double or triple jump depending on what was just landed from. A double jump
 // needs no speed (hopping in place works); the triple needs a running start (with the winged
-// hat on, the triple jump takes off into flight instead). Z pressed on the
+// hat on, the triple jump takes off into flight at its peak, see airborne.js). Z pressed on the
 // same tick as A: a long jump when running (LONG_JUMP_COMBO_SPEED), a backflip when standing
 // (as if crouched first), else the jump just ignores it (never a ground pound on take-off).
 export function jumpFromGround(p) {
@@ -18,7 +18,7 @@ export function jumpFromGround(p) {
     if (p.action === 'idle') return p.setAction('backflip');
   }
   const chain = p.tick - p.jumpChain.landedAt <= T.JUMP_CHAIN_WINDOW ? p.jumpChain.kind : null;
-  if (chain === 'double' && p.forwardVel >= T.TRIPLE_JUMP_MIN_SPEED) return p.setAction(p.wingHat > 0 ? 'flying' : 'triple_jump');
+  if (chain === 'double' && p.forwardVel >= T.TRIPLE_JUMP_MIN_SPEED) return p.setAction('triple_jump');
   if (chain === 'single') return p.setAction('double_jump');
   return p.setAction('jump');
 }

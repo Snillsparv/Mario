@@ -490,9 +490,11 @@ All original designs (no existing characters, blocks, caps or monsters are copie
 * **Flight** (player): `player.giveWingHat(s)` sets `player.wingHat` (ticks left) and emits
   `'wingHat' { on: true }` (and `{ on: false }` when it runs out, `player.wingHat = 0`).
   `RenderState.wingHat` (bool) and `RenderState.wingHatEnding` (last 3 s, for blinking). While
-  the hat is on, a triple jump (or the tree-top flip jump) takes off into action `'flying'`
-  (anim `'fly'`): stick up = nose down (dive, gains speed), stick down = nose up (climbs,
-  loses speed), left/right banks and turns (`RenderState.pitch/roll` show it), a stall
+  the hat is on, a triple jump (at the flip's peak, once it rises slower than `FLY_APEX_VY`)
+  or the tree-top flip jump takes off into action `'flying'` (anim `'fly'`) and climbs away
+  (`FLY_LAUNCH_TICKS`): stick up = nose down (dive, gains speed), stick down = nose up (climbs,
+  loses speed; a stick still pushed up from the run-up is read as neutral until it is let go
+  once, `player.flyStickLatch`), left/right banks and turns (`RenderState.pitch/roll` show it), a stall
   drops into a fall; Z ends the flight; landing skids to a stop; walls bonk. Taking the hat
   off mid-flight turns the flight into a fall. sfx `wing_flap`, `powerup`. Landing from a
   flight (or a fall right after one) never does fall damage; near the level's outer edge the
