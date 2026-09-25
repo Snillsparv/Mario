@@ -100,6 +100,9 @@ export function merlonRow(kit, a, b, y, out, { h = 120, w = 110, gap = 95, t = 6
     kit.wall.solid(orientedBoxPolys(c, [dx, 0, dz], w, y, y + h - 14, t, { bottom: false, top: false }));
     // Thin stone coping on each merlon.
     kit.trim.solid(orientedBoxPolys(c, [dx, 0, dz], w + 10, y + h - 14, y + h, t + 10), { shade: 0.95 });
+    // Solid: the hero can't walk through the battlements (the crenels between them are narrower
+    // than he is), and the camera sees them.
+    kit.solids?.solid(orientedBoxPolys(c, [dx, 0, dz], w + 10, y, y + h, t + 10, { bottom: false }), 'stone');
   }
 }
 

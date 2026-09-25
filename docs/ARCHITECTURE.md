@@ -360,6 +360,11 @@ Keeping the hero in view (`src/camera/CameraCollider.js`, `src/camera/sight.js`)
 * Motion is speed-limited: the camera moves at most 40 units per tick more than the orbit or
   the hero does (true teleports and respawns snap), so drops into the moat and hill crests
   never lurch.
+* Parapets: with the hero up on a roof or the keep top and the camera out over the drop
+  beside it (the floor under the camera 400+ below his feet), a low wall close to him (a
+  battlement, no taller than he is) hiding his chest lifts the camera until it looks over it.
+  The castle's battlements (`castle/parts.js` `merlonRow`) are solid: the crenels between
+  them are narrower than the hero, so he can't walk off a roof through them.
 
 The orbit centre (look point) is `LOOK_HEIGHT` (150) above the hero's feet, but the rendered
 view is aimed a few degrees *above* it (`cameraConfig.js` `ORBIT_MODES.*.aim`, eased, fading

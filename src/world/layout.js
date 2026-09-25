@@ -93,6 +93,10 @@ export const KEEP_TOP = {
   halfZ: 650,
   towerR: 420,
   eaveR: 529,
+  // The walkway's open width: the battlements' solid inner faces (castle/parts.js merlonRow)
+  // stand this far from the keep's centre.
+  innerX: 600 - 61,
+  innerZ: 650 - 61,
 };
 
 // Dirt/stone walking path from spawn to the bridge, and a loop around the front lawn.
@@ -176,12 +180,15 @@ export const COINS = [
   ...[0, 1, 2, 3, 4, 5].map((i) => ({ x: 4600 + i * 320, z: -1450 - i * 175 })),
   // along the island front courtyard
   ...[-1, 0, 1].map((i) => ({ x: i * 700, z: -50 })),
-  // a ring round the round tower on top of the keep (KEEP_TOP), the cannon's prize
-  ...Array.from({ length: 8 }, (_, i) => ({
-    x: KEEP_TOP.x + Math.sin((i / 8) * Math.PI * 2) * 560,
-    z: KEEP_TOP.z + Math.cos((i / 8) * Math.PI * 2) * 560,
-    y: KEEP_TOP.y + 60,
-  })),
+  // a ring round the round tower on top of the keep (KEEP_TOP), the cannon's prize: each coin
+  // two thirds of the way from the tower to the (solid) battlements, so the way from coin to
+  // coin passes clear of the tower and of the sign in front of it
+  ...Array.from({ length: 8 }, (_, i) => {
+    const a = ((i + 0.5) / 8) * Math.PI * 2;
+    const edge = Math.min(KEEP_TOP.innerX / Math.abs(Math.sin(a)), KEEP_TOP.innerZ / Math.abs(Math.cos(a)));
+    const r = KEEP_TOP.towerR + 0.66 * (edge - KEEP_TOP.towerR);
+    return { x: KEEP_TOP.x + Math.sin(a) * r, z: KEEP_TOP.z + Math.cos(a) * r, y: KEEP_TOP.y + 60 };
+  }),
 ];
 
 // Red coins: collect all 8 to make the star appear at STAR.

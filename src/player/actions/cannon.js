@@ -289,9 +289,10 @@ function holdInside(p) {
 
 // Touch-down: on the feet with at most CANNON_LAND_MAX_SPEED, a hard landing's squat, no damage.
 // On a roof too steep to stand on (a tower's cone) he slides off it: falls in the next
-// CANNON_SLIDE_GRACE ticks are part of this landing and never hurt either (common.js).
+// CANNON_SLIDE_GRACE ticks are part of this landing and never hurt either (common.js); on any
+// other, a stumble off its edge (a battlement's top) within CANNON_LAND_GRACE ticks is too.
 function landShot(p) {
-  if (isSteep(p.floor)) p.cannonSafeUntil = p.tick + T.CANNON_SLIDE_GRACE;
+  p.cannonSafeUntil = p.tick + (isSteep(p.floor) ? T.CANNON_SLIDE_GRACE : T.CANNON_LAND_GRACE);
   const h = Math.hypot(p.vel.x, p.vel.z);
   if (h > 1) p.faceYaw = Math.atan2(p.vel.x, p.vel.z);
   const fv = Math.min(h, T.CANNON_LAND_MAX_SPEED);

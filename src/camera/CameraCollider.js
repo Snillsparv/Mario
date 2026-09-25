@@ -19,6 +19,11 @@
 //    Once pulled in or lifted, the camera holds until the view has been clear for a while,
 //    then eases back out. A lift that already keeps the hero in view stays the remedy while it
 //    does (no flip from lifting to dollying half way down a hill).
+//  * Parapet: with the hero up on a roof or tower top and the camera out over the drop beside
+//    it (the floor under the camera PARAPET_DROP or more below his feet), a low wall close to
+//    him (within PARAPET_REACH, no taller than he is: a battlement, whose crenels the fan lets
+//    through) hiding his chest from the unlifted camera lifts the camera until the line to his
+//    chest passes over it (at most LIFT_MAX_PITCH). Not in the tolerant (flight) mode.
 //  * Trapped: the view is also checked from where the camera really ends up (straight lines
 //    to the look point and the chest, no fan). A camera that has swung round behind something
 //    solid (a corner tower) cannot dolly in front of it without tunnelling, so `hidden` counts
@@ -109,6 +114,8 @@ const HIDDEN_TRAP_TICKS = 30;
 const PART_TRAP_TICKS = 30;
 const TRAP_CUT_TICKS = 45;
 const TRAP_PROGRESS = 10; // (a dolly still moving the camera this far per tick is working)
+const PARAPET_DROP = 400; // parapet lift (see top): the camera is out over a drop this deep...
+const PARAPET_REACH = 350; // ...and the wall hiding the chest this close to the hero
 const STANDING_SPEED = 2; // partHidden: the hero moves slower than this (units/tick)
 const HERO_SIDE = 30; // heroInView: points this far left/right of the chest (across the view)...
 const HERO_POINTS = [30, 80, 125]; // ...and on his centre line this high above the feet
@@ -188,6 +195,7 @@ export class CameraCollider {
     this._eye = originRecord();
     this._chest = originRecord();
     this._predicted = originRecord();
+    this._parapetRay = sightRecord(); // _parapetLift scratch
     this._origins = [null, null, null]; // eye, chest (while far below the eye), predicted chest
     this._originCount = 0;
     this._cam = vec();
@@ -343,6 +351,14 @@ export class CameraCollider {
       liftGoal = this._clearingLift(eye, origins, desired, tight, maxLift);
       if (!liftGoal && canDolly && this.lift > 0 && this._fansClear(cam)) liftGoal = this.lift;
       if (!liftGoal && canDolly) soft = dolly;
+    }
+    // A battlement between the camera out over the drop and the hero's chest (see top).
+    if (!this.tolerant) {
+      const parapet = this._parapetLift(eye, chest, desired, hero);
+      if (parapet > liftGoal) {
+        liftGoal = parapet;
+        soft = 1;
+      }
     }
     // Trapped behind a blocker, a dolly cannot get in front of it: stay out on the orbit (the
     // controller turns it back to a clear view, and the camera retraces its way round).
@@ -587,6 +603,24 @@ export class CameraCollider {
   _fansClear(p) {
     for (let i = 0; i < this._originCount; i++) if (this._fan(this._origins[i], p).free < 1) return false;
     return true;
+  }
+
+  // Parapet lift (see top): the lift that carries the line from the chest to the camera over
+  // a low wall close to the hero while the camera is out over a drop, or 0.
+  _parapetLift(eye, chest, desired, hero) {
+    const below = this.collision.findFloor(desired.x, hero.y, desired.z);
+    if (!below.surface || hero.y - below.y < PARAPET_DROP) return 0;
+    const s = this._sightRay(chest, desired, undefined, this._parapetRay);
+    if (!s.surface || s.surface.kind !== 'wall' || s.surface.maxY > hero.y + HEAD_TOP) return 0;
+    const px = s.point.x - chest.x;
+    const pz = s.point.z - chest.z;
+    if (px * px + pz * pz > PARAPET_REACH * PARAPET_REACH) return 0;
+    const hx = desired.x - eye.x;
+    const hz = desired.z - eye.z;
+    const room = LIFT_MAX_PITCH - Math.atan2(desired.y - eye.y, Math.sqrt(hx * hx + hz * hz));
+    if (room <= 0) return 0;
+    const lift = this._liftOver(eye, desired, s, 0, room);
+    return lift <= room ? lift : 0;
   }
 
   // Smallest pitch lift (at most maxLift, never past LIFT_MAX_PITCH) after which no sight line

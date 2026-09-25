@@ -232,7 +232,8 @@ export class Player {
       if (this.pitch === 0) this.pitch = approach(this.prevPitch, 0, T.FLY_TILT_EASE);
       if (this.roll === 0) this.roll = approach(this.prevRoll, 0, T.FLY_TILT_EASE);
     }
-    if (this.action === 'flying') this.flightFall = true;
+    // (A fall that starts in a cannon landing's grace, cannonSafeUntil, is safe to its end.)
+    if (this.action === 'flying' || (group === 'airborne' && this.cannonSafeUntil > this.tick)) this.flightFall = true;
     else if (this.grounded || this.inWater || group !== 'airborne') this.flightFall = false;
     if (group !== 'airborne') this.walkOff = null;
     this.updateBreath();

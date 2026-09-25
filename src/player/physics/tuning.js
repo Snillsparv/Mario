@@ -306,3 +306,4 @@ export const CANNON_CONTROL_TICKS = 6;
 export const CANNON_FLY_MAX_SPEED = 100;
 export const CANNON_EDGE_MARGIN = 120;
 export const CANNON_SLIDE_GRACE = 150;
+export const CANNON_LAND_GRACE = 30; // a stumble off the edge of whatever a shot landed on (a battlement) is part of the landing
