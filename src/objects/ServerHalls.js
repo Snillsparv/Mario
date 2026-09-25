@@ -1,17 +1,70 @@
 // "Tech takeover" for AI RACE mode: server racks and data-hall modules drop out of the storm or
-// grind up out of the ground, one every few seconds, until the castle grounds are overrun.
+// grind up out of the ground, one every few seconds, until the castle grounds are overrun; the
+// ground around each one turns into glowing circuitry. Original designs (serverHallModel.js).
 //
-// Planning (planSlots, at construction, deterministic): candidate spots on a jittered grid over
-// the lawn and the back garden, each with a unit type and a facing, sorted by distance from
-// the moat's front (so the takeover spreads out from the castle toward the spawn and the
-// corners) and accepted greedily when the unit's footprint keeps clear of everything that
-// matters (see SLOT_RULES: the spawn, the castle door and courtyard, the AI RACE button, the
-// mystery box, signs, trees and their canopies, the star, coins and red coins, the 1-up gem,
-// rocks and bushes, both paths, the fences, water, the island's edges, the perimeter cliffs,
-// steep ground) and a wide corridor from every other unit. The collision world confirms each
-// accepted footprint: bare ground, no walls, no object floors.
+//   new ServerHalls({ collision, events, fx?, level?, layout, sparkles?, rng?, view?, slots? })
+//   setMode(on)                  AI RACE mode: the takeover starts / every unit sinks back
+//   update(player, tick, hold?)  30 Hz: schedule, arrivals, colliders, the hero's safety
+//   animate(alpha, clock)        render: instance poses, lights, warning markers
+//   setDarkness(t)               the lights dim a little as the storm fades
+//   clear()                      everything gone at once (a new game): colliders parked,
+//                                circuits cleared (level.clearCircuits), mode off
+//   arrive(i, style)             starts slot i now (1 = drop, 2 = rise; tests, previews)
+//   onClaim(u)                   optional hook (ObjectManager): unit u takes its ground (a drop
+//                                lands, a rise starts); whatever else stands there is crushed
+//                                or moved (minions, dropped coins); near(u, x, z, margin) tells
+//   slots, units, outCount, stateOf(i), hits
 //
-// RUNTIME_HEADER
+// Planning (planSlots, at construction, deterministic for a layout): candidate spots on a
+// jittered grid over the grounds, each with a facing (its rack-lined long sides toward the
+// spawn, the way the player looks), accepted greedily per unit type (halls first: they need
+// the most room; then rows; towers fill up to SLOT_RULES.MAX) when the footprint keeps clear of
+// everything that matters (SLOT_RULES: the spawn, the castle door and courtyard, the AI RACE
+// button, the mystery box, signs, trees and their canopies, the star, coins and red coins, the
+// 1-up gem, both paths, the fences, water, the island's edges and the castle, the perimeter
+// cliffs, steep ground) and a wide corridor from every other unit. The collision world confirms
+// each footprint (and a margin round it): bare ground, no walls, no object floors (rocks,
+// bushes, trunks, signs, the button, the box). Arrival order: outward from the moat's front, so
+// the takeover spreads from the castle toward the spawn and the corners.
+//
+// Schedule (HALL): FIRST_DELAY ticks after the mode turns on, then a new unit every EVERY
+// ticks, each gap SPEEDUP shorter down to EVERY_MIN, at the first free slot (in planned order)
+// clear of the hero (SAFE from where he is, was last tick and will be LOOKAHEAD ticks on); none
+// while a dialog holds him or he is dying / respawning. Styles alternate at random (never more
+// than MAX_STREAK alike in a row; the first one drops):
+//   drop  a red marker (the footprint outlined on the ground, hazard stripes, pulsing echoes and
+//         a column of light) shows where it lands while it falls from DROP_HEIGHT for
+//         WARN_TICKS (sfx hall_warn); the impact throws up dust, sparks and debris (fx.dust,
+//         dirt clods), plays hall_impact and emits 'hallImpact' { pos, strength: 1, kind }
+//         (the camera shakes); the lights flicker on
+//   rise  it grinds up out of the ground over RISE_TICKS (sfx hall_rise, 'hallImpact'
+//         strength 0.35, dirt thrown up along its edges), its lights powering up
+// Once down, level.addCircuit spreads circuit traces over the ground around it (terrain.js).
+// When the mode ends every unit sinks over SINK_TICKS (one hall_rise, pitched down, for the one
+// nearest the hero), its circuit fading; one still falling lands first, then sinks.
+//
+// Colliders: each slot's box (four walls to the base, a flat top) is added to the collision
+// world at construction and parked PARK below the world; arriving and sinking move it by
+// rewriting the surfaces' heights in place (like the mystery box: the grid is x/z only), one
+// tick ahead of the picture, so everything that uses the collision world (the hero, the
+// minions, fireballs, the camera) meets it. A drop's collider appears the tick before it
+// lands.
+//
+// The hero is never shut inside one:
+//   * arrivals start away from him (above);
+//   * a falling unit sweeping through his body, or landing on him, hurts him DAMAGE wedges
+//     (player.takeDamage(2, centre), like a fireball blast; not while a dialog holds him) and
+//     pushes him out of its nearest side with open ground (player.teleport);
+//   * a rising top lifts him (the physics steps him up onto it); every tick, a hero found inside
+//     a unit's box below its top (a ledge climb on a moving edge, say) is lifted onto the top or
+//     pushed out, and one hanging from a moving unit's edge is shaken off it (the player's
+//     ledge hang holds a fixed height);
+//   * a sinking top carries him down (it drops slower than he snaps down to the floor).
+//
+// Rendering: one InstancedMesh per unit type (three draw calls at most while units show, none
+// while none does) and one for the warning markers; per-instance seed and power drive the
+// lights in the shader. The per-tick and per-frame paths allocate nothing but event payloads
+// (and the rare push-out).
 
 import * as THREE from 'three';
 import { FRAME_DT, PLAYER_HEIGHT, PLAYER_RADIUS } from '../core/constants.js';
@@ -172,6 +225,21 @@ function protectedSpots(layout, trees, rules, extra) {
   return pts;
 }
 
+// Point rules alone (the candidate centre; every footprint sample must pass them too).
+function pointOk(p, region, ctx) {
+  const L = ctx.layout;
+  const R = ctx.rules;
+  if (L.sdWater(p.x, p.z) < R.WATER) return 'water';
+  if (-L.sdRoundRect(p.x, p.z, L.PERIMETER) < R.PERIMETER) return 'perimeter';
+  for (const path of L.PATHS ?? []) if (polylineDistance(p.x, p.z, path.points) < path.width / 2 + R.PATH) return 'path';
+  for (const f of L.FENCES ?? []) if (polylineDistance(p.x, p.z, f.points) < R.FENCE) return 'fence';
+  if (region === 'island') {
+    if (-L.sdRoundRect(p.x, p.z, L.ISLAND) < R.ISLAND_EDGE) return 'islandEdge';
+    if (ctx.castleBox && L.sdRoundRect(p.x, p.z, ctx.castleBox) < R.CASTLE) return 'castle';
+  }
+  return null;
+}
+
 // Is a unit of rect r's size allowed there? Analytic checks against the layout (cheap), then
 // the collision world (bare ground: the floor found is the canonical ground, no walls).
 function footprintOk(r, ctx) {
@@ -198,14 +266,8 @@ function footprintOk(r, ctx) {
   }
   if (hi - lo > R.SLOPE) return why('slope');
   for (const p of [...pts, ...outer]) {
-    if (L.sdWater(p.x, p.z) < R.WATER) return why('water');
-    if (-L.sdRoundRect(p.x, p.z, L.PERIMETER) < R.PERIMETER) return why('perimeter');
-    for (const path of L.PATHS ?? []) if (polylineDistance(p.x, p.z, path.points) < path.width / 2 + R.PATH) return why('path');
-    for (const f of L.FENCES ?? []) if (polylineDistance(p.x, p.z, f.points) < R.FENCE) return why('fence');
-    if (region === 'island') {
-      if (-L.sdRoundRect(p.x, p.z, L.ISLAND) < R.ISLAND_EDGE) return why('islandEdge');
-      if (ctx.castleBox && L.sdRoundRect(p.x, p.z, ctx.castleBox) < R.CASTLE) return why('castle');
-    }
+    const bad = pointOk(p, region, ctx);
+    if (bad) return why(bad);
   }
   const col = ctx.collision;
   if (col) {
@@ -221,7 +283,12 @@ function footprintOk(r, ctx) {
 }
 
 // Plans the unit slots (deterministic for a layout). Returns [{ index, type, x, z, yaw, cos,
-// sin, hw, hd, h, region, groundLo, groundHi }] in arrival order (nearest the origin first).
+// sin, hw, hd, h, region, groundLo, groundHi }] in arrival order (nearest the origin first);
+// none for a layout without the level's shape functions (test worlds).
+//   collision  the collision world (bare-ground check; without it, the layout rules only)
+//   trees      the level's trees ({ x, z, canopy: { radius } }); else layout.TREES
+//   extra      more spots to keep clear of: [{ x, z, r }] (r + SLOT_RULES.ROCK)
+//   stats      an object to count rejections by rule in (tuning)
 export function planSlots(layout, { collision = null, trees = null, extra = [], rules = SLOT_RULES, seed = 0x7ec4, stats = null } = {}) {
   const L = layout;
   if (!L || typeof L.regionAt !== 'function' || typeof L.groundHeight !== 'function' || typeof L.sdWater !== 'function' || !L.PERIMETER || typeof L.sdRoundRect !== 'function') return [];
@@ -246,6 +313,8 @@ export function planSlots(layout, { collision = null, trees = null, extra = [], 
       const pick = rng();
       const turn = rng();
       if (reg !== 'lawn' && reg !== 'island') continue;
+      // (the centre must pass the point rules itself: most candidates end here, cheaply)
+      if (pointOk({ x: cx, z: cz }, reg, ctx)) continue;
       cands.push({ x: cx, z: cz, pick, turn, d: Math.hypot(cx - R.ORIGIN.x, cz - R.ORIGIN.z) });
     }
   }
@@ -268,7 +337,11 @@ export function planSlots(layout, { collision = null, trees = null, extra = [], 
       if (yaw <= -Math.PI / 2) yaw += Math.PI;
       const r = makeRect(c.x, c.z, yaw, type);
       const spread = R.SPREAD[type] ?? 0;
-      if (slots.some((s) => rectDistance(s, r) < (s.type === type ? spread : R.SPACING))) continue;
+      const crowded = (s) => {
+        const gap = s.type === type ? Math.max(spread, R.SPACING) : R.SPACING;
+        return Math.hypot(s.x - r.x, s.z - r.z) < s.hw + s.hd + r.hw + r.hd + gap && rectDistance(s, r) < gap;
+      };
+      if (slots.some(crowded)) continue;
       const ok = footprintOk(r, ctx);
       if (!ok) continue;
       placed++;
@@ -283,6 +356,7 @@ export function planSlots(layout, { collision = null, trees = null, extra = [], 
 
 // ---------------------------------------------------------------- runtime
 
+// Timings in ticks (30 per second), distances in units.
 export const HALL = {
   PARK: -60000, // colliders wait this far below the world (out of every query's reach)
   FIRST_DELAY: 120, // ticks after the mode turns on before the first unit arrives
@@ -306,6 +380,8 @@ export const HALL = {
   DAMAGE: 2, // a drop landing on the hero (like a fireball blast)
   EJECT: 45, // pushed out this far past the footprint (plus his radius)
   STEP_UP: 70, // a rising top this close above his feet lifts him instead
+  INSET: 8, // (closer to the edge than this the unit's walls push him out themselves)
+  LIFT_REACH: 260, // stuck this close under the top of a standing unit: put on top
   CIRCUIT_REACH: 560, // circuits spread this far beyond the footprint's half diagonal ...
   CIRCUIT_GROW: 4, // ... over this many seconds
   CIRCUIT_FADE: 2.5,
@@ -353,6 +429,7 @@ export class ServerHalls {
     this.tick = 0;
     this.hold = false;
     this.hits = 0; // drops that landed on the hero (tests, debugging)
+    this.onClaim = null; // (u) => void: unit u takes its ground (see the header)
     this.hero = { x: 0, y: 0, z: 0, vx: 0, vz: 0, valid: false };
 
     this.uniforms = makeHallUniforms();
@@ -564,8 +641,9 @@ export class ServerHalls {
   // ------------------------------------------------------------------ mode
 
   // AI RACE mode on: the takeover starts after FIRST_DELAY; off: every unit sinks back.
+  // (Switching off again, or with the mode already off, still sinks whatever is out.)
   setMode(on) {
-    if (on === this.on) return;
+    if (on && this.on) return;
     this.on = on;
     this.activeTicks = 0;
     this.nextAt = HALL.FIRST_DELAY;
@@ -666,8 +744,8 @@ export class ServerHalls {
       u.ppower = u.power;
       if (s === STATE.DROP) this._stepDrop(u, player);
       else if (s === STATE.RISE) this._stepRise(u, player);
-      else if (s === STATE.ON) this._stepOn(u);
-      else this._stepSink(u);
+      else if (s === STATE.ON) this._stepOn(u, player);
+      else this._stepSink(u, player);
     }
     const h = this.hero;
     if (p) {
@@ -735,6 +813,7 @@ export class ServerHalls {
       u.lift = u.plift = u.hide;
       u.power = u.ppower = 0;
       this._setCollider(u, this._riseLift(u, 1));
+      this.onClaim?.(u);
       this.events.emit('sfx', { name: 'hall_rise', pos });
       this.events.emit('hallImpact', { pos, strength: 0.35, kind: 'rise' });
       this.fx?.dust?.(u.x, u.planeY, u.z, { hw: u.hw, hd: u.hd, yaw: u.yaw, radius: 160, count: 14, sparks: 0, debris: 6 });
@@ -812,15 +891,27 @@ export class ServerHalls {
       if (col.findWalls(x, f.y, z, 60, PLAYER_RADIUS).walls.length) continue;
       if (col.findWalls(x, f.y, z, 140, PLAYER_RADIUS).walls.length) continue;
       const y = p.y > f.y && p.y < u.top ? p.y : f.y;
-      if (typeof player.teleport === 'function') player.teleport(x, y, z);
-      else {
-        p.x = x;
-        p.y = y;
-        p.z = z;
-      }
+      this._place(player, x, y, z);
       return true;
     }
+    // Nowhere open (never seen in the level): the nearest side all the same, on the ground.
+    const s = sides[0];
+    const x = u.x + s.x * u.cos + s.z * u.sin;
+    const z = u.z - s.x * u.sin + s.z * u.cos;
+    const g = this.groundAt ? this.groundAt(x, z) : p.y;
+    const f = col.findFloor(x, g + 100, z);
+    this._place(player, x, f.surface ? f.y : g, z);
     return false;
+  }
+
+  _place(player, x, y, z) {
+    const p = player.pos;
+    if (typeof player.teleport === 'function') player.teleport(x, y, z);
+    else {
+      p.x = x;
+      p.y = y;
+      p.z = z;
+    }
   }
 
   _impact(u) {
@@ -830,9 +921,10 @@ export class ServerHalls {
     u.power = 0.15;
     const y = u.planeY;
     const pos = { x: u.x, y, z: u.z };
+    this.onClaim?.(u);
     this.events.emit('sfx', { name: 'hall_impact', pos });
     this.events.emit('hallImpact', { pos, strength: 1, kind: 'drop' });
-    this.fx?.dust?.(u.x, y, u.z, { hw: u.hw, hd: u.hd, yaw: u.yaw, radius: 300, count: 26, sparks: 30, debris: 14 });
+    this.fx?.dust?.(u.x, y, u.z, { hw: u.hw, hd: u.hd, yaw: u.yaw, radius: 380, count: 40, sparks: 36, debris: 16 });
     this._clods(u, 10, 1.3);
     this._landed(u);
   }
@@ -851,8 +943,7 @@ export class ServerHalls {
     u.power = smooth((u.t - T * 0.3) / (T * 0.7));
     const lead = u.t < T ? this._riseLift(u, u.t + 1) : 0;
     this._setCollider(u, lead);
-    // Someone inside the footprint below the top (he cannot step up that far): out.
-    if (this._inBody(player, u, u.base + lead, u.top + lead - HALL.STEP_UP, 0)) this._eject(u, player);
+    this._rescue(u, player, true);
     if (u.t % HALL.CLODS_EVERY === 0 && u.t < T - 6) this._clods(u, 3, 0.9);
     if (u.t >= T) {
       u.state = STATE.ON;
@@ -862,7 +953,70 @@ export class ServerHalls {
     }
   }
 
-  _stepOn(u) {
+  // Never shut inside: a hero whose feet are inside unit u's box (the collider where it is
+  // now), further below its top than he can step up, is lifted onto the top when he was
+  // climbing onto it (or is just under it in the air), else pushed out of its nearest side.
+  // While it moves (`moving`), a hero hanging from its edge or climbing over it is shaken off:
+  // the ledge he holds would slide away from under his hands.
+  _rescue(u, player, moving) {
+    const p = player.pos;
+    if (!p) return;
+    const a = player.action;
+    const ledge = a === 'ledge_hang' || a === 'ledge_climb';
+    if (moving && ledge && this.near(u, p.x, p.z, PLAYER_RADIUS + 40)) {
+      this._shakeOff(u, player);
+      return;
+    }
+    const top = u.top + u.col;
+    if (p.y >= top - HALL.STEP_UP || p.y + PLAYER_HEIGHT <= u.base + u.col) return;
+    if (!this.insideBy(u, p.x, p.z, HALL.INSET)) return;
+    if (ledge || (top - p.y < HALL.LIFT_REACH && !moving)) this._liftOnto(u, player);
+    else this._eject(u, player);
+  }
+
+  // Is (x, z) inside unit u's footprint by at least `inset`?
+  insideBy(u, x, z, inset) {
+    const dx = x - u.x;
+    const dz = z - u.z;
+    const lx = dx * u.cos - dz * u.sin;
+    const lz = dx * u.sin + dz * u.cos;
+    return lx < u.hw - inset && lx > inset - u.hw && lz < u.hd - inset && lz > inset - u.hd;
+  }
+
+  // Puts the hero on unit u's top (at his spot, kept a body's width in from its edges).
+  _liftOnto(u, player) {
+    const p = player.pos;
+    const dx = p.x - u.x;
+    const dz = p.z - u.z;
+    const m = PLAYER_RADIUS + 10;
+    const cl = (v, e) => (v < m - e ? m - e : v > e - m ? e - m : v);
+    const lx = cl(dx * u.cos - dz * u.sin, u.hw);
+    const lz = cl(dx * u.sin + dz * u.cos, u.hd);
+    const x = u.x + lx * u.cos + lz * u.sin;
+    const z = u.z - lx * u.sin + lz * u.cos;
+    this._place(player, x, u.top + u.col, z);
+    if (typeof player.setAction === 'function' && player.action !== 'death') player.setAction('idle');
+  }
+
+  // Lets go of a moving unit's edge: nudged off its wall into a fall (and not grabbing it again
+  // for a moment).
+  _shakeOff(u, player) {
+    const p = player.pos;
+    const dx = p.x - u.x;
+    const dz = p.z - u.z;
+    const lx = dx * u.cos - dz * u.sin;
+    const lz = dx * u.sin + dz * u.cos;
+    // outward normal of the nearest side (local), to world
+    const onX = u.hw - (lx < 0 ? -lx : lx) < u.hd - (lz < 0 ? -lz : lz);
+    const nx = onX ? (lx < 0 ? -1 : 1) : 0;
+    const nz = onX ? 0 : lz < 0 ? -1 : 1;
+    p.x += (nx * u.cos + nz * u.sin) * 15;
+    p.z += (-nx * u.sin + nz * u.cos) * 15;
+    if (typeof player.grabCooldownUntil === 'number' && typeof player.tick === 'number') player.grabCooldownUntil = player.tick + 20;
+    if (typeof player.setAction === 'function') player.setAction('freefall');
+  }
+
+  _stepOn(u, player) {
     // boot flicker, then steady
     const b = HALL.BOOT_TICKS;
     if (u.t <= b) {
@@ -871,6 +1025,7 @@ export class ServerHalls {
     } else u.power = 1;
     u.lift = u.drop && u.t < HALL.SETTLE_TICKS ? HALL.SETTLE * Math.sin((Math.PI * u.t) / HALL.SETTLE_TICKS) * (1 - u.t / HALL.SETTLE_TICKS) : 0;
     if (u.sinkAfter && u.t >= HALL.SINK_DELAY) this._startSink(u);
+    else this._rescue(u, player, false);
   }
 
   _startSink(u) {
@@ -884,7 +1039,7 @@ export class ServerHalls {
     }
   }
 
-  _stepSink(u) {
+  _stepSink(u, player) {
     const T = HALL.SINK_TICKS;
     u.lift = this._sinkLift(u, u.t);
     const k = 1 - u.t / (T * 0.6);
@@ -898,6 +1053,7 @@ export class ServerHalls {
       return;
     }
     this._setCollider(u, this._sinkLift(u, u.t + 1));
+    this._rescue(u, player, true);
   }
 
   // Dirt thrown up from `n` random spots along the footprint's edge.

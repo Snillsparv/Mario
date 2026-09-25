@@ -391,9 +391,9 @@ export class Effects {
       P.drag[i] = 2.4;
       P.accel[i] = R * 0.08;
       P.wind[i] = 0.35;
-      P.size0[i] = R * (0.22 + rng() * 0.1);
-      P.size1[i] = R * (0.6 + rng() * 0.35);
-      P.life[i] = 1.3 + rng() * 0.9;
+      P.size0[i] = R * (0.34 + rng() * 0.14);
+      P.size1[i] = R * (1.0 + rng() * 0.55);
+      P.life[i] = 1.4 + rng() * 1.0;
       P.age[i] = -rng() * 0.08;
       P.rot[i] = rng() * TAU;
       P.spin[i] = (rng() - 0.5) * 1.4;

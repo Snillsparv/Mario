@@ -39,6 +39,7 @@ browser once with `npx playwright install chromium`.
 * **Lives**: Pip starts with 4. Running out of health, or falling out of the world, costs one
   and he drops back in at the start; losing one at ×0 is GAME OVER. A **1-up gem** is hidden
   somewhere on the grounds and gives an extra life.
+* **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it.
 
 ### Moves
 

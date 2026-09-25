@@ -56,6 +56,7 @@ export class CoinField {
     this._placeShadows();
     // Run-time coins (spawnCoin), same record shape as the layout's; reused round-robin.
     this.collision = collision;
+    this.groundAt = groundAt ?? null;
     this.drops = Array.from({ length: drops }, () => ({ x: 0, y: 0, z: 0, red: false, value: 1, alive: false, index: 0 }));
     this.dropShadow0 = dropShadow0;
     this.nextDrop = 0;
@@ -107,6 +108,36 @@ export class CoinField {
     if (this.drops.length === 0) return null;
     const j = this.nextDrop;
     this.nextDrop = (j + 1) % this.drops.length;
+    return this._placeDrop(j, x, y, z);
+  }
+
+  // Dropped coins standing where `covers(x, z)` holds (ground a server hall is taking) move
+  // `dist` from (cx, cz), straight away from it, onto the floor there. Returns how many.
+  moveDropsOut(covers, cx, cz, dist) {
+    let n = 0;
+    for (let j = 0; j < this.drops.length; j++) {
+      const c = this.drops[j];
+      if (!c.alive || !covers(c.x, c.z)) continue;
+      let dx = c.x - cx;
+      let dz = c.z - cz;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      if (len > 1) {
+        dx /= len;
+        dz /= len;
+      } else {
+        dx = 0;
+        dz = 1;
+      }
+      const x = cx + dx * dist;
+      const z = cz + dz * dist;
+      const g = this.groundAt ? this.groundAt(x, z) : c.y - COIN_HOVER;
+      this._placeDrop(j, x, g + 40, z);
+      n++;
+    }
+    return n;
+  }
+
+  _placeDrop(j, x, y, z) {
     const c = this.drops[j];
     const f = this.collision.findFloor(x, y + 60, z);
     const floorY = f.surface ? f.y : y;

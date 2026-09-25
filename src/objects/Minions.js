@@ -198,6 +198,7 @@ export class Minions {
     this.door = Number.isFinite(c?.frontZ) ? { x: c.x ?? 0, z: c.frontZ } : null;
     this.keepOut = layout.AI_BUTTON ? [{ x: layout.AI_BUTTON.x, z: layout.AI_BUTTON.z, r: (layout.AI_BUTTON.radius ?? 140) + 120 }] : [];
     this.list = Array.from({ length: MINION.POOL }, (_, i) => record(i));
+    this._crushFrom = { pos: { x: 0, y: 0, z: 0 } }; // crush(): the knock-away centre
     this.tick = 0;
     this.activeTicks = 0; // ticks the beast has been up (0: not up)
     this.nextSpawn = MINION.FIRST_DELAY;
@@ -698,6 +699,25 @@ export class Minions {
     const dz = p.z - m.z;
     const r = PLAYER_RADIUS + M.STOMP_REACH;
     return dx * dx + dz * dz <= r * r;
+  }
+
+  // A server hall takes the ground under some minions (ServerHalls onClaim): every one standing
+  // where `covers(x, z)` holds is wrecked, knocked away from (cx, cz), and drops no coin (it
+  // would be buried). Returns how many.
+  crush(covers, cx, cz) {
+    let n = 0;
+    const from = this._crushFrom;
+    from.pos.x = cx;
+    from.pos.z = cz;
+    for (let i = 0; i < this.list.length; i++) {
+      const m = this.list[i];
+      if (m.state === 'free' || m.state === 'wrecked' || m.state === 'vanish') continue;
+      if (!covers(m.x, m.z)) continue;
+      this._wreck(m, from, false);
+      m.drop = false;
+      n++;
+    }
+    return n;
   }
 
   _wreck(m, player, stomped) {

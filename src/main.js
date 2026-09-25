@@ -26,6 +26,7 @@ import { buildLevel } from './world/level.js';
 import { Player } from './player/Player.js';
 import { PlayerModel } from './player/PlayerModel.js';
 import { CameraController } from './camera/CameraController.js';
+import { CameraShake } from './camera/shake.js';
 import { N64Renderer } from './render/N64Renderer.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
@@ -67,6 +68,7 @@ async function start() {
   scene.add(model.object3D);
 
   const cam = new CameraController({ collision: level.collision, camera, events });
+  const shake = new CameraShake(events); // jolts the view on 'hallImpact' (server halls landing)
   const audio = new AudioEngine(events);
   if (params.has('mute')) audio.muted = true;
   // Rain, lightning, fire and explosions (AI RACE mode); objects use it for fireball impacts.
@@ -211,6 +213,7 @@ async function start() {
       applyDarkness(0);
       fx.clearFires();
       level.clearScorches();
+      level.clearCircuits();
       player.coins = 0;
       state.lives = START_LIVES;
       await runTitle();
@@ -278,6 +281,7 @@ async function start() {
     poseHero(dt);
     model.object3D.visible = state.mode === 'play' && state.dropHold === 0 && !cam.hideHero;
     cam.apply(renderAlpha);
+    shake.apply(camera, state.mode === 'play' && !state.paused ? dt : 0);
     level.update(state.time, camera);
     objects.animate(state.time, renderAlpha, camera);
     fx.update(state.mode === 'play' && !state.paused ? dt : 0, state.time, camera);

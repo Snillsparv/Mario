@@ -21,6 +21,12 @@
 // (DARK_GRADES, darkGrade.js: dead olive grass, wet dark mud paths, charcoal rock) and the
 // water to near-black with an oily sheen; addScorch / clearScorches draw burn marks
 // (scorch.js). Uniforms only: no geometry is rebuilt.
+//
+// Tech takeover (objects/ServerHalls.js): addCircuit(x, z, radius, { grow }) -> id spreads
+// glowing circuit traces over the ground around a landed server hall, growing out to `radius`
+// over `grow` seconds; fadeCircuit(id, seconds) fades one out, clearCircuits() removes all at
+// once. Drawn by the grass, courtyard and path materials themselves (buildCircuits below: a
+// uniform array of up to MAX_CIRCUITS discs), so they cost no draw call.
 
 import * as THREE from 'three';
 import { smoothstep } from '../core/math.js';
@@ -35,6 +41,7 @@ import { buildWater } from './water.js';
 import { DarkGrade } from './terrain/darkGrade.js';
 import { buildScorches } from './terrain/scorch.js';
 
+export const MAX_CIRCUITS = 32;
 const STEP = 100; // fine grid cell size
 const FAR = 13000; // half-size of the cliff-top plateau
 const PLATEAU = 800; // fine grid margin beyond the perimeter (covers the cliff rim's swell)
@@ -404,10 +411,14 @@ export function buildTerrain(layout) {
   const group = new THREE.Group();
   group.name = 'terrain';
   const grade = new DarkGrade();
+  const circuits = buildCircuits();
+  const CIRCUIT_MESHES = { grass: true, courtyard: true };
   const addMesh = (name, buffer, map) => {
     const geo = buffer.toGeometry();
     bakeLighting(geo);
-    const mesh = new THREE.Mesh(geo, grade.patch(worldMaterial({ map }), DARK_GRADES[name]));
+    const base = worldMaterial({ map });
+    if (CIRCUIT_MESHES[name]) circuits.patch(base);
+    const mesh = new THREE.Mesh(geo, grade.patch(base, DARK_GRADES[name]));
     mesh.name = name;
     group.add(mesh);
   };
@@ -416,7 +427,7 @@ export function buildTerrain(layout) {
   addMesh('bed', buffers.sand, tex.sandTexture());
   addMesh('cliffs', buffers.rock, tex.rockTexture());
   addMesh('masonry', buffers.masonry, tex.masonryTexture());
-  addPathOverlay(group, pathOverlay, grade);
+  addPathOverlay(group, pathOverlay, grade, circuits);
 
   const water = buildWater(L, grade);
   group.add(water.object3D);
@@ -434,6 +445,7 @@ export function buildTerrain(layout) {
       water.update(time);
       grade.tick(time);
       scorches.update(time);
+      circuits.update(time);
     },
     // AI RACE mode crossfade: 0 = sunny grounds .. 1 = storm.
     setDarkness(t) {
@@ -447,6 +459,16 @@ export function buildTerrain(layout) {
     clearScorches() {
       scorches.clear();
     },
+    addCircuit(x, z, radius, opts) {
+      return circuits.add(x, z, radius, opts);
+    },
+    fadeCircuit(id, seconds) {
+      circuits.fade(id, seconds);
+    },
+    clearCircuits() {
+      circuits.clear();
+    },
+    circuits,
   };
 }
 
@@ -545,7 +567,7 @@ function rgbOf(c) {
 // (units) to win over them; a slope bias (factor) would grow with the pixel size at grazing
 // angles (several world units at the N64 mode's 240 lines) and let the dirt show through
 // opaque things lying just above the ground, such as the bridge deck's lawn end.
-function addPathOverlay(group, buffer, grade) {
+function addPathOverlay(group, buffer, grade, circuits = null) {
   const geo = buffer.toGeometry();
   const rgba = geo.attributes.color;
   const alpha = Array.from({ length: rgba.count }, (_, i) => rgba.getW(i));
@@ -554,7 +576,9 @@ function addPathOverlay(group, buffer, grade) {
   const out = new Float32Array(rgb.count * 4);
   for (let i = 0; i < rgb.count; i++) out.set([rgb.getX(i), rgb.getY(i), rgb.getZ(i), alpha[i]], i * 4);
   geo.setAttribute('color', new THREE.BufferAttribute(out, 4));
-  const mat = grade.patch(worldMaterial({ map: tex.pathTexture(), transparent: true, depthWrite: false }), DARK_GRADES.paths);
+  const base = worldMaterial({ map: tex.pathTexture(), transparent: true, depthWrite: false });
+  circuits?.patch(base);
+  const mat = grade.patch(base, DARK_GRADES.paths);
   mat.polygonOffset = true;
   mat.polygonOffsetFactor = 0;
   mat.polygonOffsetUnits = -4;
@@ -595,4 +619,203 @@ function buildFarRing(L, buffer, b) {
       }
     }
   }
+}
+
+// Circuit traces spreading over the ground around the server halls (AI RACE mode's tech
+// takeover). Each circuit is a ragged disc (centre, radius, strength) in a uniform array; the
+// patched ground materials darken the ground inside toward a black-green board and draw
+// glowing cyan traces on it (two layers of long straight traces broken into segments, pads at
+// their ends, some blinking red), with rings of light pulsing out from the centre and a bright
+// rim while it spreads. Far away (a trace under ~1 px) the traces fade into their average glow.
+// No draw calls of their own; with no circuit the shader skips it all on a uniform branch.
+//   add(x, z, radius, { grow = 4 }) -> id, fade(id, seconds = 2), clear(), update(timeSeconds)
+function buildCircuits() {
+  const data = Array.from({ length: MAX_CIRCUITS }, () => new THREE.Vector4());
+  const uniforms = {
+    uCircuits: { value: data },
+    uCircuitCount: { value: 0 },
+    uCircuitTime: { value: 0 },
+  };
+  const list = Array.from({ length: MAX_CIRCUITS }, () => ({ id: 0, x: 0, z: 0, radius: 0, born: 0, grow: 4, fadeAt: Infinity, fadeFor: 2 }));
+  let nextId = 1;
+  let now = 0;
+  let count = 0;
+  const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+
+  // Packs the live circuits into the uniforms (per render frame while any: no allocation).
+  const write = () => {
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (!c.id) continue;
+      const age = now - c.born;
+      const g = smooth(age / c.grow);
+      let strength = age < 0.4 ? Math.max(0, age) / 0.4 : 1;
+      if (now > c.fadeAt) strength *= Math.max(0, 1 - (now - c.fadeAt) / c.fadeFor);
+      if (strength <= 0 && now > c.fadeAt) {
+        c.id = 0;
+        continue;
+      }
+      const front = Math.round((1 - g) * 15);
+      data[n++].set(c.x, c.z, c.radius * (0.06 + 0.94 * g), Math.min(1, strength) + front * 2);
+    }
+    count = n;
+    uniforms.uCircuitCount.value = n;
+  };
+
+  return {
+    uniforms,
+    get count() {
+      return count;
+    },
+    // Live circuits (tests): [{ id, x, z, radius, strength }] as the shader sees them now.
+    live() {
+      return list.filter((c) => c.id).map((c) => ({ id: c.id, x: c.x, z: c.z, radius: c.radius }));
+    },
+    patch(material) {
+      const prev = Object.prototype.hasOwnProperty.call(material, 'onBeforeCompile') ? material.onBeforeCompile : null;
+      material.onBeforeCompile = (shader, renderer) => {
+        prev?.call(material, shader, renderer);
+        patchCircuitShader(shader, uniforms);
+      };
+      material.customProgramCacheKey = () => 'terrain-circuits';
+      return material;
+    },
+    add(x, z, radius, { grow = 4 } = {}) {
+      if (!Number.isFinite(x) || !Number.isFinite(z) || !(radius > 0)) return null;
+      // A free slot, else the one that fades out soonest (else the oldest).
+      let slot = list.find((c) => !c.id);
+      if (!slot) slot = list.reduce((a, b) => (b.fadeAt < a.fadeAt || (b.fadeAt === a.fadeAt && b.born < a.born) ? b : a));
+      Object.assign(slot, { id: nextId++, x, z, radius, born: now, grow: Math.max(0.05, grow), fadeAt: Infinity, fadeFor: 2 });
+      write();
+      return slot.id;
+    },
+    fade(id, seconds = 2) {
+      const c = list.find((k) => k.id === id && id);
+      if (!c || c.fadeAt !== Infinity) return;
+      c.fadeAt = now;
+      c.fadeFor = Math.max(0.05, seconds);
+    },
+    clear() {
+      for (const c of list) c.id = 0;
+      write();
+    },
+    update(t) {
+      if (!Number.isFinite(t)) return;
+      // The clock went back (the title after a game over): keep every circuit's age.
+      if (t < now - 0.5) {
+        for (const c of list) {
+          c.born += t - now;
+          if (c.fadeAt !== Infinity) c.fadeAt += t - now;
+        }
+      }
+      now = t;
+      uniforms.uCircuitTime.value = t;
+      if (count > 0) write();
+    },
+  };
+}
+
+function patchCircuitShader(shader, uniforms) {
+  Object.assign(shader.uniforms, uniforms);
+  shader.vertexShader = shader.vertexShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+varying vec2 vCircuitXZ;`,
+    )
+    .replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+vCircuitXZ = (modelMatrix * vec4(transformed, 1.0)).xz;`,
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+uniform vec4 uCircuits[${MAX_CIRCUITS}];
+uniform int uCircuitCount;
+uniform float uCircuitTime;
+varying vec2 vCircuitXZ;
+float ciHash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+// One layer of straight traces along x: rows 'pitch' apart, broken into segments 'len' long
+// (some rows empty, ends cut back at random), a pad at each segment's start and some ends.
+// Returns (trace, pad, hash of the segment).
+vec3 ciLayer(vec2 p, float len, float pitch, float aa, float salt) {
+  vec2 q = vec2(p.x / len, p.y / pitch);
+  vec2 id = floor(q);
+  vec2 f = fract(q);
+  float h = ciHash(id + salt);
+  float on = step(0.35, h);
+  float dy = abs(f.y - 0.5) * pitch;
+  float x = f.x * len;
+  float end = len * (0.6 + 0.35 * fract(h * 7.13));
+  float line = on * (1.0 - smoothstep(11.0, 11.0 + aa, dy)) * step(40.0, x) * step(x, end);
+  float pad = on * (1.0 - smoothstep(22.0, 22.0 + aa, length(vec2(x - 40.0, dy))));
+  pad = max(pad, on * step(0.45, fract(h * 3.7)) * (1.0 - smoothstep(18.0, 18.0 + aa, length(vec2(x - end, dy)))));
+  return vec3(line, pad, h);
+}`,
+    )
+    .replace(
+      '#include <opaque_fragment>',
+      `if (uCircuitCount > 0) {
+  vec2 cp = vCircuitXZ;
+  float cover = 0.0;
+  float rim = 0.0;
+  float best = 0.0;
+  vec2 centre = vec2(0.0);
+  float reach = 1.0;
+  for (int i = 0; i < ${MAX_CIRCUITS}; i++) {
+    if (i >= uCircuitCount) break;
+    vec4 c = uCircuits[i];
+    vec2 d = cp - c.xy;
+    float r = length(d);
+    if (r > c.z * 1.1 + 20.0) continue;
+    float front = floor(c.w * 0.5);
+    float strength = c.w - front * 2.0;
+    float ang = atan(d.y, d.x);
+    float edge = c.z * (0.86 + 0.08 * sin(ang * 5.0 + c.x * 0.013) + 0.06 * sin(ang * 13.0 - c.y * 0.021));
+    float m = (1.0 - smoothstep(edge * 0.7, edge, r)) * strength;
+    rim = max(rim, strength * (front / 15.0) * (1.0 - smoothstep(0.0, 45.0, abs(r - edge * 0.97))));
+    if (m > best) {
+      best = m;
+      centre = c.xy;
+      reach = max(c.z, 1.0);
+    }
+    cover = max(cover, m);
+  }
+  if (cover > 0.002 || rim > 0.002) {
+    float aa = max(fwidth(cp.x), fwidth(cp.y));
+    // Board traces: two layers crossing at right angles.
+    vec3 a = ciLayer(cp, 700.0, 150.0, aa, 17.0);
+    vec3 b = ciLayer(cp.yx + vec2(41.0, 23.0), 820.0, 190.0, aa, 71.0);
+    float trace = max(a.x, b.x);
+    float pad = max(a.y, b.y);
+    // Data buses radiating from the unit, with pulses running out along them.
+    vec2 d = cp - centre;
+    float r = length(d);
+    float turns = atan(d.y, d.x) / 6.2832 * 16.0;
+    float hs = ciHash(vec2(floor(turns), floor(centre.x * 0.01)));
+    float side = abs(fract(turns) - 0.5) * 6.2832 / 16.0 * r;
+    float bus = step(0.3, hs) * (1.0 - smoothstep(16.0, 16.0 + aa, side)) * smoothstep(60.0, 160.0, r);
+    float pulse = pow(fract(r / 520.0 - uCircuitTime * 0.8 + hs), 5.0) * (1.0 - smoothstep(reach * 0.6, reach * 0.95, r));
+    // Far away (a trace under a pixel) the pattern thins into its average glow.
+    float far = smoothstep(24.0, 70.0, aa);
+    // a black-green circuit board under the traces
+    outgoingLight = mix(outgoingLight, outgoingLight * vec3(0.14, 0.2, 0.21) + vec3(0.0, 0.01, 0.012), cover * 0.94);
+    vec3 cyan = vec3(0.1, 0.78, 1.0);
+    // some pads blink red
+    float red = pad * step(0.78, fract(a.z * 11.3 + b.z * 5.1)) * step(0.5, fract(uCircuitTime * (0.7 + a.z) + a.z * 9.0));
+    float lit = mix(0.6 * trace + 1.0 * pad + bus * (0.75 + 2.6 * pulse), 0.14 + 0.5 * pulse, far);
+    vec3 glow = cyan * lit + vec3(1.0, 0.08, 0.05) * red * 1.5 * (1.0 - far);
+    outgoingLight += glow * cover + cyan * rim * 1.2;
+  }
+}
+#include <opaque_fragment>`,
+    );
+  return shader;
 }

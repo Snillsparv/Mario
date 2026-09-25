@@ -96,9 +96,9 @@ const SPARK_RGB = bakeColors([0, 2.8, 2.3, 1.4, 0.5, 2.0, 0.9, 0.25, 1, 1.2, 0.3
 // Smoke: dark grey, lit orange from below by the fire while young.
 const SMOKE_RGB = bakeColors([0, 0.485, 0.205, 0.1, 0.25, 0.1125, 0.1025, 0.0975, 1, 0.19, 0.19, 0.2]);
 
-// Dust: dry grey-brown, lighter while it billows out, settling to a dull grey.
-const DUST_RGB = bakeColors([0, 0.4, 0.36, 0.31, 0.4, 0.3, 0.28, 0.25, 1, 0.22, 0.22, 0.22]);
-const DUST_ALPHA = bakeCurve((f) => smooth(f / 0.06) * (1 - f) ** 1.4 * 0.8);
+// Dust (linear): dry grey-brown, lighter while it billows out, settling to a dull grey.
+const DUST_RGB = bakeColors([0, 0.24, 0.215, 0.18, 0.4, 0.15, 0.14, 0.125, 1, 0.085, 0.085, 0.09]);
+const DUST_ALPHA = bakeCurve((f) => smooth(f / 0.05) * (1 - f) ** 1.5 * 0.8);
 const FLAME_ALPHA = bakeCurve((f) => smooth(f / 0.1) * (1 - smooth((f - 0.55) / 0.45)));
 const FLAME_GROW = bakeCurve((f) => 0.75 + 0.25 * smooth(f / 0.2)); // quick swell, then thinner
 const SMOKE_ALPHA = bakeCurve((f) => smooth(f / 0.15) * (1 - f) ** 1.2 * 0.78);

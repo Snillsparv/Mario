@@ -51,13 +51,13 @@ const U = 34; // one rack unit (world units)
 
 // Linear vertex colours.
 const COL = {
-  steel: [0.12, 0.13, 0.155],
-  steelLight: [0.2, 0.21, 0.24],
-  dark: [0.045, 0.048, 0.056],
-  panel: [0.07, 0.075, 0.09],
+  steel: [0.085, 0.092, 0.112],
+  steelLight: [0.15, 0.158, 0.182],
+  dark: [0.035, 0.037, 0.044],
+  panel: [0.055, 0.06, 0.072],
   trim: [0.028, 0.03, 0.036],
   cable: [0.03, 0.035, 0.04],
-  vent: [0.1, 0.105, 0.12],
+  vent: [0.075, 0.08, 0.092],
   fan: [0.05, 0.05, 0.055],
   hazard: [0.5, 0.36, 0.03],
 };
@@ -105,7 +105,7 @@ class HallGeo {
   }
 
   // Axis-aligned box. faces: { px, nx, pz, nz, py } (a face left out is not built; the bottom
-  // never is), each { color?, kind?, id?, rows? (rack faces: v in rack units from y0) }.
+  // never is), each { color?, kind?, id?, unit? (rack faces: units per rack unit, default U) }.
   box(x0, x1, y0, y1, z0, z1, { color = COL.steel, faces = {} } = {}) {
     const face = (name) => (faces[name] === false ? null : { color, kind: 0, id: 0, ...(faces[name] ?? {}) });
     // Per-kind (u, v) of a side face point at fraction t across it (length `len`) and height y:
@@ -218,16 +218,16 @@ class HallGeo {
   }
 }
 
-// A curve from a point on the unit (x, y, z) out along (dx, dz) and down into the ground.
-function cablePath(x, y, z, dx, dz, out, dip = 60) {
-  const pts = [];
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6;
-    const reach = out * t;
-    // leaves the wall level, sags to the ground, then dives under it
-    const h = y * (1 - t) * (1 - t) - dip * t * t * t;
-    pts.push([x + dx * reach, h, z + dz * reach]);
-  }
+// A cable bundle hugging the unit: from (x, y, z) on a face straight down it to near the
+// ground, then bending out along (dx, dz) across the ground for `out` units and diving in.
+function cablePath(x, y, z, dx, dz, out, r) {
+  const low = r + 36; // the run along the ground (the base sits BURY under the lowest ground)
+  const pts = [[x, y, z]];
+  if (y > low + 40) pts.push([x, low + 30, z]);
+  pts.push([x + dx * 30, low + 4, z + dz * 30]);
+  pts.push([x + dx * out * 0.55, low - 2, z + dz * out * 0.55]);
+  pts.push([x + dx * out * 0.85, low - 20, z + dz * out * 0.85]);
+  pts.push([x + dx * out, -30, z + dz * out]);
   return pts;
 }
 
@@ -259,8 +259,8 @@ function buildTower() {
   // Beacons on the cap.
   for (const s of [-1, 1]) g.box(s * (hw - 40) - 14, s * (hw - 40) + 14, T.h, T.h + 16, -14, 14, { color: COL.trim, faces: { pz: { kind: LED.BEACON, id: s }, nz: { kind: LED.BEACON, id: s }, px: { kind: LED.BEACON, id: s }, nx: { kind: LED.BEACON, id: s }, py: { kind: LED.BEACON, id: s } } });
   // Cable bundles out of the back into the ground.
-  g.tube(cablePath(-50, 150, -B, -0.25, -1, 240), 13, 5, 1);
-  g.tube(cablePath(45, 110, -B, 0.3, -1, 210), 11, 5, 2);
+  g.tube(cablePath(-55, 330, -B - 14, -0.2, -1, 260, 14), 14, 5, 1);
+  g.tube(cablePath(50, 240, -B - 12, 0.25, -1, 220, 12), 12, 5, 2);
   return g.toGeometry();
 }
 
@@ -296,8 +296,10 @@ function buildRow() {
   g.tube([[-hw - 20, TOP + 4, -30], [hw + 20, TOP + 4, -30]], 9, 4, 5);
   g.tube([[-hw - 20, TOP + 4, 25], [hw + 20, TOP + 4, 25]], 9, 4, 6);
   // ... and down the ends into the ground.
-  g.tube(cablePath(-hw - 12, TOP, -30, -1, 0.15, 230, 80), 11, 5, 7);
-  g.tube(cablePath(hw + 12, TOP, 25, 1, -0.1, 230, 80), 11, 5, 8);
+  g.tube([[-hw - 20, TOP + 4, -30], [-hw - 14, TOP - 30, -30]], 9, 4, 7);
+  g.tube(cablePath(-hw - 14, TOP - 30, -30, -1, 0.15, 240, 12), 12, 5, 7);
+  g.tube([[hw + 20, TOP + 4, 25], [hw + 14, TOP - 30, 25]], 9, 4, 8);
+  g.tube(cablePath(hw + 14, TOP - 30, 25, 1, -0.1, 240, 12), 12, 5, 8);
   return g.toGeometry();
 }
 
@@ -343,8 +345,10 @@ function buildHall() {
   for (const s of [-1, 1]) g.box(-hw, hw, T.h, T.h + 14, s > 0 ? hd - 12 : -hd, s > 0 ? hd : -hd + 12, { color: COL.trim, faces: { px: false, nx: false } });
   // Cable bundles from the skirt into the ground, two per long side.
   for (const s of [-1, 1]) {
-    g.tube(cablePath(-hw * 0.55, SK + 20, s * hd, -0.2, s, 260, 70), 17, 5, 70 + s);
-    g.tube(cablePath(hw * 0.4, SK + 20, s * hd, 0.25, s, 230, 70), 14, 5, 73 + s);
+    // (down the pillars, clear of the rack fronts)
+    const px = (i) => -W + 20 + i * pw;
+    g.tube(cablePath(px(s > 0 ? 1 : 4), 150, s * (hd + 16), -0.25, s, 290, 17), 17, 6, 70 + s);
+    g.tube(cablePath(px(s > 0 ? 4 : 1), 120, s * (hd + 14), 0.3, s, 240, 14), 14, 5, 73 + s);
   }
   return g.toGeometry();
 }
@@ -429,7 +433,7 @@ vec3 hallGlow = vec3(0.0);
     for (int k = 0; k < 4; k++) {
       float hk = hallHash(vec3(row * 7.0 + float(k), vLed.w * 3.0 + 1.7, seed * 57.0));
       if (hk < 0.22) continue;
-      vec3 c = hk < 0.62 ? HALL_CYAN : (hk < 0.85 ? HALL_RED : (hk < 0.93 ? HALL_GREEN : HALL_AMBER));
+      vec3 c = hk < 0.56 ? HALL_CYAN : (hk < 0.83 ? HALL_RED : (hk < 0.92 ? HALL_GREEN : HALL_AMBER));
       float on;
       if (k == 3) {
         on = step(0.4, hallHash(vec3(floor(t * (7.0 + 9.0 * fract(hk * 5.3))), hk * 91.0, row)));
@@ -469,8 +473,8 @@ vec3 hallGlow = vec3(0.0);
     hallGlow = HALL_RED * (0.25 + 3.0 * blink) * power;
   } else if (kind == 6.0) {
     float slat = smoothstep(0.3, 0.45, fract(vLed.y)) * (1.0 - smoothstep(0.8, 0.95, fract(vLed.y)));
-    diffuseColor.rgb *= mix(0.25, 1.25, slat);
-    hallGlow = vec3(1.0, 0.25, 0.08) * 0.22 * (1.0 - slat) * (0.75 + 0.25 * sin(t * 2.3 + seed * 20.0)) * power;
+    diffuseColor.rgb *= mix(0.2, 1.1, slat);
+    hallGlow = vec3(1.0, 0.12, 0.06) * 0.09 * (1.0 - slat) * (0.7 + 0.3 * sin(t * 2.3 + seed * 20.0)) * power;
   } else if (kind == 7.0) {
     float s = step(0.5, fract((vLed.x + vLed.y) * 0.5));
     diffuseColor.rgb = mix(vec3(0.02, 0.02, 0.022), diffuseColor.rgb, s);
@@ -599,14 +603,16 @@ varying float vPart;`,
     // corner brackets, brighter
     vec2 cq = abs(p) - (vMark.yz - 70.0);
     float bracket = step(0.0, min(cq.x, cq.y)) * line;
-    a = line * 0.9 + stripes * (0.16 + 0.22 * prog) + echo * 0.8 + bracket * 0.8;
+    a = line * 1.4 + stripes * (0.22 + 0.3 * prog) + echo * 0.9 + bracket * 1.2;
     a *= blink;
   } else {
+    // the column's walls: u runs 0..4 round the outline, v up it
     float h = vMarkUv.y;
-    float bands = 0.55 + 0.45 * step(0.5, fract(h * 16.0 + uHallTime * 2.5));
-    a = pow(1.0 - h, 2.5) * 0.55 * bands * (0.35 + 0.65 * prog) * blink;
+    float corner = 1.0 - smoothstep(0.0, 0.035, min(fract(vMarkUv.x), 1.0 - fract(vMarkUv.x)));
+    float bands = 0.5 + 0.5 * step(0.5, fract(h * 14.0 + uHallTime * 2.5));
+    a = pow(1.0 - h, 2.2) * (0.17 * bands + 1.2 * corner) * (0.35 + 0.65 * prog) * blink;
   }
-  diffuseColor = vec4(vec3(1.0, 0.08, 0.04) * 1.6, a * fade);
+  diffuseColor = vec4(vec3(1.0, 0.05, 0.02) * 1.8, a * fade);
 }`,
       )
       .replace('#include <fog_fragment>', scaledFog('0.5', true));

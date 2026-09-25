@@ -477,6 +477,71 @@ version and back. Everything is original: no existing monster, character or bran
   an alarm sting; birds stop while dark.
 * **UI**: a flashing "AI RACE" alert banner when the mode switches on.
 
+## Tech takeover (AI RACE mode's server halls)
+
+While AI RACE mode is on, server racks and data halls drop out of the storm or grind up out
+of the ground, one every few seconds, until the castle grounds are overrun
+(`src/objects/ServerHalls.js`, models and shaders in `src/objects/serverHallModel.js`; all
+original designs). Objects own it (built when `layout.KAIJU` exists, like the beast).
+
+* **Units** (`HALL_TYPES`, collider = outer box): `tower` (a 260×260×720 rack monolith on a
+  hazard-striped plinth, glowing corner rails, beacons on its cap), `row` (four racks,
+  740×260×460, a cable tray with glowing cables on top), `hall` (a 920×540×420 data-hall
+  module: rack fronts behind both long sides, vent grilles, beacons, three cooling fans on the
+  roof). All dark gunmetal with rack front panels whose status LEDs (cyan, red, some green and
+  amber) blink in the shader from a hash of rack row, panel and instance seed, so every unit
+  twinkles on its own; light strips with a running red scanner light, glowing cable bundles
+  with pulses running into the ground. Far away the LED detail fades into its average glow;
+  the lights partly shine through the storm fog.
+* **Slots** (`planSlots(layout, { collision, trees })`, deterministic, `SLOT_RULES`): ~30
+  footprints over the lawn, planned at construction (~30 ms). Each keeps clear of the spawn
+  (1200), the castle door (1800), the star, the AI RACE button, the mystery box, signs, trees
+  and their canopies, coins and red coins, the 1-up gem, both paths (their half width + 220),
+  the bridge, the fences, water (350), the island, the perimeter cliffs (700) and steep ground
+  (≤ 150 height difference under a footprint), with a 650 corridor to every other unit; the
+  collision world confirms bare ground (no rock, bush, trunk, sign, button or box) around each.
+  Arrival order is outward from the moat's front, so the takeover spreads from the castle
+  toward the spawn and the corners.
+* **Schedule** (`HALL`): the first unit 4 s after the mode turns on, then one every 3.5 s,
+  each gap 0.1 s shorter down to 1.5 s (all ~30 out after ~75 s), at the first free slot at
+  least 450 from the hero (where he is, was, and is heading), none while a dialog holds him
+  or he is dying or respawning. Styles mix at random (never three alike in a row): **drop**
+  (a red marker, the footprint outlined with hazard stripes, pulsing echoes and a column of
+  light, shows where it will land while it falls for 1.5 s; heavy impact with dust, sparks
+  and debris via `fx.dust`, the `'hallImpact'` event) or **rise** (it grinds up out of the
+  ground over 1.5 s throwing up dirt). sfx `hall_warn`, `hall_impact`, `hall_rise` (pitched
+  down when they sink).
+* **Solid**: each slot's box collider (four walls, a flat top) is added to the collision world
+  at construction and parked at y −60000; arriving and sinking move it by rewriting the
+  surfaces' heights (like the mystery box), a tick ahead of the picture, so the hero can bump
+  into, stand and walk on and wall-kick off the units, and minions, fireballs and the camera
+  meet them. A drop's collider appears the tick before it lands.
+* **The hero is never shut inside one**: arrivals start away from him; a falling unit that
+  sweeps through him or lands on him hurts him 2 wedges (`player.takeDamage(2, centre)`, like a
+  fireball blast; not while a dialog holds him) and pushes him out of its nearest open side
+  (`player.teleport`); a rising top lifts him; a hero found inside a box below its top is
+  lifted onto it or pushed out, and one hanging from a moving unit's edge is shaken off (the
+  player's ledge hang keeps a fixed height); a sinking top carries him down smoothly.
+* **Circuits** (terrain): once a unit is down, `level.addCircuit(x, z, radius, { grow })` ->
+  id spreads glowing cyan circuit traces (two layers of board traces with pads, some blinking
+  red, data buses radiating from the unit with pulses running out along them, the ground
+  darkened to a black-green board) out to its radius over 4 s; `level.fadeCircuit(id,
+  seconds)` fades one, `level.clearCircuits()` clears all. Drawn by the grass, courtyard and
+  path materials themselves (a uniform array of up to `MAX_CIRCUITS` = 32 discs in
+  `terrain.js`): no draw call of their own.
+* **Mode off / reset**: when the mode ends every unit sinks back into the ground over ~2.7 s
+  (its circuit fading; one still falling lands first), then its collider parks again.
+  `objects.reset()` clears everything at once (units, colliders parked, circuits); main also
+  calls `level.clearCircuits()` on game over.
+* **Camera shake** (`src/camera/shake.js`): `new CameraShake(events)` jolts the view on
+  `'hallImpact'` (fainter with distance); main calls `shake.apply(camera, dt)` right after
+  `cam.apply(alpha)` (rotation only: the camera's position, collision and listener are
+  untouched; dt 0 while paused freezes it).
+* **Cost**: one instanced draw per unit type showing (three at most) plus one for the warning
+  markers while a drop is coming; ~10k triangles with all units out. Measured in the dark
+  mode with all 30 units out: 72-75 draw calls and ≤ 172k triangles from the spawn (+3 calls,
+  +10k triangles over the same view without them).
+
 ## Winged hat, minions, locked castle, touch controller
 
 All original designs (no existing characters, blocks, caps or monsters are copied).
@@ -629,6 +694,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `darkMode` | `{ on }` | main; audio, UI banner and objects react |
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
+| `hallImpact` | `{ pos, strength, kind }` (`kind` `'drop'`: a server hall slammed down, strength 1; `'rise'`: one started grinding up, 0.35) | objects (tech takeover); main's camera shake jolts the view |
 | `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
 | `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
 | `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title starts on START/A) |

@@ -9,6 +9,9 @@
 //     setDarkness?(t)                           // AI RACE mode crossfade, 0 = normal .. 1 = dark
 //     addScorch?(x, z, radius)                  // terrain: a burn mark on the ground
 //     clearScorches?()                          // terrain: remove all burn marks
+//     addCircuit?(x, z, radius, { grow }) -> id // terrain: glowing circuit traces spreading out
+//     fadeCircuit?(id, seconds)                 //   (AI RACE mode's server halls); fade one out,
+//     clearCircuits?()                          //   or remove them all at once
 //     trees?: Array<{ x, z, groundY, trunkTop, canopy: { x, y, z, radius } }>  // props
 //   }
 
@@ -58,6 +61,21 @@ export function buildLevel(scene) {
     },
     clearScorches() {
       for (const p of parts) p.clearScorches?.();
+    },
+    // Circuit traces on the ground (objects/ServerHalls.js); returns the terrain's id, or null.
+    addCircuit(x, z, radius, opts) {
+      let id = null;
+      for (const p of parts) {
+        const r = p.addCircuit?.(x, z, radius, opts);
+        if (r !== undefined && r !== null) id = r;
+      }
+      return id;
+    },
+    fadeCircuit(id, seconds) {
+      for (const p of parts) p.fadeCircuit?.(id, seconds);
+    },
+    clearCircuits() {
+      for (const p of parts) p.clearCircuits?.();
     },
   };
 }

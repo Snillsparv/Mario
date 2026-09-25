@@ -1,15 +1,19 @@
 // Interactive objects of the castle grounds: yellow and red coins, the red-coin star, a hidden
 // 1-up gem, butterflies and circling birds, plus their sparkles and blob shadows; the mystery box
 // with the winged hat (MysteryBox.js) and the locked castle door (CastleDoor.js); and for AI RACE
-// mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs and the
-// robot lizard minions (Minions.js).
+// mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs, the
+// mushroom-capped robot minions (Minions.js) and the server halls taking over the grounds
+// (ServerHalls.js).
 //
-//   new ObjectManager({ scene, collision, events, layout, player, fx?, level? })
+//   new ObjectManager({ scene, collision, events, layout, player, fx?, level?, view? })
+//                                  view: the renderer (default scene.userData.view), to compile
+//                                  the server halls' shaders ahead of their first arrival
 //   update({ player })             30 Hz: pickups, star state, butterfly AI, button, beast, fireballs
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
 //   reset()                        new game: every pickup back, star hidden, star count taken back,
-//                                  no beast, fireballs, fire zones or minions, button up, mode off,
-//                                  the mystery box lit with its hat inside, the door armed
+//                                  no beast, fireballs, fire zones, minions or server halls (their
+//                                  colliders parked, the ground circuits cleared), button up, mode
+//                                  off, the mystery box lit with its hat inside, the door armed
 //   spawnCoin(x, y, z)             a yellow coin appears over the floor there (minion drops)
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
@@ -22,6 +26,10 @@
 // through `level`, and hurt the hero (blast, direct hit, fire zones). Lightning ('lightning'
 // { strength }) flashes the beast's plates. 10 s after the beast has fully risen, minions burrow
 // out of the ground around the hero (Minions.js); they burrow back down when the mode ends.
+// A few seconds after the mode turns on, server racks and data halls start dropping out of the
+// sky or grinding up out of the ground at planned slots over the grounds, one every few
+// seconds, spreading glowing circuitry over the ground around them (ServerHalls.js); they are
+// solid (their colliders wait parked far below the world) and sink back when the mode ends.
 //
 // Mystery box (layout.MYSTERY_BOX, MysteryBox.js): bumped from below or punched it releases the
 // winged hat (player.giveWingHat). Castle door (layout.CASTLE, CastleDoor.js): walking up to it
@@ -34,8 +42,9 @@
 // there without a jump. Seven draw calls in total: coins, sparkles, shadows, star, 1-up,
 // butterflies, birds; plus the button (base, cap), the mystery box (frame, crystal back and
 // front; the hat's three only while it is out) and, only while AI RACE mode shows them, the
-// beast (nine rig parts), fireball cores, their ground markers, the fire sprites and the
-// minions (one instanced draw).
+// beast (nine rig parts), fireball cores, their ground markers, the fire sprites, the
+// minions (one instanced draw) and the server halls (one instanced draw per unit type out, plus
+// their warning markers).
 //
 // Allocation: once JIT-compiled, the per-frame path allocates nothing, and the per-tick path
 // only event payloads plus the small result objects of its few collision queries (see
@@ -66,6 +75,7 @@ import { FireSprites } from './FireSprites.js';
 import { MysteryBox } from './MysteryBox.js';
 import { Minions } from './Minions.js';
 import { CastleDoor } from './CastleDoor.js';
+import { ServerHalls } from './ServerHalls.js';
 
 const STAR_SHADOW = 150;
 const STAR_GLOW = 360;
@@ -74,6 +84,7 @@ const TWINKLE_EVERY = 4; // ticks between the idle star's twinkles
 const ONE_UP_TWINKLE_EVERY = 9;
 const ONE_UP_BEHIND_CASTLE = 800; // default 1-up spot: this far behind the castle's back wall
 const COIN_DROPS = 6; // run-time coin slots (minion drops)
+const CLAIM_MARGIN = 60; // a server hall taking its ground claims this much round its footprint
 const MINION_SLOTS = 8; // shadow slots for the minions (Minions POOL)
 const _toCam = new THREE.Vector3();
 // Stand-in hero for the title backdrop's ambient ticks: out of reach of every pickup and far
@@ -88,7 +99,7 @@ function oneUpSpot(layout) {
 }
 
 export class ObjectManager {
-  constructor({ scene, collision, events, layout, player, fx = null, level = null, buildHat = null }) {
+  constructor({ scene, collision, events, layout, player, fx = null, level = null, buildHat = null, view = scene?.userData?.view ?? null }) {
     this.events = events;
     this.player = player;
     this.collision = collision;
@@ -157,8 +168,17 @@ export class ObjectManager {
         groundAt: layout.groundHeight ?? null,
         onCoin: (x, y, z) => this.spawnCoin(x, y, z),
       });
+      // The tech takeover (after the button and the box, whose colliders its planning avoids).
+      this.halls = new ServerHalls({ collision, events, fx, level, layout, sparkles: this.sparkles, rng: makeRng(0x5e7e7), view });
+      // A unit taking its ground wrecks the minions standing there and moves dropped coins out
+      // of its way (they would be shut inside it).
+      this.halls.onClaim = (u) => {
+        const covers = (x, z) => this.halls.near(u, x, z, CLAIM_MARGIN);
+        this.minions.crush(covers, u.x, u.z);
+        this.coins.moveDropsOut(covers, u.x, u.z, Math.hypot(u.hw, u.hd) + CLAIM_MARGIN + 100);
+      };
     } else {
-      this.fire = this.fireballs = this.beast = this.minions = null;
+      this.fire = this.fireballs = this.beast = this.minions = this.halls = null;
     }
     events.on?.('darkMode', (e) => this._setMode(!!e?.on));
     // A dialog box is up (a sign, the locked door): Pip is frozen, so the minions and the beast
@@ -171,7 +191,7 @@ export class ObjectManager {
 
     this.group = new THREE.Group();
     this.group.name = 'objects';
-    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.box, this.beast, this.fireballs, this.minions, this.fire]) {
+    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.box, this.beast, this.fireballs, this.minions, this.halls, this.fire]) {
       if (part) this.group.add(part.mesh);
     }
     scene.add(this.group);
@@ -184,6 +204,7 @@ export class ObjectManager {
     this.modeOn = on;
     this.button?.setOn(on);
     this.beast?.setMode(on);
+    this.halls?.setMode(on);
   }
 
   // The button was pounded: ask main to toggle the mode.
@@ -202,6 +223,7 @@ export class ObjectManager {
     this.darkT = t;
     this.button?.setDarkness(t);
     this.box?.setDarkness(t);
+    this.halls?.setDarkness(t);
     const calm = t < 0.5;
     this.butterflies.mesh.visible = calm;
     this.birds.mesh.visible = calm;
@@ -249,6 +271,7 @@ export class ObjectManager {
     this.beast?.reset();
     this.fireballs?.clear();
     this.minions?.clear();
+    this.halls?.clear();
     this.box?.reset();
     this.door?.reset();
     this.hero.valid = false;
@@ -299,6 +322,7 @@ export class ObjectManager {
       this.fireballs.update(player, this.tick, this.dialogOpen);
       if (this.dialogOpen && this.beast.grace < 45) this.beast.grace = 45;
       this.minions.update(player, hero, this.tick, this.modeOn && this.beast.state === 'active', this.dialogOpen);
+      this.halls.update(player, this.tick, this.dialogOpen);
     }
     this._rememberHero(player);
   }
@@ -423,6 +447,7 @@ export class ObjectManager {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);
       this.minions.animate(alpha, clock, camera);
+      this.halls.animate(alpha, clock);
       this.fire.animate(clock);
     }
   }
