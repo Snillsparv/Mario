@@ -172,6 +172,56 @@ test('the pressed cap sinks with the floor under the hero, then pops back up to 
   assert.deepEqual(pounds(log).map((l) => l.e.on), [true, false]);
 });
 
+test('pounding STOP retires the button: it sinks into the ground and is gone until reset()', () => {
+  const { objects, player, log, step, sfx, collision } = setup();
+  const b = objects.button;
+  const pound = () => {
+    player.pos = { x: BTN.x, y: b.capTop, z: BTN.z };
+    player.action = 'idle';
+    step();
+    player.action = 'ground_pound_land';
+    step();
+  };
+  pound(); // AI RACE on: the button stays
+  player.action = 'idle';
+  step(BUTTON.HOLD_TICKS + BUTTON.RISE_TICKS + 2);
+  assert.equal(b.state, 'up');
+  assert.equal(b.retiring, false);
+  pound(); // STOP
+  assert.deepEqual(pounds(log).map((l) => l.e.on), [true, false]);
+  assert.equal(b.retiring, true);
+  // The cap stays down, then the whole button sinks, its floor with it.
+  player.action = 'idle';
+  let floor = collision.findFloor(BTN.x, 500, BTN.z).y;
+  let sank = false;
+  for (let t = 0; t < BUTTON.PRESS_TICKS + BUTTON.RETIRE_DELAY + BUTTON.RETIRE_TICKS + 2; t++) {
+    step();
+    const y = collision.findFloor(BTN.x, 500, BTN.z).y;
+    assert.ok(y <= floor + 1e-9, 'the floor under the hero only goes down');
+    floor = y;
+    if (b.state === 'sinking') sank = true;
+  }
+  assert.ok(sank, 'it sank');
+  assert.equal(b.state, 'gone');
+  assert.equal(b.mesh.visible, false);
+  assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, 0, 'only the lawn is left there');
+  assert.equal(collision.findWalls(BTN.x + b.radius, 10, BTN.z, 0, 60).walls.length, 0, 'no base walls either');
+  assert.equal(sfx('hall_rise').length, 1, 'a grinding rumble as it goes');
+  // Nobody can press it again.
+  player.pos = { x: BTN.x, y: 0, z: BTN.z };
+  player.action = 'idle';
+  step();
+  player.action = 'ground_pound_land';
+  step(5);
+  assert.equal(pounds(log).length, 2);
+  // A new game brings it back.
+  objects.reset();
+  assert.equal(b.state, 'up');
+  assert.equal(b.mesh.visible, true);
+  assert.equal(b.label, 'AI RACE');
+  assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, b.capTop0);
+});
+
 test('the button toggles against the mode main reports (darkMode), e.g. after setDark()', () => {
   const { objects, player, events, log, step } = setup();
   events.emit('darkMode', { on: true }); // window.__game.setDark(true)

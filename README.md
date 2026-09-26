@@ -40,7 +40,7 @@ browser once with `npx playwright install chromium`.
 * **Lives**: Pip starts with 4. Running out of health, or falling out of the world, costs one
   and he drops back in at the start; losing one at ×0 is GAME OVER. A **1-up gem** is hidden
   somewhere on the grounds and gives an extra life.
-* **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it.
+* **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it for good: the button sinks into the ground and is gone until a new game.
 * **Beating Rustmaw** (the giant mechanical lizard on the castle roof in AI RACE mode): its tail
   runs back over the keep onto the flat roof behind it and ends in a glowing orange coupling.
   Get up there (fly with the winged hat, or take the cannon), walk up behind the coupling and

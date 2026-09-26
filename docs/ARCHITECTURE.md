@@ -586,7 +586,12 @@ version and back. Everything is original: no existing monster, character or bran
 * **Toggle**: objects own the button (static collider, visual cap sinks when pressed). A
   ground pound landing on it (`player.action === 'ground_pound_land'` within its radius)
   flips it and emits `'aiRaceButton' { on }`. The cap reads "AI RACE" while the mode is
-  off and "STOP" while it is on (pound it again to switch back). main sets `state.dark`, emits
+  off and "STOP" while it is on (pound it again to switch back). Pounding STOP also retires
+  the button (`AiButton.retire()`): once the cap is down it sinks into the ground with dust and a
+  grinding rumble (sfx `hall_rise`, pitched up) and is gone for the rest of the game (hidden, its
+  colliders parked; a hero on it is carried down to the lawn), so AI RACE can't be started
+  again; `objects.reset()` (a new game) brings it back. (Rustmaw's defeat ends the mode without
+  retiring it.) main sets `state.dark`, emits
   `'darkMode' { on }` and eases `state.darkT` 0..1 over 3 s, calling each tick while it
   changes: `level.setDarkness(t)` (every WorldPart's `setDarkness`), `view.setDarkness(t)`,
   `fx.setRain(t)`, `objects.setDarkness(t)`. Game over resets it to 0 (plus

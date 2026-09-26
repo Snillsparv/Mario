@@ -234,13 +234,24 @@ export class ObjectManager {
     this.halls?.setMode(on);
   }
 
-  // The button was pounded: ask main to toggle the mode.
+  // The button was pounded: ask main to toggle the mode. Pounding STOP retires the button: it
+  // sinks into the ground and is gone for the rest of the game (nobody can start AI RACE again).
   _pressButton() {
     const on = !this.modeOn;
     this.modeOn = on;
     const b = this.button;
     this.events.emit('sfx', { name: 'button_press', pos: { x: b.x, y: b.capTop0, z: b.z } });
     this.events.emit('aiRaceButton', { on });
+    if (!on) b.retire();
+  }
+
+  // The retired button starts sinking away: a grinding rumble and dust round its rim.
+  _buttonSinks() {
+    const b = this.button;
+    const pos = { x: b.x, y: b.baseTop, z: b.z };
+    this.events.emit('sfx', { name: 'hall_rise', pos, pitch: 1.35 });
+    const r = b.radius * 0.72;
+    this.fx?.dust?.(b.x, b.groundLow, b.z, { hw: r, hd: r, yaw: 0, radius: 120, count: 12, sparks: 4, debris: 4 });
   }
 
   // AI RACE crossfade (main calls it every tick while it changes): butterflies and birds keep
@@ -344,6 +355,7 @@ export class ObjectManager {
     this._updateOneUp(player);
     this.butterflies.update(this.tick, pos);
     if (this.button !== null && this.button.update(player)) this._pressButton();
+    if (this.button?.justSank) this._buttonSinks();
     const hero = this.hero.valid ? this.hero : null;
     if (this.box !== null) this.box.update(player, hero, this.tick, this.cameraYaw);
     if (this.door !== null) this.door.update(player);

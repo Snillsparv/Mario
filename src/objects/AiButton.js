@@ -4,6 +4,10 @@
 // Walking or jumping onto it does nothing. ObjectManager turns a press into the mode toggle.
 // The cap reads "AI RACE" while the mode is off and "STOP" while it is on (how to switch it
 // back); both cap textures are painted once at construction and swapped by setOn().
+// Pounding STOP retires the button (retire(), from ObjectManager): once the cap is down it waits
+// RETIRE_DELAY ticks, then the whole button sinks into the ground over RETIRE_TICKS ('sinking';
+// `justSank` is true on the tick it starts, for the dust and sound) and is gone for the rest of
+// the game ('gone': hidden, its colliders parked far below the world). reset() brings it back.
 //
 //   new AiButton({ spot: { x, z, radius }, collision, groundAt })
 //   update(player) -> true on the tick it is pressed          (30 Hz)
@@ -11,7 +15,8 @@
 //   setOn(on)       the mode switched: the cap's label follows ("STOP" / "AI RACE")
 //   label           the text on the cap now
 //   setDarkness(t)  0..1: the base dims, the cap glows and pulses (easy to find in the storm)
-//   reset()         cap up, ready, mode off ("AI RACE")
+//   retire()        after this press, sink into the ground and stay gone (see above)
+//   reset()         cap up, ready, mode off ("AI RACE"), back above the ground
 //
 // Collision: static triangles added to the world at construction (CollisionWorld.addTriangles
 // works after finalize()): the base's side walls and top ring, and the cap's flat top. The cap
@@ -46,6 +51,9 @@ export const BUTTON = {
   RISE_TICKS: 9,
   SIDES: 24,
   COLLIDER_SIDES: 16,
+  RETIRE_DELAY: 20, // ticks from the STOP press (the cap down) until the button sinks away...
+  RETIRE_TICKS: 45, // ...over ~1.5 s
+  PARK: -60000, // a gone button's colliders wait this far down (below everything)
   POUND_MARGIN: 15, // feet this far outside the cap's edge still count (the body overlaps it)
 };
 
@@ -128,7 +136,11 @@ export class AiButton {
     this.capTop0 = this.baseTop + BUTTON.CAP_HEIGHT; // cap top when up
     this.pos = { x: this.x, y: this.capTop0, z: this.z }; // sfx position
 
-    this.state = 'up'; // 'up' | 'pressing' | 'down' | 'rising'
+    this.state = 'up'; // 'up' | 'pressing' | 'down' | 'rising' | 'sinking' | 'gone'
+    this.retiring = false; // retire() called: sink away after this press
+    this.justSank = false; // true on the tick the sinking starts (read by ObjectManager)
+    this.sink = 0; // how far the whole button has sunk into the ground (render: interpolated)
+    this.prevSink = 0;
     this.timer = 0;
     this.offset = 0; // cap height offset (0 = up, -SINK = fully pressed)
     this.prevOffset = 0;
@@ -142,6 +154,21 @@ export class AiButton {
     this.mesh.position.set(this.x, 0, this.z);
     this._buildMeshes();
     this._capSurfaces = this._addColliders();
+    // Every collider surface (base walls, ring, cap top) and its rest heights, so the whole
+    // button can sink (or park) with them.
+    this._restY = new Float64Array(this._allSurfaces.length * 3);
+    for (let i = 0; i < this._allSurfaces.length; i++) {
+      const f = this._allSurfaces[i];
+      this._restY[i * 3] = f.a[1];
+      this._restY[i * 3 + 1] = f.b[1];
+      this._restY[i * 3 + 2] = f.c[1];
+    }
+    this._capSet = new Set(this._capSurfaces);
+  }
+
+  // How far the button sinks to be gone: the cap's top below the lowest ground under it.
+  get sinkDepth() {
+    return this.capTop0 - this.groundLow + 10;
   }
 
   get capTop() {
@@ -222,6 +249,7 @@ export class AiButton {
   // Adds the static collider; returns the cap top's floor surfaces (moved as the cap sinks).
   _addColliders() {
     const col = this.collision;
+    this._allSurfaces = [];
     if (!col.addTriangles) return [];
     const N = BUTTON.COLLIDER_SIDES;
     const R = this.radius;
@@ -246,27 +274,45 @@ export class AiButton {
       tri(top, [cx, this.capTop0, cz], at(r, a0, this.capTop0), at(r, a1, this.capTop0), 0, 1, 0);
     }
     const opts = { terrain: 'stone' };
+    const list = col.surfaces;
+    const start = list ? list.length : 0;
     col.addTriangles(walls, opts);
     col.addTriangles(ring, opts);
-    const list = col.surfaces;
     const first = list ? list.length : 0;
     col.addTriangles(top, opts);
+    this._allSurfaces = list ? list.slice(start) : [];
     return list ? list.slice(first) : [];
   }
 
-  // Moves the cap top's floor triangles to the cap's current height.
+  // Moves the cap top's floor triangles to the cap's current height (and the whole collider
+  // down with the button while it sinks away, or parked once it is gone).
   _moveCapFloor() {
-    const y = this.capTop;
-    const list = this._capSurfaces;
+    const shift = this.state === 'gone' ? BUTTON.PARK : -this.sink;
+    const list = this._allSurfaces;
+    const rest = this._restY;
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
-      s.a[1] = y;
-      s.b[1] = y;
-      s.c[1] = y;
-      s.minY = y;
-      s.maxY = y;
-      s.d = -(s.normal.x * s.a[0] + s.normal.y * y + s.normal.z * s.a[2]);
+      const cap = this._capSet?.has(s);
+      const ya = cap ? this.capTop + shift : rest[i * 3] + shift;
+      const yb = cap ? this.capTop + shift : rest[i * 3 + 1] + shift;
+      const yc = cap ? this.capTop + shift : rest[i * 3 + 2] + shift;
+      s.a[1] = ya;
+      s.b[1] = yb;
+      s.c[1] = yc;
+      s.minY = ya < yb ? (ya < yc ? ya : yc) : yb < yc ? yb : yc;
+      s.maxY = ya > yb ? (ya > yc ? ya : yc) : yb > yc ? yb : yc;
+      s.d = -(s.normal.x * s.a[0] + s.normal.y * ya + s.normal.z * s.a[2]);
+      if (s.ys) {
+        s.ys[0] = ya;
+        s.ys[1] = yb;
+        s.ys[2] = yc;
+      }
     }
+  }
+
+  // After this press (STOP), sink into the ground and stay gone until reset().
+  retire() {
+    this.retiring = true;
   }
 
   // Whether feet at `pos` stand on the cap (inside its rim, at its top).
@@ -284,13 +330,30 @@ export class AiButton {
     const pounded = action === 'ground_pound_land' && this.lastAction !== 'ground_pound_land';
     this.lastAction = action;
     this.prevOffset = this.offset;
+    this.prevSink = this.sink;
+    this.justSank = false;
     this.timer++;
     const B = BUTTON;
+    if (this.state === 'gone') return false;
+    if (this.state === 'sinking') {
+      const u = this.timer >= B.RETIRE_TICKS ? 1 : this.timer / B.RETIRE_TICKS;
+      this.sink = this.sinkDepth * u * u * (3 - 2 * u);
+      if (u >= 1) {
+        this.state = 'gone';
+        this.mesh.visible = false;
+      }
+      this._moveCapFloor();
+      return false;
+    }
     if (this.state === 'pressing') {
       this.offset = -B.SINK * (this.timer >= B.PRESS_TICKS ? 1 : this.timer / B.PRESS_TICKS);
       if (this.timer >= B.PRESS_TICKS) this.state = 'down';
     } else if (this.state === 'down') {
-      if (this.timer >= B.HOLD_TICKS) {
+      if (this.retiring && this.timer >= B.RETIRE_DELAY) {
+        this.state = 'sinking';
+        this.timer = 0;
+        this.justSank = true;
+      } else if (!this.retiring && this.timer >= B.HOLD_TICKS) {
         this.state = 'rising';
         this.timer = 0;
       }
@@ -328,6 +391,12 @@ export class AiButton {
 
   reset() {
     this.setOn(false);
+    this.retiring = false;
+    this.justSank = false;
+    this.sink = 0;
+    this.prevSink = 0;
+    this.mesh.visible = true;
+    this.mesh.position.y = 0;
     this.state = 'up';
     this.timer = 0;
     this.offset = 0;
@@ -339,6 +408,7 @@ export class AiButton {
 
   animate(alpha, clock) {
     this.capMesh.position.y = this.prevOffset + (this.offset - this.prevOffset) * alpha;
+    this.mesh.position.y = -(this.prevSink + (this.sink - this.prevSink) * alpha);
     const t = this.darkT;
     // In the storm the base dims with the world while the cap glows and slowly pulses, so the
     // way back to the sunny grounds is easy to find.
