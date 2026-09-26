@@ -1,7 +1,7 @@
 // Face screen, between the title card and play (a classic N64 start screen's toy, with our own
-// hero): Pip's big 3D head fills the picture, bobbing, blinking and watching the pointer, and
+// hero): Jonas's big 3D head fills the picture, bobbing, blinking and watching the pointer, and
 // every bit of it can be grabbed and pulled about. Everything shown and heard is original:
-// Pip's own design (ui/face/pipHead.js, faceArt.js), a mitten pointer (face/mitten.js), a sky
+// Jonas's own design (ui/face/pipHead.js, faceArt.js), a hand pointer (face/mitten.js), a sky
 // backdrop (face/backdrop.js) and synthesized sounds (audio/sfx.js face_*).
 //
 //   const face = new FaceScreen(uiRoot, { events, audio, view });
@@ -51,16 +51,18 @@ const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 const REMOTE_START_BUTTONS = new Set(['START', 'A']);
 const FADE_MS = 400;
 const RELEASE_TIMEOUT_MS = 2000; // never wait forever for a key-up that got lost (blur)
-// Leaving, Pip spins away while the picture washes to a warm white, which then fades off the
+// Leaving, Jonas spins away while the picture washes to a warm white, which then fades off the
 // game's first frames.
 const CURTAIN_OUT_MS = 450;
 
 // Framing: the picture shows at least VIEW_HEIGHT head units top to bottom and VIEW_WIDTH
-// across (the hat brim is the widest part), the head a little above the middle.
+// across (the cap, hair tufts and ears are the widest part), the head a little above the middle.
 const FOV = 30;
 const VIEW_HEIGHT = 96;
 const VIEW_WIDTH = 118;
 const LOOK_Y = -8;
+// At rest the head is tipped forward a touch, so the cap's bill shows over the glasses.
+const REST_PITCH = 0.07;
 // A pull also brings the grabbed point toward the viewer by this share of the drag (up to
 // BULGE_MAX units), so a pulled nose or cheek comes out of the face instead of sliding across.
 const BULGE = 0.35;
@@ -607,7 +609,7 @@ export class FaceScreen {
     o.position.set(0, Math.sin(t * 1.8) * 1.1, 0);
     o.rotation.order = 'YXZ';
     o.rotation.set(
-      this.turn.pitch + Math.sin(t * 1.25) * 0.025,
+      REST_PITCH + this.turn.pitch + Math.sin(t * 1.25) * 0.025,
       this.turn.yaw + Math.sin(t * 0.55) * 0.07 + spin,
       Math.sin(t * 0.9) * 0.04,
     );

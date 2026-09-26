@@ -2,30 +2,29 @@
 // { w, h, rows: string[], palette: { char: css colour } }; '.' is transparent.
 // raster.js adds the dark outline around the silhouette when building sprites.
 
-// Pip's face: teal explorer hat with a mustard band and a leaf sprig, round face, big eyes.
-const PIP = {
+// Jonas's face: a plain light blue cap (a darker bill, one seam, the button on top), messy
+// brown hair sticking out under it, thin dark round glasses over big eyes, rosy cheeks.
+const JONAS = {
   rows: [
-    '.....tTTd..g..',
-    '....tTTttd.gG.',
-    '...tTTtttddgG.',
-    '...tTttttddG..',
-    '...YYyyyyyyG..',
-    'TTTttttttttddd',
-    '.ddhhhhhhhhdd.',
-    '..hssssssssh..',
-    '.ssswesswesss.',
-    '.ssseesseesss.',
-    '.ssseesseesss.',
-    '.sccssssssccs.',
+    '......dd......',
+    '....BBbbbb....',
+    '..BBbbbbbbbd..',
+    '.BBbbbbdbbbbd.',
+    '.Bbbbbbdbbbbd.',
+    'dddddddddddddd',
+    'hhSSSShSSSSShh',
+    'hhsgggHsgggshh',
+    'hggwewggwewggh',
+    '.sgwewggwewgs.',
+    '.csgggSSgggsc.',
+    '.ccsssssssscc.',
     '..ssssmmssss..',
     '...SSSSSSSS...',
   ],
   palette: {
-    T: '#5fd8c8', t: '#1d948c', d: '#0f5f58',
-    y: '#e3a82b', Y: '#f8d66a',
-    g: '#7ad64e', G: '#3f9a2c',
-    s: '#f8d0a8', S: '#e2a47e', h: '#7a4524',
-    e: '#2a1c3c', w: '#ffffff', c: '#f3877c', m: '#a8432f',
+    B: '#c4e8ff', b: '#86c8f0', d: '#4f95cc',
+    h: '#8a5028', H: '#5a3216',
+    s: '#f8d0a8', S: '#e2a47e', g: '#22222c', w: '#ffffff', e: '#5a3212', c: '#f3877c', m: '#a8432f',
   },
 };
 
@@ -110,7 +109,7 @@ function starIcon() {
 }
 
 export const ICONS = {
-  pip: { ...PIP, w: 14, h: 14 },
+  hero: { ...JONAS, w: 14, h: 14 },
   coin: { ...COIN, w: 14, h: 14 },
   star: { ...starIcon(), w: 14, h: 14 },
 };

@@ -1,4 +1,4 @@
-// Hero model contacts: Pip's poses line up with where the physics puts him (ledge lip,
+// Hero model contacts: Jonas's poses line up with where the physics puts him (ledge lip,
 // trunk, wall, floor), planted boots keep pace with the ground, slides lie on slopes, and
 // the body stays cheap to draw.
 import test from 'node:test';
@@ -23,7 +23,7 @@ function posed(rs, frames = 40) {
 }
 
 // World-space vertices of the hero's body (not the shadow; drawn meshes only, so the winged
-// hat's wings count only while he wears it).
+// cap's wings count only while he wears it).
 function vertices(model) {
   const out = [];
   const v = new THREE.Vector3();
@@ -72,7 +72,7 @@ test('ledge_climb: follows the physics onto the top without sinking into it', ()
   for (const c of ['rootY', 'rootZ', 'hipsY']) assert.ok(Math.abs(end[c]) < 1e-6, `${c} = ${end[c]}`);
 });
 
-test('pole: mittens on the bark, face and hat brim clear of the trunk', () => {
+test('pole: hands on the bark, face and cap clear of the trunk', () => {
   for (const anim of ['pole_hold', 'pole_climb']) {
     for (const ph of [0, 0.25, 0.5, 0.75]) {
       const model = posed({ anim, animTime: 0.5, cyclePhase: ph });
@@ -288,9 +288,9 @@ test('one body material and about a mesh per bone', () => {
   const meshes = [];
   model.object3D.traverse((o) => o.isMesh && meshes.push(o));
   const materials = new Set(meshes.map((m) => m.material));
-  // 15 bones, 6 scarf links, face, shadow, smoke, and the winged hat's wings (one mesh for
-  // both, hidden without the hat).
-  assert.ok(meshes.length <= 25, `${meshes.length} meshes`);
+  // 15 bones, face, shadow, smoke, and the winged cap's wings (one mesh for both, hidden
+  // without the cap).
+  assert.ok(meshes.length <= 19, `${meshes.length} meshes`);
   assert.equal(materials.size, 4, 'body + face + shadow + smoke');
   assert.ok(model.smoke.mesh.isInstancedMesh, 'the smoke puffs are one draw call');
 });

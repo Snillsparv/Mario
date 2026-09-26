@@ -1,7 +1,6 @@
-// Hero model, round 5: the winged hat (wings on Pip's hat while RenderState.wingHat, a
+// Hero model, round 5: the winged cap (wings on Jonas's cap while RenderState.wingHat, a
 // blink while wingHatEnding, flap styles that follow the action), the 'fly' anim with its
-// take-off somersault, the standalone buildWingedHat() pickup model, the stomp bounce, and
-// a slightly rounder build that keeps his outfit, face and colours.
+// take-off somersault, the standalone buildWingedHat() pickup model and the stomp bounce.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -11,6 +10,7 @@ import { ANIMS } from '../src/player/model/animations.js';
 import { CHANNELS, createPose, copyPose } from '../src/player/model/pose.js';
 import { buildWingedHat, BOUND_R } from '../src/player/model/wings.js';
 import { COLORS } from '../src/player/model/palette.js';
+import { capSection, HAT_POS, HAT_ROT, SKULL } from '../src/player/model/head.js';
 import { wrapAngle } from '../src/core/math.js';
 import { HAND_R, HEAD_R } from '../src/player/model/dims.js';
 
@@ -31,15 +31,23 @@ function run(model, rs, frames, f) {
 
 const wingPos = (model) => model.wings.mesh.geometry.attributes.position.array;
 
-// Brim top (hat space) at (x, z), from the hat's lathe in rig.js; -Infinity past the brim.
-function brimTop(x, z) {
-  const zs = z / 0.88;
-  const r = Math.hypot(x, zs);
-  if (r > 50) return -Infinity;
-  return 1.4 + (r > 20 ? 6 * ((x * x) / (r * r)) * ((r - 20) / 30) : 0);
+// What a wing vertex (cap space) got into: 'the band' (hanging down past the cap's band over
+// the face and hair), 'the crown' (through the middle of the cap: only the roots and the
+// coverts over them sprout from inside it), 'the head' (the skull or the hair outside the
+// crown) or null.
+const capToHead = new THREE.Matrix4().makeRotationX(HAT_ROT[0]).setPosition(...HAT_POS);
+function buried(x, y, z) {
+  if (y < 5) return 'band';
+  const s = capSection(y);
+  const q = s ? Math.hypot(x / s.ax, (z - s.zc) / s.az) : Infinity;
+  if (q < 0.55) return 'crown';
+  if (q < 1) return null;
+  const p = new THREE.Vector3(x, y, z).applyMatrix4(capToHead);
+  if (Math.hypot(p.x / (SKULL[0] + 1.2), p.y / (SKULL[1] + 1.2), p.z / (SKULL[2] + 1.2)) < 1) return 'head';
+  return null;
 }
 
-test('the wings appear only with the winged hat, as one mesh on the hat', () => {
+test('the wings appear only with the winged cap, as one mesh on the cap', () => {
   const model = new PlayerModel();
   const wings = model.wings.mesh;
   run(model, base({}), 10);
@@ -49,7 +57,7 @@ test('the wings appear only with the winged hat, as one mesh on the hat', () => 
   assert.equal(wings.material, model.rig.material, 'shares the body material (no extra program)');
   let p = wings.parent;
   while (p && p !== model.rig.head) p = p.parent;
-  assert.ok(p, 'rides on the head (the hat marker)');
+  assert.ok(p, 'rides on the head (the cap\'s marker, named hat)');
   assert.equal(wings.parent, model.rig.hat);
   // Off again: hidden at once.
   run(model, base({ wingHat: false }), 1);
@@ -173,11 +181,11 @@ test('in flight the wings stay in view of the chase camera, even at the bottom o
     });
     assert.ok(bottom > least, `${name}: ${bottom.toFixed(2)} of the wings shown at the bottom of a beat`);
     assert.ok(lowest > 0.25, `${name}: the beat bottoms out ${lowest.toFixed(2)} rad over the brim plane`);
-    assert.ok(reach > 60, `${name}: spread ${reach.toFixed(1)} from the hat centre (brim 50)`);
+    assert.ok(reach > 60, `${name}: spread ${reach.toFixed(1)} from the cap's centre (crown 34)`);
   }
 });
 
-test('the wings never dip into the brim and stay inside their fixed bounds', () => {
+test('the wings never dip into the cap or the head and stay inside their fixed bounds', () => {
   const cases = [
     ['idle', 0, 0], ['run', 0, 48], ['jump', 0, 20], ['fall', 0, 0], ['dive', 0, 30], ['swim_stroke', 0, 8],
     ['fly', 0.1, 45], ['fly', -0.9, 40], ['fly', 0.9, 70], ['pole_handstand', 0, 0], ['star_dance', 0, 0],
@@ -191,7 +199,8 @@ test('the wings never dip into the brim and stay inside their fixed bounds', () 
     run(model, base({ wingHat: true, anim, pitch, forwardVel }), 150, (m, i) => {
       const a = wingPos(m);
       for (let k = 0; k < a.length; k += 3) {
-        assert.ok(a[k + 1] > brimTop(a[k], a[k + 2]) + 1, `${anim} ${pitch}: wing through the brim (frame ${i})`);
+        const inside = buried(a[k], a[k + 1], a[k + 2]);
+        assert.ok(!inside, `${anim} ${pitch}: wing into the ${inside} (frame ${i})`);
         assert.ok(sphere.containsPoint(v.fromArray(a, k)), `${anim}: wing outside its bounds`);
       }
     });
@@ -232,20 +241,20 @@ test('both wings are mirror images, facing out of the same sides', () => {
   assert.ok(agree / (a.length / 9) > 0.8, 'winding matches the normals');
 });
 
-test('wing colours: soft white tops, cool grey undersides, a hint of teal at the root', () => {
+test('wing colours: soft white tops, cool grey undersides, a hint of the cap\'s blue at the root', () => {
   const model = new PlayerModel();
   const col = model.wings.mesh.geometry.attributes.color.array;
   const c = new THREE.Color();
   const lum = [];
-  let teal = 0;
+  let blue = 0;
   for (let i = 0; i < col.length; i += 3) {
     c.setRGB(col[i], col[i + 1], col[i + 2]);
     lum.push(c.r + c.g + c.b);
-    if (c.g > c.r + 0.1) teal++;
+    if (c.g > c.r + 0.15 && c.b > c.g) blue++;
   }
   assert.ok(Math.max(...lum) > 2.6, 'white');
   assert.ok(Math.min(...lum) < 2.2, 'grey undersides');
-  assert.ok(teal > 0 && teal < col.length / 3 / 5, 'teal only at the roots');
+  assert.ok(blue > 0 && blue < col.length / 3 / 5, 'blue only at the roots');
   for (const k of ['wing', 'wingTip', 'wingUnder', 'wingUnderTip', 'wingRoot']) assert.ok(k in COLORS);
 });
 
@@ -352,16 +361,6 @@ test('fly take-off: the triple jump somersault rolls on forward into the flight 
   }
 });
 
-test('the scarf streams back along him in flight', () => {
-  const model = run(new PlayerModel(), base({ anim: 'fly', animTime: 1, forwardVel: 45, wingHat: true }), 120);
-  model.object3D.updateMatrixWorld(true);
-  for (const tail of model.scarf.tails) {
-    const root = tail.joints[0].getWorldPosition(new THREE.Vector3());
-    const end = tail.joints.at(-1).localToWorld(new THREE.Vector3(0, -8, 0));
-    assert.ok(end.z < root.z - 12, `tail end ${(end.z - root.z).toFixed(1)} behind the knot`);
-  }
-});
-
 // Sum over the pose channels of |a - b|.
 function poseDistance(a, b) {
   let d = 0;
@@ -386,25 +385,26 @@ test('stomp bounce: the jump anim restarts from a fall with a blend, not a snap'
   }
 });
 
-test('buildWingedHat: the teal explorer hat with the same wings, flapping on request', () => {
+test('buildWingedHat: the light blue cap with the same wings, flapping on request', () => {
   const hat = buildWingedHat();
   assert.ok(hat.isGroup);
   const meshes = hat.children.filter((o) => o.isMesh);
-  assert.equal(meshes.length, 2, 'hat + wings');
+  assert.equal(meshes.length, 2, 'cap + wings');
   assert.equal(meshes[0].material, meshes[1].material);
   assert.ok(meshes[0].material.vertexColors);
   const box = new THREE.Box3().setFromObject(meshes[0]);
   const size = box.getSize(new THREE.Vector3());
-  assert.ok(size.x > 90 && size.x < 110, `hat ${size.x.toFixed(1)} across`);
-  assert.ok(box.min.y > -5 && box.max.y < 35, 'origin at the brim');
-  // Teal: the hat's own colour is on it.
-  const teal = new THREE.Color(COLORS.hat);
+  assert.ok(size.x > 60 && size.x < 75, `cap ${size.x.toFixed(1)} across`);
+  assert.ok(box.max.z > 40 && box.min.z > -35, `the bill points forward (z ${box.min.z.toFixed(1)} .. ${box.max.z.toFixed(1)})`);
+  assert.ok(box.min.y > -12 && box.max.y < 32, 'origin at the band');
+  // Light blue: the cap's own colour is on it.
+  const blue = new THREE.Color(COLORS.cap);
   const col = meshes[0].geometry.attributes.color.array;
   let found = false;
   for (let i = 0; i < col.length && !found; i += 3) {
-    found = Math.abs(col[i] - teal.r) < 1e-6 && Math.abs(col[i + 1] - teal.g) < 1e-6;
+    found = Math.abs(col[i] - blue.r) < 1e-6 && Math.abs(col[i + 1] - blue.g) < 1e-6;
   }
-  assert.ok(found, 'teal hat');
+  assert.ok(found, 'light blue cap');
   const wings = meshes[1];
   const a0 = wings.geometry.attributes.position.array.slice();
   hat.userData.flap(0.1);

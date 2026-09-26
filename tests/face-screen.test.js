@@ -52,9 +52,12 @@ test('softLimit: identity up to the knee, never past the maximum, monotonic', ()
   assert.ok(softLimit(1000, 72) > 71.9);
 });
 
-test('grab radius: the nose pulls out alone, the brim broadly, elsewhere the default', () => {
+test('grab radius: the nose pulls out alone, the cap\'s bill broadly, elsewhere the default', () => {
   assert.equal(grabRadius(0, -5.5, 34.8), STRETCH.NOSE_RADIUS);
-  assert.equal(grabRadius(46, 20, 0), STRETCH.BRIM_RADIUS);
+  assert.equal(grabRadius(0, 17.5, 43.5), STRETCH.BRIM_RADIUS); // the bill's front edge
+  assert.equal(grabRadius(18, 15, 36), STRETCH.BRIM_RADIUS);
+  assert.equal(grabRadius(9.3, 10.6, 30.4), STRETCH.RADIUS); // the glasses' frame
+  assert.equal(grabRadius(33, 14, 0), STRETCH.RADIUS); // the cap's side
   assert.equal(grabRadius(13.8, -8.5, 25.6), STRETCH.RADIUS);
   assert.equal(grabRadius(32, -3, 2), STRETCH.RADIUS); // an ear
   assert.ok(STRETCH.NOSE_RADIUS < STRETCH.RADIUS && STRETCH.RADIUS < STRETCH.BRIM_RADIUS);

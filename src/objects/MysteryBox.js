@@ -1,4 +1,4 @@
-// The mystery box (layout.MYSTERY_BOX) and the winged hat inside it.
+// The mystery box (layout.MYSTERY_BOX) and the winged cap inside it ('hat' in the code).
 //
 // The box: a floating cube of translucent blue crystal (edge = spot.size) in a brass frame,
 // with a glowing white-gold "?" on each side face, bobbing gently; `spot.y` is the height of
@@ -23,8 +23,8 @@
 //   new MysteryBox({ spot, collision, events, sparkles, shadows, shadowSlots: [box, hat],
 //                    groundAt, buildHat? })
 //     buildHat() -> Object3D: the hat model; default: the hero model's buildWingedHat()
-//     (src/player/model/wings.js: Pip's own hat and wings, flapped via userData.flap), or the
-//     stand-in from wingedHat.js if that is missing
+//     (src/player/model/wings.js: Jonas's own light blue cap and wings, flapped via
+//     userData.flap), or the stand-in from wingedHat.js if that is missing
 //   update(player, hero, tick, cameraYaw?)  30 Hz; hero = { y, vy, air } of the previous tick
 //                                (ObjectManager); the hat glides toward the camera (cameraYaw + PI)
 //                                or, without one, back the way Pip came (faceYaw + PI)
@@ -68,7 +68,7 @@ export const BOX = {
   HAT_RADIUS: 55, // pickup: hat radius (plus Pip's)
   HAT_LOW: -30, // pickup window relative to the feet
   HAT_HIGH: PLAYER_HEIGHT + 40,
-  HERO_HAT_SCALE: 1.2, // the hero model's hat (as Pip wears it) a little bigger as a pickup
+  HERO_HAT_SCALE: 1.35, // the hero model's cap (as Jonas wears it) a bit bigger as a pickup
 };
 
 const _q = new THREE.Quaternion();

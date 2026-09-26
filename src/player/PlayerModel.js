@@ -1,5 +1,6 @@
-// Pip, the original hero: a low-poly chibi explorer with procedural animation, a scarf
-// that trails in the wind and an N64-style blob shadow.
+// Jonas, the hero (a cartoon avatar of the player): a low-poly chibi in a light blue cap,
+// round glasses, a red pi t-shirt, black jeans and sneakers with odd socks, with procedural
+// animation and an N64-style blob shadow.
 //
 //   const model = new PlayerModel();  scene.add(model.object3D);
 //   model.update(renderState, dtSeconds);   // every render frame
@@ -7,15 +8,14 @@
 // object3D sits at the feet (rs.pos) and is yawed to rs.yaw (front faces +Z); during
 // pole_handstand rs.pos is the pole tip under his hands. Everything else (poses, flips,
 // squash, attack swells, physical pitch/roll, blinking, invincibility flicker, the shadow,
-// the hot-foot smoke, the winged hat's flapping wings) is handled inside. No lights are
-// added: the renderer's sun + ambient shade Pip.
+// the hot-foot smoke, the winged cap's flapping wings) is handled inside. No lights are
+// added: the renderer's sun + ambient shade him.
 
 import * as THREE from 'three';
 import { angleDiff, clamp } from '../core/math.js';
 import { FLOOR_LOWER_LIMIT, FPS } from '../core/constants.js';
 import { buildRig, applyPose } from './model/rig.js';
 import { Animator } from './model/animator.js';
-import { ScarfTails } from './model/scarf.js';
 import { BlobShadow } from './model/shadow.js';
 import { SeatSmoke } from './model/smoke.js';
 import { createFaceTextures, FACES } from './model/faceTexture.js';
@@ -29,7 +29,7 @@ const FALLBACK_STRIDE = 150;
 const BLINK_RATE = 15; // invincibility flicker: toggles per second (2 ticks on, 2 off)
 const BANK_ANIMS = new Set(['walk', 'run']);
 const MAX_BANK = 0.3;
-// Anims drawn solid even while the Player reports invincibility: the hit that takes Pip's
+// Anims drawn solid even while the Player reports invincibility: the hit that takes the hero's
 // last wedge leaves him invincible, but he should not flicker out while he collapses.
 const NO_FLICKER_ANIMS = new Set(['death']);
 
@@ -45,12 +45,11 @@ export class PlayerModel {
     this.rig = buildRig(this.faceMaterial);
     this.object3D = this.rig.object3D;
     this.animator = new Animator();
-    this.scarf = new ScarfTails(this.rig.torso, this.rig.scarfAnchors, this.rig.material);
     this.shadow = new BlobShadow();
     this.object3D.add(this.shadow.mesh);
     this.smoke = new SeatSmoke(); // hot-foot puffs ('burn')
     this.object3D.add(this.smoke.mesh);
-    this.wings = new HatWings(this.rig.material); // the winged hat (RenderState.wingHat)
+    this.wings = new HatWings(this.rig.material); // the winged cap (RenderState.wingHat)
     this.rig.hat.add(this.wings.mesh);
 
     this.rs = {
@@ -62,7 +61,6 @@ export class PlayerModel {
     this.prevYaw = NaN; // NaN until the first frame (a number keeps the field unboxed)
     this.bank = 0;
     this.blinkIn = 2.5;
-    this.bodyVel = new THREE.Vector3();
     this.worldPos = new THREE.Vector3();
     this.worldQuat = new THREE.Quaternion();
     this.worldScale = new THREE.Vector3();
@@ -81,9 +79,6 @@ export class PlayerModel {
     this.updateFace(pose.face, dt);
 
     o.updateMatrixWorld(true);
-    const v = rs.forwardVel * FPS;
-    this.bodyVel.set(Math.sin(rs.yaw) * v, rs.vy * FPS, Math.cos(rs.yaw) * v);
-    this.scarf.update(dt, this.bodyVel, o, this.animator.time);
     o.matrixWorld.decompose(this.worldPos, this.worldQuat, this.worldScale); // matrices are current
     this.shadow.update(rs, this.worldQuat);
     this.smoke.update(dt, rs, this.rig.hips, o);

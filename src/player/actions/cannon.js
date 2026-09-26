@@ -80,7 +80,7 @@ function park(p, s) {
 }
 
 // Moves the feet to (x, y, z) along a scripted path; the velocity is the step taken (the camera
-// and the scarf read it).
+// reads it).
 function moveTo(p, x, y, z) {
   p.vel.x = x - p.pos.x;
   p.vel.y = y - p.pos.y;

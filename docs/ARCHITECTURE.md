@@ -52,20 +52,20 @@ title:    new TitleScreen(uiRoot, { events, audio }).show()   (requests the 'tit
           (until play starts, objects.animate() runs the objects' ambient clock from t itself:
           birds and butterflies move, nothing can be picked up; see Objects)
 face:     (opt-in, ?face=1) new FaceScreen(uiRoot, { events, audio, view }).show()   (see "Face screen")
-          Pip's big stretchy head in a scene of its own, drawn by view.setView(scene, camera)
+          Jonas's big stretchy head in a scene of its own, drawn by view.setView(scene, camera)
           instead of the world (nothing in main ticks or draws meanwhile); the title track
           plays on; show() resolves once Start (Enter/Space/Esc, pad Start/A, touch START/A,
           phone START/A, a click on its hint line) has been pressed and released
           (menuPlan(location.search), ui/face/stretch.js: no title/face with ?test / ?skipTitle;
           the face screen is opt-in: ?face=1 opens it instead of the title card)
 start:    hud.setVisible(true); player.beginIntro(); cam.startIntro(player)
-          dropHold = 60 ticks: Pip waits hidden above the spawn while the 96-tick fly-in runs,
+          dropHold = 60 ticks: Jonas waits hidden above the spawn while the 96-tick fly-in runs,
           then drops (~32 ticks) and lands as the camera settles behind him
           input.flush(); emit 'gameStart' (stops the menu track; AudioEngine unlocks audio here
           only with sticky user activation, so a pad-only start creates no blocked
           AudioContext); audio.playMusic('castle_grounds')
 respawn:  player enters 'spawn' again (Player.respawn after death / out of bounds)
-          -> cam.reset(player) (behind Pip, facing the castle)
+          -> cam.reset(player) (behind Jonas, facing the castle)
 lives:    4 at start; 'lifeLost' at x0 -> once the death plays out: mode 'gameover', emit
           'gameOver' (audio plays the 'game_over' jingle), new GameOverCard(uiRoot).show()
           over the frozen world for GAME_OVER_SECONDS (3.2 s, core/constants.js); then
@@ -129,7 +129,7 @@ Test hooks: `?test=1` disables the real-time loop and the first title (the title
 follows a game over, as in play) and exposes
 `window.__game`: `step(n, controllerOverride)` (n ticks, then one draw; the hero model is
 posed after every tick with dt = 1/30 s, like a 30 fps real-time run, so pose blends, blinks
-and the scarf have caught up after a big step), `render()` (draw with dt 0),
+and wing flaps have caught up after a big step), `render()` (draw with dt 0),
 `snapshot()`, `startGame(intro = true)` (replay the intro flow), and `player`, `camera`,
 `level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`, `fx`, `shake`,
 `meltdown` (AI RACE's 40-second clock: `meltdown.skipTo(seconds)` jumps it ahead, `.phase`,
@@ -309,7 +309,7 @@ along the taut tail as the beast is hauled up, then he spins on the spot, `faceY
 beast reads `player.tailRelease`, the spin it was let go at). Z in `tail_hold` lets go; holding on
 without spinning for `TAIL_HOLD_TICKS`, or the beast going away, tears it loose (a stumble, no
 damage); a spin that runs down lets go on its own (a weak throw). All three are 'automatic'
-actions: Pip never moves (his own spin cannot fling him off the roof) and takes no fall damage.
+actions: Jonas never moves (his own spin cannot fling him off the roof) and takes no fall damage.
 
 Tree tops: climbing past the top of a tree's pole enters action `pole_top` (anim
 `pole_handstand`, a handstand on the crown). During it `RenderState.pos` is the pole tip
@@ -324,15 +324,25 @@ model.object3D            // THREE.Group, origin at the feet, front faces +Z, ~1
 model.update(renderState, dtSeconds)   // positions/rotates the group, poses limbs, blob shadow at floorY
 ```
 
-Hero design ("Pip"): an original chibi explorer — big round head (~40% of height), large
-friendly oval eyes, rosy cheeks, small button nose, no moustache; a teal wide-brim
-explorer hat with a mustard band and a small leaf sprig; a mustard-yellow scarf with two
-trailing tails; a burnt-orange tunic with a brown belt; cream gloves; dark-brown boots.
-Built from low-poly primitives with Lambert/Gouraud shading lit by the sun + ambient.
-Includes an N64-style dark circular blob shadow projected onto the floor.
-Attack swell (like classic cartoon platformers): on `punch1`/`punch2` the striking mitten
-balloons to ~2x about its wrist joint, on `kick`/`jump_kick` the kicking boot to ~1.8x
-about `dims.BOOT_PIVOT_Y`, and a dive swells both mittens slightly; pose channels
+Hero design ("Jonas", a cartoon avatar of the player): a cheerful chibi guy — big round
+head (~40% of height), large friendly oval eyes behind thin dark round glasses (real
+geometry in front of the eyes: two rings turned to follow the face, a bridge, short temples
+into the hair; clear lenses), rosy cheeks, a round button nose, no moustache; rowdy brown
+hair (tufts sticking out from under the cap at the sides and the nape, a few locks over the
+forehead under the bill); a plain light blue baseball cap (a round six-panel crown with
+darker seams, a button on top, a curved, slightly darker bill pointing forward; no letter,
+emblem or logo); a red t-shirt with a white π on the chest and short sleeves (bare arms);
+big bare cartoon hands; black jeans; white sneakers with grey tongues and red soles over
+odd ankle socks (blue on the left foot, yellow on the right). Built from low-poly
+primitives with Lambert/Gouraud shading lit by the sun + ambient (the head's parts in
+`model/head.js`, shared with the face screen), every bone merged into one vertex-coloured
+mesh: 16 draw calls (15 bones and the painted face), ~2.9k triangles, plus the winged cap's
+wings while he wears it. Includes an N64-style dark circular blob shadow projected onto the
+floor. The cap's marker in the rig is still named `hat` (`rig.hat`, cap space: origin at the
+centre of its band, `HAT_POS` / `HAT_ROT` in `model/head.js`).
+Attack swell (like classic cartoon platformers): on `punch1`/`punch2` the striking hand
+balloons to ~2x about its wrist joint, on `kick`/`jump_kick` the kicking sneaker to ~1.8x
+about `dims.BOOT_PIVOT_Y`, and a dive swells both hands slightly; pose channels
 `handLSwell/handRSwell/footLSwell/footRSwell`, deflating smoothly when an attack is cut short.
 
 ## Camera (`src/camera/CameraController.js`)
@@ -367,7 +377,7 @@ first. The camera buttons wait for the dance and take over during the swing back
 
 Rustmaw's tail grab (`src/camera/bossCam.js`, `BOSS_CAM`): `cam.bossCam.update(cam, hero)` runs
 after the orbit's tick and blends its own pose over the orbit's (the orbit keeps running
-underneath, as in the intro; its weight `w` eases in and out): while Pip holds the tail
+underneath, as in the intro; its weight `w` eases in and out): while Jonas holds the tail
 (`tail_*` actions) it backs off and rises behind him over the roof's parapet, and as he hauls
 the beast up it moves far back and up and looks up past him with a wider view (the beast
 whirling round high over the castle); on `'bossThrown'` it chases the beast along its flight
@@ -479,6 +489,10 @@ new AlertBanner(uiRootElement, { events })   // AI RACE: 'darkMode' on, the melt
 card.setViewport(rect | null); card.remove(); card.shown   // remove() at once; show() again ok
 ```
 
+The HUD's lives counter shows Jonas's pixel face (`ICONS.hero` in `src/ui/icons.js`: light blue
+cap, brown hair, round glasses); the title card reads "starring JONAS" (`HERO_NAME` in
+`hudLogic.js`, logo letters in his cap's light blue and his t-shirt's red).
+
 The HUD, title card and GAME OVER card re-layout when `devicePixelRatio` changes without a
 size change (a window moved to another monitor): the HUD and title check it every frame, the
 card listens through `src/ui/pixelRatio.js`, so the pixel font stays 1:1 with device pixels.
@@ -500,15 +514,17 @@ start key/button is released as well.
 ## Face screen (`src/ui/FaceScreen.js`, `src/ui/face/*`)
 
 Between the title card and play, like a classic N64 start screen's toy but with our own hero:
-Pip's big 3D head fills the picture, bobbing, swaying, blinking and watching the pointer, and
-any bit of it can be grabbed and pulled about. Everything is original: Pip's own design, a mitten
+Jonas's big 3D head fills the picture, bobbing, swaying, blinking and watching the pointer, and
+any bit of it can be grabbed and pulled about. Everything is original: Jonas's own design, a hand
 pointer, a sky backdrop, synthesized sounds and our own texts.
 
-* **Head** (`face/pipHead.js`, `PipHead`): the in-game head (`rig.js` buildHead / buildHat: the
-  same shapes, sizes, placement, palette; `HAT_POS` / `HAT_ROT` imported) rebuilt at a much
-  higher density (skull 112x84 segments, a 128-segment brim, …) plus the scarf's collar under
-  the chin, all in head-centre space. Two meshes: the skull with the painted face, and every
-  other part merged into one vertex-coloured mesh (`DoubleSide`). ~45.6k triangles.
+* **Head** (`face/pipHead.js`, `PipHead`): the in-game head (`model/head.js` buildHeadParts,
+  which `rig.js` buildHead uses too: the same shapes, sizes, placement, palette) built at a
+  much higher density (skull 112x84 segments, a 112-segment crown, …) plus the neck and the
+  red t-shirt's crew neck under the chin, all in head-centre space. Two meshes: the skull with
+  the painted face, and every other part (cap, glasses, hair, nose, ears, collar) merged into
+  one vertex-coloured mesh (`DoubleSide`). ~60k triangles. At rest it is tipped forward a
+  touch (`REST_PITCH`) so the cap's bill shows over the glasses.
 * **Face** (`face/faceArt.js`): the in-game painting (`faceTexture.js` `paintFace`, exported
   with `FACE_DESIGN`) repainted at 8 px per design px over the front of the head only (`CROP`;
   the skull's uv is the in-game head's, remapped onto the window, clamped to skin outside it),
@@ -520,10 +536,11 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
   up to `STRETCH.HANDLES` (8) handles, each a grab point in rest space, a radius and an offset;
   every vertex moves by `sum_i offset_i * falloff(|position - grab_i| / radius_i)` with
   `falloff(d) = (1 - d^2)^3` (1 at the grab point, 0 from one radius on, flat at both ends), from
-  its rest position in head space, so skin, hair, hat, ears, nose and scarf always move together.
+  its rest position in head space, so skin, hair, cap, glasses, ears, nose and collar always
+  move together (the round glasses stretch with the face like every other part).
   Normals go through the cofactor of the deformation's Jacobian. Radius `STRETCH.RADIUS` (19),
-  `NOSE_RADIUS` (8.5: the nose pulls out alone, the eyes beside it stay) and `BRIM_RADIUS` (24)
-  by where it was grabbed (`grabRadius`).
+  `NOSE_RADIUS` (8.5: the nose pulls out alone, the eyes beside it stay) and `BRIM_RADIUS` (24,
+  the cap's bill bends broadly) by where it was grabbed (`grabRadius`).
 * **Springs**: a held handle follows its target (a stiff 6 Hz spring, so a fast pull lags a hair
   and carries momentum); offsets are soft-limited to `STRETCH.MAX` (72, ~2.4 head radii).
   Released, it springs back through rest with a lightly damped 3.1 Hz wobble (ζ 0.12, a jelly
@@ -545,8 +562,8 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
   another 7 units (pitch and level rising with it), `face_boing` on release (lower and longer the
   further it was pulled), `face_boop` for a tap on the nose, `menu_select` on Start, a soft
   boing as the head pops in. All panned by where they happen.
-* **Pointer** (`face/mitten.js`): a pixel-art cream mitten (the HUD icons' outline and shadow),
-  open while it hovers, a fist while it pulls; a DOM element over the overlay (`cursor: none`),
+* **Pointer** (`face/mitten.js`): one of his big bare cartoon hands in pixel art (the HUD
+  icons' outline and shadow), open while it hovers, a fist while it pulls; a DOM element over the overlay (`cursor: none`),
   shown for the mouse only.
 * **Backdrop** (`face/backdrop.js`): one fullscreen triangle, procedural: the sky's blues
   (`world/sky.js`), two layers of soft cumulus drifting slowly, a warm glow behind the head,
@@ -564,7 +581,7 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
   key/button is released too, and main's `startGame()` flushes the input. Leaving removes every
   listener and disposes every geometry, material and texture (`renderer.info.memory` returns
   to where it was).
-* **Hint** (`face/faceText.js`, SMALL_FONT): "Drag Pip's face! · Enter to play" ("START to play"
+* **Hint** (`face/faceText.js`, SMALL_FONT): "Drag Jonas's face! · Enter to play" ("START to play"
   with a pad, "START or tap here to play" with the touch controller) in a pill that is itself a
   start button, and "Drag the sky to turn him · wheel / pinch to zoom" above it.
 * **Hooks**: `face.state()`, `project(x, y, z)` / `projectShare()` (a head-space point on screen),
@@ -579,8 +596,8 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
 readable board faces `yaw`; a sign with `y` stands on that floor instead of the lawn: the one on
 top of the keep), with original text. Reading works like the classic games:
 
-* Player: B pressed while grounded and not attacking, with a sign within reach in front of Pip
-  (Pip in front of the sign's face and facing it) -> action `'reading'` (anim `idle`, no
+* Player: B pressed while grounded and not attacking, with a sign within reach in front of Jonas
+  (Jonas in front of the sign's face and facing it) -> action `'reading'` (anim `idle`, no
   movement, input ignored), emits `'signRead' { sign }` instead of punching.
   `player.endReading()` returns to idle.
 * `new DialogBox(uiRoot, { events })` opens on `'signRead'`, shows the pages one by one
@@ -588,7 +605,7 @@ top of the keep), with original text. Reading works like the classic games:
   after the last page. `dialog.isOpen`, `dialog.update(controller)` (30 Hz, called by main
   while open), `dialog.close()`.
 * main: while `dialog.isOpen` the tick feeds the controller to the dialog and a neutral
-  controller to Pip and the camera; on `'dialogClosed'` it calls `player.endReading()` and
+  controller to Jonas and the camera; on `'dialogClosed'` it calls `player.endReading()` and
   `input.flush()` so the closing press never becomes a jump or punch.
 
 ## AI RACE mode (the stormy sci-fi horror grounds)
@@ -627,17 +644,17 @@ version and back. Everything is original: no existing monster, character or bran
 * **Monster** (objects): Rustmaw, an original giant mechanical lizard (long low head with a
   toothed hinged jaw, side-set red eye lenses, splayed clawed legs, small scale plates, a
   long whip tail) that rears up onto the castle's front roof near `layout.KAIJU` when the
-  mode turns on (with a roar), tracks Pip with its neck and head
+  mode turns on (with a roar), tracks Jonas with its neck and head
   and spits arcing fireballs at him. An impact explodes (`fx.explode`), leaves a fire patch
   (`fx.ignite`, a damaging zone for its duration) and a scorch mark, and sets nearby trees
-  alight (`level.trees` canopies). A blast hits Pip for 2 wedges, touching fire for 1 with
-  `player.takeDamage(n, fromPos, { fire: true })` (Pip's 'burn' reaction). It leaves when
+  alight (`level.trees` canopies). A blast hits Jonas for 2 wedges, touching fire for 1 with
+  `player.takeDamage(n, fromPos, { fire: true })` (Jonas's 'burn' reaction). It leaves when
   the mode turns off.
 * **Grabbing its tail and throwing it off the roof** (objects `RobotBeast.js`, player
   `actions/tail.js`, camera `bossCam.js`, `BossStar.js`). Its tail climbs round the keep's east
   side and runs on back along the rear block's flat roof (walkway at 2360); its end is a tow
   coupling (`RIG.GRIP`: a hazard-striped collar, two struts, a thick crossbar) glowing orange
-  and pulsing (the material's `uGrip`, a glow sprite) a hand's height over the walkway. Pip gets
+  and pulsing (the material's `uGrip`, a glow sprite) a hand's height over the walkway. Jonas gets
   up there with the winged hat's flight (or a cannon shot). The beast answers his actions
   (`beast.grip` is shared with him as `player.tailGrip`):
   * `'held'` (B grabs it, `tail_hold`): it stays on its perch but struggles: roars again and
@@ -648,7 +665,7 @@ version and back. Everything is original: no existing monster, character or bran
   * `'haul'` (the spin starts, `tail_spin`): over `TAIL_RAISE_TICKS` it is torn off the ridge
     and hauled up into the whirl along a scripted path (`GRAB.HAUL` keys: bearing, elevation,
     how straight the tail is, roll; front legs tucked), swinging up east of the keep's spire and
-    rolling onto its back; meanwhile it leads Pip's facing (`grip.lead` / `grip.yaw`).
+    rolling onto its back; meanwhile it leads Jonas's facing (`grip.lead` / `grip.yaw`).
   * `'whirl'`: the coupling in his hands (`RobotBeast.hand`, from his feet and facing and
     `TAIL_HANDS`), the tail pulled straight, the whole beast swings round him along his facing,
     its body `GRAB.THETA` (68°) above the horizontal, belly up and limbs flailing: high enough
@@ -664,7 +681,7 @@ version and back. Everything is original: no existing monster, character or bran
     barrel-rolling, flailing and roaring, lined up along the nearest wall before it comes down
     on its back. `'bossThrown' { flight, to, water }`.
   * A weaker throw (or the spin running down, or a hit while whirled): it twists free (`'fall'`)
-    and arcs back onto its perch, slamming down (dust, `boss_slam`, `'bossImpact'`), and Pip is
+    and arcs back onto its perch, slamming down (dust, `boss_slam`, `'bossImpact'`), and Jonas is
     knocked back 1 wedge toward the roof's inside (a throw with no spin at all: its tail slams
     down on the roof).
   * `'wrecked'`: on the ground a giant blast of fire, sparks, scrap and dust (`fx.explode` x3,
@@ -682,7 +699,7 @@ version and back. Everything is original: no existing monster, character or bran
   * No new server hall arrives while the beast flies (its landing spot stays clear).
   * Camera (`src/camera/bossCam.js`, blended over the orbit by CameraController after its tick):
     holding on, it backs off and rises over the roof's parapet; whirling, far back and up,
-    looking up past Pip at the beast circling over the castle (wider field of view); thrown, it
+    looking up past Jonas at the beast circling over the castle (wider field of view); thrown, it
     chases the beast along its flight (behind and above it) down to the crash and holds on the
     wreck until the star starts to rise, then hands back.
 * **Audio**: rain and wind beds, thunder after lightning, an ominous original synth track,
@@ -748,7 +765,7 @@ levelsAt(seconds), lightAnchor(x, y, z, yaw), placeOrb(light, anchor, out)   // 
     (`meltdown_ring`).
   * 54 `'over'`: `update()` returns `'over'` (once) and main runs its GAME OVER (the card, the
     jingle, then the title; lives and coins reset as for any game over), whatever the lives
-    left. Pip stays controllable until the white-out.
+    left. Jonas stays controllable until the white-out.
 * **Levels** (`meltdown.levels`, one reused object, handed to each target's `setMeltdown` while
   it changes, never while it stays all 0): `seconds`, `warn`, `fire`, `light` (0..1 over the
   light phase), `white` (exponential), `glow` (the fireball), `glare` (screen glare and sky
@@ -848,11 +865,12 @@ original designs). Objects own it (built when `layout.KAIJU` exists, like the be
 All original designs (no existing characters, blocks, caps or monsters are copied).
 
 * **Mystery box** (objects, `layout.MYSTERY_BOX`): a floating translucent blue crystal cube
-  in a brass frame with a glowing "?" on its faces (static collider). Pip bumping its
-  underside while rising (or punching it) makes it jolt and release the **winged hat**:
-  Pip's own teal explorer hat with a pair of white feathered wings, hovering and spinning.
-  Touching the hat calls `player.giveWingHat(seconds = 40)`. The box can be hit again 30 s
-  after its hat was taken.
+  in a brass frame with a glowing "?" on its faces (static collider). Jonas bumping its
+  underside while rising (or punching it) makes it jolt and release the **winged cap** (the
+  winged hat power-up, `wingHat` in the code): Jonas's own light blue cap with a pair of white
+  feathered wings on the sides of its crown (`wings.js` buildWingedHat, 1.35x as a pickup),
+  hovering and spinning. Touching it calls `player.giveWingHat(seconds = 40)`. The box can be
+  hit again 30 s after its cap was taken.
 * **Flight** (player): `player.giveWingHat(s)` sets `player.wingHat` (ticks left) and emits
   `'wingHat' { on: true }` (and `{ on: false }` when it runs out, `player.wingHat = 0`).
   `RenderState.wingHat` (bool) and `RenderState.wingHatEnding` (last 3 s, for blinking). While
@@ -864,25 +882,25 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   drops into a fall; Z ends the flight; landing skids to a stop; walls bonk. Taking the hat
   off mid-flight turns the flight into a fall. sfx `wing_flap`, `powerup`. Landing from a
   flight (or a fall right after one) never does fall damage; near the level's outer edge the
-  flight turns back instead of leaving. Camera: while flying the orbit swings behind Pip's
+  flight turns back instead of leaving. Camera: while flying the orbit swings behind Jonas's
   heading (only as far round as there is room), following his pitch; R buzzes. In AI RACE
   mode near the castle the view tilts up (and may widen `camera.fov` up to 58°) to keep
   Rustmaw's head in frame; anything that needs the field of view reads `camera.fov`.
 * **Attacks and stomps** (player): `player.getAttack()` -> `null` or `{ x, y, z, radius,
   kind }` while a punch, kick, jump kick, dive, belly slide (while fast), ground-pound
-  landing or flight can hit something this tick (`kind` is the action name). `player.bounce(vy = 50)`: bounce up off an enemy Pip landed on
+  landing or flight can hit something this tick (`kind` is the action name). `player.bounce(vy = 50)`: bounce up off an enemy Jonas landed on
   (action `'jump'`, sfx `stomp`).
 * **Minions** (objects): 10 s after Rustmaw has risen, Sporebots burrow out of the ground
-  (dust burst) around Pip (700-1600 away, on land), up to 5 at a time, a new one every ~5 s.
+  (dust burst) around Jonas (700-1600 away, on land), up to 5 at a time, a new one every ~5 s.
   A Sporebot is a small original mushroom-shaped machine, ~120 across and ~130 tall
   (`minionModel.js`): a wide, low dome cap of riveted gunmetal plates with rust seams, vent
   fins and an exhaust stack, and a ring of red running lights round its rim; under the rim a
   dark sensor band with two big round red lenses (they glow, and flare when it attacks); a
   ribbed steel stem with a hazard-stripe band; three piston legs (a tripod) on round foot
-  pads. It scuttles after Pip on a tripod gait with its cap bobbing, winds up (crouches, tips
+  pads. It scuttles after Jonas on a tripod gait with its cap bobbing, winds up (crouches, tips
   its cap forward, eyes flaring, sparks crackling round the rim) and lunges to ram him with
   the cap (1 wedge, knockback via `player.takeDamage(1, pos)`). A hit from
-  `player.getAttack()` or a stomp (Pip falling onto its cap: `player.bounce()`) wrecks it: it
+  `player.getAttack()` or a stomp (Jonas falling onto its cap: `player.bounce()`) wrecks it: it
   flips onto its cap, legs flailing, in a small blast of sparks and scrap (`fx.explode`), and
   may drop a coin. They leave when the mode turns off; `reset()` clears them. All of them are
   one InstancedMesh (legs and cap animated in the vertex shader) plus two eye glow sprites
@@ -890,7 +908,7 @@ All original designs (no existing characters, blocks, caps or monsters are copie
 * **Locked castle** (objects): walking up to the castle door (in front of it, within ~150,
   facing it) plays sfx `evil_laugh` and shows a dialog via
   `events.emit('signRead', { sign: { id: 'castle_locked', pages: [...] } })`; it can trigger
-  again once Pip has walked away (> 500) and come back. Pip is frozen while the dialog is up
+  again once Jonas has walked away (> 500) and come back. Jonas is frozen while the dialog is up
   (main); `player.endReading()` is safe when he wasn't reading.
 * **Touch controller** (ui + input): on touch screens (`pointer: coarse`, or `?touch=1`) a
   retro game-controller UI appears (`src/ui/TouchController.js`, its own root appended to
@@ -905,7 +923,7 @@ All original designs (no existing characters, blocks, caps or monsters are copie
 
 ## Cannon (the east lawn, up to the top of the castle)
 
-An original cannon on the east lawn (`layout.CANNON`) shoots Pip up onto the castle's roofs and
+An original cannon on the east lawn (`layout.CANNON`) shoots Jonas up onto the castle's roofs and
 the very top of the keep (`layout.KEEP_TOP`). All original designs.
 
 * **Object** (`src/objects/Cannon.js`, look in `cannonModel.js`; the ObjectManager builds it
@@ -919,7 +937,7 @@ the very top of the keep (`layout.KEEP_TOP`). All original designs.
   a fixed top light in their own frames); one material for three draw calls (base with pad and
   pennant, turret, barrel; ~2.2k triangles): the ring's glow and the pennant's flutter are
   shader uniforms. `setDarkness(t)` dims the stone and iron with the storm; the ring keeps
-  glowing. Idle, the barrel rests pointing up toward the keep (`restYaw`, 70°); while Pip is
+  glowing. Idle, the barrel rests pointing up toward the keep (`restYaw`, 70°); while Jonas is
   in it follows his aim; after a shot it holds a moment, then swings back. Static colliders:
   the drum (flat top 60 up, hop onto it), a column round the turret and breech (flat top at
   the barrel's top) and the pad's top (a 14-unit lip, stepped onto).
@@ -982,7 +1000,7 @@ the very top of the keep (`layout.KEEP_TOP`). All original designs.
 
 ## Phone as a controller over the local network
 
-A phone on the same Wi-Fi can steer Pip in the game running on the computer. It needs the
+A phone on the same Wi-Fi can steer Jonas in the game running on the computer. It needs the
 game served locally (`npm run dev`, or `npm run build && npm run preview`): the hosted/static
 build has no relay, so every phone feature stays hidden there.
 
@@ -1013,7 +1031,7 @@ build has no relay, so every phone feature stays hidden there.
   wins when pushed at least as far). `new RemotePad({ input, events })`
   (`src/net/RemotePad.js`) probes `/pad-info`, keeps a room code (it survives a reload),
   joins as 'game', applies the phone's input, releases it when the phone leaves or goes
-  silent for 1.5 s, and sends `rumble` when Pip is hurt; events `'phonePad' { connected,
+  silent for 1.5 s, and sends `rumble` when Jonas is hurt; events `'phonePad' { connected,
   available, room, padUrl }` and `'remotePress' / 'remoteRelease' { button }` (the title
   starts from the phone's START/A). `?pad=0` turns it off, `?pad=1` forces it (`?test=1`
   skips it). `PhonePanel` (`src/ui/PhonePanel.js`, `phoneLogic.js`): the pairing panel with a
@@ -1079,13 +1097,13 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `hallImpact` | `{ pos, strength, kind }` (`kind` `'drop'`: a server hall slammed down, strength 1; `'rise'`: one started grinding up, 0.35) | objects (tech takeover); main's camera shake jolts the view |
-| `bossThrown` | `{ flight, to, water }` (`flight`: `{ x0, y0, z0, vx, vy, vz, T, g }`, `RobotBeast.flightPoint(flight, t)` is its waist t ticks on; `to`: the crash site) | objects (Pip threw Rustmaw); the boss camera chases it |
+| `bossThrown` | `{ flight, to, water }` (`flight`: `{ x0, y0, z0, vx, vy, vz, T, g }`, `RobotBeast.flightPoint(flight, t)` is its waist t ticks on; `to`: the crash site) | objects (Jonas threw Rustmaw); the boss camera chases it |
 | `bossImpact` | `{ pos, strength, kind }` (`'slam'`: back down on its perch, 0.8-1.3; `'crash'` / `'splash'`: thrown down, 3 / 2) | objects (Rustmaw); main's camera shake jolts the view |
 | `bossDefeated` | `{ pos, water }` | objects (Rustmaw crashed); main ends AI RACE mode as if STOP was pressed |
 | `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
 | `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
 | `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title and the face screen go on on START/A) |
-| `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Pip |
+| `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Jonas |
 | `cannonFire` | `{ pos, yaw, pitch, dir }` (`pos`: the muzzle's mouth, `dir`: along the barrel) | player (fired out of the cannon); the cannon recoils and puts the muzzle blast (fx), main's camera shake jolts the view |
 | `cannonView` | `{ on }` | camera (the cannon's aiming view went up / down); the HUD shows its reticle |
 
@@ -1123,5 +1141,6 @@ Unknown names must be ignored silently.
   0.8, 0.6)"}`, `{"wait":500}`, `{"shot":"shots/pull.png"}` (see the preview's header).
 * Requirements: Node.js 20.19+ or 22.12+ (Vite 8); `tools/shot.mjs` and the browser tests
   (`E2E=1 npm test`) need Playwright's Chromium (`npx playwright install chromium`).
-* `index.html` carries the tab icon inline (Pip's HUD face from `src/ui/icons.js` as an SVG
-  data URI), so no `/favicon.ico` is requested.
+* `index.html` carries the tab icon inline (Jonas's HUD face, `ICONS.hero` from
+  `src/ui/icons.js`, with the HUD's 1-pixel outline, as an SVG data URI: regenerate it from the
+  icon's rows when the icon changes), so no `/favicon.ico` is requested.

@@ -1,4 +1,4 @@
-// N64-style HUD: lives (Pip's face × n) top-left, coins and stars top-right, the power
+// N64-style HUD: lives (Jonas's face × n) top-left, coins and stars top-right, the power
 // meter top-centre, a red-coin number pop-up and the pause screen. Everything is drawn into
 // one canvas at device resolution from a 320x240 logical grid.
 // While the cannon's aiming view is up ('cannonView' { on }, camera/cannon.js) a reticle marks
@@ -272,7 +272,7 @@ export class HUD {
     const { W } = this;
     const st = this.state;
     const groupW = (digits) => ICON + 2 + 8 + digits * 9 - 1; // icon, gap, ×, digits
-    this._counter(ICONS.pip, 'pip', Math.max(0, st.lives), MARGIN, this.bumps.lives);
+    this._counter(ICONS.hero, 'hero', Math.max(0, st.lives), MARGIN, this.bumps.lives);
     const starX = W - MARGIN - groupW(2);
     const coinX = starX - 10 - groupW(3);
     this._counter(ICONS.coin, 'coin', this.coinCounter.shown, coinX, this.bumps.coins);

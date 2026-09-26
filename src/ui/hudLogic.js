@@ -191,6 +191,8 @@ export function pauseLayout(W, H, measure, controls = KEY_CONTROLS) {
 }
 
 export const COURSE_NAME = 'CASTLE GROUNDS';
+// The hero's name on the title card ('starring JONAS', BIG_FONT logo letters).
+export const HERO_NAME = 'JONAS';
 
 // Title card lines under the logo. Until a first key/click/tap lets the browser start
 // audio, the card asks for any press (it starts the title music) instead of Start.
@@ -230,7 +232,7 @@ export const BIG_STRINGS = [
   START_PRESS,
   UNLOCK_PRESS,
   TOUCH_UNLOCK_PRESS,
-  'PIP',
+  HERO_NAME,
   GAME_OVER,
   AI_RACE,
   ...MELTDOWN_WARNING.map(([text]) => text),

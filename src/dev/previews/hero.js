@@ -1,4 +1,4 @@
-// Hero model preview: /preview.html?m=hero&...
+// Hero model preview (Jonas): /preview.html?m=hero&...
 //   anim=<name>&t=<s>&yaw=<rad>   one pose (defaults to a representative time per anim)
 //   live=1                        animate in real time instead of freezing at t
 //   grid=1[&page=0&per=8&shift=s]  labelled grid of the anims at representative times (+shift)
@@ -18,10 +18,11 @@
 //   move=1                         with from=: rs.pos rises with vy (and gravity) up to t
 //   pr=<radius>                    pole_handstand: radius of the pole under the hands (12)
 //   tree=<i>[&anim=&t=&yaw=&cy=&cd=&h=]  on the level's tree i, in context (see below)
-//   wingHat=1[&ending=1]           wearing the winged hat (RenderState.wingHat; ending=1 blinks
+//   wingHat=1[&ending=1]           wearing the winged cap (RenderState.wingHat; ending=1 blinks
 //                                  it like the last seconds); anim=fly wears it by default
-//   hat=1[&spin=1&flap=<0..1>&still=1]  the standalone buildWingedHat() pickup model at four
-//                                  yaws (still=1: no flapping), beside Pip wearing it
+//   hat=1[&spin=1&flap=<0..1>&still=1]  the standalone buildWingedHat() pickup model (the
+//                                  winged cap) at four yaws (still=1: no flapping), beside
+//                                  Jonas wearing it
 // Scenery sits where the physics puts it relative to rs.pos (see model/physicsLink.js): the
 // ledge lip HANG_DEPTH up and WALL_DIST ahead (ledge_climb moves rs.pos like the Player), a
 // wall WALL_DIST ahead, a trunk surface POLE_GAP ahead, the pole tip at rs.pos for
@@ -72,7 +73,7 @@ const PRESETS = {
   fly: { t: 1.2, fv: 45, y: 110, wingHat: true },
 };
 const LEDGE_Y = 170; // ledge top above the preview floor
-const CLIMB_INSET = 65; // how far the Player moves Pip onto the ledge
+const CLIMB_INSET = 65; // how far the Player moves Jonas onto the ledge
 const TRUNK_R = 35;
 
 // Player cyclePhase for a gait phase of the model at speed fv (the animator converts back).
@@ -107,13 +108,13 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     cell.add(new THREE.Mesh(new THREE.BoxGeometry(200, 6, 200).translate(0, -3, 0), grass));
     let y = num('y', pre.y ?? 0);
     let floorY = 0;
-    // Scenery is authored for Pip facing +Z and turned with him.
+    // Scenery is authored for Jonas facing +Z and turned with him.
     const props = new THREE.Group();
     props.rotation.y = yaw;
     cell.add(props);
     let pz = 0;
     if (pre.prop === 'ledge') {
-      // Ledge top at LEDGE_Y, wall face at z = 0, Pip facing it; rs.pos where the physics has it.
+      // Ledge top at LEDGE_Y, wall face at z = 0, Jonas facing it; rs.pos where the physics has it.
       props.add(new THREE.Mesh(new THREE.BoxGeometry(200, LEDGE_Y, 120).translate(0, LEDGE_Y / 2, 60), stone));
       const { up, fwd } = anim === 'ledge_climb' ? climbProgress((t ?? num('t', pre.t)) / LEDGE_CLIMB_TIME) : { up: 0, fwd: 0 };
       y = LEDGE_Y - HANG_DEPTH * (1 - up);
@@ -134,7 +135,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     }
     const model = new PlayerModel();
     props.add(model.object3D);
-    // slope=<rad> tilts the floor down toward Pip's front (use pitch=<slope> to lie along it).
+    // slope=<rad> tilts the floor down toward Jonas's front (use pitch=<slope> to lie along it).
     const slope = num('slope', 0);
     const s = Math.sin(slope);
     const floorNormal = { x: Math.sin(yaw) * s, y: Math.cos(slope), z: Math.cos(yaw) * s };
@@ -181,7 +182,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
       rs.animTime = t1;
       actor.frozen = true; // hold that frame: more frames at a fixed animTime would finish the blend
     } else {
-      // Settle blends, the bank and the scarf before the first frame.
+      // Settle blends, the bank and the wings before the first frame.
       for (let i = 0; i < 90; i++) step(actor, 1 / 60);
     }
     actors.push(actor);
@@ -189,7 +190,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
   }
 
   // One render frame of an actor: live mode advances time and stride like the Player;
-  // yawrate turns Pip while the scenery turns back so the view stays put.
+  // yawrate turns Jonas while the scenery turns back so the view stays put.
   function step(a, dt) {
     const { rs } = a;
     if (live) {
@@ -218,7 +219,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
   let world = null;
   if (params.has('tree')) {
     // In context on a real tree of the level (world/props.js): tree=<index>&anim=&t=&yaw=
-    // (Pip's facing) &cy=<camera yaw offset, 0 = behind him>&cd=<camera distance>.
+    // (Jonas's facing) &cy=<camera yaw offset, 0 = behind him>&cd=<camera distance>.
     // pole_handstand stands on the pole top (cartwheeling up from the top of the climb);
     // pole_hold / pole_climb hold on at h=<height below the top> (default the top).
     const [{ buildProps }, layout] = await Promise.all([import('../../world/props.js'), import('../../world/layout.js')]);
@@ -300,7 +301,7 @@ export async function setup({ THREE, scene, ui, params, camera }) {
     const lift = actors[0].rs.pos.y + (PRESETS[anim]?.lookUp ?? 0);
     view = { pos: [0, 120 + lift, 900], look: [0, 80 + lift, 0] };
   } else if (params.has('hat')) {
-    // The standalone winged hat (objects' pickup) at four yaws, and Pip wearing it.
+    // The standalone winged cap (objects' pickup) at four yaws, and Jonas wearing it.
     const { buildWingedHat } = await import('../../player/model/wings.js');
     const yaws = [0, 0.8, Math.PI / 2, Math.PI];
     yaws.forEach((yaw, i) => {

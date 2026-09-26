@@ -126,18 +126,6 @@ test('pole_handstand sways about its hands', () => {
   assert.ok(handDrift < 0.5, `mitten slides ${handDrift.toFixed(2)} on the tip`);
 });
 
-test('the scarf tails hang down from the upside-down neck', () => {
-  const model = new PlayerModel();
-  for (let i = 0; i < 120; i++) model.update({ pos: { x: 0, y: 0, z: 0 }, anim: 'pole_handstand', animTime: 1 + i / 60 }, 1 / 60);
-  model.object3D.updateMatrixWorld(true);
-  for (const tail of model.scarf.tails) {
-    const root = world(tail.joints[0]);
-    const last = tail.joints.at(-1);
-    const end = last.localToWorld(new THREE.Vector3(0, -tail.def.segs.at(-1)[0], 0));
-    assert.ok(end.y < root.y - 15, `tail end ${(end.y - root.y).toFixed(1)} from its root`);
-  }
-});
-
 test('cartwheel up from the top of the climb: continuous, then on the tip', () => {
   for (const yaw of [0, 0.7, -2]) {
     const tip = { x: 300, y: 1000, z: 200 };

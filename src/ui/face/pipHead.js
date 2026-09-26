@@ -1,6 +1,6 @@
-// Pip's head for the face screen: the in-game head (player/model/rig.js buildHead / buildHat:
-// the same shapes, sizes, placement and palette) rebuilt at a much higher mesh density so it
-// can be pulled about smoothly, plus the scarf's collar under his chin.
+// Jonas's head for the face screen: the in-game head (player/model/head.js, used by rig.js
+// buildHead: the same shapes, sizes, placement and palette) rebuilt at a much higher mesh
+// density so it can be pulled about smoothly, plus the t-shirt's collar under his chin.
 //
 //   const head = new PipHead();        // head.object3D (origin at the head centre, front +Z)
 //   head.setExpression('surprise');    // a stretch.js FACE_EXPRESSIONS key
@@ -13,14 +13,14 @@
 // other part merged into one vertex-coloured mesh. Both are authored in head space and both
 // materials get the same deformation injected into their vertex shaders (onBeforeCompile):
 // every vertex moves by sum_i pull_i * falloff(|position - grab_i| / radius_i), from the rest
-// position in head space (stretch.js), so skin, hair, hat, ears, nose and scarf always move
-// together and never come apart. Normals follow the deformation (the inverse transpose of its
+// position in head space (stretch.js), so skin, hair, cap, glasses, ears, nose and collar
+// always move together and never come apart. Normals follow the deformation (the inverse transpose of its
 // Jacobian), so a pulled cheek is shaded as the new shape.
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as D from '../../player/model/dims.js';
-import { HAT_POS, HAT_ROT } from '../../player/model/rig.js';
+import { buildHeadParts } from '../../player/model/head.js';
 import { paint } from '../../player/model/palette.js';
 import { STRETCH, raycast, pointOnTriangle } from './stretch.js';
 import { FaceArt, cropUv, irisUniforms, IRIS_PARS_GLSL, IRIS_GLSL } from './faceArt.js';
@@ -79,8 +79,6 @@ function injectStretch(material, uniforms, iris) {
 
 // ---- geometry --------------------------------------------------------------------------
 
-const ellipsoid = (rx, ry, rz, w, h) => new THREE.SphereGeometry(1, w, h).scale(rx, ry, rz);
-
 // Subdivide each segment of a [radius, y] profile into `n` pieces.
 function resample(profile, n) {
   const out = [];
@@ -113,61 +111,19 @@ function part(parent, geo, color, x = 0, y = 0, z = 0) {
   return m;
 }
 
-function group(parent, x = 0, y = 0, z = 0, order = 'XYZ') {
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  g.rotation.order = order;
-  parent.add(g);
-  return g;
-}
-
-// The teal explorer hat in hat space (rig.js buildHat).
-function buildHat(parent) {
-  const hat = group(parent, ...HAT_POS);
-  hat.rotation.set(...HAT_ROT);
-  const brimProfile = [[12, 1.4], [44, 1.2], [50, 0], [45, -1.4], [12, -1.2]];
-  const brim = lathe([...resample(brimProfile.slice(0, 2), 12).slice(0, -1), ...resample(brimProfile.slice(1, 4), 3).slice(0, -1), ...resample(brimProfile.slice(3), 12)], 128);
-  // Safari brim: the sides curl up a little, front and back stay low; oval.
-  const pos = brim.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const r = Math.hypot(x, z);
-    if (r > 20) pos.setY(i, pos.getY(i) + 6 * ((x * x) / (r * r)) * ((r - 20) / 30));
-  }
-  brim.scale(1, 1, 0.88);
-  part(hat, smooth(brim), 'hat');
-  const crown = [[25.5, 0], [25, 9], [23.5, 17], [19.5, 22], [11, 24], [0.1, 22.5]];
-  part(hat, smooth(lathe(resample(crown, 4), 96)), 'hat');
-  part(hat, new THREE.CylinderGeometry(25.8, 26.2, 6, 96, 3, true), 'hatBand', 0, 3.4, 0);
-  const sprig = group(hat, 19, 6, -15);
-  sprig.rotation.set(-0.35, 0.8, -0.3);
-  part(sprig, ellipsoid(3.6, 10, 1.1, 20, 14), 'leaf', 0, 8, 0).rotation.z = -0.35;
-  part(sprig, ellipsoid(3, 8, 1, 20, 14), 'leafDark', 4, 5.5, -1).rotation.z = -1.0;
-}
-
-// Everything but the skull, in head-centre space (rig.js buildHead), as one geometry.
+// Everything but the skull, in head-centre space: the in-game head's parts (player/model/
+// head.js: nose, ears, hair, glasses, cap) at the face screen's density, plus the neck and the
+// red t-shirt's crew neck under the chin (rig.js buildTorso), as one geometry.
 function buildParts() {
   const root = new THREE.Group();
-  part(root, ellipsoid(5, 4.3, 4.3, 40, 30), 'nose', 0, -5.5, 30.5);
-  for (const s of [-1, 1]) part(root, ellipsoid(3.2, 6, 4.4, 24, 18), 'skin', s * 31.5, -3, -2);
-  // Hair: a cap over the back and top, tilted low at the nape, and swoopy locks of fringe.
-  const cap = new THREE.SphereGeometry(D.HEAD_R + 1.2, 72, 30, Math.PI * 0.72, Math.PI * 1.56, 0, Math.PI * 0.52);
-  part(root, cap.scale(1.07, 0.97, 1), 'hair').rotation.x = -0.45;
-  const fringe = [[-0.55, 0.95, 0.35], [-0.2, 0.9, 0.1], [0.15, 0.93, -0.15], [0.48, 1.0, -0.4]];
-  for (const [yaw, tilt, twist] of fringe) {
-    const pivot = group(root, 0, 0, 0, 'YXZ');
-    pivot.rotation.set(tilt, yaw, 0);
-    part(pivot, ellipsoid(5.5, 2.6, 9, 24, 16), 'hair', 0, D.HEAD_R + 0.5, 3).rotation.y = twist;
-  }
-  buildHat(root);
-  // The neck and the scarf round it (rig.js buildTorso), just under the chin.
+  const kit = { hi: true, mesh: (geo, color) => new THREE.Mesh(paint(geo, color)) };
+  buildHeadParts(root, kit);
   const neckY = D.NECK_Y + D.HEAD_CY; // head centre above the torso joint
   part(root, new THREE.CylinderGeometry(7, 8, 8, 40, 2, true), 'skin', 0, 36 - neckY, -2);
-  const ring = part(root, new THREE.TorusGeometry(12, 4.8, 20, 64).rotateX(Math.PI / 2), 'scarf', 0, 34 - neckY, -2);
-  ring.rotation.x = 0.14;
-  ring.scale.set(1.02, 1, 0.94);
-  part(root, new THREE.CircleGeometry(12.5, 48).rotateX(Math.PI / 2), 'scarf', 0, 31.4 - neckY, -2.4); // closes it below
+  // The top of the shirt round the neck (its lathe's last profile points) and the collar.
+  part(root, smooth(lathe(resample([[15.5, 28], [10, 33], [0.1, 35]], 6), 64)).scale(1, 1, 0.88), 'shirt', 0, -neckY, -2);
+  part(root, new THREE.TorusGeometry(8.3, 1.4, 12, 48).rotateX(Math.PI / 2), 'shirtCollar', 0, 33.8 - neckY, -2);
+  part(root, new THREE.CircleGeometry(15.5, 48).rotateX(Math.PI / 2), 'shirt', 0, 28 - neckY, -2); // closes it below
 
   root.updateMatrixWorld(true);
   const pieces = [];

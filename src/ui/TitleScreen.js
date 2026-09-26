@@ -1,5 +1,5 @@
 // Title card shown over the live 3D scene: an extruded, bevelled 'CASTLE GROUNDS' logo that
-// drops in and gently bobs, 'starring PIP', a blinking PRESS START with the start keys
+// drops in and gently bobs, 'starring JONAS', a blinking PRESS START with the start keys
 // spelled out, and a controls hint.
 //
 //   const title = new TitleScreen(uiRoot, { events, audio });
@@ -36,6 +36,7 @@ import { renderLogoWord } from './logo.js';
 import {
   hudMetrics,
   boxStyle,
+  HERO_NAME,
   TitleGate,
   START_PRESS,
   START_PROMPT,
@@ -70,7 +71,8 @@ const RELEASE_TIMEOUT_MS = 2000; // never wait forever for a key-up that got los
 // Castle-and-lawn palette: brick and gold for CASTLE, grass and sky for GROUNDS.
 const CASTLE_COLORS = ['#e4553a', '#f4b828'];
 const GROUNDS_COLORS = ['#3cb44a', '#2a94dc'];
-const PIP_COLORS = ['#20b0a0', '#f2b21e'];
+// The hero's name in his cap's light blue and his t-shirt's red.
+const HERO_COLORS = ['#52b4ee', '#e8382c'];
 // The smooth-shaded logo is first rendered at no more than this many device px per font
 // pixel (its shading cost grows with the square of the size) and scaled up by CSS; a
 // full-resolution render from the logo worker replaces it when it is ready.
@@ -447,7 +449,7 @@ export class TitleScreen {
     this.pieces = {
       castle: logoWord('CASTLE', 3.3, { colors: CASTLE_COLORS, arc: 0.32 }),
       grounds: logoWord('GROUNDS', 3.6, { colors: GROUNDS_COLORS, arc: 0.22 }),
-      pip: logoWord('PIP', 2.2, { colors: PIP_COLORS, jitter: 0.08 }),
+      hero: logoWord(HERO_NAME, 2.2, { colors: HERO_COLORS, jitter: 0.08 }),
       starring: new Piece('cg-pixel', (px) => textCanvas(SMALL_FONT, 'starring', 1.5 * px, 'white')),
       press: new Piece('cg-press cg-if-ready cg-pixel', (px) => textCanvas(BIG_FONT, START_PRESS, 1.2 * px, 'gold')),
       prompt: new Piece('cg-prompt cg-if-ready cg-pixel', (px) => textCanvas(SMALL_FONT, START_PROMPT, px, 'white')),
@@ -463,8 +465,8 @@ export class TitleScreen {
     };
     this.touch = null;
     this._setTouch(touchUi.active, false);
-    const { castle, grounds, pip, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
-    this.starringRow = div('cg-starring', [starring.el, pip.el]);
+    const { castle, grounds, hero, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
+    this.starringRow = div('cg-starring', [starring.el, hero.el]);
     this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el, this.starringRow])]);
     this.el.append(this.logo, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
     this.phoneBtn = null;
@@ -515,7 +517,7 @@ export class TitleScreen {
     for (const piece of Object.values(p)) piece.fit(px, dpr);
     this.logo.style.top = at(12);
     p.grounds.el.style.marginTop = at(-16);
-    p.pip.el.style.marginLeft = at(-2);
+    p.hero.el.style.marginLeft = at(-2);
     this.starringRow.style.marginTop = at(-8);
     p.press.el.style.top = p.wake.el.style.top = at(H * 0.73);
     p.prompt.el.style.top = p.wakePrompt.el.style.top = at(H * 0.73 + 16);

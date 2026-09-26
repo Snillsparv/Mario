@@ -24,7 +24,7 @@ export const STRETCH = Object.freeze({
   HANDLES: 8,
   RADIUS: 19, // head units (the head's radius is 30): what a grab takes with it ...
   NOSE_RADIUS: 8.5, // ... on the nose (it pulls out on its own, the eyes beside it stay put)
-  BRIM_RADIUS: 24, // ... on the hat's broad brim
+  BRIM_RADIUS: 24, // ... on the cap's broad bill
   MAX: 72, // the longest pull (a soft limit), head units
   HOLD_HZ: 6, // held: a stiff, nearly critically damped spring after the pointer
   HOLD_ZETA: 0.72,
@@ -61,11 +61,12 @@ export function falloff(d) {
   return k * k * k;
 }
 
-// The grab radius for a rest-space point: the nose pulls out alone, the hat brim bends broadly.
-const NOSE_CENTRE = [0, -5.5, 30.5]; // (player/model/rig.js buildHead)
+// The grab radius for a rest-space point: the nose pulls out alone, the cap's bill (out in
+// front of the forehead and the glasses, above the eyes) bends broadly.
+const NOSE_CENTRE = [0, -5.5, 30.5]; // (player/model/head.js buildHeadParts)
 export function grabRadius(x, y, z) {
   if (Math.hypot(x - NOSE_CENTRE[0], y - NOSE_CENTRE[1], z - NOSE_CENTRE[2]) < 6.5) return STRETCH.NOSE_RADIUS;
-  if (y > 10 && Math.hypot(x, z) > 33) return STRETCH.BRIM_RADIUS;
+  if (y > 11 && z > 32) return STRETCH.BRIM_RADIUS;
   return STRETCH.RADIUS;
 }
 

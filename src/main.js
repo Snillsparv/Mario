@@ -319,7 +319,7 @@ async function start() {
   }
 
   let renderAlpha = 1;
-  // Pose the hero model; its own clocks (pose blends, blinks, scarf) run by dt while playing.
+  // Pose the hero model; its own clocks (pose blends, blinks, wing flaps) run by dt while playing.
   function poseHero(dt) {
     const running = state.mode === 'play' && !state.paused;
     model.update(player.getRenderState(renderAlpha), running ? dt : 0); // pause freezes them too
@@ -365,7 +365,7 @@ async function start() {
     },
     // Advance n simulation ticks with a fixed controller state (partial, like setOverride),
     // then draw once. The hero model is posed after every tick, as a 30 fps real-time run
-    // would, so after a big step its pose blends, blinks and scarf have caught up instead of
+    // would, so after a big step its pose blends, blinks and wing flaps have caught up instead of
     // showing the pose from before the step blended by a single 1/30 s frame.
     step(n = 1, controllerState = null) {
       renderAlpha = 1;

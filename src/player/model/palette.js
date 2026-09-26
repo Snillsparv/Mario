@@ -1,4 +1,4 @@
-// Pip's colours (sRGB hex) and the single Gouraud-style body material. Every body part
+// Jonas's colours (sRGB hex) and the single Gouraud-style body material. Every body part
 // carries its colour as a vertex colour, so the whole hero (apart from the painted face)
 // shares one material and each bone can be merged into a single draw call.
 import * as THREE from 'three';
@@ -7,27 +7,32 @@ export const COLORS = {
   skin: 0xf4c49c,
   nose: 0xf2ae8a,
   cheek: '#f28b82',
-  hair: 0x6e3f1f,
-  hat: 0x1d948c,
-  hatBand: 0xe3a82b,
-  leaf: 0x5cbf3a,
-  leafDark: 0x3f9a2c,
-  scarf: 0xeeb52f,
-  tunic: 0xd4631f,
-  belt: 0x6a3d1d,
-  buckle: 0xf2cf57,
-  glove: 0xf7eed6,
-  trousers: 0x8a7a55,
-  boot: 0x4d2e19,
-  bootCuff: 0x7a4b2a,
-  sole: 0x2b1b10,
-  // Winged hat (wings.js): soft white feathers, cool grey undersides, a hint of the hat's
-  // teal where they sprout from the crown.
+  // Brown, a bit rowdy: the hair mass and the lighter tips of its tufts and locks.
+  hair: 0x70411f,
+  hairTuft: 0x8a552b,
+  // The plain light blue baseball cap: crown and button, its panels' seams, a slightly darker
+  // bill, and the underside of the bill.
+  cap: 0x86c8f0,
+  capSeam: 0x5c9fd0,
+  capBill: 0x5fa8dc,
+  capUnder: 0x6aa2d2,
+  glasses: 0x24242c, // thin dark round frames (clear lenses)
+  shirt: 0xd8302a, // the red t-shirt
+  shirtCollar: 0xb4221e,
+  pi: 0xf8f6f0, // the white pi sign on its chest
+  jeans: 0x2c2e36, // black jeans
+  sockL: 0x2f62dc, // odd socks: blue on the left foot...
+  sockR: 0xf4cc26, // ...yellow on the right
+  shoe: 0xf2f1ec, // white sneakers
+  shoeLace: 0xc4c8cf, // grey tongues and laces
+  sole: 0xe23c2e, // red soles
+  // Winged cap (wings.js): soft white feathers, cool grey undersides, a hint of the cap's
+  // light blue where they sprout from the crown.
   wing: 0xf8f6ee,
   wingTip: 0xe2e9ee,
   wingUnder: 0xe4eaf2,
   wingUnderTip: 0xcdd6e2,
-  wingRoot: 0x8fd0c6,
+  wingRoot: 0x9fd4f2,
 };
 
 // Lambert (per-vertex lighting) reads as the N64's smooth Gouraud shading on low-poly parts.

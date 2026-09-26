@@ -1,24 +1,24 @@
-// A stand-in winged hat: Pip's teal wide-brim explorer hat (mustard band) with a pair of white
+// A stand-in winged cap: a plain light blue baseball cap (like Jonas's) with a pair of white
 // feathered wings on the sides of the crown. MysteryBox uses the hero model's own
 // buildWingedHat() (src/player/model/wings.js) and falls back to this one only if that is
 // missing (and previews/tests may pass it as buildHat).
 //
-//   buildPlaceholderWingedHat() -> THREE.Group   origin at the hat's base, front +Z, ~110 wide
+//   buildPlaceholderWingedHat() -> THREE.Group   origin at the cap's base, front +Z, ~80 wide
 //     userData.wings = [left, right]  pivots at the wing roots (flap with flapWings)
 //   flapWings(hat, clock, strength = 1)            beats the wings (render clock, seconds)
 //
-// Three draw calls: the hat (brim, crown, band merged, vertex colours) and the two wings (one
+// Three draw calls: the cap (crown, bill, button merged, vertex colours) and the two wings (one
 // shared geometry, the right one mirrored). Lambert-lit like the hero.
 
 import * as THREE from 'three';
 
-const TEAL = new THREE.Color(0x1d948c);
-const TEAL_DARK = new THREE.Color(0x157068);
-const MUSTARD = new THREE.Color(0xd9a93a);
+const BLUE = new THREE.Color(0x86c8f0);
+const BLUE_DARK = new THREE.Color(0x5fa8dc);
+const BLUE_UNDER = new THREE.Color(0x6aa2d2);
 const WHITE = new THREE.Color(0xf7f7f2);
 const TIP = new THREE.Color(0xc9d3dc);
 
-export const HAT_SCALE = 1.2; // the pickup is a little bigger than the hat Pip wears
+export const HAT_SCALE = 1.2; // the pickup is a little bigger than the cap Jonas wears
 
 // Non-indexed copy of `geo` with a per-vertex colour from colorAt(x, y, z).
 function colored(geo, colorAt) {
@@ -55,24 +55,16 @@ function merge(list) {
 const lathe = (pts, segs) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), segs);
 
 function buildHatGeometry() {
-  // Brim: wide and thin, the sides curling up a little; crown: a rounded dome; band: mustard.
-  const brim = lathe([[12, 1.4], [44, 1.2], [50, 0], [45, -1.4], [12, -1.2]], 18);
-  const p = brim.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i);
-    const z = p.getZ(i);
-    const r = Math.hypot(x, z);
-    const side = r > 1e-3 ? (x / r) ** 2 : 0;
-    p.setY(i, p.getY(i) + side * Math.max(0, r - 30) * 0.28);
-    p.setZ(i, z * 0.9);
-  }
-  brim.computeVertexNormals();
-  const crown = lathe([[25.5, 0], [25, 9], [23.5, 17], [19.5, 22], [11, 24], [0.1, 22.5]], 12);
-  const band = new THREE.CylinderGeometry(26, 26.4, 6, 12, 1, true).translate(0, 3.4, 0);
+  // Crown: a round dome; bill: a flat half-disc out in front (darker, its underside darker
+  // still); a button on top. No letter, emblem or logo.
+  const crown = lathe([[32, 0], [31.5, 8], [28, 16], [20, 23], [10, 26.5], [0.1, 27]], 12);
+  const bill = new THREE.CylinderGeometry(30, 30, 1.6, 12, 1, false, -Math.PI / 2, Math.PI);
+  bill.scale(1, 1, 1.3).translate(0, 0.8, 8);
+  const button = new THREE.SphereGeometry(3.4, 6, 3).scale(1, 0.6, 1).translate(0, 27, 0);
   const parts = [
-    colored(brim, (x, y) => (y < 0 ? TEAL_DARK : TEAL)),
-    colored(crown, () => TEAL),
-    colored(band, () => MUSTARD),
+    colored(crown, () => BLUE),
+    colored(bill, (x, y) => (y < 0.8 ? BLUE_UNDER : BLUE_DARK)),
+    colored(button, () => BLUE_DARK),
   ];
   const geo = merge(parts);
   geo.scale(HAT_SCALE, HAT_SCALE, HAT_SCALE);
@@ -139,7 +131,7 @@ export function buildPlaceholderWingedHat() {
   const wings = [1, -1].map((s) => {
     const w = new THREE.Mesh(wingGeo, wingMat);
     w.name = s > 0 ? 'wingL' : 'wingR';
-    w.position.set(s * 23 * HAT_SCALE, 13 * HAT_SCALE, -3 * HAT_SCALE);
+    w.position.set(s * 28 * HAT_SCALE, 13 * HAT_SCALE, -3 * HAT_SCALE);
     w.scale.x = s;
     return w;
   });

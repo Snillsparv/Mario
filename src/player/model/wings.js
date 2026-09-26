@@ -1,23 +1,25 @@
-// The winged hat (the flight power-up): a pair of white feathered wings sprouting from both
-// sides of the crown of Pip's own teal explorer hat (the winged-hat motif of old myths).
+// The winged cap (the flight power-up, 'wingHat' in the code): a pair of white feathered wings
+// sprouting from both sides of the crown of Jonas's own light blue cap (the winged-helmet
+// motif of old myths).
 //
-//   HatWings        the wings on Pip's hat: one mesh in hat space (a single draw call) whose
+//   HatWings        the wings on his cap: one mesh in cap space (a single draw call) whose
 //                   vertices are re-posed on the CPU every frame (~300 of them), so each
 //                   wing can flap about its own hinge and bend a little along its span.
-//   buildWingedHat  a standalone winged hat (hat + wings) for the hovering pickup.
+//   buildWingedHat  a standalone winged cap (cap + wings) for the hovering pickup.
 //
 // Each wing is five low-poly pieces: four primary feathers fanned from a short arm, the
 // leading one laid over the ones behind, and a broad covert over their roots. Tops are soft
-// white, undersides cool grey (each piece is a thin two-sided slab), with a hint of teal
-// where they meet the hat.
+// white, undersides cool grey (each piece is a thin two-sided slab), with a hint of the cap's
+// light blue where they meet it.
 
 import * as THREE from 'three';
 import { clamp, smoothstep, TAU } from '../../core/math.js';
 import { easeOutBack } from './kit.js';
 import { bodyMaterial, COLORS } from './palette.js';
 import { buildHatMesh } from './rig.js';
+import { capSection } from './head.js';
 
-// ---- the wing template (Pip's left wing, in its hinge frame) --------------------------------
+// ---- the wing template (his left wing, in its hinge frame) ----------------------------------
 // The hinge runs along +Z (front), the span reaches out along +X and the top faces +Y. Each
 // piece: attach point `at` along the arm, `ang` swept back from the span direction, length,
 // width, and `y` its layer height (leading pieces lie over the ones behind them).
@@ -105,18 +107,23 @@ function wingTemplate() {
 let TEMPLATE = null;
 const template = () => (TEMPLATE ??= wingTemplate());
 
-// ---- placement on the hat (hat space: origin at the brim centre, +Y up, front +Z) -----------
-// The hinge sits just inside the crown's side, above the band. A wing is posed by (in order)
+// ---- placement on the cap (cap space: origin at the band's centre, +Y up, front +Z) ---------
+// The hinge sits just inside the crown's side, ROOT_H up from the band (head.js capSection:
+// the crown's cross-section there). A wing is posed by (in order)
 // `attack` (tilt about its span: + raises the trailing feathers; it swings by `twist` with
 // the beat, + at the top of the stroke and - at the bottom), the flap about the hinge
 // (`lift` + the beat: + raises the tip; ~1 rad stands it up beside the crown), and `sweep`
 // back about the vertical.
-const ROOT = { x: 22.5, y: 10.5, z: 3 };
+const ROOT_H = 14;
+const ROOT = (() => {
+  const { ax, zc } = capSection(ROOT_H);
+  return { x: ax - 1.2, y: ROOT_H, z: zc - 1 };
+})();
 const SWEEP = 0.4; // base sweep back (rad)
-const MIN_BEND = -0.2; // the lowest a wing section may flap (keeps the tips off the brim)
+const MIN_BEND = -0.2; // the lowest a wing section may flap (keeps the tips up off the hair)
 const MAX_BEND = 1.45; // ...and the highest (never folds in over the crown)
 const NORMAL_LIFT = 1.4; // see poseWing
-export const BOUND_R = 100; // the wings' fixed bounding sphere: (0, 15, -10) in hat space
+export const BOUND_R = 100; // the wings' fixed bounding sphere: (0, 15, -10) in cap space
 
 // Flap styles: freq (beats/s), amp (rad), lift (rad), sweep (extra, rad), attack (rad),
 // twist (rad), scale (size).
@@ -124,10 +131,10 @@ export const BOUND_R = 100; // the wings' fixed bounding sphere: (0, 15, -10) in
 // spread out sideways for big bird-like beats.
 const GROUND = { freq: 1.1, amp: 0.1, lift: 0.95, sweep: 0, attack: 0.4, twist: 0, scale: 1 };
 const AIR = { freq: 3.2, amp: 0.4, lift: 0.8, sweep: 0, attack: 0.3, twist: 0, scale: 1 };
-const FLY_LOW = 0.35; // flying: the bottom of the beat (rad above the brim plane)
+const FLY_LOW = 0.35; // flying: the bottom of the beat (rad above the band plane)
 const STREAMLINED = { freq: 1.6, amp: 0.07, lift: 0.5, sweep: 0.75, attack: 0.1, twist: 0, scale: 1 }; // dives, slides
 const WATER = { freq: 0.8, amp: 0.06, lift: 0.7, sweep: 0.55, attack: 0.3, twist: 0, scale: 1 };
-// Upside down on a tree top: folded small along the brim, out of the tree's crown.
+// Upside down on a tree top: folded small along the cap's sides, out of the tree's foliage.
 const FOLDED = { freq: 0.9, amp: 0.04, lift: 0.04, sweep: 0.8, attack: -0.12, twist: 0, scale: 0.72 };
 const AIR_ANIMS = new Set([
   'jump', 'fall', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'wallkick', 'pole_jump', 'water_jump',
@@ -138,7 +145,7 @@ const WATER_ANIMS = new Set(['swim_idle', 'swim_stroke', 'swim_flutter', 'water_
 const FOLDED_ANIMS = new Set(['pole_handstand']);
 
 const BLINK_RATE = 10; // wingHatEnding: visibility toggles per second
-const UNFOLD_TIME = 0.35; // the wings pop open when the hat goes on
+const UNFOLD_TIME = 0.35; // the wings pop open when the cap goes on
 const RESPONSE = 6; // 1/s: how fast the flap style follows the action
 
 // Writes one wing's posed vertices into the mesh arrays (offset o, in floats). side: 1 left,
@@ -187,7 +194,7 @@ function poseWing(src, dst, o, side, w) {
     t = x * c - y * s;
     y = x * s + y * c;
     x = t;
-    // Bent toward hat-up, so both sides of the thin feathers catch the light from above
+    // Bent toward cap-up, so both sides of the thin feathers catch the light from above
     // (the undersides keep their cooler colour).
     const nx = x * cs + z * ss;
     const nz = -x * ss + z * cs;
@@ -199,7 +206,7 @@ function poseWing(src, dst, o, side, w) {
   }
 }
 
-// Both wings as one mesh in hat space, posed by pose({ lift, amp, phase, sweep, attack, twist, scale }).
+// Both wings as one mesh in cap space, posed by pose({ lift, amp, phase, sweep, attack, twist, scale }).
 class WingPair {
   constructor(material) {
     const src = template();
@@ -237,7 +244,7 @@ class WingPair {
   }
 }
 
-// The wings on Pip's hat. Hidden until RenderState.wingHat; then they pop open and flap in
+// The wings on Jonas's cap. Hidden until RenderState.wingHat; then they pop open and flap in
 // a style that follows the action: a lazy flutter on the ground (quicker at a run), brisk
 // beats in the air, strong beats while flying (stronger still climbing, nose up), folded
 // back in dives; they blink while RenderState.wingHatEnding.
@@ -298,9 +305,9 @@ export class HatWings {
 // The flap style (see GROUND etc.) for the current action, written into `out`.
 function styleFor(rs, out) {
   if (rs.anim === 'fly') {
-    // Nose up (pitch < 0) climbs with hard beats; nose down folds the wings back. Pip is
-    // small on screen in flight, so the wings spread big, past the brim, and the beat
-    // bottoms out FLY_LOW rad over the brim plane instead of lying flat along it.
+    // Nose up (pitch < 0) climbs with hard beats; nose down folds the wings back. He is
+    // small on screen in flight, so the wings spread big, well past the cap, and the beat
+    // bottoms out FLY_LOW rad over the band's plane instead of lying flat along it.
     const climb = clamp(-rs.pitch / 0.5, 0, 1);
     const dive = clamp(rs.pitch / 0.6, 0, 1);
     out.freq = 2.4 + 2.2 * climb - 1.2 * dive;
@@ -310,8 +317,8 @@ function styleFor(rs, out) {
     // The feathers keep a face turned to the chase camera (a wing flapped about its
     // front-back hinge is edge-on from straight behind at any flap angle; its tilt about
     // the span is what shows it). In level flight the camera sits about level with the
-    // brim, and raised trailing edges show it the grey undersides. Climbing, it looks down
-    // on the hat from behind: the feathers twist with the beat, leading edges up at the
+    // cap, and raised trailing edges show it the grey undersides. Climbing, it looks down
+    // on the cap from behind: the feathers twist with the beat, leading edges up at the
     // bottom (the white tops face back) and trailing edges up at the top.
     out.attack = 0.45 - 0.45 * climb - 0.25 * dive;
     out.twist = 0.4 * climb;
@@ -339,11 +346,11 @@ function styleFor(rs, out) {
   return out;
 }
 
-// A standalone winged hat for the hovering pickup: Pip's teal explorer hat (one merged
+// A standalone winged cap for the hovering pickup: Jonas's light blue cap (one merged
 // vertex-coloured mesh, same look) with the same pair of wings (a second mesh), lit by the
-// scene's lights like Pip. Origin at the centre of the brim, +Y up, front +Z; the brim is
-// ~100 units across (y -1.4 .. 24 with the crown), the wings reach ~60 either side and ~67
-// up. (The wing mesh carries fixed culling bounds of radius BOUND_R: measure it with
+// scene's lights like him. Origin at the centre of the band, +Y up, front +Z; the cap is
+// ~68 units across and ~82 deep with its bill (y -8 .. 26), the wings reach ~85 either side
+// and ~75 up. (The wing mesh carries fixed culling bounds of radius BOUND_R: measure it with
 // Box3.setFromObject(hat, true).) Spread at rest; call
 //   hat.userData.flap(timeSeconds, strength = 1)
 // each frame to beat the wings (strength 0 = still, 1 = brisk beats).

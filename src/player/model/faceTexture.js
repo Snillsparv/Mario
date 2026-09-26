@@ -1,4 +1,4 @@
-// Pip's face, painted on a small canvas that wraps the head sphere (equirectangular:
+// Jonas's face, painted on a small canvas that wraps the head sphere (equirectangular:
 // x = longitude, y = latitude; the front of the head, +Z, sits at u = 0.25). Each facial
 // expression is its own texture, painted on first use and cached, and the head material
 // simply swaps maps (like the N64's texture-swapped eyes and blinks).
@@ -133,18 +133,19 @@ const EYES = {
   open: eyeOpen, half: eyeHalf, closed: eyeClosed, happy: eyeHappy, hurt: eyeHurt, dizzy: eyeDizzy, wide: eyeWide,
 };
 
-// dir: +1 for the brow on the viewer's right.
+// dir: +1 for the brow on the viewer's right. The brows sit above the glasses' frames.
+const BROW_Y = 44.5;
 const BROWS = {
   plain(ctx, cx, dir) {
     ctx.beginPath();
-    ctx.ellipse(cx, 50, 5, 3, dir * 0.15, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.ellipse(cx, BROW_Y, 5, 3, dir * 0.15, Math.PI * 1.15, Math.PI * 1.85);
     line(ctx, 1.8, hex(COLORS.hair));
   },
   // Inner ends raised in alarm.
   worried(ctx, cx, dir) {
     ctx.beginPath();
-    ctx.moveTo(cx - dir * 5, 46.5);
-    ctx.quadraticCurveTo(cx, 46.5, cx + dir * 5, 49.5);
+    ctx.moveTo(cx - dir * 5, BROW_Y - 3.5);
+    ctx.quadraticCurveTo(cx, BROW_Y - 3.5, cx + dir * 5, BROW_Y - 0.5);
     line(ctx, 1.9, hex(COLORS.hair));
   },
 };
@@ -218,7 +219,7 @@ export function paintFace(ctx, name) {
     ctx.fillStyle = g;
     ctx.fillRect(cx - 8, 68, 16, 16);
   }
-  // Eyebrows, just under the hat brim.
+  // Eyebrows, over the glasses and just under the cap's bill.
   for (const s of [-1, 1]) BROWS[brows](ctx, FRONT + s * (EYE_DX + 1), s);
   // dir: +1 for the eye on the viewer's right, so irises look slightly toward the nose.
   for (const s of [-1, 1]) EYES[eyes](ctx, FRONT + s * EYE_DX, s);

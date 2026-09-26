@@ -1,15 +1,17 @@
-// Builds Pip from low-poly primitives and exposes the joint hierarchy:
+// Builds Jonas (the hero: a cartoon avatar of the player) from low-poly primitives and
+// exposes the joint hierarchy:
 //   object3D (feet, yaw) -> orient (physical pitch/roll) -> lift (root offset + flips about
-//   CENTER) -> body (squash) -> hips -> torso -> head (face, hair, hat) / shoulders ->
-//   upper arm -> forearm -> wrist (mitten);  hips -> thigh -> shin -> boot.
+//   CENTER) -> body (squash) -> hips -> torso -> head (face, glasses, hair, cap) / shoulders ->
+//   upper arm -> forearm -> wrist (hand);  hips -> thigh -> shin -> boot (sock and sneaker).
 // Parts are authored as separate primitives, then every bone's static parts are merged
-// into one vertex-coloured mesh (one material, ~22 draw calls for the whole hero). Scarf
-// tails hang off the torso and are driven by scarf.js; the blob shadow is separate.
+// into one vertex-coloured mesh (one material, 16 draw calls for the whole hero: 15 bones and
+// the painted face); the blob shadow is separate. The head's parts are built in head.js.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as D from './dims.js';
 import { bodyMaterial, paint } from './palette.js';
+import { buildCap, buildHeadParts } from './head.js';
 
 // ---- geometry helpers ------------------------------------------------------------------
 
@@ -41,66 +43,94 @@ const limb = (r0, r1, len, segs = 7) => new THREE.CylinderGeometry(r0, r1, len, 
 
 function buildHips() {
   const hips = group(0, D.HIP_Y, 0);
-  hips.add(mesh(ellipsoid(15, 9, 12), 'trousers', 0, -3, 0));
-  // Lower tunic: a flared skirt that follows the pelvis, so leg swings do not tear it.
-  hips.add(mesh(lathe([[16, -9], [22.5, -8], [21, -2], [19.2, 5], [18.6, 9]], 12).scale(1, 1, 0.9), 'tunic'));
-  hips.add(mesh(new THREE.CylinderGeometry(19.8, 20.3, 5, 12, 1, true).scale(1, 1, 0.9), 'belt', 0, 6, 0));
-  hips.add(mesh(new THREE.BoxGeometry(7, 6, 2.5), 'buckle', 0, 6, 18.4));
+  hips.add(mesh(ellipsoid(15, 9, 12), 'jeans', 0, -3, 0));
+  // The t-shirt's lower half hangs loose over the jeans and follows the pelvis, so leg swings
+  // do not tear it.
+  hips.add(mesh(lathe([[16.5, -5.6], [20.2, -5.2], [20.3, -2], [19.3, 4], [18.6, 9]], 12).scale(1, 1, 0.9), 'shirt'));
   return hips;
+}
+
+// The torso's t-shirt profile ([radius, y] bottom to top; scaled 0.88 front to back). Its hem
+// reaches ~10 units down inside the lower half so the waist never opens up when the spine
+// bends or twists (up to ~0.45 rad).
+const SHIRT = [[17.8, -10], [18.6, 0], [18.8, 10], [18, 20], [15.5, 28], [10, 33], [0.1, 35]];
+const SHIRT_DEPTH = 0.88;
+
+// The front of the shirt (torso space) at (x, y): the faceted 12-sided lathe's surface.
+function shirtFrontZ(x, y) {
+  let r = SHIRT[0][0];
+  for (let i = 0; i < SHIRT.length - 1; i++) {
+    const [r0, y0] = SHIRT[i];
+    const [r1, y1] = SHIRT[i + 1];
+    if (y >= y0 && y <= y1) r = r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+  }
+  const step = (2 * Math.PI) / 12;
+  const phi = Math.asin(Math.max(-1, Math.min(1, x / r)));
+  const k = Math.floor(phi / step);
+  const [xa, za] = [r * Math.sin(k * step), r * Math.cos(k * step)];
+  const [xb, zb] = [r * Math.sin((k + 1) * step), r * Math.cos((k + 1) * step)];
+  return (za + ((zb - za) * (x - xa)) / (xb - xa)) * SHIRT_DEPTH;
+}
+
+// The white pi sign on the chest: three brush strokes (the bar, the left leg curling out to
+// the left, the right leg hooking out to the right) as ribbons laid on the shirt's surface.
+const PI_STROKES = [
+  { w: 3.6, pts: [[-11.2, 18.9], [-9.4, 21.2], [-6, 21.7], [11, 21.9]] },
+  { w: 3.5, pts: [[-4.8, 21.2], [-4.9, 15.5], [-5.6, 10.8], [-8.2, 7.6]] },
+  { w: 3.5, pts: [[4.6, 21.2], [4.6, 13], [5.3, 9.2], [7.6, 7.8], [10, 9.1]] },
+];
+function piGlyph() {
+  const pos = [];
+  for (const { w, pts } of PI_STROKES) {
+    // Resample the polyline every ~1.6 units so the ribbon bends with the faceted chest.
+    const line = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[i + 1];
+      const k = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 1.6));
+      for (let j = 0; j < k; j++) line.push([x0 + ((x1 - x0) * j) / k, y0 + ((y1 - y0) * j) / k]);
+    }
+    line.push(pts.at(-1));
+    const edge = line.map(([x, y], i) => {
+      const [ax, ay] = line[Math.max(0, i - 1)];
+      const [bx, by] = line[Math.min(line.length - 1, i + 1)];
+      const l = Math.hypot(bx - ax, by - ay);
+      const nx = (-(by - ay) / l) * (w / 2);
+      const ny = ((bx - ax) / l) * (w / 2);
+      return [[x + nx, y + ny], [x - nx, y - ny]];
+    });
+    const v = ([x, y]) => [x, y, shirtFrontZ(x, y) + 0.55];
+    for (let i = 0; i < edge.length - 1; i++) {
+      const [a, b] = edge[i];
+      const [d, c] = edge[i + 1];
+      for (const tri of [[a, b, c], [a, c, d]]) {
+        // Front faces toward +Z (counter-clockwise seen from the front).
+        const [p, q, r] = tri;
+        const cross = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+        for (const pt of cross > 0 ? [p, q, r] : [p, r, q]) pos.push(...v(pt));
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 2 ? 1 : 0)), 3));
+  g.setIndex([...Array(pos.length / 3).keys()]); // (the bone merge needs every piece indexed)
+  return g;
 }
 
 function buildTorso() {
   const torso = group(0, D.SPINE_Y, 0);
-  // Upper tunic. Its hem reaches ~10 units down inside the skirt so the waist never opens
-  // up when the spine bends or twists (up to ~0.45 rad).
-  const tunic = [[17.8, -10], [18.6, 0], [18.8, 10], [18, 20], [15.5, 28], [10, 33], [0.1, 35]];
-  torso.add(mesh(lathe(tunic, 12).scale(1, 1, 0.88), 'tunic'));
+  torso.add(mesh(lathe(SHIRT, 12).scale(1, 1, SHIRT_DEPTH), 'shirt'));
+  torso.add(mesh(piGlyph(), 'pi'));
   torso.add(mesh(new THREE.CylinderGeometry(7, 8, 8, 8, 1, true), 'skin', 0, 36, 0));
-  // Scarf wrapped around the neck, dipping slightly at the front, knotted at the back.
-  const ring = mesh(new THREE.TorusGeometry(12, 4.8, 5, 12).rotateX(Math.PI / 2), 'scarf', 0, 34, 0);
-  ring.rotation.x = 0.14;
-  ring.scale.set(1.02, 1, 0.94);
-  torso.add(ring, mesh(ellipsoid(5.5, 4.8, 4.2), 'scarf', -4, 32.5, -12.5));
+  // Crew-neck collar.
+  torso.add(mesh(new THREE.TorusGeometry(8.3, 1.4, 3, 10).rotateX(Math.PI / 2), 'shirtCollar', 0, 33.8, 0));
   return torso;
 }
 
-// Where the hat sits on the head centre (head-centre space).
-export const HAT_POS = [0, 14, -1];
-export const HAT_ROT = [-0.16, 0, 0.05];
-
-// The teal explorer hat in hat space (origin at the centre of the brim, +Y up, front +Z).
-// Named 'hat': the marker stays in the rig after the merge (the winged hat's wings hang
-// off it, see wings.js).
-function buildHat() {
-  const hat = group(...HAT_POS);
-  hat.name = 'hat';
-  hat.rotation.set(...HAT_ROT);
-  const brim = lathe([[12, 1.4], [44, 1.2], [50, 0], [45, -1.4], [12, -1.2]], 18);
-  // Safari brim: sides curl up a little, front and back stay low.
-  const pos = brim.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const r = Math.hypot(x, z);
-    if (r > 20) pos.setY(i, pos.getY(i) + 6 * ((x * x) / (r * r)) * ((r - 20) / 30));
-  }
-  // Oval: full width at the sides, shorter front and back, so the brim stays near the
-  // 50-unit collision radius when Pip leans forward toward a wall.
-  brim.scale(1, 1, 0.88).computeVertexNormals();
-  hat.add(mesh(brim, 'hat'));
-  hat.add(mesh(lathe([[25.5, 0], [25, 9], [23.5, 17], [19.5, 22], [11, 24], [0.1, 22.5]], 12), 'hat'));
-  hat.add(mesh(new THREE.CylinderGeometry(25.8, 26.2, 6, 12, 1, true), 'hatBand', 0, 3.4, 0));
-  // Leaf sprig tucked into the band on Pip's left side.
-  const sprig = group(19, 6, -15);
-  sprig.rotation.set(-0.35, 0.8, -0.3);
-  const leafA = mesh(ellipsoid(3.6, 10, 1.1, 6, 4), 'leaf', 0, 8, 0);
-  leafA.rotation.z = -0.35;
-  const leafB = mesh(ellipsoid(3, 8, 1, 6, 4), 'leafDark', 4, 5.5, -1);
-  leafB.rotation.z = -1.0;
-  sprig.add(leafA, leafB);
-  hat.add(sprig);
-  return hat;
-}
+// The head's parts (and the cap's placement, HAT_POS / HAT_ROT) live in head.js, shared with
+// the face screen's big head; here they are built low-poly into the rig's body material.
+const KIT = { hi: false, mesh: (geo, color) => mesh(geo, color) };
 
 function buildHead(faceMaterial) {
   const head = group(0, D.NECK_Y, 0);
@@ -109,59 +139,52 @@ function buildHead(faceMaterial) {
   // The skull carries the painted face texture, so it keeps its own material.
   const skull = new THREE.SphereGeometry(D.HEAD_R, 16, 12).scale(1.07, 0.97, 1);
   c.add(new THREE.Mesh(skull, faceMaterial));
-  c.add(mesh(ellipsoid(5, 4.3, 4.3), 'nose', 0, -5.5, 30.5));
-  for (const s of [-1, 1]) c.add(mesh(ellipsoid(3.2, 6, 4.4, 6, 5), 'skin', s * 31.5, -3, -2));
-  // Hair: a cap over the back and top, tilted so it reaches low at the nape and stays
-  // above the ears, plus a few swoopy locks of fringe peeking out under the brim.
-  const cap = new THREE.SphereGeometry(D.HEAD_R + 1.2, 12, 5, Math.PI * 0.72, Math.PI * 1.56, 0, Math.PI * 0.52);
-  const capMesh = mesh(cap.scale(1.07, 0.97, 1), 'hair');
-  capMesh.rotation.x = -0.45;
-  c.add(capMesh);
-  const fringe = [[-0.55, 0.95, 0.35], [-0.2, 0.9, 0.1], [0.15, 0.93, -0.15], [0.48, 1.0, -0.4]];
-  for (const [yaw, tilt, twist] of fringe) {
-    const pivot = group(0, 0, 0, 'YXZ');
-    pivot.rotation.set(tilt, yaw, 0);
-    const lock = mesh(ellipsoid(5.5, 2.6, 9, 6, 4), 'hair', 0, D.HEAD_R + 0.5, 3);
-    lock.rotation.y = twist;
-    pivot.add(lock);
-    c.add(pivot);
-  }
-  c.add(buildHat());
+  // Nose, ears, hair, glasses and the cap (named 'hat': the marker stays in the rig after the
+  // merge, and the winged cap's wings hang off it, see wings.js).
+  buildHeadParts(c, KIT);
   return head;
 }
 
 function buildArm(side) {
   const shoulder = group(side * D.SHOULDER_X, D.SHOULDER_Y, 0);
-  shoulder.add(mesh(ellipsoid(7, 7.5, 7), 'tunic'));
-  shoulder.add(mesh(limb(5.4, 4.8, D.UPPER_ARM), 'tunic'));
+  shoulder.add(mesh(ellipsoid(7, 7.5, 7), 'shirt'));
+  // Short sleeve, a little flared at its hem; bare arms below it.
+  shoulder.add(mesh(new THREE.CylinderGeometry(6.6, 7.1, 8, 8, 1, true).translate(0, -4, 0), 'shirt'));
+  shoulder.add(mesh(limb(4.6, 4.3, D.UPPER_ARM), 'skin'));
   const elbow = group(0, -D.UPPER_ARM, 0);
   shoulder.add(elbow);
-  elbow.add(mesh(ellipsoid(4.9, 4.9, 4.9, 7, 5), 'tunic'));
-  elbow.add(mesh(limb(4.8, 4.4, D.FOREARM - 4), 'tunic'));
-  // The mitten and its flared cuff hang off their own wrist joint, which punches swell.
+  elbow.add(mesh(ellipsoid(4.4, 4.4, 4.4, 7, 5), 'skin'));
+  elbow.add(mesh(limb(4.3, 3.9, D.FOREARM - 4), 'skin'));
+  // The hand and its wrist hang off their own joint, which punches swell.
   const wrist = group(0, -D.FOREARM, 0);
   elbow.add(wrist);
-  wrist.add(mesh(new THREE.CylinderGeometry(5.2, 8.2, 7, 8, 1, true), 'glove', 0, 1.5, 0)); // flared cuff
+  wrist.add(mesh(new THREE.CylinderGeometry(3.9, 4.8, 6, 7, 1, true), 'skin', 0, 1, 0));
   const hand = group(0, -D.HAND_OFFSET, 0);
-  hand.name = 'hand'; // marker at the mitten centre (its mesh merges into the wrist)
+  hand.name = 'hand'; // marker at the hand's centre (its mesh merges into the wrist)
   wrist.add(hand);
-  hand.add(mesh(ellipsoid(D.HAND_R, 10.4, 8.9), 'glove'));
-  hand.add(mesh(ellipsoid(3.8, 4.8, 3.8, 6, 4), 'glove', -side * 4.5, 3.2, 7)); // thumb
+  hand.add(mesh(ellipsoid(D.HAND_R, 10.4, 8.9), 'skin'));
+  hand.add(mesh(ellipsoid(3.8, 4.8, 3.8, 6, 4), 'skin', -side * 4.5, 3.2, 7)); // thumb
   return { shoulder, elbow, wrist, hand };
 }
 
 function buildLeg(side) {
   const thigh = group(side * D.HIP_X, -D.HIP_DROP, 0);
-  thigh.add(mesh(limb(6.6, 5.6, D.THIGH), 'trousers'));
+  thigh.add(mesh(limb(6.6, 5.6, D.THIGH), 'jeans'));
   const shin = group(0, -D.THIGH, 0);
   thigh.add(shin);
-  shin.add(mesh(ellipsoid(5.7, 5.7, 5.7, 7, 5), 'trousers'));
-  shin.add(mesh(limb(5.5, 5.2, D.SHIN), 'trousers'));
+  shin.add(mesh(ellipsoid(5.7, 5.7, 5.7, 7, 5), 'jeans'));
+  shin.add(mesh(limb(5.5, 5.3, D.SHIN), 'jeans'));
+  // The jeans' hem, a little wider, above the sock.
+  shin.add(mesh(new THREE.CylinderGeometry(5.8, 6.4, 3.5, 9, 1, true), 'jeans', 0, -D.SHIN + 5, 0));
   const boot = group(0, -D.SHIN, 0);
   shin.add(boot);
-  boot.add(mesh(new THREE.CylinderGeometry(7.4, 7.8, 15, 9, 1, true), 'boot', 0, 2, 0.5));
-  boot.add(mesh(new THREE.CylinderGeometry(9, 8.4, 4.5, 9, 1, true), 'bootCuff', 0, 10, 0.5));
-  boot.add(mesh(ellipsoid(9.6, 8.6, 15, 10, 7), 'boot', 0, -7.6, 5));
+  // An ankle sock in odd colours (blue on the left foot, yellow on the right), tapering up
+  // inside the jeans, and a sneaker: white upper, grey tongue, red sole.
+  boot.add(mesh(new THREE.CylinderGeometry(5.0, 6.1, 13, 9, 1, true), side > 0 ? 'sockL' : 'sockR', 0, 2, 0));
+  boot.add(mesh(ellipsoid(9.4, 6.6, 15, 10, 7), 'shoe', 0, -9.6, 5));
+  const tongue = mesh(ellipsoid(5.2, 2.2, 7.5, 6, 4), 'shoeLace', 0, -4.1, 8.2);
+  tongue.rotation.x = 0.32;
+  boot.add(tongue);
   boot.add(mesh(ellipsoid(10.2, 2.6, 15.6, 10, 4), 'sole', 0, -14, 5));
   return { thigh, shin, boot };
 }
@@ -188,13 +211,13 @@ function mergeBone(joint, joints) {
   for (const g of pieces) g.dispose();
 }
 
-// The explorer hat on its own, merged into one vertex-coloured mesh in hat space (origin at
-// the centre of the brim, +Y up, front +Z; ~100 units across). Used by the standalone
-// winged hat (wings.js buildWingedHat).
+// The light blue cap on its own, merged into one vertex-coloured mesh in cap space (origin at
+// the centre of the band, +Y up, front +Z; ~70 units across). Used by the standalone winged
+// cap (wings.js buildWingedHat).
 export function buildHatMesh(material) {
   const prev = BODY;
   BODY = material;
-  const hat = buildHat();
+  const hat = buildCap(KIT);
   hat.position.set(0, 0, 0);
   hat.rotation.set(0, 0, 0);
   hat.updateMatrixWorld(true);
@@ -211,7 +234,7 @@ export function buildHatMesh(material) {
 export function buildRig(faceMaterial) {
   BODY = bodyMaterial();
   const object3D = new THREE.Group();
-  object3D.name = 'Pip';
+  object3D.name = 'Jonas';
   const orient = group(0, D.CENTER, 0, 'YXZ');
   const lift = group(0, 0, 0, 'YXZ');
   const body = group(0, -D.CENTER, 0);
@@ -250,9 +273,7 @@ export function buildRig(faceMaterial) {
 
   return {
     object3D, orient, lift, body, hips, torso, head, armL, armR, legL, legR, material,
-    hat: head.getObjectByName('hat'), // empty marker in hat space (its meshes merged into the head)
-    // Scarf tails hang from the back of the scarf knot.
-    scarfAnchors: [new THREE.Vector3(-6, 31, -14), new THREE.Vector3(-1.5, 31.5, -15)],
+    hat: head.getObjectByName('hat'), // empty marker in cap space (its meshes merged into the head)
   };
 }
 
@@ -288,7 +309,7 @@ export function applyPose(rig, p, pitch, roll, headYaw) {
   rig.legL.boot.rotation.x = p.ankleL;
   rig.legR.boot.rotation.x = p.ankleR;
 
-  // Attack swells: mittens grow about the wrist; boots about BOOT_PIVOT_Y above the ankle.
+  // Attack swells: hands grow about the wrist; feet about BOOT_PIVOT_Y above the ankle.
   rig.armL.wrist.scale.setScalar(swellScale(p.handLSwell));
   rig.armR.wrist.scale.setScalar(swellScale(p.handRSwell));
   swellBoot(rig.legL.boot, swellScale(p.footLSwell), p.ankleL);

@@ -182,10 +182,9 @@ function poleClimb(p, c) {
 // rs.pos is the pole tip: both mittens rest side by side on it, arms straight, and Pip
 // stands on them upside down with his chest to the front (+Z) and legs up (a little apart,
 // knees soft), swaying gently as he balances about his hands. His arms are short for his
-// big head, so the chin is tucked: the head and hat sit forward of the tip, above it, and
-// the scarf tails hang free down the back of the neck. He gets there with a quick
-// cartwheel up from wherever the previous anim had him (ctx.entry*, carried by the
-// animator from pole_hold / pole_climb). Leaving it, the pose eases out over blendOut
+// big head, so the chin is tucked: the head and cap sit forward of the tip, above it. He
+// gets there with a quick cartwheel up from wherever the previous anim had him (ctx.entry*,
+// carried by the animator from pole_hold / pole_climb). Leaving it, the pose eases out over blendOut
 // (the Player's jump off is a triple_jump somersault; climbing or letting go back down
 // moves rs.pos back to the trunk, carried by pole_hold / pole_climb / fall).
 
