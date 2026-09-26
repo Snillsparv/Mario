@@ -91,7 +91,8 @@ export const KEY_RAMP_GRACE = 4; // polls without a direction key before the ram
 //               jumps, the bottom one (labelled B) attacks
 //   'raw'       no standard mapping: the pad's own order, read as a Switch-style pad reports
 //               it (0 Y left, 1 B bottom, 2 A right, 3 X top, 4 L, 5 R, 6 ZL, 7 ZR, 8 -, 9 +):
-//               right (A) jumps, bottom (B) attacks; the left and top buttons do nothing
+//               right (A) jumps, bottom (B) attacks; the left and top buttons do nothing; the
+//               right stick is axes 2 (left/right) and 5 (up/down)
 const NINTENDO_PAD = /nintendo|switch|pro controller|joy-?con|vendor: ?057e|vendor: ?0f0d|horipad/i;
 export function padLayout(pad) {
   if (!pad || pad.mapping !== 'standard') return 'raw';
@@ -244,8 +245,11 @@ export class Input {
     if (b(6) || b(7) || b(4)) out.Z = true;
     if (b(5)) out.R = true;
     if (b(9)) out.START = true;
+    // Right stick: axes 2 and 3 in the standard mapping. A raw pad reports its axes by HID usage
+    // (0 X, 1 Y, 2 Z, 3 Rx, 4 Ry, 5 Rz): a Switch-style pad's right stick is Z and Rz, so its
+    // up/down is axis 5 (axis 3 when the browser packs the axes and reports no more than 5).
     const rx = pad.axes[2] || 0;
-    const ry = pad.axes[3] || 0;
+    const ry = (layout === 'raw' && pad.axes.length > 5 ? pad.axes[5] : pad.axes[3]) || 0;
     // (The d-pad is buttons 12-15 only in the standard mapping; a raw pad has Home and
     // Capture there.)
     const dpad = layout !== 'raw';

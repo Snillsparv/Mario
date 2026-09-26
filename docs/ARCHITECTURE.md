@@ -113,7 +113,8 @@ standard pad: bottom jumps, right or left attacks), `'nintendo'` (a standard pad
 names Nintendo, a Switch / Pro Controller or a Switch pad maker: the right button, labelled A,
 jumps and the bottom one, labelled B, attacks) and `'raw'` (no standard mapping, read in the
 Switch's own order Y B A X L R ZL ZR - +: right (A) jumps, bottom (B) attacks, left and top do
-nothing, no d-pad buttons). The title starts from any pad's Start or face buttons 0-2, and the
+nothing, no d-pad buttons; its right stick is axes 2 and 5, the HID Z and Rz, or 2 and 3 when the
+browser reports no more than 5 axes). The title starts from any pad's Start or face buttons 0-2, and the
 pause legend names a Nintendo-style or raw pad's buttons by the Switch labels.
 `input.getGamepads` can be replaced in tests. Mouse-drag orbit
 ends on mouseup, on window blur, and on the first move with neither drag button held.

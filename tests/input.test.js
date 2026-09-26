@@ -264,4 +264,25 @@ describe('gamepad face buttons', () => {
     // Home and Capture (12, 13 in that order) are no camera buttons.
     assert.deepEqual(read(pad('', RAW, [12, 13])), { A: false, B: false, CU: false, CD: false });
   });
+
+  test("a raw pad's right stick: left/right on axis 2, up/down on axis 5 (by HID usage: Z, Rz)", () => {
+    const stick = (mapping, id, axes) => ({ ...pad(mapping, id, []), axes });
+    const cam = (p) => {
+      const input = new Input(new EventTarget());
+      input.getGamepads = () => [p];
+      const c = input.poll();
+      return ['CL', 'CR', 'CU', 'CD'].filter((b) => c[b].down).join(' ');
+    };
+    // Chrome: one axis per usage up to the hat (axis 9), Rx / Ry unused.
+    const hid = (rx, ry) => [0, 0, rx, 0, 0, ry, 0, 0, 0, 3.2857];
+    assert.equal(cam(stick('', RAW, hid(0, -1))), 'CU', 'stick up');
+    assert.equal(cam(stick('', RAW, hid(0, 1))), 'CD', 'stick down');
+    assert.equal(cam(stick('', RAW, hid(-1, 0))), 'CL');
+    assert.equal(cam(stick('', RAW, hid(1, 0))), 'CR');
+    // Packed axes (no more than 5): up/down on axis 3.
+    assert.equal(cam(stick('', RAW, [0, 0, 0, -1])), 'CU');
+    // The standard mapping keeps axes 2 and 3.
+    assert.equal(cam(stick('standard', PRO, [0, 0, 0, 1])), 'CD');
+    assert.equal(cam(stick('standard', XBOX, [0, 0, 0, -1, 0, 1])), 'CU');
+  });
 });
