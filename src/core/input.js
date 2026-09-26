@@ -13,7 +13,8 @@
 // J = B (punch/dive/read a sign), Shift/L = Z (crouch/ground pound), arrow keys = C buttons
 // (camera), C = R (camera mode), Enter/Esc = Start, mouse drag = camera orbit. Gamepad
 // (standard mapping): left stick, A = A, X/B = B, triggers = Z, right stick = C buttons,
-// RB = R, Start = Start.
+// RB = R, Start = Start. Nintendo-style pads (padLayout): the button on the right (labelled A)
+// jumps and the one at the bottom (labelled B) attacks; see padLayout below.
 //
 // Gamepads: every connected pad with the standard mapping is read and merged (buttons OR'ed,
 // the stick pushed furthest wins), so an idle or odd device ahead of the real controller in
@@ -81,6 +82,21 @@ const DEADZONE = 0.18;
 export const KEY_RAMP_TICKS = 7; // ~0.23 s at 30 polls per second (was 11)
 export const KEY_RAMP_START = 0.3; // first poll: already moves and turns the hero
 export const KEY_RAMP_GRACE = 4; // polls without a direction key before the ramp restarts
+
+// Which button layout a gamepad reports (see _padButtons):
+//   'standard'  the standard mapping (buttons by position: 0 bottom, 1 right, 2 left, 3 top),
+//               an Xbox-style pad: the bottom button (A) jumps, right or left (B / X) attack
+//   'nintendo'  the standard mapping on a Nintendo-style pad (its id names Nintendo, a Switch
+//               or Pro Controller, or a Switch pad maker): the right button (labelled A)
+//               jumps, the bottom one (labelled B) attacks
+//   'raw'       no standard mapping: the pad's own order, read as a Switch-style pad reports
+//               it (0 Y left, 1 B bottom, 2 A right, 3 X top, 4 L, 5 R, 6 ZL, 7 ZR, 8 -, 9 +):
+//               right (A) jumps, bottom (B) attacks; the left and top buttons do nothing
+const NINTENDO_PAD = /nintendo|switch|pro controller|joy-?con|vendor: ?057e|vendor: ?0f0d|horipad/i;
+export function padLayout(pad) {
+  if (!pad || pad.mapping !== 'standard') return 'raw';
+  return NINTENDO_PAD.test(pad.id || '') ? 'nintendo' : 'standard';
+}
 
 function browserGamepads() {
   return typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
@@ -214,17 +230,29 @@ export class Input {
   // Sets out[btn] = true for every mapped gamepad button currently held.
   _padButtons(pad, out) {
     const b = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
-    if (b(0)) out.A = true;
-    if (b(1) || b(2)) out.B = true;
+    const layout = padLayout(pad);
+    if (layout === 'standard') {
+      if (b(0)) out.A = true;
+      if (b(1) || b(2)) out.B = true;
+    } else if (layout === 'nintendo') {
+      if (b(1)) out.A = true;
+      if (b(0)) out.B = true;
+    } else {
+      if (b(2)) out.A = true;
+      if (b(1)) out.B = true;
+    }
     if (b(6) || b(7) || b(4)) out.Z = true;
     if (b(5)) out.R = true;
     if (b(9)) out.START = true;
     const rx = pad.axes[2] || 0;
     const ry = pad.axes[3] || 0;
-    if (rx < -0.5 || b(14)) out.CL = true;
-    if (rx > 0.5 || b(15)) out.CR = true;
-    if (ry < -0.5 || b(12)) out.CU = true;
-    if (ry > 0.5 || b(13)) out.CD = true;
+    // (The d-pad is buttons 12-15 only in the standard mapping; a raw pad has Home and
+    // Capture there.)
+    const dpad = layout !== 'raw';
+    if (rx < -0.5 || (dpad && b(14))) out.CL = true;
+    if (rx > 0.5 || (dpad && b(15))) out.CR = true;
+    if (ry < -0.5 || (dpad && b(12))) out.CU = true;
+    if (ry > 0.5 || (dpad && b(13))) out.CD = true;
   }
 
   // Advances the keyboard stick ease-in by one poll (direction keys held or not) and returns

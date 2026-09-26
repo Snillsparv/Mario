@@ -638,10 +638,6 @@ test('title on a phone: the first tap unlocks audio, START on the controller sta
   const s = await page.evaluate(() => ({ card: window.__card(), audio: window.__game?.audio.ctx?.state ?? null }));
   assert.equal(s.card, 'ready', 'the unlocking tap only unlocks: PRESS START');
   await tap(150);
-  // The face screen comes next (no mitten pointer on a touch screen); START goes on to play.
-  await page.waitForFunction(() => window.__game?.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 60000 });
-  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.cg-face-cursor')).display), 'none');
-  await tap(150);
   await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 30000 });
   await page.waitForTimeout(500);
   const g = await page.evaluate(() => ({ paused: window.__game.state.paused, audio: window.__game.audio.ctx?.state }));

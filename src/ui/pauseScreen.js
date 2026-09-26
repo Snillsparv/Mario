@@ -5,7 +5,8 @@
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { drawText, drawIcon, textWidth } from './raster.js';
-import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, phoneEntry, pauseLayout } from './hudLogic.js';
+import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, phoneEntry, pauseLayout } from './hudLogic.js';
+import { padLayout } from '../core/input.js';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -23,6 +24,15 @@ export function gamepadConnected() {
   return [...pads].some((p) => p && p.connected);
 }
 
+// The pause legend for the connected pads: 'pad' (Xbox-style labels) when a standard-mapping
+// pad of that kind is connected, else 'switch' (a Nintendo-style or unmapped pad, whose
+// bindings core/input.js reads by the Switch's labels).
+export function gamepadLegend() {
+  const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+  const on = [...pads].filter((p) => p && p.connected);
+  return on.some((p) => padLayout(p) === 'standard') ? 'pad' : 'switch';
+}
+
 // Icon × number group, returns its width in device pixels (draws only when `draw`).
 function counterGroup(ctx, cache, icon, name, value, x, y, s, draw = true) {
   const iconW = 14 * s;
@@ -36,11 +46,11 @@ function counterGroup(ctx, cache, icon, name, value, x, y, s, draw = true) {
   return w;
 }
 
-// The legend for the pause screen: 'touch' | 'pad' | 'keys'. While a phone can join as a
-// controller (phoneEntry.enabled), the keys and pad legends end with PHONE_CONTROL.
-const WITH_PHONE = new Map([KEY_CONTROLS, PAD_CONTROLS].map((c) => [c, [...c, PHONE_CONTROL]]));
+// The legend for the pause screen: 'touch' | 'pad' | 'switch' | 'keys'. While a phone can join
+// as a controller (phoneEntry.enabled), the keys and pad legends end with PHONE_CONTROL.
+const WITH_PHONE = new Map([KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS].map((c) => [c, [...c, PHONE_CONTROL]]));
 export function controlsLegend(kind) {
-  const base = kind === 'touch' ? TOUCH_CONTROLS : kind === 'pad' ? PAD_CONTROLS : KEY_CONTROLS;
+  const base = kind === 'touch' ? TOUCH_CONTROLS : kind === 'pad' ? PAD_CONTROLS : kind === 'switch' ? SWITCH_PAD_CONTROLS : KEY_CONTROLS;
   return phoneEntry.enabled && WITH_PHONE.has(base) ? WITH_PHONE.get(base) : base;
 }
 

@@ -504,14 +504,13 @@ export class FaceMood {
   }
 }
 
-// Which menus run before play, from the page's query string. The title card, then the face
-// screen; ?test / ?skipTitle go straight into play (tests and tools rely on it); ?face=0
-// leaves the face screen out; ?face (=1) opens the face screen at once, without the title card.
+// Which menus run before play, from the page's query string: the title card (the face screen
+// is opt-in); ?test / ?skipTitle go straight into play (tests and tools rely on it); ?face (=1)
+// opens the face screen at once, without the title card; ?face=0 is the default.
 export function menuPlan(search = '') {
   const q = new URLSearchParams(search);
   if (q.has('test') || q.has('skipTitle')) return { title: false, face: false };
   const face = q.get('face');
-  if (face === '0' || face === 'false') return { title: true, face: false };
-  if (face !== null) return { title: false, face: true };
-  return { title: true, face: true };
+  if (face === null || face === '0' || face === 'false') return { title: true, face: false };
+  return { title: false, face: true };
 }

@@ -296,8 +296,8 @@ test('expressions: blinks at rest, surprise / alarm / wince by the pull, a giggl
 });
 
 test('menu plan: title then face; none with ?test / ?skipTitle; ?face=1 opens it alone; ?face=0 leaves it out', () => {
-  assert.deepEqual(menuPlan(''), { title: true, face: true });
-  assert.deepEqual(menuPlan('?mute=1'), { title: true, face: true });
+  assert.deepEqual(menuPlan(''), { title: true, face: false }, 'the face screen is opt-in');
+  assert.deepEqual(menuPlan('?mute=1'), { title: true, face: false });
   assert.deepEqual(menuPlan('?test=1'), { title: false, face: false });
   assert.deepEqual(menuPlan('?skipTitle=1'), { title: false, face: false });
   assert.deepEqual(menuPlan('?test=1&face=1'), { title: false, face: false }, 'tests and tools start straight away');

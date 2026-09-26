@@ -3,7 +3,7 @@
 // felt "hard", too long before the run: the ramp is shorter and the start curve brisker).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Input, KEY_RAMP_GRACE, KEY_RAMP_START, KEY_RAMP_TICKS } from '../src/core/input.js';
+import { Input, KEY_RAMP_GRACE, KEY_RAMP_START, KEY_RAMP_TICKS, padLayout } from '../src/core/input.js';
 import { Player } from '../src/player/Player.js';
 import { CourseBuilder } from '../src/player/physics/testCourse.js';
 
@@ -211,5 +211,57 @@ describe('keyboard full push (rawStickMag)', () => {
     assert.equal(p.intendedMag, 0);
     assert.equal(p.rawStickY, 0);
     assert.ok(!p.stickHeld);
+  });
+});
+
+// Gamepad face buttons by layout (core/input.js padLayout): an Xbox-style standard pad jumps
+// with the bottom button; a Nintendo-style pad (standard mapping, Nintendo id) and a pad without
+// the standard mapping (read in the Switch's own order: Y left, B bottom, A right, X top) jump
+// with the button on the right (labelled A) and attack with the bottom one (labelled B).
+describe('gamepad face buttons', () => {
+  const pad = (mapping, id, down) => ({
+    connected: true,
+    mapping,
+    id,
+    axes: [0, 0, 0, 0],
+    buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: down.includes(i), value: down.includes(i) ? 1 : 0 })),
+    timestamp: 1,
+  });
+  const read = (p) => {
+    const input = new Input(new EventTarget());
+    input.getGamepads = () => [p];
+    const c = input.poll();
+    return { A: c.A.down, B: c.B.down, CU: c.CU.down, CD: c.CD.down };
+  };
+  const XBOX = 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 02fd)';
+  const PRO = 'Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)';
+  const RAW = 'USB Gamepad (Vendor: 0f0d Product: 0092)';
+
+  test('padLayout tells the three apart', () => {
+    assert.equal(padLayout(pad('standard', XBOX, [])), 'standard');
+    assert.equal(padLayout(pad('standard', PRO, [])), 'nintendo');
+    assert.equal(padLayout(pad('', RAW, [])), 'raw');
+    assert.equal(padLayout(pad('', 'Some Generic Joystick', [])), 'raw');
+  });
+
+  test('Xbox-style: bottom jumps, right or left attacks', () => {
+    assert.deepEqual(read(pad('standard', XBOX, [0])), { A: true, B: false, CU: false, CD: false });
+    assert.deepEqual(read(pad('standard', XBOX, [1])), { A: false, B: true, CU: false, CD: false });
+    assert.deepEqual(read(pad('standard', XBOX, [2])), { A: false, B: true, CU: false, CD: false });
+  });
+
+  test('Nintendo-style with the standard mapping: right (A) jumps, bottom (B) attacks', () => {
+    assert.deepEqual(read(pad('standard', PRO, [1])), { A: true, B: false, CU: false, CD: false });
+    assert.deepEqual(read(pad('standard', PRO, [0])), { A: false, B: true, CU: false, CD: false });
+    assert.deepEqual(read(pad('standard', PRO, [2])), { A: false, B: false, CU: false, CD: false }, 'left does nothing');
+  });
+
+  test('a pad without the standard mapping, in the Switch order: right (A) jumps, bottom (B) attacks, left and top do nothing', () => {
+    assert.deepEqual(read(pad('', RAW, [2])), { A: true, B: false, CU: false, CD: false });
+    assert.deepEqual(read(pad('', RAW, [1])), { A: false, B: true, CU: false, CD: false });
+    assert.deepEqual(read(pad('', RAW, [0])), { A: false, B: false, CU: false, CD: false });
+    assert.deepEqual(read(pad('', RAW, [3])), { A: false, B: false, CU: false, CD: false });
+    // Home and Capture (12, 13 in that order) are no camera buttons.
+    assert.deepEqual(read(pad('', RAW, [12, 13])), { A: false, B: false, CU: false, CD: false });
   });
 });

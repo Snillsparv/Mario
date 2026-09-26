@@ -1,5 +1,6 @@
-// The face screen in the real game (Vite dev server, headless Chromium): the title's Start opens
-// it (drawn by the game's renderer instead of the world), a mouse drag on Pip's cheek grabs and
+// The face screen in the real game (Vite dev server, headless Chromium): it is opt-in (?face=1
+// opens it; the title's Start goes straight to play), drawn by the game's renderer instead of
+// the world; a mouse drag on Pip's cheek grabs and
 // stretches it (a held handle, the surface displaced, a surprised face, the fist pointer),
 // letting go wobbles it back through rest and settles, a drag on the sky turns the head and the
 // wheel zooms, and Start goes on to play (not paused, the scene and its listeners gone).
@@ -43,12 +44,23 @@ async function open(query) {
 const faceReady = (page) => page.waitForFunction(() => window.__game?.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 60000 });
 const state = (page) => page.evaluate(() => window.__game.face.state());
 
-test('title -> face screen: drag stretches Pip, letting go wobbles back, the sky turns him, Start plays', { skip, timeout: 300000 }, async () => {
+test('by default the title card goes straight to play, with no face screen', { skip, timeout: 300000 }, async () => {
   const { page, errors } = await open('?mute=1');
   try {
     await page.waitForSelector('.cg-title canvas', { timeout: 180000 });
     await page.waitForTimeout(300);
     await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 60000 });
+    assert.equal(await page.evaluate(() => window.__game.face), null);
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test('?face=1: drag stretches Pip, letting go wobbles back, the sky turns him, Start plays', { skip, timeout: 300000 }, async () => {
+  const { page, errors } = await open('?face=1&mute=1');
+  try {
     await faceReady(page);
     const shown = await page.evaluate(() => ({
       title: !!document.querySelector('.cg-title'),

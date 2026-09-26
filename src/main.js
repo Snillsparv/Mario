@@ -3,17 +3,17 @@
 // URL flags (for development and automated tests):
 //   ?skipTitle=1   start playing immediately (no title screen, no face screen, no intro fly-in)
 //   ?test=1        do not run the real-time loop; drive it via window.__game.step() (no menus)
-//   ?face=1 / 0    open the face screen at once, without the title card / leave it out
+//   ?face=1        open Pip's stretchy face screen instead of the title card (it is opt-in)
 //   ?mute=1        no audio
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
 //
-// Game flow (state.mode 'title' -> 'face' -> 'play' -> 'gameover' -> 'title' ...):
+// Game flow (state.mode 'title' -> 'play' -> 'gameover' -> 'title' ...; 'face' with ?face=1):
 //   * title: the camera orbits the grounds behind the title card. On a first visit the card
 //     asks for any key first (that press unlocks audio and the title music), then for Start;
 //     a gamepad Start begins from either phase (see ui/TitleScreen.js).
-//   * face: Pip's big stretchy head to pull about (ui/FaceScreen.js, its own scene drawn by
-//     the renderer instead of the world; the title music plays on); Start goes on to play.
+//   * face (only with ?face=1): Pip's big stretchy head to pull about (ui/FaceScreen.js, its
+//     own scene drawn by the renderer instead of the world); Start goes on to play.
 //   * intro: the camera flies in from above the castle while Pip waits, hidden, above the
 //     spawn; he drops in once the camera is nearly down, so his landing plays in frame.
 //   * respawn (health ran out, or out of bounds): the camera snaps behind the spawn and Pip
@@ -47,7 +47,8 @@ import { Effects } from './fx/Effects.js';
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
-// The menus before play: the title card, then the face screen (none with ?test / ?skipTitle).
+// The menus before play: the title card (or the face screen with ?face=1; none with ?test /
+// ?skipTitle).
 const MENUS = menuPlan(location.search);
 
 const START_LIVES = 4;

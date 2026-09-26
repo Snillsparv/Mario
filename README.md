@@ -30,7 +30,7 @@ browser once with `npx playwright install chromium`.
 
 ## How to play
 
-* **Before you start**, the title's Start brings up Pip's big stretchy face: grab and pull his cheeks, nose, ears or hat brim (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start again to play (`?face=0` skips it, `?face=1` opens it directly).
+* **Pip's stretchy face**: open the game with `?face=1` for a start screen with Pip's big face: grab and pull his cheeks, nose, ears or hat brim (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start to play.
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and
   grab it.
@@ -76,18 +76,20 @@ browser once with `npx playwright install chromium`.
 
 ## Controls
 
-| Keyboard | Gamepad | |
+| Keyboard | Gamepad (Xbox-style / Switch-style) | |
 |---|---|---|
 | WASD (Q: walk slowly) | left stick | move |
-| Space / K | A | jump |
-| J | X / B | attack (punch, kick, dive) |
-| Shift / L | triggers, LB | crouch, ground pound |
+| Space / K | A (bottom) / A (right) | jump |
+| J | X or B / B (bottom) | attack (punch, kick, dive) |
+| Shift / L | triggers, LB / ZL, ZR, L | crouch, ground pound |
 | arrow keys, mouse drag | right stick, d-pad | camera (up from close: first-person look) |
 | C | RB | camera mode |
 | Enter / Esc | Start | pause (shows the controls) |
 | F1 / F2 / F3 | | debug overlay / retro filter / 4:3 screen |
 
-Any standard-mapping gamepad works (several connected pads are all read). On a first visit
+USB and Bluetooth gamepads work (several connected pads are all read); press a button once
+so the browser shows the pad to the game. Switch-style pads jump with the button labelled A
+(on the right) and attack with B (at the bottom). On a first visit
 the title asks for any key, click or tap first (browsers only allow sound after one), then
 for Start; a gamepad Start begins right away.
 

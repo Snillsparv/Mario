@@ -46,7 +46,7 @@ import { SUN_COLOR, SUN_INTENSITY, AMBIENT_SKY_COLOR, AMBIENT_GROUND_COLOR, AMBI
 
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
 const TURN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
-const PAD_START_BUTTONS = [9, 0]; // standard mapping: Start, A
+const PAD_START_BUTTONS = [9, 0, 1, 2]; // Start, and the jump / attack face buttons of any pad layout (core/input.js padLayout)
 const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 const REMOTE_START_BUTTONS = new Set(['START', 'A']);
 const FADE_MS = 400;

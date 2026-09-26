@@ -21,7 +21,7 @@ import { ICONS } from './icons.js';
 import { SpriteCache, drawText, drawIcon, textCanvas, textWidth } from './raster.js';
 import { PowerMeterLogic, drawPowerMeter, isLowHealth } from './powerMeter.js';
 import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME } from './hudLogic.js';
-import { drawPauseScreen, gamepadConnected } from './pauseScreen.js';
+import { drawPauseScreen, gamepadConnected, gamepadLegend } from './pauseScreen.js';
 import { pixelRatio } from './pixelRatio.js';
 import { touchUi } from './touchLogic.js';
 
@@ -104,7 +104,7 @@ export class HUD {
     this.paused = !!paused;
     if (this.paused) {
       this.gamepad = gamepadConnected();
-      this.controls = touchUi.active ? 'touch' : this.gamepad ? 'pad' : 'keys';
+      this.controls = touchUi.active ? 'touch' : this.gamepad ? gamepadLegend() : 'keys';
     }
     this.dirty = true;
   }

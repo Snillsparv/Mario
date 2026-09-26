@@ -58,7 +58,7 @@ const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 
 // Escape is the in-game Start (pause) key, so it starts the game here too.
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
-const PAD_START_BUTTONS = [9, 0]; // standard mapping: Start, A
+const PAD_START_BUTTONS = [9, 0, 1, 2]; // Start, and the jump / attack face buttons of any pad layout (core/input.js padLayout)
 const PAD_CLOSE_BUTTONS = [9, 0, 1, 2]; // Start, A, B, X: close the phone panel
 // Phone-controller buttons that start the game (net/RemotePad.js 'remotePress'), and those
 // that close the phone panel while it is up.

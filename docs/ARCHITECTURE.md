@@ -34,7 +34,8 @@ copied from anywhere (in particular, never copy or transliterate decompiled game
 Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox),
 `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`.
 
-Game flow, `state.mode` `'title' → 'face' → 'play' → 'gameover' → 'title' …`:
+Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …` (`'face'` instead of
+`'title'` with `?face=1`):
 
 ```
 title:    new TitleScreen(uiRoot, { events, audio }).show()   (requests the 'title' track)
@@ -50,13 +51,13 @@ title:    new TitleScreen(uiRoot, { events, audio }).show()   (requests the 'tit
           rAF: level.update(t), objects.animate(t), cam.titleOrbit(t), cam.apply(1), view.render()
           (until play starts, objects.animate() runs the objects' ambient clock from t itself:
           birds and butterflies move, nothing can be picked up; see Objects)
-face:     new FaceScreen(uiRoot, { events, audio, view }).show()   (see "Face screen")
+face:     (opt-in, ?face=1) new FaceScreen(uiRoot, { events, audio, view }).show()   (see "Face screen")
           Pip's big stretchy head in a scene of its own, drawn by view.setView(scene, camera)
           instead of the world (nothing in main ticks or draws meanwhile); the title track
           plays on; show() resolves once Start (Enter/Space/Esc, pad Start/A, touch START/A,
           phone START/A, a click on its hint line) has been pressed and released
           (menuPlan(location.search), ui/face/stretch.js: no title/face with ?test / ?skipTitle;
-          ?face=1 opens the face screen without the title card; ?face=0 leaves it out)
+          the face screen is opt-in: ?face=1 opens it instead of the title card)
 start:    hud.setVisible(true); player.beginIntro(); cam.startIntro(player)
           dropHold = 60 ticks: Pip waits hidden above the spawn while the 96-tick fly-in runs,
           then drops (~32 ticks) and lands as the camera settles behind him
@@ -107,7 +108,14 @@ buttons not count as fresh presses; `setOverride(partialController)` for tests.
 Gamepads: every connected standard-mapping pad is read and merged (buttons OR'ed, the stick
 pushed furthest wins), so an idle or odd device at index 0 cannot hide the real controller;
 pads without the standard mapping are read only when no standard pad is connected (then the
-most recently active one). `input.getGamepads` can be replaced in tests. Mouse-drag orbit
+most recently active one). Face buttons by `padLayout(pad)`: `'standard'` (an Xbox-style
+standard pad: bottom jumps, right or left attacks), `'nintendo'` (a standard pad whose id
+names Nintendo, a Switch / Pro Controller or a Switch pad maker: the right button, labelled A,
+jumps and the bottom one, labelled B, attacks) and `'raw'` (no standard mapping, read in the
+Switch's own order Y B A X L R ZL ZR - +: right (A) jumps, bottom (B) attacks, left and top do
+nothing, no d-pad buttons). The title starts from any pad's Start or face buttons 0-2, and the
+pause legend names a Nintendo-style or raw pad's buttons by the Switch labels.
+`input.getGamepads` can be replaced in tests. Mouse-drag orbit
 ends on mouseup, on window blur, and on the first move with neither drag button held.
 
 Test hooks: `?test=1` disables the real-time loop and the first title (the title still
@@ -118,8 +126,8 @@ and the scarf have caught up after a big step), `render()` (draw with dt 0),
 `snapshot()`, `startGame(intro = true)` (replay the intro flow), and `player`, `camera`,
 `level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`,
 `neutralController`, `face` (the FaceScreen while it shows, else null). `?skipTitle=1` skips
-the title, the face screen and the intro. `?face=1` opens the face screen at once (no title
-card), `?face=0` leaves it out. `?mute=1` disables audio.
+the title, the face screen and the intro. `?face=1` opens the (opt-in) face screen at once
+(no title card). `?mute=1` disables audio.
 `window.__ready` is set once play starts (after the title without `?skipTitle`).
 In `?test=1` nothing requests animation frames while the GAME OVER card shows, so headless
 Chromium does not advance its CSS fade (it stays transparent until something paints, e.g. a

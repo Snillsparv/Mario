@@ -87,8 +87,9 @@ test('input reads the real controller behind an idle or non-standard pad at inde
   input.sample();
   input.getGamepads = () => [pad(0), pad(1)];
   assert.equal(input.poll().R.pressed, true, 'R flick on pad 1 latched between polls');
-  // No standard pad: the most recently active non-standard pad is read.
-  input.getGamepads = () => [pad(0, { mapping: '', timestamp: 5 }), pad(1, { mapping: '', axes: [0, -1], down: [0], timestamp: 9 })];
+  // No standard pad: the most recently active non-standard pad is read (in the Switch's own
+  // button order: 2 = A, on the right, jumps; see padLayout).
+  input.getGamepads = () => [pad(0, { mapping: '', timestamp: 5 }), pad(1, { mapping: '', axes: [0, -1], down: [2], timestamp: 9 })];
   c = input.poll();
   assert.ok(c.stickY > 0.99);
   assert.equal(c.A.down, true);

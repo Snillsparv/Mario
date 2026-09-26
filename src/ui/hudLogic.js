@@ -112,6 +112,16 @@ export const PAD_CONTROLS = [
   ['RB', 'Camera mode'],
   ['Start', 'Pause'],
 ];
+// A Nintendo-style pad (core/input.js padLayout 'nintendo' or 'raw'), by its own labels.
+export const SWITCH_PAD_CONTROLS = [
+  ['Left stick', 'Move (tilt to walk)'],
+  ['A', 'Jump'],
+  ['B', 'Attack / Dive / Read'],
+  ['L / ZL / ZR', 'Crouch / Ground pound'],
+  ['Right stick', 'Camera'],
+  ['R', 'Camera mode'],
+  ['+', 'Pause'],
+];
 // The on-screen touch controller (ui/TouchController.js); replaces both while it is shown.
 export const TOUCH_CONTROLS = [
   ['Stick / D-pad', 'Move (tilt to walk)'],
@@ -209,6 +219,7 @@ export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, U
 export const SMALL_STRINGS = [
   ...KEY_CONTROLS.flat(),
   ...PAD_CONTROLS.flat(),
+  ...SWITCH_PAD_CONTROLS.flat(),
   ...TOUCH_CONTROLS.flat(),
   ...PHONE_CONTROL,
   ...PHONE_SMALL_STRINGS,
