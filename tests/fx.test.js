@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ParticlePool } from '../src/fx/ParticlePool.js';
 import { Effects, FX, fireLevel } from '../src/fx/Effects.js';
-import { RainStreaks, RAIN } from '../src/fx/RainStreaks.js';
+import { RainStreaks, RAIN, EMBERS } from '../src/fx/RainStreaks.js';
+import { levelsAt, lightAnchor, placeOrb, meltdownLevels } from '../src/fx/Meltdown.js';
 import { HeightCache } from '../src/fx/HeightCache.js';
 import { LightningScheduler, LIGHTNING, buildBolt } from '../src/fx/lightning.js';
 import { KIND, KIND_INFO, particleStyle, isAlphaKind } from '../src/fx/kinds.js';
@@ -473,14 +474,85 @@ test('atlas cells tile the texture without overlap', () => {
   for (const [u, v, du, dv] of rects) assert.ok(u >= 0 && v >= 0 && u + du <= 1 && v + dv <= 1);
 });
 
-test('effects draw with at most two meshes (draw calls), both in the scene', () => {
+test('effects draw with at most two meshes (draw calls), plus the meltdown light\'s two while it shows; all in the scene', () => {
   const { fx, scene } = makeFx();
   const meshes = [];
   scene.traverse((o) => o.isMesh && meshes.push(o));
-  assert.equal(meshes.length, 2);
+  assert.equal(meshes.length, 4);
   assert.ok(meshes.every((m) => m.frustumCulled === false && m.material.depthWrite === false));
+  assert.deepEqual(fx.doom.meshes.map((m) => m.visible), [false, false], 'the light\'s meshes are hidden until it blooms');
   fx.dispose();
   const left = [];
   scene.traverse((o) => o.isMesh && left.push(o));
   assert.equal(left.length, 0);
+});
+
+// ------------------------------------------------------------------ AI RACE's meltdown
+
+test('meltdown: the rain turns to embers and ash (same mesh), their offsets stay in the box; 0 = rain again', () => {
+  const { fx } = makeFx();
+  const cam = camera();
+  fx.setRain(1);
+  fx.setMeltdown(levelsAt(40.8));
+  const u = fx.rain.material.uniforms;
+  assert.ok(u.uEmber.value > 0 && u.uEmber.value < 1, 'part rain, part embers as the fire catches');
+  fx.setMeltdown(levelsAt(42));
+  assert.equal(u.uEmber.value, 1);
+  fx.rain.clock = 1e5;
+  fx.update(DT, 0, cam);
+  for (const o of u.uEmberOffsets.value) assert.ok(o.x >= 0 && o.x < RAIN.box && o.y >= 0 && o.y < RAIN.boxHeight && o.z >= 0 && o.z < RAIN.box);
+  assert.ok(u.uEmberDir.value.y > 0 && u.uAshDir.value.y < 0, 'embers rise, ash falls');
+  assert.ok(EMBERS.emberShown < 1 && EMBERS.ashShown < 1, 'sparse');
+  assert.match(fx.rain.material.vertexShader, /< uEmber;/);
+  assert.equal(fx.rain.mesh.visible, true);
+  // Embers alone (no rain) still draw.
+  fx.setRain(0);
+  fx.setMeltdown(levelsAt(42));
+  assert.equal(fx.rain.geometry.instanceCount, RAIN.maxStreaks);
+  fx.setMeltdown(meltdownLevels());
+  assert.equal(u.uEmber.value, 0);
+  assert.equal(fx.rain.geometry.instanceCount, 0);
+});
+
+test('meltdown: no lightning while the sky burns (the storm still counts until then)', () => {
+  const { fx, events } = makeFx({ seed: 3 });
+  const strikes = [];
+  events.on('lightning', (e) => strikes.push(e));
+  const cam = camera();
+  fx.setRain(1);
+  fx.setMeltdown(levelsAt(35)); // the warning: the storm goes on
+  run(fx, 30, cam);
+  const before = strikes.length;
+  assert.ok(before >= 2, `${before} strikes in the warning`);
+  fx.setMeltdown(levelsAt(41));
+  run(fx, 60, cam);
+  assert.equal(strikes.length, before);
+});
+
+test('meltdown light: the fireball and pillar show once it blooms, the shockwave once it leaves; uniforms follow the levels', () => {
+  const { fx } = makeFx();
+  const at = (s) => {
+    const L = levelsAt(s);
+    const a = lightAnchor(0, 500, 7000, Math.PI);
+    Object.assign(L, { lit: s >= 46, gx: a.gx, gy: a.gy, gz: a.gz });
+    return placeOrb(L.light, a, L);
+  };
+  fx.setMeltdown(at(44));
+  assert.deepEqual(fx.doom.meshes.map((m) => m.visible), [false, false]);
+  fx.setMeltdown(at(46.2));
+  assert.deepEqual(fx.doom.meshes.map((m) => m.visible), [true, false], 'the point of light, no wave yet');
+  const L = at(49);
+  fx.setMeltdown(L);
+  assert.deepEqual(fx.doom.meshes.map((m) => m.visible), [true, true]);
+  const o = fx.doom.orbMaterial.uniforms;
+  assert.deepEqual(o.uOrb.value.toArray(), [L.lx, L.ly, L.lz, L.lr]);
+  assert.ok(o.uFoot.value.y < L.ly && o.uPillarW.value > 0, 'the pillar reaches down');
+  assert.equal(o.uGlow.value, L.glow);
+  const w = fx.doom.waveMaterial.uniforms;
+  assert.equal(w.uRadius.value, L.ring);
+  assert.deepEqual(w.uCenter.value.toArray(), [L.gx, L.gy, L.gz]);
+  assert.ok(w.uAlpha.value > 0.9);
+  assert.equal(fx.doom.orbMaterial.fog, false, 'far past the fog');
+  fx.setMeltdown(meltdownLevels());
+  assert.deepEqual(fx.doom.meshes.map((m) => m.visible), [false, false], 'reset: gone');
 });

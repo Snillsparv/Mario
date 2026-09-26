@@ -8,12 +8,17 @@
 //   &warm=3                                 simulate 3 s before the first frame
 //   &freeze=1                               stop the effects' clock after the warm-up
 //   &n64=0                                  native resolution
+//   &melt=42                                AI RACE's meltdown at 42 s on its clock
+//                                           (fx/Meltdown.js levelsAt; the light blooms in
+//                                           front of the camera as in the game): renderer,
+//                                           sky and effects, held there
 // The harness camera (&cam=x,y,z&look=x,y,z) works as usual. window.__fx (Effects),
 // window.__view (N64Renderer) and window.__fxStep(seconds) (advance at 30 Hz, then draw)
 // are exposed for scripted screenshots; __fxStats() -> { calls, triangles, particles }.
 
 import { N64Renderer } from '../../render/N64Renderer.js';
 import { Effects } from '../../fx/Effects.js';
+import { levelsAt, lightAnchor, placeOrb } from '../../fx/Meltdown.js';
 import * as layout from '../../world/layout.js';
 
 const VIEW = { pos: [0, 720, 7300], look: [0, 380, 0] };
@@ -77,6 +82,18 @@ export async function setup(ctx) {
     const tree = level.trees?.find((t) => t.x === 2700 && t.z === 5000) ?? level.trees?.[6];
     if (tree?.canopy) fx.ignite(tree.canopy.x, tree.canopy.y, tree.canopy.z, { radius: tree.canopy.radius ?? 250, duration: 60 });
     else fx.ignite(2700, g(2700, 5000) + 520, 5000, { radius: 260, duration: 60 });
+  }
+  if (params.has('melt')) {
+    const L = levelsAt(Number(params.get('melt')) || 0);
+    if (L.light > 0 || L.glare > 0) {
+      const anchor = lightAnchor(cam[0], cam[1], cam[2], Math.atan2(look[0] - cam[0], look[2] - cam[2]));
+      Object.assign(L, { lit: true, gx: anchor.gx, gy: anchor.gy, gz: anchor.gz });
+      placeOrb(L.light, anchor, L);
+    }
+    view.setMeltdown(L);
+    level.setMeltdown(L);
+    fx.setMeltdown(L);
+    window.__melt = L;
   }
   step(Number(params.get('warm') ?? 2));
   if (params.has('boom')) {

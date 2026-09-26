@@ -14,6 +14,13 @@
 // dome's shader by uniforms (no recompile, no second mesh). The dome's material is a
 // SkyMaterial, so the underwater tinted copy the renderer makes (material.clone() plus its own
 // onBeforeCompile) keeps the storm.
+//
+// AI RACE's meltdown (setMeltdown(levels), fx/Meltdown.js), in the same shader by uniforms:
+// the warning glows red-orange up from the horizon and blushes the storm deck from below; the
+// fire turns the dome into roiling flames (procedural 3D value-noise fbm scrolling up: licking
+// tongues that are white-hot at the horizon, orange, then deep red, under a burning cloud deck
+// overhead), spreading up from the horizon as it catches; the light's bloom (a hot core, a wide
+// glow round the fireball's direction) and the white-out wash the whole sky white.
 
 import * as THREE from 'three';
 import { HAS_CANVAS, canvasTexture, hexToRgb, mixRgb, tileableFbm } from '../render/texgen.js';
@@ -74,7 +81,15 @@ export function buildSky() {
     stormTime: { value: 0 },
     stormMap: { value: stormMap },
     stormHorizon: { value: new THREE.Color(SKY_STORM_HORIZON_COLOR) },
+    // The meltdown (setMeltdown): warning glow, fire, the light's bloom and the white-out.
+    meltWarn: { value: 0 },
+    meltFire: { value: 0 },
+    meltGlare: { value: 0 },
+    meltWhite: { value: 0 },
+    meltDir: { value: new THREE.Vector3(0, 0.3, -1).normalize() },
+    meltTime: { value: 0 },
   };
+  const light = { lit: false, x: 0, y: 0, z: 0 }; // the fireball's place while it shows
   const mat = new SkyMaterial({ map, side: THREE.BackSide, depthWrite: false, fog: false }, storm);
   if (!HAS_CANVAS) mat.color.setHex(SKY_HORIZON_COLOR); // node: no panorama was painted
 
@@ -109,10 +124,28 @@ export function buildSky() {
         sc.set((sc.x + f * STORM_WIND[0][0]) % 1, (sc.y + f * STORM_WIND[0][1]) % 1, (sc.z + f * STORM_WIND[1][0]) % 1, (sc.w + f * STORM_WIND[1][1]) % 1);
       }
       storm.stormTime.value = time;
+      // The light's bloom looks toward the fireball from wherever the camera is now.
+      if (light.lit && storm.meltGlare.value > 0) {
+        const d = storm.meltDir.value.set(light.x - group.position.x, light.y - group.position.y, light.z - group.position.z);
+        if (d.lengthSq() > 0) d.normalize();
+      }
     },
     setDarkness(t) {
       const k = clamp(t, 0, 1);
       storm.stormT.value = k * k * (3 - 2 * k);
+    },
+    setMeltdown(levels) {
+      storm.meltWarn.value = clamp(levels?.warn || 0, 0, 1);
+      storm.meltFire.value = clamp(levels?.fire || 0, 0, 1);
+      storm.meltGlare.value = clamp(levels?.glare || 0, 0, 1);
+      storm.meltWhite.value = clamp(levels?.white || 0, 0, 1);
+      storm.meltTime.value = levels?.seconds || 0;
+      light.lit = !!levels?.lit;
+      if (light.lit) {
+        light.x = levels.lx;
+        light.y = levels.ly;
+        light.z = levels.lz;
+      }
     },
   };
 }
@@ -160,7 +193,14 @@ uniform vec4 stormScroll;
 uniform float stormTime;
 uniform sampler2D stormMap;
 uniform vec3 stormHorizon;
-varying vec3 vSkyDir;`,
+uniform float meltWarn;
+uniform float meltFire;
+uniform float meltGlare;
+uniform float meltWhite;
+uniform vec3 meltDir;
+uniform float meltTime;
+varying vec3 vSkyDir;
+${MELT_SKY_GLSL}`,
     )
     .replace(
       '#include <map_fragment>',
@@ -194,9 +234,90 @@ if (stormT > 0.0) {
   // Crossfade in a perceptual (gamma 2) space, like the world materials (darkGrade.js).
   vec3 sm = mix(sqrt(max(diffuseColor.rgb, 0.0)), sqrt(col), stormT);
   diffuseColor.rgb = sm * sm;
+}
+if (meltWarn > 0.0 || meltFire > 0.0 || meltGlare > 0.0 || meltWhite > 0.0) {
+  diffuseColor.rgb = meltSky(diffuseColor.rgb, normalize(vSkyDir));
 }`,
     );
 }
+
+// The meltdown's sky (see the header): meltSky(colour, view direction) -> colour, linear.
+const MELT_SKY_GLSL = /* glsl */ `
+float meltHash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float meltNoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(meltHash(i), meltHash(i + vec3(1.0, 0.0, 0.0)), f.x), mix(meltHash(i + vec3(0.0, 1.0, 0.0)), meltHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+    mix(mix(meltHash(i + vec3(0.0, 0.0, 1.0)), meltHash(i + vec3(1.0, 0.0, 1.0)), f.x), mix(meltHash(i + vec3(0.0, 1.0, 1.0)), meltHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+    f.z);
+}
+float meltFbm(vec3 p, int octaves) {
+  float s = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    if (i >= octaves) break;
+    s += a * meltNoise(p);
+    p = p * 2.03 + vec3(1.7, -0.3, 2.9);
+    a *= 0.5;
+  }
+  return s;
+}
+// Heat 0..1+ to fire colour (linear): smoke-dark red, deep red, orange, yellow, white-hot.
+vec3 meltPalette(float h) {
+  vec3 c = vec3(0.045, 0.006, 0.003);
+  c = mix(c, vec3(0.42, 0.035, 0.008), smoothstep(0.1, 0.32, h));
+  c = mix(c, vec3(1.0, 0.26, 0.025), smoothstep(0.34, 0.55, h));
+  c = mix(c, vec3(1.0, 0.62, 0.12), smoothstep(0.55, 0.78, h));
+  c = mix(c, vec3(1.0, 0.93, 0.7), smoothstep(0.8, 1.05, h));
+  return c;
+}
+vec3 meltSky(vec3 col, vec3 dir) {
+  float up = max(dir.y, 0.0);
+  float mt = meltTime;
+  if (meltWarn > 0.0) {
+    // The sky overheating: a red-orange glow rising from the horizon (reaching higher as it
+    // grows), throbbing with the klaxon, and the storm deck blushing from below.
+    float lon = atan(dir.x, dir.z);
+    float reach = 0.12 + 0.5 * meltWarn;
+    float band = 1.0 - smoothstep(-0.02, reach, up + 0.03 * sin(lon * 5.0 + mt * 0.7) + 0.02 * sin(lon * 11.0 - mt * 1.3));
+    float throb = 0.85 + 0.15 * sin(mt * 4.19);
+    vec3 glow = mix(vec3(0.55, 0.035, 0.01), vec3(1.8, 0.4, 0.05), band * band);
+    col = mix(col, glow, clamp(band * (0.35 + 0.65 * meltWarn) * 1.2, 0.0, 1.0) * throb);
+    float low = 1.0 - up;
+    col += vec3(0.45, 0.06, 0.0) * meltWarn * low * low * 0.6;
+  }
+  if (meltFire > 0.0) {
+    // Licking tongues: noise stretched upright and scrolling up fast, swayed sideways by a
+    // slower field, rising from a white-hot horizon; overhead, churning smoke lit by bright
+    // veins of fire (ridged noise). The fire sweeps up from the horizon as it catches.
+    float h = clamp(up / 0.6, 0.0, 1.0);
+    float sway = meltFbm(vec3(dir.x * 2.0, dir.y * 1.2 - mt * 0.3, dir.z * 2.0), 2) - 0.47;
+    vec3 p = vec3(dir.x * 7.0 + sway * 2.4, dir.y * 2.6 - mt * 1.3, dir.z * 7.0 - sway * 2.4);
+    float n = (meltFbm(p, 4) - 0.47) * 4.0;
+    float tongues = 0.95 - h * 1.55 + n * 0.3;
+    vec2 deckUv = dir.xz / (up + 0.25);
+    float d1 = meltFbm(vec3(deckUv * 1.2 + vec2(mt * 0.11, -mt * 0.07), mt * 0.16 + sway), 3);
+    float ridge = 1.0 - abs(d1 * 2.1 - 1.0);
+    float deck = 0.1 + 0.25 * d1 + 0.7 * pow(max(ridge, 0.0), 6.0);
+    float heat = max(tongues, deck * (0.6 + 0.4 * (1.0 - h)));
+    heat += (1.0 - smoothstep(0.0, 0.07, up)) * 0.4;
+    float front = meltFire * 1.35 - h + n * 0.08;
+    col = mix(col, meltPalette(heat), smoothstep(0.0, 0.2, front));
+  }
+  if (meltGlare > 0.0) {
+    float d = max(dot(dir, meltDir), 0.0);
+    col += vec3(1.0, 0.95, 0.85) * meltGlare * (pow(d, 600.0) * 6.0 + pow(d, 60.0) * 0.7 + pow(d, 8.0) * 0.3);
+  }
+  if (meltWhite > 0.0) col = mix(col, vec3(1.0), clamp(meltWhite * 1.4, 0.0, 1.0));
+  return col;
+}
+`;
 
 // ---------------------------------------------------------------- panorama painting
 

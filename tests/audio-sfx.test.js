@@ -477,3 +477,32 @@ test('evil_laugh: with the engine\'s shared hall it makes no convolver of its ow
   assert.ok(Math.abs(hall.ins[0].gain.value - bareSend.gain.value * 0.5) < 1e-9, 'the send carries the voice\'s volume');
   assert.equal(hall.outs.length, 0, 'the shared hall is not routed through this voice');
 });
+
+test('meltdown sounds: sane budgets and lengths; a rising two-whoop klaxon shorter than its repeat; a high fading ring; a sub under the light', async () => {
+  const { MELTDOWN } = await import('../src/fx/Meltdown.js');
+  const names = ['meltdown_klaxon', 'meltdown_ignite', 'meltdown_flash', 'meltdown_blast', 'meltdown_ring'];
+  for (const n of names) {
+    const { budget, dur } = run(n);
+    assert.ok(budget > 0.05 && budget * LEVELS.sfx < 0.95, `${n} budget ${budget.toFixed(2)}`);
+    assert.ok(SFX_INFO[n]?.max === (n === 'meltdown_klaxon' ? 2 : 1), `${n}: one at a time`);
+    assert.ok(dur >= 1 && dur <= 3, `${n} length ${dur}`);
+  }
+  const klaxon = run('meltdown_klaxon');
+  assert.ok(klaxon.dur < MELTDOWN.KLAXON_EVERY, 'done before the next blast');
+  const saws = klaxon.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sawtooth');
+  assert.equal(new Set(saws.map((o) => o.startAt)).size, 2, 'two whoops');
+  for (const o of saws) {
+    const f = o.frequency.events.map((e) => e[1]);
+    assert.ok(Math.max(...f) > f[0] * 1.8, 'each whoop rises');
+  }
+  const ring = run('meltdown_ring');
+  const sines = ring.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sine');
+  assert.ok(sines.filter((o) => firstFreq(o) > 2500).length >= 2, 'a high ring, two close tones beating');
+  assert.ok(ring.voices.every((v) => v.gainAt(T0 + ring.dur - 0.01) < 0.01), 'fading out');
+  const flash = run('meltdown_flash');
+  assert.ok(flash.voices.some((v) => !v.noise && firstFreq(v.src) < 60), 'a sub boom');
+  const ignite = run('meltdown_ignite');
+  const rush = ignite.voices.find((v) => v.noise && v.src.type === 'lowpass' && v.src.frequency.events.length === 3);
+  const f = rush.src.frequency.events.map((e) => e[1]);
+  assert.ok(f[1] > f[0] * 5 && f[2] < f[1], 'a rush sweeping up then settling');
+});

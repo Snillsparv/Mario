@@ -222,6 +222,45 @@ test('pounding STOP retires the button: it sinks into the ground and is gone unt
   assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, b.capTop0);
 });
 
+test('past the meltdown\'s point of no return the button\'s light dies and pounds do nothing, until reset()', () => {
+  const { objects, player, events, log, step, sfx } = setup();
+  const b = objects.button;
+  const pound = () => {
+    player.pos = { x: BTN.x, y: b.capTop, z: BTN.z };
+    player.action = 'idle';
+    step();
+    player.action = 'ground_pound_land';
+    step();
+    player.action = 'idle';
+  };
+  pound(); // AI RACE on
+  step(BUTTON.HOLD_TICKS + BUTTON.RISE_TICKS + 2);
+  assert.equal(b.state, 'up');
+  const lit = b.capMaterial.color.r;
+  events.emit('meltdown', { phase: 'warning', seconds: 30 });
+  assert.equal(b.dead, false, 'the warning: STOP still works');
+  events.emit('meltdown', { phase: 'fire', seconds: 40 });
+  assert.equal(b.dead, true);
+  assert.equal(sfx('fireball_fizzle').length, 1, 'its light dies with a fizzle');
+  pound(); // STOP: too late
+  assert.deepEqual(pounds(log).map((l) => l.e.on), [true], 'no toggle');
+  assert.equal(b.state, 'up', 'the cap does not even move');
+  assert.equal(b.retiring, false);
+  step(40);
+  assert.equal(b.deadT, 1);
+  const c = b.capMaterial.color;
+  assert.ok(c.r < 0.5 && c.r < lit && c.g < 0.3, `dark: ${c.toArray()}`);
+  events.emit('meltdown', { phase: 'fire', seconds: 40 });
+  assert.equal(sfx('fireball_fizzle').length, 1, 'once');
+  // A new game: alive again, and a pound switches AI RACE on.
+  objects.reset();
+  assert.equal(b.dead, false);
+  step();
+  assert.ok(b.capMaterial.color.r >= 1);
+  pound();
+  assert.deepEqual(pounds(log).map((l) => l.e.on), [true, true]);
+});
+
 test('the button toggles against the mode main reports (darkMode), e.g. after setDark()', () => {
   const { objects, player, events, log, step } = setup();
   events.emit('darkMode', { on: true }); // window.__game.setDark(true)

@@ -6,6 +6,9 @@
 //
 //   const shake = new CameraShake(events)
 //   shake.kick(strength, pos?)     strength 0..1; fainter the farther pos is from the camera
+//   shake.setRumble(amount)        a steady rumble (0..1, times SHAKE.RUMBLE) under the kicks:
+//                                  AI RACE's meltdown (fx/Meltdown.js) as the sky burns and
+//                                  the light grows; 0 = off
 //   shake.apply(camera, dt)        per render frame, after cam.apply(); dt 0 (paused) freezes it
 
 export const SHAKE = {
@@ -14,6 +17,7 @@ export const SHAKE = {
   NEAR: 1500, // full strength within this distance of the camera ...
   FAR: 9000, // ... fading out to nothing here
   CANNON: 0.8, // the cannon's boom (strength, at its mouth)
+  RUMBLE: 1.2, // strength of a steady rumble at setRumble(1)
 };
 
 export class CameraShake {
@@ -25,6 +29,7 @@ export class CameraShake {
     this.py = 0;
     this.pz = 0;
     this.hasPos = false;
+    this.rumble = 0;
     events?.on?.('hallImpact', (e) => this.kick(e?.strength ?? 1, e?.pos ?? null));
     events?.on?.('cannonFire', (e) => this.kick(SHAKE.CANNON, e?.pos ?? null));
     // Rustmaw slamming down on its perch or crashing to the ground after a throw (strength up
@@ -46,7 +51,12 @@ export class CameraShake {
     }
   }
 
+  setRumble(amount) {
+    this.rumble = amount > 0 ? Math.min(1, amount) * SHAKE.RUMBLE : 0;
+  }
+
   apply(camera, dt) {
+    if (dt > 0 && this.amount < this.rumble) this.amount = this.rumble;
     if (this.pending > 0) {
       let k = this.pending;
       if (this.hasPos) {

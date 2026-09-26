@@ -16,7 +16,9 @@
 //   label           the text on the cap now
 //   setDarkness(t)  0..1: the base dims, the cap glows and pulses (easy to find in the storm)
 //   retire()        after this press, sink into the ground and stay gone (see above)
-//   reset()         cap up, ready, mode off ("AI RACE"), back above the ground
+//   setDead(on)     AI RACE's meltdown is past its point of no return (fx/Meltdown.js): the
+//                   cap's light dies (dark, no glow or pulse) and pounds do nothing
+//   reset()         cap up, ready, mode off ("AI RACE"), back above the ground, alive
 //
 // Collision: static triangles added to the world at construction (CollisionWorld.addTriangles
 // works after finalize()): the base's side walls and top ring, and the cap's flat top. The cap
@@ -55,6 +57,7 @@ export const BUTTON = {
   RETIRE_TICKS: 45, // ...over ~1.5 s
   PARK: -60000, // a gone button's colliders wait this far down (below everything)
   POUND_MARGIN: 15, // feet this far outside the cap's edge still count (the body overlaps it)
+  DIE_RATE: 1 / 30, // setDead(): the cap's light dies over ~1 s (per tick)
 };
 
 const BEVEL = 6;
@@ -148,6 +151,8 @@ export class AiButton {
     this.darkT = 0;
     this.flash = 0; // brief brightening after a press (render)
     this.on = false; // AI RACE mode as last reported by setOn()
+    this.dead = false; // setDead(): the meltdown can't be stopped any more
+    this.deadT = 0; // the cap's light dying (render: 0 = lit .. 1 = dark)
 
     this.mesh = new THREE.Group();
     this.mesh.name = 'aiButton';
@@ -333,6 +338,10 @@ export class AiButton {
     this.prevSink = this.sink;
     this.justSank = false;
     this.timer++;
+    if (this.dead && this.deadT < 1) {
+      const d = this.deadT + BUTTON.DIE_RATE;
+      this.deadT = d < 1 ? d : 1;
+    }
     const B = BUTTON;
     if (this.state === 'gone') return false;
     if (this.state === 'sinking') {
@@ -364,7 +373,7 @@ export class AiButton {
       if (u >= 1) this.state = 'up';
     }
     let pressed = false;
-    if (pounded && this.state === 'up' && this.onCap(player.pos)) {
+    if (pounded && !this.dead && this.state === 'up' && this.onCap(player.pos)) {
       this.state = 'pressing';
       this.timer = 0;
       this.offset = -B.SINK / B.PRESS_TICKS;
@@ -377,6 +386,12 @@ export class AiButton {
 
   setDarkness(t) {
     this.darkT = t;
+  }
+
+  // The meltdown can't be stopped any more: the cap's light dies and pounds do nothing.
+  setDead(on) {
+    this.dead = !!on;
+    if (!this.dead) this.deadT = 0;
   }
 
   // AI RACE mode switched on or off: the cap says how to switch it the other way.
@@ -403,6 +418,7 @@ export class AiButton {
     this.prevOffset = 0;
     this.lastAction = null;
     this.flash = 0;
+    this.setDead(false);
     this._moveCapFloor();
   }
 
@@ -415,6 +431,15 @@ export class AiButton {
     this.baseMaterial.color.setScalar(1 - 0.45 * t);
     const pulse = 0.5 + 0.5 * Math.sin(clock * 3.2);
     this.flash = this.flash > 0.02 ? this.flash * 0.9 : 0;
-    this.capMaterial.color.setScalar(1 + t * (0.1 + 0.35 * pulse) + 0.5 * this.flash);
+    const lit = 1 + t * (0.1 + 0.35 * pulse) + 0.5 * this.flash;
+    if (!this.dead) {
+      this.capMaterial.color.setScalar(lit);
+      return;
+    }
+    // Dying: a few last flickers, then dark (a dead, scorched red).
+    const flicker = this.deadT < 0.6 && Math.sin(clock * 47) > 0.2 ? 0.6 : 0;
+    const left = 1 - this.deadT - flicker * (1 - this.deadT);
+    const k = left > 0 ? left : 0;
+    this.capMaterial.color.setRGB(0.3 + (lit - 0.3) * k, 0.18 + (lit - 0.18) * k, 0.16 + (lit - 0.16) * k);
   }
 }

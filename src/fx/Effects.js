@@ -19,6 +19,11 @@
 //   fx.strike(strength?)                       a lightning strike now (tests, scripted scenes)
 //   fx.update(dt, time, camera)                per render frame; dt = 0 freezes everything
 //   fx.lightningFlash                          current flash brightness 0..1 (decays)
+//   fx.setMeltdown(levels)                     AI RACE's meltdown (fx/Meltdown.js): the rain
+//                                              turns to embers and ash (levels.embers), no
+//                                              more lightning while the sky burns (fire > 0),
+//                                              and the light: fireball, pillar and shockwave
+//                                              wall (fx/DoomLight.js)
 //
 // Lightning: while the rain is above 0.6, strikes come every 6-14 s. Each strike emits
 // 'lightning' { strength (0.5..1), pos } on `events`, flashes the renderer (view.flash) and
@@ -26,7 +31,8 @@
 // N64Renderer that owns `scene` (it registers itself as scene.userData.view).
 //
 // Cost: two draw calls at most (fx/ParticleBatch.js: every sprite; fx/RainStreaks.js: the
-// rain, animated on the GPU), none while nothing is alive and the rain is 0. Nothing is
+// rain, animated on the GPU), none while nothing is alive and the rain is 0; two more only while
+// the meltdown's light shows (fx/DoomLight.js: the fireball and pillar, the shockwave). Nothing is
 // allocated per frame: particles live in a fixed pool (fx/ParticlePool.js), fires in fixed
 // slots, splash heights come from a memoised grid (fx/HeightCache.js).
 
@@ -35,6 +41,7 @@ import { makeRng } from '../core/math.js';
 import { ParticlePool } from './ParticlePool.js';
 import { ParticleBatch } from './ParticleBatch.js';
 import { RainStreaks } from './RainStreaks.js';
+import { DoomLight } from './DoomLight.js';
 import { HeightCache, NOTHING_BELOW } from './HeightCache.js';
 import { LightningScheduler, LIGHTNING, buildBolt } from './lightning.js';
 import { KIND, MODE } from './kinds.js';
@@ -103,6 +110,8 @@ export class Effects {
     this.pool = new ParticlePool(capacity);
     this.batch = new ParticleBatch(capacity + FX.maxFires * 2, buildAtlas());
     this.rain = new RainStreaks();
+    this.doom = new DoomLight();
+    this.meltFire = 0; // the meltdown's sky fire (no lightning while it burns)
     this.heights = new HeightCache({ collision, layout, cell: 50 });
     this.lightning = new LightningScheduler(this.rng);
     this.fires = Array.from({ length: FX.maxFires }, makeFire);
@@ -124,9 +133,10 @@ export class Effects {
     this.pixelHeight = 0;
     this.pixelFov = 0;
 
-    if (scene) scene.add(this.batch.mesh, this.rain.mesh);
+    if (scene) scene.add(this.batch.mesh, this.rain.mesh, ...this.doom.meshes);
     this.view?.prewarm?.(this.batch.mesh);
     this.view?.prewarm?.(this.rain.mesh);
+    for (const m of this.doom.meshes) this.view?.prewarm?.(m);
   }
 
   // ------------------------------------------------------------------ public API
@@ -137,6 +147,14 @@ export class Effects {
     this.rain.setAmount(k);
     // Takes effect at once: update() does not run behind the title screen.
     if (!k) this.rain.mesh.visible = false;
+  }
+
+  // AI RACE's meltdown (fx/Meltdown.js levels): embers instead of rain, no lightning while the
+  // sky burns, and the light (fireball, pillar, shockwave).
+  setMeltdown(levels) {
+    this.rain.setEmbers(levels?.embers || 0);
+    this.meltFire = levels?.fire || 0;
+    this.doom.set(levels);
   }
 
   // Current lightning flash brightness (0..1, decays over ~0.4 s).
@@ -591,7 +609,7 @@ export class Effects {
     this.windX = 60 + 300 * storm;
     this.windZ = 20 + 110 * storm;
     this.rain.update(dt, this.hasCamera ? this.camPos : null, this.underwater);
-    const s = this.lightning.update(dt, storm);
+    const s = this.lightning.update(dt, this.meltFire > 0 ? 0 : storm);
     if (s > 0) this.onStrike(s);
 
     if (dt > 0) {
@@ -606,9 +624,10 @@ export class Effects {
   }
 
   dispose() {
-    this.scene?.remove(this.batch.mesh, this.rain.mesh);
+    this.scene?.remove(this.batch.mesh, this.rain.mesh, ...this.doom.meshes);
     this.batch.dispose();
     this.rain.dispose();
+    this.doom.dispose();
     this.batch.material.uniforms.uAtlas.value?.dispose();
   }
 

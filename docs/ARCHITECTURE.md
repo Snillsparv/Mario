@@ -72,6 +72,10 @@ lives:    4 at start; 'lifeLost' at x0 -> once the death plays out: mode 'gameov
           card.remove(), objects.reset(), player.coins = 0, lives = 4 — all *before* the
           title, so the title backdrop already shows the new game's world — then the title,
           the face screen and start (with the intro) as above
+meltdown: AI RACE not stopped within 40 s (see "Meltdown"): once the white has held a second,
+          meltdown.update() returns 'over' and main calls the same gameOver() directly ("game
+          over now", whatever the lives left; a pending death's game over is dropped); its reset
+          also calls meltdown.reset() (sky, grade, white-out, embers, light, sounds, clock)
 ```
 
 Simulation and rendering:
@@ -82,6 +86,8 @@ tick (30 Hz, only in 'play'):
   START.pressed -> toggle pause (hud.setPaused, emit 'pause' / 'unpause')
   paused -> return                        (nothing below runs; state.time stands still)
   state.time += FRAME_DT
+  darkT eases toward state.dark (AI RACE mode: applyDarkness(t), see below)
+  meltdown.update(camera.position, cam.getYaw()) === 'over' -> gameOver(), return   (see "Meltdown")
   dropHold > 0 ? dropHold-- : player.update(cam.playerInput(controller), cam.getYaw())
   action changed to 'spawn' -> respawn / game over (above)
   objects.update({ player, frame, camera })
@@ -125,7 +131,9 @@ follows a game over, as in play) and exposes
 posed after every tick with dt = 1/30 s, like a 30 fps real-time run, so pose blends, blinks
 and the scarf have caught up after a big step), `render()` (draw with dt 0),
 `snapshot()`, `startGame(intro = true)` (replay the intro flow), and `player`, `camera`,
-`level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`,
+`level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`, `fx`, `shake`,
+`meltdown` (AI RACE's 40-second clock: `meltdown.skipTo(seconds)` jumps it ahead, `.phase`,
+`.seconds`, `.levels`; see "Meltdown"), `setDark(on)`,
 `neutralController`, `face` (the FaceScreen while it shows, else null). `?skipTitle=1` skips
 the title, the face screen and the intro. `?face=1` opens the (opt-in) face screen at once
 (no title card). `?mute=1` disables audio.
@@ -411,10 +419,13 @@ view.setN64Mode(on); view.setPillarbox(on); view.setDebugOverlay(on)
 view.setView(scene, camera)       // draw another scene (a menu: the face screen) instead of the
                                   // world, through the same retro filter; its camera's aspect
                                   // follows the picture; setView() = back to the world
+view.setDarkness(t); view.flash(strength)   // AI RACE mode's storm (see "AI RACE mode")
+view.setMeltdown(levels)          // AI RACE's meltdown (see "Meltdown"): fire grade, white-out,
+                                  // glare, heat shimmer, fog and actor lights; all 0 = no change
 ```
 
-While a `setView()` scene is drawn the world's underwater fog, storm grade and lightning flash
-are left out (`drawView()`), and the F1 overlay's mode line shows only the size.
+While a `setView()` scene is drawn the world's underwater fog, storm grade, lightning flash and
+meltdown grade are left out (`drawView()`), and the F1 overlay's mode line shows only the size.
 
 Underwater (`src/render/post/underwater.js`, `UnderwaterFog`): while the camera is below the
 water surface (per `setWaterLevelFn`) the scene fog is swapped for a short-range blue-green
@@ -449,7 +460,8 @@ requested without a running AudioContext, or while muted, is **dropped**, never 
 start later (so a gamepad-only start skips the arrival cue); a looping track (`title`) is
 queued until audio unlocks.
 Audio also consumes `gameStart` (stops a menu track, clears ducks, unlocks with sticky user
-activation) and `pause` / `unpause` (duck + sfx).
+activation) and `pause` / `unpause` (duck + sfx), and AI RACE's `darkMode`, `lightning` and
+`meltdown` (see "Meltdown"; `audio.setMeltdown(levels)` drives its inferno ambience).
 
 ## HUD / title (`src/ui/*`)
 
@@ -463,6 +475,7 @@ const title = new TitleScreen(uiRootElement, { events, audio }); await title.sho
 title.setViewport(rect | null)
 const face = new FaceScreen(uiRootElement, { events, audio, view }); await face.show()  // "Face screen"
 const card = new GameOverCard(uiRootElement).show()  // dark screen + gold GAME OVER, fades in
+new AlertBanner(uiRootElement, { events })   // AI RACE: 'darkMode' on, the meltdown's warning (30 s)
 card.setViewport(rect | null); card.remove(); card.shown   // remove() at once; show() again ok
 ```
 
@@ -591,7 +604,9 @@ version and back. Everything is original: no existing monster, character or bran
   grinding rumble (sfx `hall_rise`, pitched up) and is gone for the rest of the game (hidden, its
   colliders parked; a hero on it is carried down to the lawn), so AI RACE can't be started
   again; `objects.reset()` (a new game) brings it back. (Rustmaw's defeat ends the mode without
-  retiring it.) main sets `state.dark`, emits
+  retiring it.) Past the meltdown's point of no return (40 s, see "Meltdown") the button is dead
+  and main ignores both a mode-off request and Rustmaw's defeat: the mode stays on. main sets
+  `state.dark`, emits
   `'darkMode' { on }` and eases `state.darkT` 0..1 over 3 s, calling each tick while it
   changes: `level.setDarkness(t)` (every WorldPart's `setDarkness`), `view.setDarkness(t)`,
   `fx.setRain(t)`, `objects.setDarkness(t)`. Game over resets it to 0 (plus
@@ -604,6 +619,8 @@ version and back. Everything is original: no existing monster, character or bran
 * **Renderer** (`view.setDarkness(t)`, `view.flash(strength)`): dark storm fog and colour
   grade; lightning flashes brighten the frame.
 * **Effects** (`src/fx/Effects.js`): `setRain(t)` camera-following rain with ground splashes;
+  `setMeltdown(levels)` (see "Meltdown": embers and ash instead of rain, no lightning while the
+  sky burns, the light's fireball, pillar and shockwave);
   random lightning (emits `'lightning' { strength }`; renderer flashes, audio thunders);
   `ignite(x, y, z, { radius, duration, intensity }) -> id`, `extinguish(id)`, `clearFires()`
   (flame/ember/smoke particles), `explode(x, y, z, { radius })`, `update(dt, time, camera)`.
@@ -671,7 +688,93 @@ version and back. Everything is original: no existing monster, character or bran
 * **Audio**: rain and wind beds, thunder after lightning, an ominous original synth track,
   the monster's mechanical roar, fireball launch/explosion, fire crackle, button clunk,
   an alarm sting; birds stop while dark.
-* **UI**: a flashing "AI RACE" alert banner when the mode switches on.
+* **UI**: a flashing "AI RACE" alert banner when the mode switches on (and the meltdown's
+  warning at 30 s).
+* **The 40-second clock**: see "Meltdown": not stopped in time, the sky catches fire and the
+  world burns white, then GAME OVER.
+
+## Meltdown (AI RACE's 40-second clock)
+
+If AI RACE is not stopped within 40 seconds the sky catches fire, a blinding light blooms over
+the horizon and the whole world burns white, then GAME OVER: an original cartoon apocalypse (no
+real-world imagery or text). `src/fx/Meltdown.js` (`Meltdown`, timings in `MELTDOWN`) is the
+clock and the conductor; main ticks it and hooks it into the dark-mode switch and the game-over
+flow.
+
+```js
+const meltdown = new Meltdown({ events, targets: { view, level, fx, audio, shake }, trees: level.trees })
+meltdown.update(camPos, camYaw) -> 'over' | null   // 30 Hz, only while playing
+meltdown.setMode(on)            // it listens to 'darkMode' itself
+meltdown.reset()                // everything off at once (main's game-over reset)
+meltdown.skipTo(seconds)        // tests: jump the running clock ahead
+meltdown.phase                  // 'idle' | 'race' | 'warning' | 'fire' | 'light' | 'white' | 'over'
+meltdown.seconds, .doomed (from 40 s), .running, .levels (the look, below)
+levelsAt(seconds), lightAnchor(x, y, z, yaw), placeOrb(light, anchor, out)   // pure helpers
+```
+
+* **Clock**: starts at 0 when AI RACE mode turns on (`'darkMode' { on: true }`) and counts only
+  in `update()`, which main calls only while playing (not paused, not on the title or the
+  game-over card). The mode turning off before 40 s (pounding STOP, Rustmaw's defeat, a game
+  over or new game) cancels it (`'cancelled'`; the warning glow fades out over 1.5 s); turning
+  AI RACE on again (after a Rustmaw defeat: STOP retires the button) starts a fresh 40 s. From
+  40 s nothing cancels it but a game over: `setMode(false)` is ignored, main keeps the mode on
+  (it ignores `'aiRaceButton' { on: false }` and `'bossDefeated'`), the button's cap light dies
+  and pounds on it do nothing (`AiButton.setDead`, from ObjectManager on `'meltdown' { phase:
+  'fire' }`, with a fizzle; `objects.reset()` revives it).
+* **Timeline** (`MELTDOWN`, seconds on the clock):
+  * 30 `'warning'`: the AlertBanner shows WARNING! / THE SKY IS OVERHEATING / POUND STOP!
+    (`hudLogic.js MELTDOWN_WARNING`, ~5 s, gone on `'cancelled'` or `'fire'`); a klaxon (sfx
+    `meltdown_klaxon`, two rising whoops) every 1.5 s until the light; the storm sky glows
+    red-orange up from the horizon (the sky's `meltWarn`), the fog takes a red haze and the grade
+    a share of the fire tint, stronger and stronger toward 40 s.
+  * 40 `'fire'`, the point of no return: the sky dome turns to roiling flames (its shader:
+    procedural 3D value-noise fbm, licking tongues scrolling up from a white-hot horizon under a
+    churning deck of smoke with bright veins of fire, sweeping up from the horizon over 1.6 s);
+    the fog (`FIRE_FOG`), the actor lights (`FIRE_LIGHTS`) and the grade turn fiery orange (the
+    storm grade eases off: the world is fire-lit); the rain turns into drifting embers and ash
+    (`RainStreaks.setEmbers`), lightning stops, trees near the hero catch fire one by one
+    (`fx.ignite` on canopies, up to 14, sfx `tree_ignite`), a roaring blaze and a deep rumble
+    rise (`audio/inferno.js`) after a whoomph (`meltdown_ignite`) while the rain beds and the
+    music fade; a low camera rumble (`shake.setRumble`).
+  * 46 `'light'`: a blinding point of light blooms `LIGHT_DIST` (19000) away, 0.32 rad right of
+    where the camera looks (from the spawn: rising beside and behind the castle's right towers),
+    flashing (screen glare and sky bloom), then swelling into a roiling fireball that rises
+    (elevation 0.1 -> 0.34 rad) over a pillar of light reaching down to the ground
+    (`fx/DoomLight.js`); a shockwave wall of glowing dust races out from its foot at 5200/s
+    (`'shock'` as it passes the camera: a big jolt and `meltdown_blast`); the exposure rises
+    exponentially, colours bleach, a white fog pulls in and a heat shimmer ripples the picture;
+    `meltdown_flash` booms and the blaze swells to a roar.
+  * 53 `'white'`: the whole picture is white; the roar collapses into a high, fading ring
+    (`meltdown_ring`).
+  * 54 `'over'`: `update()` returns `'over'` (once) and main runs its GAME OVER (the card, the
+    jingle, then the title; lives and coins reset as for any game over), whatever the lives
+    left. Pip stays controllable until the white-out.
+* **Levels** (`meltdown.levels`, one reused object, handed to each target's `setMeltdown` while
+  it changes, never while it stays all 0): `seconds`, `warn`, `fire`, `light` (0..1 over the
+  light phase), `white` (exponential), `glow` (the fireball), `glare` (screen glare and sky
+  bloom: a flash, then with the white), `shimmer`, `embers`, `rumble`, and once the light has
+  bloomed `lit`, its ground point `gx, gy, gz`, the fireball `lx, ly, lz, lr` and the
+  shockwave's radius `ring`.
+* **Renderer** (`view.setMeltdown`, `render/post/meltdown.js`): fog (above and under water) and
+  actor lights mixed toward the warning's red haze, the fire's orange and the white; the grade
+  (`MELT_GLSL`, after the storm grade in both the N64 pass and the native grade pass):
+  `meltGrade` (fire tint by luminance, keeping highlights; glare round the fireball's place on
+  screen; exposure, bleach, pure white) and `heatShimmer` (the sampling offset). Uniform
+  branches, skipped at 0; native mode draws through the grade pass while any of it shows. F1
+  shows "meltdown".
+* **Sky** (`world/sky.js`, `level.setMeltdown` -> the sky part): the same dome material and
+  program (`meltWarn`, `meltFire`, `meltGlare`, `meltWhite`, `meltDir`, `meltTime` uniforms; the
+  underwater copy shares them).
+* **Effects**: embers and ash are a share of the rain streaks (same mesh), with their own
+  wrapped offsets; the fireball + pillar (one mesh of two camera-facing quads, premultiplied: its
+  body covers the burning sky, its halo adds) and the shockwave (an open 96-panel cylinder
+  scaled in the vertex shader, additive) are hidden until the light, unfogged, depth-tested.
+* **Audio**: `'meltdown'` events drive the one-shots and the inferno's collapse;
+  `audio.setMeltdown(levels)` its level (fire) and swell (light); no music starts until it ends.
+* **Cost**: no draw call of its own before the light (uniforms on the sky, the passes and the
+  rain); +2 draw calls and ~200 triangles while the light shows. Measured from the spawn: 72
+  draw calls at 38 s, 76 at 48 s (more server halls out by then).
+* **Preview**: `/preview.html?m=fx&melt=48` holds the look at 48 s (renderer, sky and effects).
 
 ## Tech takeover (AI RACE mode's server halls)
 
@@ -733,7 +836,8 @@ original designs). Objects own it (built when `layout.KAIJU` exists, like the be
 * **Camera shake** (`src/camera/shake.js`): `new CameraShake(events)` jolts the view on
   `'hallImpact'` (fainter with distance); main calls `shake.apply(camera, dt)` right after
   `cam.apply(alpha)` (rotation only: the camera's position, collision and listener are
-  untouched; dt 0 while paused freezes it).
+  untouched; dt 0 while paused freezes it). `shake.setRumble(amount)` holds a steady rumble
+  under the kicks (the meltdown).
 * **Cost**: one instanced draw per unit type showing (three at most) plus one for the warning
   markers while a drop is coming; ~10k triangles with all units out. Measured in the dark
   mode with all 30 units out: 72-75 draw calls and ≤ 172k triangles from the spawn (+3 calls,
@@ -970,7 +1074,8 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `pause` / `unpause` / `gameStart` / `gameOver` | `{}` | main (audio consumes all four: ducks, menu-track stop, unlock, `game_over` jingle) |
 | `signRead` | `{ sign }` (a `layout.SIGNS` entry) | player (B in front of a sign); the dialog box opens |
 | `aiRaceButton` | `{ on }` | objects (the button was ground-pounded); main toggles AI RACE mode |
-| `darkMode` | `{ on }` | main; audio, UI banner and objects react |
+| `darkMode` | `{ on }` | main; audio, UI banner, objects and the meltdown react |
+| `meltdown` | `{ phase, seconds }`: `'warning'` (30 s), `'fire'` (40 s, the point of no return), `'light'` (46 s), `'shock'` (the shockwave passing the camera), `'white'` (53 s), `'over'` (54 s: main ends the game), or `'cancelled'` `{ warned }` (the mode turned off before 40 s) | the Meltdown (`fx/Meltdown.js`); the banner, audio and objects (the button dies) react |
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `hallImpact` | `{ pos, strength, kind }` (`kind` `'drop'`: a server hall slammed down, strength 1; `'rise'`: one started grinding up, 0.35) | objects (tech takeover); main's camera shake jolts the view |
@@ -994,7 +1099,8 @@ AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launc
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
 cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, and Rustmaw's tail grab's
 `tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
-(`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), and the face screen's
+(`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), AI RACE's meltdown's
+`meltdown_klaxon, meltdown_ignite, meltdown_flash, meltdown_blast, meltdown_ring`, and the face screen's
 `face_grab, face_stretch, face_boing, face_boop` (with `pitch`, `volume` and `pan`).
 Unknown names must be ignored silently.
 
@@ -1011,6 +1117,7 @@ Unknown names must be ignored silently.
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
 * `/preview.html?m=world` shows the whole level without the player.
+* `/preview.html?m=fx&melt=48` holds AI RACE's meltdown at 48 s (sky, grade, embers, the light).
 * `/preview.html?m=face` shows the face screen alone (Start shows it again); scripted pulls for
   shot.mjs: `{"eval":"__face.pointer('down', 0.6, 0.55)"}`, `{"eval":"__face.pointer('move',
   0.8, 0.6)"}`, `{"wait":500}`, `{"shot":"shots/pull.png"}` (see the preview's header).

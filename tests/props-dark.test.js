@@ -134,3 +134,31 @@ test('storm sky: crossfades by uniforms, scrolls on game time while it shows, su
   sky.setDarkness(0);
   assert.equal(mat.storm.stormT.value, 0);
 });
+
+test('meltdown sky: warning glow, flames, glare and white-out by uniforms (same program), the bloom looking toward the fireball', async () => {
+  const { meltdownLevels } = await import('../src/fx/Meltdown.js');
+  const sky = buildSky(L);
+  const mat = sky.object3D.getObjectByName('skyDome').material;
+  const u = mat.storm;
+  const s = basicShader();
+  mat.onBeforeCompile(s);
+  assert.match(s.fragmentShader, /if \(meltWarn > 0\.0 \|\| meltFire > 0\.0 \|\| meltGlare > 0\.0 \|\| meltWhite > 0\.0\)/, 'skipped while it is all 0');
+  assert.match(s.fragmentShader, /vec3 meltSky\(vec3 col, vec3 dir\)/);
+  for (const k of ['meltWarn', 'meltFire', 'meltGlare', 'meltWhite', 'meltDir', 'meltTime']) assert.equal(s.uniforms[k], u[k], k);
+  assert.equal(mat.customProgramCacheKey(), 'sky-storm', 'no second program');
+  sky.setMeltdown({ ...meltdownLevels(), warn: 0.5, fire: 0.25, glare: 0.7, white: 0.1, seconds: 42, lit: true, lx: 1000, ly: 5000, lz: -12000 });
+  assert.deepEqual([u.meltWarn.value, u.meltFire.value, u.meltGlare.value, u.meltWhite.value, u.meltTime.value], [0.5, 0.25, 0.7, 0.1, 42]);
+  const cam = new THREE.PerspectiveCamera();
+  cam.position.set(0, 500, 7000);
+  cam.updateMatrixWorld();
+  sky.update(1, cam);
+  const want = new THREE.Vector3(1000, 4500, -19000).normalize();
+  assert.ok(u.meltDir.value.distanceTo(want) < 1e-6, 'the bloom looks from the camera toward the fireball');
+  // The underwater copy of the dome burns too (shared uniforms).
+  const c = basicShader();
+  mat.clone().onBeforeCompile(c);
+  assert.match(c.fragmentShader, /meltSky\(/);
+  assert.equal(c.uniforms.meltFire, u.meltFire);
+  sky.setMeltdown(meltdownLevels());
+  assert.deepEqual([u.meltWarn.value, u.meltFire.value, u.meltGlare.value, u.meltWhite.value], [0, 0, 0, 0]);
+});

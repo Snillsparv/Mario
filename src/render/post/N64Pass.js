@@ -5,13 +5,16 @@
 //   2. a soft horizontal filter blends each pixel with its neighbours (the video
 //      interface's smoothing, which also hides most of the dither);
 //   3. the result is bilinearly upscaled to the output;
-//   4. the AI RACE storm grade and lightning flash (post/storm.js), skipped at 0.
+//   4. the AI RACE storm grade and lightning flash (post/storm.js), then the meltdown's fire
+//      grade, glare and white-out (post/meltdown.js; its heat shimmer offsets where step 1
+//      samples), all skipped at 0.
 // Steps 1-2 must happen per source pixel, so the shader does its own bilinear filtering
 // from 2 rows x 4 columns of texelFetch()es instead of relying on the sampler.
 
 import * as THREE from 'three';
 import { bayerMatrix } from './screen.js';
 import { GRADE_GLSL } from './storm.js';
+import { MELT_GLSL, MELT_OFF, meltUniforms, setMeltUniforms } from './meltdown.js';
 
 // Look parameters (tuned by eye against the preview screenshots).
 export const N64_LOOK = Object.freeze({
@@ -38,6 +41,7 @@ const fragmentShader = /* glsl */ `
   uniform float viBlur;
   varying vec2 vUv;
   ${GRADE_GLSL}
+  ${MELT_GLSL}
 
   const float BAYER[16] = float[16](${BAYER});
 
@@ -68,12 +72,13 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
-    vec2 st = vUv * srcSize - 0.5;
+    vec2 st = (vUv + heatShimmer(vUv)) * srcSize - 0.5;
     vec2 base = floor(st);
     vec2 f = st - base;
     ivec2 p = ivec2(base);
     vec3 color = mix(scanline(p, f.x), scanline(p + ivec2(0, 1), f.x), f.y);
     color = stormGrade(color);
+    color = meltGrade(color, vUv);
     gl_FragColor = vec4(color, 1.0); // already sRGB: written to the canvas as is
   }
 `;
@@ -96,6 +101,7 @@ export class N64Pass {
         viBlur: { value: viBlur },
         uStorm: { value: 0 },
         uFlash: { value: 0 },
+        ...meltUniforms(),
       },
       vertexShader,
       fragmentShader,
@@ -114,6 +120,11 @@ export class N64Pass {
     const u = this.material.uniforms;
     u.uStorm.value = storm;
     u.uFlash.value = flash;
+  }
+
+  // The meltdown's grade state (post/meltdown.js setMeltUniforms; MELT_OFF = none).
+  setMeltdown(g = MELT_OFF) {
+    setMeltUniforms(this.material.uniforms, g);
   }
 
   // Draw `texture` (width x height) to the current render target (the canvas).

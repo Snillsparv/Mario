@@ -18,6 +18,11 @@
 //     strike. N64 mode grades in its post pass; native mode draws through a full-size target
 //     and post/GradePass.js only while the grade or a flash is visible. At t = 0 nothing
 //     changes and nothing extra is drawn.
+//   Meltdown (AI RACE's 40-second clock, fx/Meltdown.js; post/meltdown.js): setMeltdown(levels)
+//     tints the fog red for the warning, turns the fog, the actor lights and the grade fiery
+//     orange while the sky burns, then raises the exposure, bleaches the picture and pulls a
+//     white fog in until everything is white; the light's glare centres on where its fireball
+//     is on screen, and a heat shimmer ripples the picture. All levels 0 = nothing changes.
 //
 // World geometry is unlit (baked vertex colours). The sun and hemisphere lights below only
 // shade dynamic actors (hero, coins, star) that use Lambert/Phong materials.
@@ -33,6 +38,7 @@ import { DebugOverlay } from './post/DebugOverlay.js';
 import { GradePass } from './post/GradePass.js';
 import { STORM_FOG, STORM_UNDERWATER_FOG, STORM_LIGHTS, flashEnvelope, stormFogRange } from './post/storm.js';
 import { UNDERWATER_FOG } from './post/underwater.js';
+import { WARN_FOG, FIRE_FOG, WHITE_FOG, FIRE_LIGHTS, MELT_GRADE, MELT_OFF, fireGradeOf, meltFogRange } from './post/meltdown.js';
 
 // The fog and the clear colour are the sky's horizon colour, so distant terrain melts
 // into the bottom of the sky dome.
@@ -151,8 +157,25 @@ export class N64Renderer {
       sun: new THREE.Color(STORM_LIGHTS.sunColor),
       sky: new THREE.Color(STORM_LIGHTS.skyColor),
       ground: new THREE.Color(STORM_LIGHTS.groundColor),
+      key: new THREE.Color(STORM_LIGHTS.keyColor),
     };
-    this.fogScratch = { color: new THREE.Color(), range: {} };
+    this.fogScratch = { color: new THREE.Color(), water: new THREE.Color(), range: {}, melt: {} };
+    // The meltdown (setMeltdown): its levels as last given, the colours it mixes toward, and
+    // the grade state handed to the passes each frame.
+    this.melt = { warn: 0, fire: 0, white: 0, glare: 0, shimmer: 0, time: 0, lit: false, lx: 0, ly: 0, lz: 0 };
+    this.meltOn = false;
+    this.meltColors = {
+      warnFog: new THREE.Color(WARN_FOG.color),
+      fog: new THREE.Color(FIRE_FOG.color),
+      water: new THREE.Color(FIRE_FOG.uwColor),
+      white: new THREE.Color(WHITE_FOG.color),
+      sun: new THREE.Color(FIRE_LIGHTS.sunColor),
+      sky: new THREE.Color(FIRE_LIGHTS.skyColor),
+      ground: new THREE.Color(FIRE_LIGHTS.groundColor),
+      key: new THREE.Color(FIRE_LIGHTS.keyColor),
+    };
+    this.meltGrade = { ...MELT_OFF };
+    this.glareV = new THREE.Vector3();
     // Effects (src/fx/Effects.js) find the renderer through the scene to flash it and to
     // size their streaks in pixels. Not enumerable: scene.toJSON()/clone() never see it.
     Object.defineProperty(this.scene.userData, 'view', { value: this, enumerable: false, configurable: true });
@@ -163,16 +186,96 @@ export class N64Renderer {
     const k = Math.min(1, Math.max(0, Number(t) || 0));
     if (k === this.darkness) return;
     this.darkness = k;
-    const { day, storm, fogScratch } = this;
+    this.applyAtmosphere();
+  }
+
+  // AI RACE's meltdown (fx/Meltdown.js levels: warn, fire, white, glare, shimmer, seconds, and
+  // the fireball's place lx, ly, lz while `lit`): fog, actor lights and the grade follow.
+  setMeltdown(levels) {
+    const m = this.melt;
+    const c01 = (v) => Math.min(1, Math.max(0, Number(v) || 0));
+    const warn = c01(levels?.warn);
+    const fire = c01(levels?.fire);
+    const white = c01(levels?.white);
+    const atmosphere = warn !== m.warn || fire !== m.fire || white !== m.white;
+    m.warn = warn;
+    m.fire = fire;
+    m.white = white;
+    m.glare = c01(levels?.glare);
+    m.shimmer = c01(levels?.shimmer);
+    m.time = Number(levels?.seconds) || 0;
+    m.lit = !!levels?.lit;
+    if (m.lit) {
+      m.lx = levels.lx;
+      m.ly = levels.ly;
+      m.lz = levels.lz;
+    }
+    this.meltOn = warn > 0 || fire > 0 || white > 0 || m.glare > 0 || m.shimmer > 0;
+    if (atmosphere) this.applyAtmosphere();
+  }
+
+  // Fog (above and under water) and actor lights for the darkness and the meltdown.
+  applyAtmosphere() {
+    const k = this.darkness;
+    const { day, storm, fogScratch, melt: m, meltColors: F } = this;
     const range = stormFogRange(k, { near: FOG_NEAR, far: FOG_FAR }, UNDERWATER_FOG, fogScratch.range);
-    const c = fogScratch.color;
-    this.underwater.setSurfaceFog(c.lerpColors(day.fog, storm.fog, k), range.near, range.far);
-    this.underwater.setWaterFog(c.lerpColors(day.water, storm.water, k), range.uwNear, range.uwFar);
+    const c = fogScratch.color.lerpColors(day.fog, storm.fog, k);
+    const cw = fogScratch.water.lerpColors(day.water, storm.water, k);
     this.sun.color.lerpColors(day.sun, storm.sun, k);
-    this.sun.intensity = day.sunIntensity + (STORM_LIGHTS.sunIntensity - day.sunIntensity) * k;
+    let sunIntensity = day.sunIntensity + (STORM_LIGHTS.sunIntensity - day.sunIntensity) * k;
     this.ambient.color.lerpColors(day.sky, storm.sky, k);
     this.ambient.groundColor.lerpColors(day.ground, storm.ground, k);
-    this.ambient.intensity = day.ambientIntensity + (STORM_LIGHTS.ambientIntensity - day.ambientIntensity) * k;
+    let ambientIntensity = day.ambientIntensity + (STORM_LIGHTS.ambientIntensity - day.ambientIntensity) * k;
+    this.stormKey.color.copy(storm.key);
+    if (m.warn > 0 || m.fire > 0 || m.white > 0) {
+      const w = m.white > 0 ? m.white ** WHITE_FOG.curve : 0;
+      c.lerp(F.warnFog, m.warn * WARN_FOG.mix * (1 - m.fire)).lerp(F.fog, m.fire).lerp(F.white, w);
+      cw.lerp(F.water, m.fire).lerp(F.white, w);
+      meltFogRange(range.near, range.far, m.fire, m.white, fogScratch.melt);
+      range.near = fogScratch.melt.near;
+      range.far = fogScratch.melt.far;
+      meltFogRange(range.uwNear, range.uwFar, 0, m.white, fogScratch.melt);
+      range.uwNear = fogScratch.melt.near;
+      range.uwFar = fogScratch.melt.far;
+      this.sun.color.lerp(F.sun, m.fire).lerp(F.white, w);
+      this.ambient.color.lerp(F.sky, m.fire).lerp(F.white, w);
+      this.ambient.groundColor.lerp(F.ground, m.fire).lerp(F.white, w);
+      this.stormKey.color.lerp(F.key, m.fire).lerp(F.white, w);
+      const boost = 1 + FIRE_LIGHTS.whiteIntensity * m.white;
+      sunIntensity = (sunIntensity + (FIRE_LIGHTS.sunIntensity - sunIntensity) * m.fire) * boost;
+      ambientIntensity = (ambientIntensity + (FIRE_LIGHTS.ambientIntensity - ambientIntensity) * m.fire) * boost;
+    }
+    this.underwater.setSurfaceFog(c, range.near, range.far);
+    this.underwater.setWaterFog(cw, range.uwNear, range.uwFar);
+    this.sun.intensity = sunIntensity;
+    this.ambient.intensity = ambientIntensity;
+  }
+
+  // The meltdown's grade state for this frame (post/meltdown.js): the glare sits where the
+  // fireball is on screen (fainter the farther off screen, none behind the camera).
+  meltGradeState() {
+    const m = this.melt;
+    const g = this.meltGrade;
+    if (!this.meltOn) return MELT_OFF;
+    const cam = this.camera;
+    g.fire = fireGradeOf(m.warn, m.fire);
+    g.white = m.white;
+    g.shimmer = m.shimmer;
+    g.time = m.time;
+    g.aspect = cam.aspect;
+    g.glare = 0;
+    if (m.glare > 0 && m.lit) {
+      cam.updateMatrixWorld();
+      const v = this.glareV.set(m.lx, m.ly, m.lz).applyMatrix4(cam.matrixWorldInverse);
+      if (v.z < 0) {
+        v.applyMatrix4(cam.projectionMatrix);
+        g.glareX = v.x * 0.5 + 0.5;
+        g.glareY = v.y * 0.5 + 0.5;
+        const off = Math.max(Math.abs(v.x), Math.abs(v.y));
+        g.glare = m.glare * Math.min(1, Math.max(0, 2.2 - off * 1.2));
+      }
+    }
+    return g;
   }
 
   // Lightning: brightens the whole frame (white-blue, a double flicker, ~0.4 s). The flash
@@ -396,8 +499,11 @@ export class N64Renderer {
     this.underwater.update(isBelowWater(camera.position, this.waterLevelFn));
 
     const flash = this.updateFlash(performance.now() / 1000);
-    const graded = this.darkness > 0 || flash > 0;
+    const graded = this.darkness > 0 || flash > 0 || this.meltOn;
     this.updateStormKey(flash);
+    const melt = this.meltGradeState();
+    // Under the burning sky the world is fire-lit: the storm's dark, cold grade eases off.
+    const storm = this.darkness * (1 - MELT_GRADE.stormEase * this.melt.fire);
 
     renderer.info.reset();
     if (this.n64) {
@@ -406,7 +512,8 @@ export class N64Renderer {
       this.warmObjects('n64');
       renderer.render(scene, camera);
       renderer.setRenderTarget(null);
-      this.pass.setGrade(this.darkness, flash);
+      this.pass.setGrade(storm, flash);
+      this.pass.setMeltdown(melt);
       this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
       return;
     }
@@ -418,7 +525,7 @@ export class N64Renderer {
         this.underwater.warm(this.compileObject, 'grade');
         renderer.render(scene, camera);
         renderer.setRenderTarget(null);
-        this.gradePass.render(renderer, target.texture, this.darkness, flash);
+        this.gradePass.render(renderer, target.texture, storm, flash, melt);
         return;
       }
     } else if (this.gradePass.target && this.darkness === 0) {
@@ -441,6 +548,7 @@ export class N64Renderer {
     renderer.render(viewScene, viewCamera);
     renderer.setRenderTarget(null);
     this.pass.setGrade(0, 0);
+    this.pass.setMeltdown(MELT_OFF);
     this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
   }
 
@@ -450,7 +558,7 @@ export class N64Renderer {
       ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
       : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
     if (this.viewScene) return size + (this.pillarbox ? ' 4:3' : '');
-    return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '');
+    return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '') + (this.meltOn ? ' meltdown' : '');
   }
 
   dispose() {

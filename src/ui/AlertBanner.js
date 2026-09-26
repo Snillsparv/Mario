@@ -2,17 +2,24 @@
 // pulsing red vignette for a few seconds, then fade. Like the GAME OVER card it follows its
 // own box (window resizes, the 4:3 pillarbox via setViewport / alignOverlay) and the
 // devicePixelRatio, redrawing the text crisply at the new scale.
+// The meltdown's warning (fx/Meltdown.js, 'meltdown' { phase: 'warning' }, 30 s into the race)
+// shows the same way, a little longer, in three lines (hudLogic.js MELTDOWN_WARNING: WARNING!,
+// THE SKY IS OVERHEATING, POUND STOP!); it goes as soon as the race is stopped ('cancelled') or
+// the sky catches fire ('fire').
 //
 //   const banner = new AlertBanner(uiRoot, { events });  // shows itself on 'darkMode' { on: true }
-//   banner.setViewport(rect | null); banner.hide();
+//   banner.show(lines?, { ms? })  // lines: [[text, scale, style]], default AI RACE
+//   banner.setViewport(rect | null); banner.hide(); banner.kind  // 'race' | 'warning' | null
 
 import { BIG_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
-import { hudMetrics, boxStyle, AI_RACE, AI_RACE_SCALE } from './hudLogic.js';
+import { hudMetrics, boxStyle, AI_RACE, AI_RACE_SCALE, MELTDOWN_WARNING } from './hudLogic.js';
 import { pixelRatio, watchPixelRatio } from './pixelRatio.js';
 
 const SHOW_MS = 3400; // blinking, then a fade out
+const WARNING_MS = 5200; // the meltdown's warning stays up a little longer
 const FADE_MS = 600;
+const RACE_LINES = [[AI_RACE, AI_RACE_SCALE, 'red']];
 
 export class AlertBanner {
   constructor(root, { events } = {}) {
@@ -20,8 +27,14 @@ export class AlertBanner {
     this.viewport = null;
     this.el = null;
     this.px = 0;
+    this.kind = null; // what shows: 'race' (AI RACE), 'warning' (the meltdown's) or null
+    this.lines = RACE_LINES;
     events?.on('darkMode', ({ on }) => (on ? this.show() : this.hide()));
     events?.on('gameOver', () => this.hide());
+    events?.on('meltdown', ({ phase } = {}) => {
+      if (phase === 'warning') this.show(MELTDOWN_WARNING, { ms: WARNING_MS, kind: 'warning' });
+      else if ((phase === 'cancelled' || phase === 'fire') && this.kind === 'warning') this.hide();
+    });
   }
 
   setViewport(vp) {
@@ -29,8 +42,10 @@ export class AlertBanner {
     if (this.el) Object.assign(this.el.style, boxStyle(vp));
   }
 
-  show() {
+  show(lines = RACE_LINES, { ms = SHOW_MS, kind = 'race' } = {}) {
     this.hide();
+    this.lines = lines;
+    this.kind = kind;
     const el = document.createElement('div');
     el.className = 'cg-alert';
     el.style.cssText =
@@ -40,10 +55,11 @@ export class AlertBanner {
     Object.assign(el.style, boxStyle(this.viewport));
     ensureKeyframes();
     this.textBox = document.createElement('div');
-    this.textBox.style.cssText = 'display:flex;transform:translateY(-18%)';
+    this.textBox.style.cssText = 'display:flex;flex-direction:column;align-items:center;transform:translateY(-18%)';
     el.appendChild(this.textBox);
     this.el = el;
     this.px = 0;
+    this.texts = [];
     this.root.appendChild(el);
     this._layout();
     this._observer = new ResizeObserver(() => this._layout());
@@ -51,10 +67,10 @@ export class AlertBanner {
     this._unwatch = watchPixelRatio(() => this._layout());
     this._fadeTimer = setTimeout(() => {
       if (this.el === el) el.style.opacity = '0';
-    }, SHOW_MS - FADE_MS);
+    }, ms - FADE_MS);
     this._hideTimer = setTimeout(() => {
       if (this.el === el) this.hide();
-    }, SHOW_MS);
+    }, ms);
     return this;
   }
 
@@ -66,6 +82,8 @@ export class AlertBanner {
     this._unwatch();
     this.el.remove();
     this.el = this.textBox = this.text = null;
+    this.texts = [];
+    this.kind = null;
   }
 
   // Draw the text for the banner's current size: crisp device pixels, scaled like the HUD.
@@ -74,14 +92,17 @@ export class AlertBanner {
     if (!el) return;
     const dpr = pixelRatio();
     const { scale } = hudMetrics(el.clientWidth || innerWidth, el.clientHeight || innerHeight);
-    const px = scale * dpr * AI_RACE_SCALE;
+    const px = scale * dpr;
     if (Math.abs(px - this.px) < 1e-6) return;
     this.px = px;
-    const text = textCanvas(BIG_FONT, AI_RACE, px, 'red');
-    text.style.cssText = `display:block;width:${text.width / dpr}px;height:${text.height / dpr}px;image-rendering:pixelated`;
-    if (this.text) this.text.replaceWith(text);
-    else this.textBox.appendChild(text);
-    this.text = text;
+    const texts = this.lines.map(([line, size, style]) => {
+      const text = textCanvas(BIG_FONT, line, px * size, style);
+      text.style.cssText = `display:block;width:${text.width / dpr}px;height:${text.height / dpr}px;image-rendering:pixelated`;
+      return text;
+    });
+    this.textBox.replaceChildren(...texts);
+    this.texts = texts;
+    this.text = texts[0]; // the first (biggest) line
   }
 }
 

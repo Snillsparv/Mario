@@ -17,6 +17,8 @@
 //   spawnCoin(x, y, z)             a yellow coin appears over the floor there (minion drops)
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
+//   (AI RACE's meltdown, fx/Meltdown.js: on 'meltdown' { phase: 'fire' } the button's cap light
+//    dies with a fizzle and pounds on it do nothing until reset())
 //
 // AI RACE mode (docs/ARCHITECTURE.md): a ground pound landing on the button (layout.AI_BUTTON,
 // AiButton.js) emits 'sfx' button_press and 'aiRaceButton' { on: !current }; main answers with
@@ -111,6 +113,7 @@ function oneUpSpot(layout) {
 export class ObjectManager {
   constructor({ scene, collision, events, layout, player, fx = null, level = null, buildHat = null, view = scene?.userData?.view ?? null }) {
     this.events = events;
+    this.fx = fx; // (the retiring button's dust)
     this.player = player;
     this.collision = collision;
     this.tick = 0;
@@ -213,6 +216,10 @@ export class ObjectManager {
     events.on?.('signRead', () => (this.dialogOpen = true));
     events.on?.('dialogClosed', () => (this.dialogOpen = false));
     events.on?.('lightning', (e) => this.beast?.flash(e?.strength ?? 1));
+    // Past the meltdown's point of no return STOP does nothing: the button's light dies.
+    events.on?.('meltdown', (e) => {
+      if (e?.phase === 'fire') this._buttonDies();
+    });
 
     this.group = new THREE.Group();
     this.group.name = 'objects';
@@ -243,6 +250,14 @@ export class ObjectManager {
     this.events.emit('sfx', { name: 'button_press', pos: { x: b.x, y: b.capTop0, z: b.z } });
     this.events.emit('aiRaceButton', { on });
     if (!on) b.retire();
+  }
+
+  // The meltdown can't be stopped any more: the button's cap light dies with a fizzle.
+  _buttonDies() {
+    const b = this.button;
+    if (!b || b.dead || b.state === 'gone') return;
+    b.setDead(true);
+    this.events.emit('sfx', { name: 'fireball_fizzle', pos: { x: b.x, y: b.capTop0, z: b.z }, pitch: 0.7 });
   }
 
   // The retired button starts sinking away: a grinding rumble and dust round its rim.

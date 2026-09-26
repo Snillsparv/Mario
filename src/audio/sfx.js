@@ -1159,6 +1159,77 @@ export const SFX = {
     }
     return 0.25;
   },
+
+  // ---- AI RACE's meltdown (fx/Meltdown.js): none of them positional
+
+  // The warning's klaxon (every 1.5 s from 30 s until the light): two rising 'whoop's of a
+  // harsh sawtooth and a square a fifth above it through a resonant low-pass that opens with
+  // them, over a triangle buzz an octave down.
+  meltdown_klaxon(ctx, out, t, { p }) {
+    const dur = 0.5;
+    for (const dt of [0, 0.56]) {
+      const s = t + dt;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 5;
+      sweep(lp.frequency, s, [[0, 900], [dur * 0.8, 3400], [dur, 2200]]);
+      lp.connect(envelope(ctx, out, s, { peak: 0.17, dur, attack: 0.03, hold: dur - 0.12 }));
+      for (const [wave, ratio, detune] of [['sawtooth', 1, -7], ['square', 1.498, 6]]) {
+        const o = ctx.createOscillator();
+        o.type = wave;
+        o.detune.value = detune;
+        sweep(o.frequency, s, [[0, 300 * ratio * p], [dur * 0.75, 640 * ratio * p], [dur, 600 * ratio * p]]);
+        o.connect(lp);
+        o.start(s);
+        o.stop(s + dur + 0.05);
+      }
+      tone(ctx, out, s, { wave: 'triangle', freq: 150 * p, to: 320 * p, glide: dur * 0.75, dur, gain: 0.08, attack: 0.03, hold: dur - 0.12 });
+    }
+    return 1.1;
+  },
+
+  // The sky catching fire (40 s): a huge 'whoomph', a deep swelling rush of flame sweeping up
+  // over the sky (fluttering), a sub thump under it and a scatter of crackles as it catches.
+  meltdown_ignite(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 58 * p, to: 30, glide: 1.2, dur: 1.9, gain: 0.3, attack: 0.04 });
+    const rush = noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 200], [0.8, 2800], [2.4, 600]], q: 1.2, dur: 2.6, gain: 0.46, attack: 0.55 });
+    lfo(ctx, rush.frequency, t, 2.6, { rate: 11, depth: 260 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 150, dur: 2.4, gain: 0.3, attack: 0.4, kind: 'brown' });
+    crackles(ctx, out, t + 0.45, { count: 26, span: 2, gain: 0.1, lo: 800, hi: 3800, front: 0.8 });
+    return 2.7;
+  },
+
+  // The light blooming (46 s): a deep sub boom, then a bright shimmering chord of sines rising
+  // and swelling with the light, over a hiss that grows.
+  meltdown_flash(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 48 * p, to: 22, glide: 1.5, dur: 2.6, gain: 0.36, attack: 0.01 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 1800], [2.5, 120]], dur: 2.8, gain: 0.34, attack: 0.005, kind: 'brown' });
+    noise(ctx, out, t, { filter: 'highpass', freq: 2600, to: 6000, dur: 2.8, gain: 0.12, attack: 1.2 });
+    for (const [ratio, gain] of [[1, 0.06], [1.5, 0.04], [2.01, 0.03]]) {
+      const o = tone(ctx, out, t + 0.2, { freq: 440 * ratio * p, to: 880 * ratio * p, glide: 2.5, dur: 2.7, gain, attack: 1.4 });
+      lfo(ctx, o.detune, t + 0.2, 2.7, { rate: 6.5, depth: 18 });
+    }
+    return 2.95;
+  },
+
+  // The shockwave passing (a blast of wind and grit and a hard low thud).
+  meltdown_blast(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 80 * p, to: 26, glide: 0.5, dur: 1.2, gain: 0.4, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: [[0, 3200], [1.8, 300]], dur: 2, gain: 0.45, attack: 0.01 });
+    noise(ctx, out, t, { freq: [[0, 1400], [1.5, 500]], q: 0.7, dur: 1.8, gain: 0.25, attack: 0.05 });
+    crackles(ctx, out, t, { count: 30, span: 1.4, gain: 0.08, lo: 1500, hi: 5000, front: 1.5 });
+    return 2.1;
+  },
+
+  // The roar collapsing into light (full white): a high, pure ring fading out, two close sines
+  // beating slowly and a quiet octave under them, like ears ringing after a blast.
+  meltdown_ring(ctx, out, t, { p }) {
+    const f = 3150 * p;
+    for (const [ratio, gain] of [[1, 0.09], [1.004, 0.07], [0.5, 0.03]]) {
+      tone(ctx, out, t, { freq: f * ratio, dur: 2.9, gain, attack: 0.02, hold: 0.5 });
+    }
+    return 2.95;
+  },
 };
 
 // The cached buffers and waves the rarer sounds would otherwise make on their first play (a
@@ -1221,4 +1292,11 @@ export const SFX_INFO = {
   face_stretch: { gap: 0.07, max: 2 },
   face_boing: { gap: 0.05, max: 3 },
   face_boop: { gap: 0.15, max: 1 },
+  // AI RACE's meltdown (fx/Meltdown.js): one of each at a time (the klaxon repeats every 1.5 s,
+  // sooner than a voice slot is freed: 1.1 s + the engine's 0.5 s tail, so two may overlap)
+  meltdown_klaxon: { gap: 1.2, max: 2 },
+  meltdown_ignite: { gap: 2, max: 1 },
+  meltdown_flash: { gap: 2, max: 1 },
+  meltdown_blast: { gap: 2, max: 1 },
+  meltdown_ring: { gap: 2, max: 1 },
 };

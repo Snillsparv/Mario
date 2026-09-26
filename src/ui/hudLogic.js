@@ -214,8 +214,28 @@ export const GAME_OVER_SCALE = 2;
 export const AI_RACE = 'AI RACE';
 export const AI_RACE_SCALE = 2;
 
+// The meltdown's warning (AlertBanner.js, 30 s into AI RACE: fx/Meltdown.js): lines of
+// [text, scale (times the HUD scale), text style].
+export const MELTDOWN_WARNING = Object.freeze([
+  ['WARNING!', 2, 'red'],
+  ['THE SKY IS OVERHEATING', 1, 'gold'],
+  ['POUND STOP!', 1.25, 'red'],
+]);
+
 // Every string the UI draws with each font (the glyph-coverage test checks these).
-export const BIG_STRINGS = ['0123456789×', 'PAUSE', COURSE_NAME, START_PRESS, UNLOCK_PRESS, TOUCH_UNLOCK_PRESS, 'PIP', GAME_OVER, AI_RACE, ...PHONE_BIG_STRINGS];
+export const BIG_STRINGS = [
+  '0123456789×',
+  'PAUSE',
+  COURSE_NAME,
+  START_PRESS,
+  UNLOCK_PRESS,
+  TOUCH_UNLOCK_PRESS,
+  'PIP',
+  GAME_OVER,
+  AI_RACE,
+  ...MELTDOWN_WARNING.map(([text]) => text),
+  ...PHONE_BIG_STRINGS,
+];
 export const SMALL_STRINGS = [
   ...KEY_CONTROLS.flat(),
   ...PAD_CONTROLS.flat(),

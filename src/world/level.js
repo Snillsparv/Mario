@@ -7,6 +7,7 @@
 //     poles?: Array<{ x, z, y0, y1, radius }>,  // climbable (tree trunks)
 //     update?(time, camera)                     // per render frame animation (seconds)
 //     setDarkness?(t)                           // AI RACE mode crossfade, 0 = normal .. 1 = dark
+//     setMeltdown?(levels)                      // sky: AI RACE's meltdown (fx/Meltdown.js)
 //     addScorch?(x, z, radius)                  // terrain: a burn mark on the ground
 //     clearScorches?()                          // terrain: remove all burn marks
 //     addCircuit?(x, z, radius, { grow }) -> id // terrain: glowing circuit traces spreading out
@@ -55,6 +56,10 @@ export function buildLevel(scene) {
     // AI RACE mode: 0 = the sunny grounds, 1 = the stormy sci-fi horror version.
     setDarkness(t) {
       for (const p of parts) p.setDarkness?.(t);
+    },
+    // AI RACE's meltdown (fx/Meltdown.js levels): the sky's warning glow, flames and white-out.
+    setMeltdown(levels) {
+      for (const p of parts) p.setMeltdown?.(levels);
     },
     addScorch(x, z, radius) {
       for (const p of parts) p.addScorch?.(x, z, radius);

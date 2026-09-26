@@ -20,6 +20,8 @@
 //     drops in again.
 //   * losing a life at x0 lives: GAME OVER card, then back to the title; starting again
 //     gives 4 lives and 0 coins.
+//   * AI RACE not stopped within 40 s (fx/Meltdown.js): the sky catches fire, the world burns
+//     white and it is GAME OVER the same way, whatever the lives left.
 //   * pause freezes everything drawn from the simulation clock (world, objects, hero).
 
 import { FRAME_DT, MAX_STEPS_PER_FRAME, GAME_OVER_SECONDS } from './core/constants.js';
@@ -44,6 +46,7 @@ import { PhonePanel } from './ui/PhonePanel.js';
 import { RemotePad } from './net/RemotePad.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
+import { Meltdown } from './fx/Meltdown.js';
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
@@ -81,11 +84,14 @@ async function start() {
   // Rain, lightning, fire and explosions (AI RACE mode); objects use it for fireball impacts.
   const fx = new Effects({ scene, events, collision: level.collision, layout: level.layout });
   const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player, fx, level });
+  // AI RACE's 40-second clock: not stopped in time, the sky catches fire and the world burns
+  // white (it listens to 'darkMode'; ticked below while playing; its 'over' ends the game).
+  const meltdown = new Meltdown({ events, targets: { view, level, fx, audio, shake }, trees: level.trees });
   const hud = new HUD(uiRoot, { events });
   // Sign dialogs: the Player enters 'reading' and emits 'signRead'; the box takes the input
   // until its last page, then Pip is released (the closing press never reaches him).
   const dialog = new DialogBox(uiRoot, { events });
-  new AlertBanner(uiRoot, { events }); // flashes 'AI RACE' when the mode switches on
+  new AlertBanner(uiRoot, { events }); // flashes 'AI RACE' when the mode switches on (and the meltdown's warning)
   // On-screen controller on touch screens (?touch=1 forces it): feeds input.setTouchState.
   const touch = new TouchController({ input, events, view });
   // A phone on the same network as the controller, through the dev/preview server's relay
@@ -128,15 +134,18 @@ async function start() {
     state.lives++;
   });
 
-  // AI RACE mode: the objects' floor button toggles it; every system fades with darkT.
+  // AI RACE mode: the objects' floor button toggles it; every system fades with darkT. Past
+  // the meltdown's point of no return nothing switches it off (the button is dead by then).
   events.on('aiRaceButton', ({ on }) => {
+    if (!on && meltdown.doomed) return;
     state.dark = on;
     events.emit('darkMode', { on });
   });
   // Rustmaw thrown off the roof and wrecked: the mode ends as if STOP was pressed (the storm
   // clears over the usual fade, the button pops back up; objects put the reward star out).
+  // Too late once the sky is on fire: the meltdown goes on.
   events.on('bossDefeated', () => {
-    if (!state.dark) return;
+    if (!state.dark || meltdown.doomed) return;
     state.dark = false;
     events.emit('darkMode', { on: false });
   });
@@ -222,9 +231,12 @@ async function start() {
 
   // GAME OVER card over the frozen world (audio plays its jingle on 'gameOver'), then a fresh
   // world behind the title: the new game's pickups, star and counters are back before the
-  // title shows, and play starts with 4 lives and 0 coins.
+  // title shows, and play starts with 4 lives and 0 coins. Also the meltdown's end (the white
+  // held a second), whatever the lives left: a direct "game over now".
   function gameOver() {
+    if (state.mode === 'gameover') return;
     state.mode = 'gameover';
+    state.gameOverPending = false;
     state.gameOvers++;
     hud.setPaused?.(false);
     dialog.close();
@@ -233,6 +245,7 @@ async function start() {
     setTimeout(async () => {
       card.remove();
       objects.reset(); // also takes the star it awarded back off player.stars
+      meltdown.reset(); // the sky, grade, white-out, embers, light and sounds all off, clock stopped
       if (state.dark || state.darkT > 0) {
         state.dark = false;
         state.darkT = 0;
@@ -268,6 +281,11 @@ async function start() {
       const step = FRAME_DT / DARK_FADE_SECONDS;
       state.darkT = darkGoal > state.darkT ? Math.min(1, state.darkT + step) : Math.max(0, state.darkT - step);
       applyDarkness(state.darkT);
+    }
+    // AI RACE's clock (counts only here: while playing, not paused). Its white held: game over.
+    if (meltdown.update(camera.position, cam.getYaw()) === 'over') {
+      gameOver();
+      return;
     }
     if (dialog.isOpen) {
       dialog.update(controller);
@@ -333,6 +351,8 @@ async function start() {
     model,
     dialog,
     fx,
+    meltdown, // AI RACE's 40-second clock (fx/Meltdown.js): meltdown.skipTo(seconds), .phase, .levels
+    shake,
     touch,
     remotePad,
     phone,

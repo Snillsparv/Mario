@@ -27,6 +27,14 @@
 // (SFX_INFO duck). The first minion to surface in a storm ('minion_emerge') brings the
 // minions' stinger, once per storm. The locked castle's laugh rings in one shared hall
 // reverb, made ahead at idle time (see prepare).
+//
+// AI RACE's meltdown (fx/Meltdown.js): the klaxon comes as 'sfx' meltdown_klaxon. On
+// 'meltdown' { phase: 'fire' } the sky catching fire whoomphs (meltdown_ignite), the storm's
+// rain beds and the dark track fade out and the inferno (inferno.js: a roaring blaze, crackles,
+// a deep rumble) rises with setMeltdown(levels) (called by the Meltdown each tick while its look
+// changes); 'light' booms (meltdown_flash) and the roar swells with levels.light; 'shock' (the
+// shockwave passing) blasts; 'white' collapses the roar into a high, fading ring (meltdown_ring).
+// No music starts again until the meltdown ends (levels back to 0, or a new game).
 
 import { SONGS } from './songs.js';
 import { compileSong } from './compile.js';
@@ -35,6 +43,7 @@ import { Sequencer } from './Sequencer.js';
 import { SFX, SFX_INFO, footstepLevel, landLevel, prepareSfx } from './sfx.js';
 import { Ambience } from './ambience.js';
 import { Storm } from './storm.js';
+import { Inferno } from './inferno.js';
 import { hallImpulse, smoothRamp } from './synth.js';
 import { SPAWN, LAWN_BASE } from '../world/layout.js';
 import { clamp } from '../core/math.js';
@@ -59,6 +68,8 @@ const PAUSE_DUCK = 0.35;
 const FANFARE_SECONDS = 2.8;
 const GAME_OVER_AMB_DUCK = 0.3; // the frozen world's ambience drops back under the jingle
 const DARK_FADE = 3; // AI RACE mode crossfade, as long as the picture's
+const MELT_RAIN_FADE = 2.5; // the meltdown: the rain beds fade as the sky catches fire...
+const MELT_MUSIC_FADE = 3; // ...and the dark track with them
 const FLY_TRACKS = new Set(['fly', 'fly_dark']); // the winged hat's themes (sunny, storm)
 const FLY_OUT_FADE = 2.5; // the flying theme fading out as the hat comes off in sunny weather
 const PREPARE_IDLE_MS = 3000; // each step of prepare() runs within this long of the one before
@@ -85,6 +96,8 @@ export class AudioEngine {
     this.mix = null;
     this.ambience = null;
     this.storm = null;
+    this.inferno = null; // the meltdown's blaze (inferno.js)
+    this.melt = { fire: 0, light: 0, doom: false }; // the meltdown's levels; doom: past 40 s
     this.dark = false; // AI RACE mode (kept while there is no context, applied when one is made)
     this.flying = false; // the winged hat is on (its theme has the music slot)
     this.minionsHeard = false; // the minions' stinger has played in this storm
@@ -156,7 +169,7 @@ export class AudioEngine {
       mix.master.gain.value = 1;
       this.attach(ctx, mix);
     } catch (err) {
-      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null, hall: null });
+      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null, inferno: null, hall: null });
       this.failed = true;
       this.warnOnce(err);
       Promise.resolve()
@@ -176,12 +189,14 @@ export class AudioEngine {
       spatial: (pos) => this.spatial(pos),
     });
     const storm = new Storm(ctx, mix.amb);
-    Object.assign(this, { ctx, mix, ambience, storm, hall: null });
+    const inferno = new Inferno(ctx, mix.amb);
+    Object.assign(this, { ctx, mix, ambience, storm, inferno, hall: null });
     if (this.dark) {
       ambience.setDark(true, 0);
       ambience.birds = 0;
-      storm.set(true, 1);
+      if (!this.melt.doom) storm.set(true, 1);
     }
+    if (this.melt.fire > 0 || this.melt.light > 0) inferno.set(this.melt.fire, this.melt.light);
     this.applyLevels();
     this.prepare(ctx);
   }
@@ -287,10 +302,38 @@ export class AudioEngine {
     on = !!on;
     if (on === this.flying) return;
     this.flying = on;
+    if (this.melt.doom) return; // the burning sky has the stage: no music
     if (on) this.playMusic(this.dark ? 'fly_dark' : 'fly');
     else if (FLY_TRACKS.has(this.wantMusic)) {
       if (this.dark) this.playMusic('dark');
       else this.stopMusic(FLY_OUT_FADE);
+    }
+  }
+
+  // AI RACE's meltdown levels (fx/Meltdown.js, each tick while they change): the inferno's
+  // level follows the fire, its swell the light. All 0 ends the meltdown (a new game).
+  setMeltdown(levels) {
+    const fire = levels?.fire > 0 ? Math.min(1, levels.fire) : 0;
+    const light = levels?.light > 0 ? Math.min(1, levels.light) : 0;
+    if (fire === this.melt.fire && light === this.melt.light) return; // (called every tick)
+    this.melt.fire = fire;
+    this.melt.light = light;
+    if (!fire && !light) this.melt.doom = false;
+    this.inferno?.set(fire, light);
+  }
+
+  // The meltdown's moments ('meltdown' { phase }).
+  meltdownPhase(phase) {
+    if (phase === 'fire') {
+      this.melt.doom = true;
+      this.play('meltdown_ignite');
+      this.storm?.set(false, MELT_RAIN_FADE);
+      if (this.wantMusic && !own(SONGS, this.wantMusic)?.finalBar) this.stopMusic(MELT_MUSIC_FADE);
+    } else if (phase === 'light') this.play('meltdown_flash');
+    else if (phase === 'shock') this.play('meltdown_blast');
+    else if (phase === 'white') {
+      this.inferno?.collapse();
+      this.play('meltdown_ring');
     }
   }
 
@@ -368,6 +411,7 @@ export class AudioEngine {
       if (this.track && this.ctx.currentTime >= this.track.seq.endTime) this.endTrack();
       this.ambience.update(dt, this.listener);
       this.storm.update(dt);
+      this.inferno.update(dt);
     });
   }
 
@@ -422,6 +466,9 @@ export class AudioEngine {
       if (FLY_TRACKS.has(this.wantMusic)) this.stopMusic();
       this.clearDucks(); // a new game is never paused, fanfaring or over
       this.setDark(false); // nor stormy (main resets it after a game over; this is a backstop)
+      this.melt.doom = false; // nor burning
+      this.melt.fire = this.melt.light = 0;
+      this.inferno?.stop();
       if (hasUserActivation()) this.unlock();
     });
     // GAME OVER card: a short original jingle cuts in on the music slot (and through any
@@ -443,6 +490,7 @@ export class AudioEngine {
     });
     // AI RACE mode and its storm (emitted by main, objects and effects).
     on('darkMode', (e) => this.setDark(e.on));
+    on('meltdown', (e) => this.meltdownPhase(e.phase));
     on('lightning', (e) => this.thunder(e.strength));
     on('kaijuRoar', (e) => this.play('kaiju_roar', e));
     on('aiRaceButton', (e) => this.play('button_press', e)); // deduped with an sfx of it

@@ -13,6 +13,10 @@
 // the first minion of a storm brings the minions' stinger. A hat grabbed again while its
 // theme is still fading out brings that same theme back (no second copy starts over it).
 // The locked castle's laugh shares one hall reverb, made ahead at idle time.
+// AI RACE's meltdown: the sky catching fire whoomphs, fades the rain and the dark track and
+// raises the inferno (a roaring blaze, crackles, a rumble) with the levels; the light booms and
+// the roar swells; the shockwave blasts; the white-out collapses the roar into a ring; no music
+// comes back until it ends; the inferno is built lazily and torn down once faded.
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
@@ -24,6 +28,7 @@ import { Sequencer } from '../src/audio/Sequencer.js';
 import { INSTRUMENTS } from '../src/audio/instruments.js';
 import { LEVELS } from '../src/audio/mixer.js';
 import { Storm } from '../src/audio/storm.js';
+import { Inferno, INFERNO_MIX } from '../src/audio/inferno.js';
 import { smoothRamp } from '../src/audio/synth.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
@@ -1117,4 +1122,135 @@ test('a laugh before the idle moment makes the shared hall on the spot; the idle
     restore();
     mock.timers.tick(5000);
   }
+});
+
+test('inferno: nothing until the fire; roar, rush and rumble with self-disconnecting crackles; the light swells it; collapse cuts it; torn down once faded', () => {
+  const ctx = new FakeAudioContext();
+  ctx.state = 'running';
+  const sources = [];
+  for (const type of ['BufferSource', 'Oscillator']) {
+    const make = ctx[`create${type}`].bind(ctx);
+    ctx[`create${type}`] = () => {
+      const n = make();
+      n.stopped = false;
+      n.stop = () => (n.stopped = true);
+      sources.push(n);
+      return n;
+    };
+  }
+  const inferno = new Inferno(ctx, ctx.destination);
+  inferno.set(0, 0);
+  inferno.update(1 / 60);
+  assert.equal(inferno.active, false);
+  assert.equal(sources.length, 0, 'nothing built before the fire');
+  inferno.set(0.5, 0);
+  const beds = sources.length;
+  assert.ok(beds >= 6 && beds <= 14, `bed sources ${beds}`);
+  const g = inferno.graph;
+  assert.equal(g.bus.gain.calls.at(-1)[0], 'setTargetAtTime');
+  assert.equal(g.bus.gain.calls.at(-1)[1], 0.5, 'the blaze follows the fire');
+  for (let i = 0; i < 300; i++) {
+    ctx.currentTime += 1 / 60;
+    inferno.update(1 / 60);
+  }
+  const crackles = sources.slice(beds);
+  assert.ok(crackles.length > 20 && crackles.length < 70, `${crackles.length} crackles in 5 s at half fire`);
+  assert.ok(crackles.every((c) => typeof c.onended === 'function'));
+  // The light swells the roar and opens it up.
+  const roarAt = (l) => {
+    inferno.set(1, l);
+    return [g.roar.gain.calls.at(-1)[1], g.roarFilter.frequency.calls.at(-1)[1]];
+  };
+  const [calm, calmHz] = roarAt(0);
+  const [loud, loudHz] = roarAt(1);
+  assert.equal(calm, INFERNO_MIX.roar);
+  assert.ok(loud > calm * 2 && loudHz > calmHz * 3, 'a swelling roar');
+  // The white-out: the roar collapses at once and stays down while the levels go on.
+  inferno.collapse();
+  const ramp = g.bus.gain.calls.findLast(([m]) => m === 'linearRampToValueAtTime');
+  assert.ok(ramp[1] === 0 && ramp[2] - ctx.currentTime < 0.3);
+  inferno.set(1, 1);
+  assert.equal(g.bus.gain.calls.at(-1)[1], 0, 'stays collapsed');
+  const n = sources.length;
+  for (let i = 0; i < 60; i++) {
+    ctx.currentTime += 1 / 60;
+    inferno.update(1 / 60);
+  }
+  assert.equal(sources.length, n, 'no crackles once collapsed');
+  // The meltdown ends: faded out and torn down, every source stopped.
+  inferno.set(0, 0);
+  for (let i = 0; i < 150; i++) {
+    ctx.currentTime += 1 / 60;
+    inferno.update(1 / 60);
+  }
+  assert.equal(inferno.active, false);
+  assert.ok(sources.slice(0, beds).every((s) => s.stopped), 'every bed source stopped');
+  inferno.set(0.3, 0);
+  assert.equal(inferno.graph.bus.gain.calls.at(-1)[1], 0.3, 'a new meltdown builds it afresh, not collapsed');
+});
+
+test('meltdown events: the fire whoomphs, fades the rain and the dark track, raises the inferno; light, shock and white play their sounds; no music until it ends', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const names = ['meltdown_ignite', 'meltdown_flash', 'meltdown_blast', 'meltdown_ring', 'meltdown_klaxon'];
+  const { log, restore } = recordSfx(names, SFX.meltdown_klaxon(new FakeAudioContext(), fakeNode(), 0, { p: 1 }));
+  try {
+    events.emit('darkMode', { on: true });
+    run(audio, 30);
+    events.emit('sfx', { name: 'meltdown_klaxon' });
+    assert.equal(log.meltdown_klaxon.length, 1, 'the klaxon comes as an sfx');
+    // It repeats every KLAXON_EVERY (1.5 s): each blast plays, although the one before still
+    // holds its voice slot (its length plus the engine's tail).
+    for (let i = 0; i < 4; i++) {
+      audio.ctx.currentTime += 1.5;
+      events.emit('sfx', { name: 'meltdown_klaxon' });
+    }
+    assert.equal(log.meltdown_klaxon.length, 5, 'every blast is heard');
+    assert.equal(audio.track?.name, 'dark');
+    assert.equal(audio.inferno.active, false);
+    const t0 = audio.ctx.currentTime;
+    events.emit('meltdown', { phase: 'fire', seconds: 40 });
+    assert.equal(log.meltdown_ignite.length, 1);
+    assert.equal(audio.wantMusic, null, 'the dark track fades out');
+    assert.equal(lastRamp(audio.storm.graph.bus.gain)[1], 0, 'the rain fades');
+    assert.ok(lastRamp(audio.storm.graph.bus.gain)[2] > t0 + 2, 'over a couple of seconds');
+    audio.setMeltdown({ fire: 1, light: 0 });
+    assert.ok(audio.inferno.active, 'the blaze rises');
+    events.emit('wingHat', { on: true });
+    assert.equal(audio.wantMusic, null, 'no flying theme over the burning sky');
+    events.emit('wingHat', { on: false });
+    events.emit('meltdown', { phase: 'light', seconds: 46 });
+    assert.equal(log.meltdown_flash.length, 1);
+    audio.setMeltdown({ fire: 1, light: 0.5 });
+    events.emit('meltdown', { phase: 'shock', seconds: 50 });
+    assert.equal(log.meltdown_blast.length, 1);
+    events.emit('meltdown', { phase: 'white', seconds: 53 });
+    assert.equal(log.meltdown_ring.length, 1);
+    assert.equal(audio.inferno.collapsed, true, 'the roar collapses into the ring');
+    // GAME OVER, then main's reset hands all 0: the inferno goes, music may play again.
+    events.emit('gameOver');
+    assert.equal(audio.track.name, 'game_over');
+    audio.setMeltdown({ fire: 0, light: 0 });
+    run(audio, 3);
+    assert.equal(audio.inferno.active, false);
+    assert.equal(audio.melt.doom, false);
+    events.emit('wingHat', { on: true });
+    assert.match(audio.wantMusic, /^fly/, 'music may play again');
+  } finally {
+    restore();
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('meltdown levels set before audio exists apply when the context is made; gameStart ends them', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  audio.setMeltdown({ fire: 1, light: 0.2 });
+  await audio.unlock();
+  assert.ok(audio.inferno.active);
+  events.emit('gameStart');
+  run(audio, 2);
+  assert.equal(audio.inferno.active, false);
 });
