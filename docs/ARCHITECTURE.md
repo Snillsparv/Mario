@@ -331,8 +331,8 @@ into the hair; clear lenses), rosy cheeks, a round button nose, no moustache; ro
 hair (tufts sticking out from under the cap at the sides and the nape, a few locks over the
 forehead under the bill); a plain light blue baseball cap (a round six-panel crown with
 darker seams, a button on top, a curved, slightly darker bill pointing forward; no letter,
-emblem or logo); a red t-shirt with a white π on the chest and short sleeves (bare arms);
-big bare cartoon hands; black jeans; white sneakers with grey tongues and red soles over
+emblem or logo); a red t-shirt with a white π on the chest and short sleeves (bare arms),
+a little round at the belly; big white cartoon gloves with flared cuffs; black jeans; white sneakers with grey tongues and red soles over
 odd ankle socks (blue on the left foot, yellow on the right). Built from low-poly
 primitives with Lambert/Gouraud shading lit by the sun + ambient (the head's parts in
 `model/head.js`, shared with the face screen), every bone merged into one vertex-coloured
@@ -562,7 +562,7 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
   another 7 units (pitch and level rising with it), `face_boing` on release (lower and longer the
   further it was pulled), `face_boop` for a tap on the nose, `menu_select` on Start, a soft
   boing as the head pops in. All panned by where they happen.
-* **Pointer** (`face/mitten.js`): one of his big bare cartoon hands in pixel art (the HUD
+* **Pointer** (`face/mitten.js`): one of his big white-gloved cartoon hands in pixel art (the HUD
   icons' outline and shadow), open while it hovers, a fist while it pulls; a DOM element over the overlay (`cursor: none`),
   shown for the mouse only.
 * **Backdrop** (`face/backdrop.js`): one fullscreen triangle, procedural: the sky's blues

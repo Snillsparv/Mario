@@ -129,7 +129,7 @@ test('round glasses sit in front of the eyes, clear of the face, following the h
   assert.ok(colorsOf(boneMesh(model.rig.head).geometry).has('glasses'));
 });
 
-test('the outfit: red pi t-shirt, bare arms and hands, black jeans, odd socks in sneakers', () => {
+test('the outfit: red pi t-shirt, bare arms, white gloves, black jeans, odd socks in sneakers', () => {
   const model = new PlayerModel();
   model.update({ pos: { x: 0, y: 0, z: 0 }, anim: 'idle', animTime: 0.5, floorY: 0 }, 1 / 60);
   const { rig } = model;
@@ -149,10 +149,10 @@ test('the outfit: red pi t-shirt, bare arms and hands, black jeans, odd socks in
   const size = box.getSize(new THREE.Vector3());
   assert.ok(size.x > 16 && size.x < 26 && size.y > 10 && size.y < 20, `pi ${size.x.toFixed(1)} x ${size.y.toFixed(1)}`);
   assert.ok(box.min.z > 9 && box.max.z > 15 && Math.abs(box.min.x + box.max.x) < 4, 'on the front of the chest');
-  // Short sleeves: bare forearms and hands (skin only below the elbow).
+  // Short sleeves: bare forearms (skin below the elbow), and white cartoon gloves on the hands.
   for (const s of ['L', 'R']) {
     assert.deepEqual([...colorsOf(boneMesh(rig[`arm${s}`].elbow).geometry)], ['skin'], `${s} forearm`);
-    assert.deepEqual([...colorsOf(boneMesh(rig[`arm${s}`].wrist).geometry)], ['skin'], `${s} hand`);
+    assert.deepEqual([...colorsOf(boneMesh(rig[`arm${s}`].wrist).geometry)], ['glove'], `${s} gloved hand`);
     assert.ok(colorsOf(boneMesh(rig[`arm${s}`].shoulder).geometry).has('shirt'), `${s} sleeve`);
     assert.deepEqual([...colorsOf(boneMesh(rig[`leg${s}`].thigh).geometry)], ['jeans'], `${s} thigh`);
   }

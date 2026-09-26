@@ -130,9 +130,9 @@ function ledgeClimb(p, c) {
 
 // ---- trunks -------------------------------------------------------------------------------
 
-const HUG_Z = 7; // body pressed up to the bark (chest ~5 off the surface)
-const HAND_X = 30; // mittens wrap the trunk's front-left / front-right, ~12 past its face
-const HAND_Z = POLE_GAP + 8;
+const HUG_Z = 6; // body pressed up to the bark (the round belly just touching it)
+const HAND_X = 32; // the big gloves wrap the trunk's front-left / front-right, ~14 past its face
+const HAND_Z = POLE_GAP + 7;
 const HAND_Y = 96;
 
 // Hugging the trunk: knees apart gripping the bark, head tipped back looking up the trunk

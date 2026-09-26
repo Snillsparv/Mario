@@ -46,15 +46,15 @@ function buildHips() {
   hips.add(mesh(ellipsoid(15, 9, 12), 'jeans', 0, -3, 0));
   // The t-shirt's lower half hangs loose over the jeans and follows the pelvis, so leg swings
   // do not tear it.
-  hips.add(mesh(lathe([[16.5, -5.6], [20.2, -5.2], [20.3, -2], [19.3, 4], [18.6, 9]], 12).scale(1, 1, 0.9), 'shirt'));
+  hips.add(mesh(lathe([[17.5, -5.6], [21.4, -5.2], [22.3, -2], [22.1, 4], [21.3, 9]], 12).scale(1, 1, 0.94), 'shirt'));
   return hips;
 }
 
-// The torso's t-shirt profile ([radius, y] bottom to top; scaled 0.88 front to back). Its hem
-// reaches ~10 units down inside the lower half so the waist never opens up when the spine
-// bends or twists (up to ~0.45 rad).
-const SHIRT = [[17.8, -10], [18.6, 0], [18.8, 10], [18, 20], [15.5, 28], [10, 33], [0.1, 35]];
-const SHIRT_DEPTH = 0.88;
+// The torso's t-shirt profile ([radius, y] bottom to top; scaled SHIRT_DEPTH front to back),
+// round at the belly. Its hem reaches ~10 units down inside the lower half so the waist never
+// opens up when the spine bends or twists (up to ~0.45 rad).
+const SHIRT = [[20.2, -10], [21.6, 0], [21.2, 9], [19.2, 18], [16, 27], [10, 33], [0.1, 35]];
+const SHIRT_DEPTH = 0.93;
 
 // The front of the shirt (torso space) at (x, y): the faceted 12-sided lathe's surface.
 function shirtFrontZ(x, y) {
@@ -158,12 +158,14 @@ function buildArm(side) {
   // The hand and its wrist hang off their own joint, which punches swell.
   const wrist = group(0, -D.FOREARM, 0);
   elbow.add(wrist);
-  wrist.add(mesh(new THREE.CylinderGeometry(3.9, 4.8, 6, 7, 1, true), 'skin', 0, 1, 0));
+  // White cartoon gloves with a flared cuff at the wrist.
+  wrist.add(mesh(new THREE.CylinderGeometry(4.6, 6.9, 6.5, 8, 1, true), 'glove', 0, 1, 0));
   const hand = group(0, -D.HAND_OFFSET, 0);
   hand.name = 'hand'; // marker at the hand's centre (its mesh merges into the wrist)
   wrist.add(hand);
-  hand.add(mesh(ellipsoid(D.HAND_R, 10.4, 8.9), 'skin'));
-  hand.add(mesh(ellipsoid(3.8, 4.8, 3.8, 6, 4), 'skin', -side * 4.5, 3.2, 7)); // thumb
+  const k = D.HAND_R / 9.4;
+  hand.add(mesh(ellipsoid(D.HAND_R, 10.4 * k, 8.9 * k), 'glove'));
+  hand.add(mesh(ellipsoid(3.8 * k, 4.8 * k, 3.8 * k, 6, 4), 'glove', -side * 4.5 * k, 3.2 * k, 7 * k)); // thumb
   return { shoulder, elbow, wrist, hand };
 }
 

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 
 export const COLORS = {
   skin: 0xf4c49c,
+  glove: 0xf7f7f3, // white cartoon gloves
   nose: 0xf2ae8a,
   cheek: '#f28b82',
   // Brown, a bit rowdy: the hair mass and the lighter tips of its tufts and locks.
