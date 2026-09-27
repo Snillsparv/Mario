@@ -222,7 +222,7 @@ test('pounding STOP retires the button: it sinks into the ground and is gone unt
   assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, b.capTop0);
 });
 
-test('past the meltdown\'s point of no return the button\'s light dies and pounds do nothing, until reset()', () => {
+test('past the meltdown\'s point of no return (all white) the button\'s light dies and pounds do nothing, until reset()', () => {
   const { objects, player, events, log, step, sfx } = setup();
   const b = objects.button;
   const pound = () => {
@@ -240,6 +240,9 @@ test('past the meltdown\'s point of no return the button\'s light dies and pound
   events.emit('meltdown', { phase: 'warning', seconds: 30 });
   assert.equal(b.dead, false, 'the warning: STOP still works');
   events.emit('meltdown', { phase: 'fire', seconds: 40 });
+  events.emit('meltdown', { phase: 'light', seconds: 46 });
+  assert.equal(b.dead, false, 'the sky burning, the light growing: STOP still rescues the world');
+  events.emit('meltdown', { phase: 'white', seconds: 53 });
   assert.equal(b.dead, true);
   assert.equal(sfx('fireball_fizzle').length, 1, 'its light dies with a fizzle');
   pound(); // STOP: too late
@@ -250,7 +253,7 @@ test('past the meltdown\'s point of no return the button\'s light dies and pound
   assert.equal(b.deadT, 1);
   const c = b.capMaterial.color;
   assert.ok(c.r < 0.5 && c.r < lit && c.g < 0.3, `dark: ${c.toArray()}`);
-  events.emit('meltdown', { phase: 'fire', seconds: 40 });
+  events.emit('meltdown', { phase: 'white', seconds: 53 });
   assert.equal(sfx('fireball_fizzle').length, 1, 'once');
   // A new game: alive again, and a pound switches AI RACE on.
   objects.reset();

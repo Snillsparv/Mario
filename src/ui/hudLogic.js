@@ -221,7 +221,7 @@ export const AI_RACE_SCALE = 2;
 export const MELTDOWN_WARNING = Object.freeze([
   ['WARNING!', 2, 'red'],
   ['THE SKY IS OVERHEATING', 1, 'gold'],
-  ['POUND STOP!', 1.25, 'red'],
+  ['STOP THE AI RACE!', 1.25, 'red'],
 ]);
 
 // Every string the UI draws with each font (the glyph-coverage test checks these).

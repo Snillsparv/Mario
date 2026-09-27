@@ -1,7 +1,8 @@
 // AI RACE's 40-second doomsday clock (src/fx/Meltdown.js) in node: it starts with the mode,
-// warns at 30 s, catches fire at 40 s (the point of no return), blooms the light at 46 s,
-// is all white at 53 s and asks for GAME OVER once, a second later; the mode turning off before
-// 40 s cancels it (the warning glow fades out), not after; only update() advances it (main
+// warns at 30 s, catches fire at 40 s, blooms the light at 46 s, is all white at 53 s (the
+// point of no return) and asks for GAME OVER once, a second later; the mode turning off before
+// the white-out cancels it (the world is rescued: whatever shows fades back out, the burning
+// trees die down), not after; only update() advances it (main
 // calls it only while playing, so paused time does not count); a new race starts fresh; the
 // look it hands the renderer, the sky, the effects, the audio and the camera shake over time;
 // the klaxon, the burning trees and the shockwave's jolt; reset() turns everything off.
@@ -22,12 +23,12 @@ function setup({ trees = [] } = {}) {
   const sfx = [];
   events.on('meltdown', (e) => log.push(e));
   events.on('sfx', (e) => sfx.push(e));
-  const calls = { view: [], level: [], fx: [], audio: [], rumble: [], kicks: [], ignite: [] };
+  const calls = { view: [], level: [], fx: [], audio: [], rumble: [], kicks: [], ignite: [], extinguish: [] };
   const rec = (name) => ({ setMeltdown: (L) => calls[name].push({ ...L }) });
   const targets = {
     view: rec('view'),
     level: rec('level'),
-    fx: { ...rec('fx'), ignite: (x, y, z, o) => calls.ignite.push({ x, y, z, ...o }) },
+    fx: { ...rec('fx'), ignite: (x, y, z, o) => calls.ignite.push({ x, y, z, ...o }), extinguish: (id) => calls.extinguish.push(id) },
     audio: rec('audio'),
     shake: { setRumble: (r) => calls.rumble.push(r), kick: (s) => calls.kicks.push(s) },
   };
@@ -61,13 +62,15 @@ test('the clock starts with AI RACE mode and runs through its phases at 30, 40, 
   assert.ok(Math.abs(log[0].seconds - MELTDOWN.WARN) < 1e-9, `warning at ${log[0].seconds}`);
   run(10);
   assert.equal(m.phase, 'fire');
-  assert.equal(m.doomed, true, 'the point of no return');
+  assert.equal(m.doomed, false, 'the sky burns, but STOP can still rescue the world');
   assert.ok(Math.abs(log[1].seconds - MELTDOWN.DOOM) < 1e-9);
   run(6);
   assert.equal(m.phase, 'light');
+  assert.equal(m.doomed, false);
   assert.ok(Math.abs(log[2].seconds - MELTDOWN.LIGHT) < 1e-9);
   run(7);
   assert.equal(m.phase, 'white');
+  assert.equal(m.doomed, true, 'all white: the point of no return');
   assert.equal(m.levels.white, 1, 'all white');
   assert.ok(Math.abs(log.find((e) => e.phase === 'white').seconds - MELTDOWN.WHITE) < 1e-9);
   assert.equal(results.length, 0, 'no game over yet: the white holds a second');
@@ -81,7 +84,7 @@ test('the clock starts with AI RACE mode and runs through its phases at 30, 40, 
   assert.deepEqual(phases(), ['warning', 'fire', 'light', 'shock', 'white', 'over']);
 });
 
-test('before 40 s the mode turning off cancels it (STOP, Rustmaw, a game over): the glow fades; a new race starts fresh', () => {
+test('before the sky burns the mode turning off cancels it (STOP, Rustmaw, a game over): the glow fades; a new race starts fresh', () => {
   const { m, events, run, log, calls } = setup();
   events.emit('darkMode', { on: true });
   run(35);
@@ -90,7 +93,7 @@ test('before 40 s the mode turning off cancels it (STOP, Rustmaw, a game over): 
   events.emit('darkMode', { on: false }); // pounding STOP (or Rustmaw's defeat, or a game over)
   assert.equal(m.phase, 'idle');
   assert.equal(m.running, false);
-  assert.deepEqual(log.at(-1), { phase: 'cancelled', seconds: 35, warned: true });
+  assert.deepEqual(log.at(-1), { phase: 'cancelled', seconds: 35, warned: true, from: 'warning' });
   // The glow fades out over CANCEL_FADE, then the targets get a look of all 0.
   run(MELTDOWN.CANCEL_FADE / 2);
   assert.ok(m.levels.warn > 0 && m.levels.warn < warn, 'fading');
@@ -106,7 +109,7 @@ test('before 40 s the mode turning off cancels it (STOP, Rustmaw, a game over): 
   assert.equal(m.seconds, 0, 'a fresh 40 s');
   run(10);
   events.emit('darkMode', { on: false });
-  assert.deepEqual(log.at(-1), { phase: 'cancelled', seconds: 10, warned: false });
+  assert.deepEqual(log.at(-1), { phase: 'cancelled', seconds: 10, warned: false, from: 'race' });
   // AI RACE again (after Rustmaw's defeat): a fresh 40 s, warned again at 30 s.
   events.emit('darkMode', { on: true });
   run(30.05);
@@ -114,17 +117,47 @@ test('before 40 s the mode turning off cancels it (STOP, Rustmaw, a game over): 
   assert.equal(log.filter((e) => e.phase === 'warning').length, 2);
 });
 
-test('from 40 s nothing but a reset ends it: the mode turning off is ignored', () => {
+test('with the sky on fire and even as the light grows, STOP still rescues the world: everything fades back, the trees die down', () => {
+  const trees = [0, 1, 2].map((i) => ({ canopy: { x: i * 400, y: 700, z: 6000, radius: 300 } }));
+  for (const at of [42, 50, 52.9]) {
+    const { m, events, run, log, calls, results } = setup({ trees });
+    let id = 0;
+    const lit = [];
+    m.targets.fx.ignite = () => (lit.push(++id), id);
+    events.emit('darkMode', { on: true });
+    run(at);
+    assert.equal(m.doomed, false, `${at} s: not too late`);
+    const before = { ...m.levels };
+    assert.ok(before.fire > 0.9, 'the sky burns');
+    assert.ok(lit.length > 0, 'trees burn');
+    events.emit('darkMode', { on: false }); // pounding STOP just in time
+    assert.equal(m.phase, 'idle');
+    assert.equal(log.at(-1).phase, 'cancelled');
+    assert.equal(log.at(-1).from, at < MELTDOWN.LIGHT ? 'fire' : 'light');
+    assert.deepEqual(calls.extinguish, lit, 'the trees it set alight die down');
+    // Everything that showed fades back together over RESCUE_FADE, then all 0.
+    run(MELTDOWN.RESCUE_FADE / 2);
+    const mid = m.levels;
+    for (const k of ['fire', 'embers', 'rumble']) assert.ok(mid[k] > 0 && mid[k] < before[k], `${at} s: ${k} fading (${mid[k]})`);
+    if (before.white > 0) assert.ok(mid.white < before.white, 'the white-out fading');
+    run(MELTDOWN.RESCUE_FADE);
+    const last = calls.view.at(-1);
+    for (const k of ['warn', 'fire', 'light', 'white', 'glow', 'glare', 'embers', 'rumble']) assert.equal(last[k], 0, `${at} s: ${k} back to 0`);
+    assert.equal(last.lit, false);
+    run(20);
+    assert.equal(results.length, 0, 'no game over');
+  }
+});
+
+test('once the picture is all white nothing but a reset ends it: the mode turning off is ignored', () => {
   const { m, events, run, results } = setup();
   events.emit('darkMode', { on: true });
-  run(40.1);
+  run(MELTDOWN.WHITE + 0.1);
   assert.equal(m.doomed, true);
   events.emit('darkMode', { on: false });
-  assert.equal(m.phase, 'fire');
+  assert.equal(m.phase, 'white');
   events.emit('darkMode', { on: true }); // (and on again does not restart it)
-  run(1);
-  assert.ok(m.seconds > 41);
-  run(14);
+  run(2);
   assert.equal(results.length, 1);
   assert.equal(m.phase, 'over');
 });

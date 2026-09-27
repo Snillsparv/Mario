@@ -135,7 +135,8 @@ async function start() {
   });
 
   // AI RACE mode: the objects' floor button toggles it; every system fades with darkT. Past
-  // the meltdown's point of no return nothing switches it off (the button is dead by then).
+  // the meltdown's point of no return (the picture all white) nothing switches it off (the
+  // button is dead by then); until then STOP rescues the world.
   events.on('aiRaceButton', ({ on }) => {
     if (!on && meltdown.doomed) return;
     state.dark = on;
@@ -143,7 +144,7 @@ async function start() {
   });
   // Rustmaw thrown off the roof and wrecked: the mode ends as if STOP was pressed (the storm
   // clears over the usual fade, the button pops back up; objects put the reward star out).
-  // Too late once the sky is on fire: the meltdown goes on.
+  // Too late once the picture is all white: the meltdown goes on.
   events.on('bossDefeated', () => {
     if (!state.dark || meltdown.doomed) return;
     state.dark = false;

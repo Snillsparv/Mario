@@ -3,12 +3,14 @@
 // own box (window resizes, the 4:3 pillarbox via setViewport / alignOverlay) and the
 // devicePixelRatio, redrawing the text crisply at the new scale.
 // The meltdown's warning (fx/Meltdown.js, 'meltdown' { phase: 'warning' }, 30 s into the race)
-// shows the same way, a little longer, in three lines (hudLogic.js MELTDOWN_WARNING: WARNING!,
-// THE SKY IS OVERHEATING, POUND STOP!); it goes as soon as the race is stopped ('cancelled') or
-// the sky catches fire ('fire').
+// shows the same way in three lines (hudLogic.js MELTDOWN_WARNING: WARNING!, THE SKY IS
+// OVERHEATING, STOP THE AI RACE!) and keeps blinking to the very end: it goes as soon as the
+// race is stopped ('cancelled', possible until the picture is all white) or at the white-out
+// ('white').
 //
 //   const banner = new AlertBanner(uiRoot, { events });  // shows itself on 'darkMode' { on: true }
-//   banner.show(lines?, { ms? })  // lines: [[text, scale, style]], default AI RACE
+//   banner.show(lines?, { ms? })  // lines: [[text, scale, style]], default AI RACE; ms: Infinity
+//                                 // keeps it up until hide()
 //   banner.setViewport(rect | null); banner.hide(); banner.kind  // 'race' | 'warning' | null
 
 import { BIG_FONT } from './bitmapFont.js';
@@ -17,7 +19,6 @@ import { hudMetrics, boxStyle, AI_RACE, AI_RACE_SCALE, MELTDOWN_WARNING } from '
 import { pixelRatio, watchPixelRatio } from './pixelRatio.js';
 
 const SHOW_MS = 3400; // blinking, then a fade out
-const WARNING_MS = 5200; // the meltdown's warning stays up a little longer
 const FADE_MS = 600;
 const RACE_LINES = [[AI_RACE, AI_RACE_SCALE, 'red']];
 
@@ -32,8 +33,8 @@ export class AlertBanner {
     events?.on('darkMode', ({ on }) => (on ? this.show() : this.hide()));
     events?.on('gameOver', () => this.hide());
     events?.on('meltdown', ({ phase } = {}) => {
-      if (phase === 'warning') this.show(MELTDOWN_WARNING, { ms: WARNING_MS, kind: 'warning' });
-      else if ((phase === 'cancelled' || phase === 'fire') && this.kind === 'warning') this.hide();
+      if (phase === 'warning') this.show(MELTDOWN_WARNING, { ms: Infinity, kind: 'warning' });
+      else if ((phase === 'cancelled' || phase === 'white') && this.kind === 'warning') this.hide();
     });
   }
 
@@ -65,12 +66,14 @@ export class AlertBanner {
     this._observer = new ResizeObserver(() => this._layout());
     this._observer.observe(el);
     this._unwatch = watchPixelRatio(() => this._layout());
-    this._fadeTimer = setTimeout(() => {
-      if (this.el === el) el.style.opacity = '0';
-    }, ms - FADE_MS);
-    this._hideTimer = setTimeout(() => {
-      if (this.el === el) this.hide();
-    }, ms);
+    if (Number.isFinite(ms)) {
+      this._fadeTimer = setTimeout(() => {
+        if (this.el === el) el.style.opacity = '0';
+      }, ms - FADE_MS);
+      this._hideTimer = setTimeout(() => {
+        if (this.el === el) this.hide();
+      }, ms);
+    }
     return this;
   }
 

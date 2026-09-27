@@ -621,7 +621,7 @@ version and back. Everything is original: no existing monster, character or bran
   grinding rumble (sfx `hall_rise`, pitched up) and is gone for the rest of the game (hidden, its
   colliders parked; a hero on it is carried down to the lawn), so AI RACE can't be started
   again; `objects.reset()` (a new game) brings it back. (Rustmaw's defeat ends the mode without
-  retiring it.) Past the meltdown's point of no return (40 s, see "Meltdown") the button is dead
+  retiring it.) Past the meltdown's point of no return (53 s, all white, see "Meltdown") the button is dead
   and main ignores both a mode-off request and Rustmaw's defeat: the mode stays on. main sets
   `state.dark`, emits
   `'darkMode' { on }` and eases `state.darkT` 0..1 over 3 s, calling each tick while it
@@ -725,26 +725,30 @@ meltdown.setMode(on)            // it listens to 'darkMode' itself
 meltdown.reset()                // everything off at once (main's game-over reset)
 meltdown.skipTo(seconds)        // tests: jump the running clock ahead
 meltdown.phase                  // 'idle' | 'race' | 'warning' | 'fire' | 'light' | 'white' | 'over'
-meltdown.seconds, .doomed (from 40 s), .running, .levels (the look, below)
+meltdown.seconds, .doomed (from 53 s: all white), .running, .levels (the look, below)
 levelsAt(seconds), lightAnchor(x, y, z, yaw), placeOrb(light, anchor, out)   // pure helpers
 ```
 
 * **Clock**: starts at 0 when AI RACE mode turns on (`'darkMode' { on: true }`) and counts only
   in `update()`, which main calls only while playing (not paused, not on the title or the
-  game-over card). The mode turning off before 40 s (pounding STOP, Rustmaw's defeat, a game
-  over or new game) cancels it (`'cancelled'`; the warning glow fades out over 1.5 s); turning
-  AI RACE on again (after a Rustmaw defeat: STOP retires the button) starts a fresh 40 s. From
-  40 s nothing cancels it but a game over: `setMode(false)` is ignored, main keeps the mode on
+  game-over card). The mode turning off before the picture is all white (pounding STOP,
+  Rustmaw's defeat, a game over or new game) cancels it (`'cancelled' { warned, from }`: the
+  world is rescued; whatever of the warning glow, the burning sky, the embers, the light and the
+  white-out already shows fades back out together over 1.5 s, 2.5 s once the sky burns, and the
+  trees it set alight die down); turning AI RACE on again (after a Rustmaw defeat: STOP retires
+  the button) starts a fresh 40 s. From 53 s (all white) nothing cancels it but a game over:
+  `setMode(false)` is ignored, main keeps the mode on
   (it ignores `'aiRaceButton' { on: false }` and `'bossDefeated'`), the button's cap light dies
   and pounds on it do nothing (`AiButton.setDead`, from ObjectManager on `'meltdown' { phase:
-  'fire' }`, with a fizzle; `objects.reset()` revives it).
+  'white' }`, with a fizzle; `objects.reset()` revives it).
 * **Timeline** (`MELTDOWN`, seconds on the clock):
-  * 30 `'warning'`: the AlertBanner shows WARNING! / THE SKY IS OVERHEATING / POUND STOP!
-    (`hudLogic.js MELTDOWN_WARNING`, ~5 s, gone on `'cancelled'` or `'fire'`); a klaxon (sfx
+  * 30 `'warning'`: the AlertBanner shows WARNING! / THE SKY IS OVERHEATING / STOP THE AI RACE!
+    (`hudLogic.js MELTDOWN_WARNING`), blinking to the very end (gone on `'cancelled'` or
+    `'white'`); a klaxon (sfx
     `meltdown_klaxon`, two rising whoops) every 1.5 s until the light; the storm sky glows
     red-orange up from the horizon (the sky's `meltWarn`), the fog takes a red haze and the grade
     a share of the fire tint, stronger and stronger toward 40 s.
-  * 40 `'fire'`, the point of no return: the sky dome turns to roiling flames (its shader:
+  * 40 `'fire'` (STOP still rescues the world): the sky dome turns to roiling flames (its shader:
     procedural 3D value-noise fbm, licking tongues scrolling up from a white-hot horizon under a
     churning deck of smoke with bright veins of fire, sweeping up from the horizon over 1.6 s);
     the fog (`FIRE_FOG`), the actor lights (`FIRE_LIGHTS`) and the grade turn fiery orange (the
@@ -761,8 +765,8 @@ levelsAt(seconds), lightAnchor(x, y, z, yaw), placeOrb(light, anchor, out)   // 
     (`'shock'` as it passes the camera: a big jolt and `meltdown_blast`); the exposure rises
     exponentially, colours bleach, a white fog pulls in and a heat shimmer ripples the picture;
     `meltdown_flash` booms and the blaze swells to a roar.
-  * 53 `'white'`: the whole picture is white; the roar collapses into a high, fading ring
-    (`meltdown_ring`).
+  * 53 `'white'`, the point of no return: the whole picture is white; the roar collapses into a
+    high, fading ring (`meltdown_ring`); the button dies.
   * 54 `'over'`: `update()` returns `'over'` (once) and main runs its GAME OVER (the card, the
     jingle, then the title; lives and coins reset as for any game over), whatever the lives
     left. Jonas stays controllable until the white-out.
@@ -1093,7 +1097,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `signRead` | `{ sign }` (a `layout.SIGNS` entry) | player (B in front of a sign); the dialog box opens |
 | `aiRaceButton` | `{ on }` | objects (the button was ground-pounded); main toggles AI RACE mode |
 | `darkMode` | `{ on }` | main; audio, UI banner, objects and the meltdown react |
-| `meltdown` | `{ phase, seconds }`: `'warning'` (30 s), `'fire'` (40 s, the point of no return), `'light'` (46 s), `'shock'` (the shockwave passing the camera), `'white'` (53 s), `'over'` (54 s: main ends the game), or `'cancelled'` `{ warned }` (the mode turned off before 40 s) | the Meltdown (`fx/Meltdown.js`); the banner, audio and objects (the button dies) react |
+| `meltdown` | `{ phase, seconds }`: `'warning'` (30 s), `'fire'` (40 s), `'light'` (46 s), `'shock'` (the shockwave passing the camera), `'white'` (53 s, the point of no return), `'over'` (54 s: main ends the game), or `'cancelled'` `{ warned, from }` (the mode turned off before the white-out: the world rescued) | the Meltdown (`fx/Meltdown.js`); the banner, audio and objects (the button dies) react |
 | `lightning` | `{ strength, pos }` | effects (the renderer flashes itself, audio plays thunder) |
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `hallImpact` | `{ pos, strength, kind }` (`kind` `'drop'`: a server hall slammed down, strength 1; `'rise'`: one started grinding up, 0.35) | objects (tech takeover); main's camera shake jolts the view |

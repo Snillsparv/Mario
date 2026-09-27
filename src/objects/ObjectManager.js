@@ -17,7 +17,7 @@
 //   spawnCoin(x, y, z)             a yellow coin appears over the floor there (minion drops)
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
-//   (AI RACE's meltdown, fx/Meltdown.js: on 'meltdown' { phase: 'fire' } the button's cap light
+//   (AI RACE's meltdown, fx/Meltdown.js: on 'meltdown' { phase: 'white' } the button's cap light
 //    dies with a fizzle and pounds on it do nothing until reset())
 //
 // AI RACE mode (docs/ARCHITECTURE.md): a ground pound landing on the button (layout.AI_BUTTON,
@@ -216,9 +216,10 @@ export class ObjectManager {
     events.on?.('signRead', () => (this.dialogOpen = true));
     events.on?.('dialogClosed', () => (this.dialogOpen = false));
     events.on?.('lightning', (e) => this.beast?.flash(e?.strength ?? 1));
-    // Past the meltdown's point of no return STOP does nothing: the button's light dies.
+    // Past the meltdown's point of no return (the picture all white) STOP does nothing: the
+    // button's light dies.
     events.on?.('meltdown', (e) => {
-      if (e?.phase === 'fire') this._buttonDies();
+      if (e?.phase === 'white') this._buttonDies();
     });
 
     this.group = new THREE.Group();

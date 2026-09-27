@@ -16,23 +16,26 @@
 //   0     the race clock starts ('darkMode' { on: true }); phase 'race'
 //   30    'warning': the AlertBanner warns, a klaxon repeats (sfx meltdown_klaxon), the storm
 //         sky glows red-orange from the horizon, stronger and stronger toward 40 s
-//   40    'fire', the point of no return: the sky dome turns to roiling flames, the fog and the
-//         light grade go fiery orange, the rain turns into drifting embers and ash, lightning
-//         stops, trees catch fire, a roaring fire and a deep rumble rise, the AI RACE button's
-//         cap light dies (STOP does nothing any more). Only a game over ends it now.
+//   40    'fire': the sky dome turns to roiling flames, the fog and the light grade go fiery
+//         orange, the rain turns into drifting embers and ash, lightning stops, trees catch
+//         fire, a roaring fire and a deep rumble rise. STOP still rescues the world.
 //   46    'light': a blinding point of light blooms far off in the view (just right of where the
 //         camera looks, over the horizon, so it rises beside or behind the castle from the
 //         spawn), swells into a rising fireball over a pillar of light, and a shockwave wall
 //         of glowing dust races out across the ground ('shock' as it passes the camera: a big
 //         jolt); the picture brightens exponentially and bleaches toward white, with a heat
 //         shimmer; the sound swells to a roar
-//   53    'white': the whole picture is white; the roar collapses into a high, fading ring
+//   53    'white', the point of no return: the whole picture is white; the roar collapses into a
+//         high, fading ring; the AI RACE button's cap light dies (STOP does nothing any more)
 //   54    'over': the white has held a second: update() returns 'over' and main runs the game's
 //         GAME OVER (the card, then the title; lives reset as for any game over), whatever the
 //         lives left. main's game-over reset calls reset().
-// Before 40 s the mode turning off (STOP, Rustmaw's defeat, a game over) cancels the clock
-// ('cancelled'; the warning glow fades out over CANCEL_FADE); turning AI RACE on again starts a
-// fresh 40 s. From 40 s on setMode(false) is ignored (and main keeps the mode on).
+// Until the picture is all white the mode turning off (STOP, Rustmaw's defeat, a game over)
+// cancels the clock ('cancelled' { from }: the world is rescued): whatever of the warning glow,
+// the burning sky, the embers, the light and the white-out already shows fades out over
+// CANCEL_FADE (RESCUE_FADE once the sky is on fire), the trees the clock set alight die down,
+// and turning AI RACE on again starts a fresh 40 s. From 'white' on setMode(false) is ignored
+// (and main keeps the mode on).
 //
 // Events: 'meltdown' { phase, seconds } for 'warning', 'fire', 'light', 'shock', 'white', 'over'
 // and 'cancelled'; 'sfx' meltdown_klaxon (every KLAXON_EVERY s from the warning until the
@@ -49,14 +52,15 @@ import { makeRng } from '../core/math.js';
 
 export const MELTDOWN = Object.freeze({
   WARN: 30, // s: the warning
-  DOOM: 40, // s: the sky catches fire (the point of no return)
+  DOOM: 40, // s: the sky catches fire (STOP can still rescue the world until WHITE)
   LIGHT: 46, // s: the light blooms
-  WHITE: 53, // s: all white
+  WHITE: 53, // s: all white (the point of no return)
   HOLD: 1, // s the white holds before GAME OVER
   WARN_IN: 1, // s for the first glow of the warning to show
   WARN_START: 0.4, // the warning glow at once (it then grows to 1 by DOOM)
   FIRE_SPREAD: 1.6, // s for the flames to sweep up over the whole sky
   CANCEL_FADE: 1.5, // s for a cancelled warning's glow to fade out
+  RESCUE_FADE: 2.5, // s for a rescued world (stopped once the sky burns) to fade back
   KLAXON_EVERY: 1.5, // s between klaxon blasts (warning and fire)
   WHITE_CURVE: 4.2, // exponential growth of the white-out over the light phase
   GLARE_IN: 0.4, // s for the point of light to flare up to full brightness
@@ -90,6 +94,8 @@ const PHASES = [
 ];
 const PHASE_INDEX = { idle: -1, race: 0, warning: 1, fire: 2, light: 3, white: 4, over: 5 };
 const ticksOf = (s) => Math.round(s / FRAME_DT);
+// The levels that fade back out together when a race is stopped (see fadeLevels).
+const FADING = ['warn', 'fire', 'light', 'white', 'glow', 'glare', 'shimmer', 'embers', 'rumble'];
 
 const clamp01 = (v) => (v <= 0 ? 0 : v >= 1 ? 1 : v);
 const smooth = (v) => {
@@ -178,7 +184,10 @@ export class Meltdown {
     this.entered = 0; // how many of PHASES have been entered this race
     this.anchor = null; // where the light blooms (set as it does)
     this.shocked = false; // the shockwave has passed the camera
-    this.fading = 0; // a cancelled warning's glow, fading out
+    this.fading = 0; // a cancelled race's look, fading out: 1 .. 0 (see rescueFrom)
+    this.fadeTime = MELTDOWN.CANCEL_FADE; // s the fade takes
+    this.rescueFrom = meltdownLevels(); // the look when the race was stopped
+    this.treeFires = []; // fx fire ids of the trees set alight this race
     this.shown = false; // the targets were last given a look that is not all 0
     this.klaxonAt = 0; // race tick of the next klaxon blast
     this.treeAt = 0; // race tick of the next tree fire
@@ -195,9 +204,9 @@ export class Meltdown {
     return this.ticks * FRAME_DT;
   }
 
-  // Past the point of no return (the sky is on fire): nothing but a game over ends it.
+  // Past the point of no return (the picture all white): nothing but a game over ends it.
   get doomed() {
-    return PHASE_INDEX[this._phase] >= PHASE_INDEX.fire;
+    return PHASE_INDEX[this._phase] >= PHASE_INDEX.white;
   }
 
   // The race clock is counting.
@@ -212,12 +221,18 @@ export class Meltdown {
       return;
     }
     if (this._phase === 'idle' || this.doomed) return; // not racing, or too late to stop
-    const warned = this._phase === 'warning';
+    const from = this._phase;
+    const warned = PHASE_INDEX[from] >= PHASE_INDEX.warning;
     const seconds = this.seconds;
-    this.fading = this.levels.warn;
+    // Rescued: the look so far fades back out, the trees it set alight die down.
+    Object.assign(this.rescueFrom, this.levels);
+    this.fading = 1;
+    this.fadeTime = PHASE_INDEX[from] >= PHASE_INDEX.fire ? MELTDOWN.RESCUE_FADE : MELTDOWN.CANCEL_FADE;
+    for (const id of this.treeFires) this.targets.fx?.extinguish?.(id);
+    this.treeFires.length = 0;
     this._phase = 'idle';
     this.ticks = 0;
-    this.events?.emit('meltdown', { phase: 'cancelled', seconds, warned });
+    this.events?.emit('meltdown', { phase: 'cancelled', seconds, warned, from });
   }
 
   start() {
@@ -228,6 +243,7 @@ export class Meltdown {
     this.shocked = false;
     this.fading = 0;
     this.burning.clear();
+    this.treeFires.length = 0;
     this.firesLit = 0;
     this.klaxonAt = ticksOf(MELTDOWN.WARN);
     this.treeAt = ticksOf(MELTDOWN.DOOM) + 8;
@@ -253,6 +269,7 @@ export class Meltdown {
     this.shocked = false;
     this.fading = 0;
     this.burning.clear();
+    this.treeFires.length = 0;
     this.firesLit = 0;
     const L = this.levels;
     Object.assign(L, meltdownLevels());
@@ -267,8 +284,8 @@ export class Meltdown {
     if (this._phase === 'over') return null;
     if (this._phase === 'idle') {
       if (this.fading > 0) {
-        this.fading = Math.max(0, this.fading - FRAME_DT / MELTDOWN.CANCEL_FADE);
-        L.warn = this.fading;
+        this.fading = Math.max(0, this.fading - FRAME_DT / this.fadeTime);
+        this.fadeLevels(this.fading);
         this.apply(this.fading === 0);
       }
       return null;
@@ -299,6 +316,25 @@ export class Meltdown {
     this.spreadFire(camPos);
     this.apply(false);
     return result;
+  }
+
+  // A stopped race's look, `k` (1 .. 0) of the way back from what showed when it stopped: every
+  // level scales down together (the fireball stays where it was, dimming; the shockwave stops).
+  fadeLevels(k) {
+    const L = this.levels;
+    const F = this.rescueFrom;
+    const f = k * k * (3 - 2 * k);
+    for (const key of FADING) L[key] = F[key] * f;
+    L.seconds = 0;
+    L.lit = f > 0 && F.lit;
+    L.gx = F.gx;
+    L.gy = F.gy;
+    L.gz = F.gz;
+    L.lx = F.lx;
+    L.ly = F.ly;
+    L.lz = F.lz;
+    L.lr = F.lr;
+    L.ring = f > 0 ? F.ring : 0;
   }
 
   // The light appears in view (see MELTDOWN.LIGHT_*): fix its place.
@@ -340,7 +376,8 @@ export class Meltdown {
     const c = tree.canopy;
     this.burning.add(tree);
     this.firesLit++;
-    fx.ignite(c.x, c.y, c.z, { radius: c.radius * 0.95, duration: MELTDOWN.TREE_FIRE_SECONDS, intensity: 1 });
+    const id = fx.ignite(c.x, c.y, c.z, { radius: c.radius * 0.95, duration: MELTDOWN.TREE_FIRE_SECONDS, intensity: 1 });
+    if (id) this.treeFires.push(id);
     this.events?.emit('sfx', { name: 'tree_ignite', pos: { x: c.x, y: c.y, z: c.z } });
   }
 

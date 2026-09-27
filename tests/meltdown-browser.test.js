@@ -1,9 +1,10 @@
 // AI RACE's meltdown in the real game (Vite dev server, headless Chromium), opt-in: E2E=1.
 // With ?test=1: AI RACE on, the clock counts only while playing (a pause holds it), the warning
-// banner and the red sky at 30 s, the sky on fire at 40 s (embers, the button dead, STOP
-// ignored), the light at 46 s, a white picture at 53 s, then GAME OVER once (the card) whatever
-// the lives left, the title with everything reset, and a fresh game. And: STOP before 40 s
-// cancels it (the glow fades out) and AI RACE again starts a fresh 40 s.
+// banner (blinking to the very end) and the red sky at 30 s, the sky on fire at 40 s (embers),
+// the light at 46 s, a white picture at 53 s (the point of no return: the button dead, STOP
+// ignored), then GAME OVER once (the card) whatever the lives left, the title with everything
+// reset, and a fresh game. And: STOP before 40 s cancels it (the glow fades out) and AI RACE
+// again starts a fresh 40 s; STOP as late as the growing light (50 s) rescues the world.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -120,22 +121,18 @@ test('AI RACE not stopped: warning, fire, light, white, GAME OVER once, then the
     await step(36);
     s = await read(page);
     assert.equal(s.phase, 'warning');
-    assert.equal(s.banner, 3, 'WARNING! / THE SKY IS OVERHEATING / POUND STOP!');
+    assert.equal(s.banner, 3, 'WARNING! / THE SKY IS OVERHEATING / STOP THE AI RACE!');
     assert.ok(s.warn > 0.3 && s.skyWarn > 0.3 && s.meltOn, 'the sky glows from the horizon');
     assert.equal(s.fire, 0);
 
-    // 40 s: the sky catches fire; STOP does nothing any more.
+    // 40 s: the sky catches fire; STOP would still rescue the world.
     await page.evaluate(() => window.__game.meltdown.skipTo(40));
     await step(60);
     s = await read(page);
     assert.equal(s.phase, 'fire');
     assert.ok(s.fire > 0.9 && s.skyFire > 0.9 && s.embers > 0.9, 'flames, fiery grade, embers');
-    assert.equal(s.buttonDead, true);
-    assert.equal(s.banner, 0, 'the warning is gone');
-    await page.evaluate(() => window.__game.setDark(false)); // as the button would
-    s = await read(page);
-    assert.equal(s.dark, true, 'too late to stop');
-    assert.equal(s.phase, 'fire');
+    assert.equal(s.buttonDead, false, 'the button still works');
+    assert.equal(s.banner, 3, 'the warning keeps blinking');
 
     // 46 s: the light; then brighter and brighter.
     await step(150);
@@ -154,6 +151,12 @@ test('AI RACE not stopped: warning, fire, light, white, GAME OVER once, then the
     s = await read(page);
     assert.equal(s.phase, 'white');
     assert.equal(s.white, 1);
+    assert.equal(s.buttonDead, true, 'all white: too late');
+    assert.equal(s.banner, 0, 'the warning is gone');
+    await page.evaluate(() => window.__game.setDark(false)); // as the button would
+    s = await read(page);
+    assert.equal(s.dark, true, 'too late to stop');
+    assert.equal(s.phase, 'white');
     const white = await pixels(page);
     for (const p of white) assert.ok(p.every((v) => v >= 250), `white: ${p}`);
     assert.ok(sunny.some((p) => p.some((v) => v < 200)), 'the picture was not white before');
@@ -228,6 +231,42 @@ test('STOP before 40 s cancels the meltdown (the glow fades out); AI RACE again 
     assert.equal(s.phase, 'race');
     assert.ok(s.seconds < 1.1, 'a fresh 40 s');
     assert.equal(s.mode, 'play');
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test('STOP as late as the growing light (50 s) rescues the world: the white fades back, no GAME OVER', { skip, timeout: 300000 }, async () => {
+  const { page, errors } = await open();
+  try {
+    const step = (n) => page.evaluate((k) => window.__game.step(k), n);
+    await page.evaluate(() => window.__game.setDark(true));
+    await step(30);
+    await page.evaluate(() => window.__game.meltdown.skipTo(50));
+    await step(3);
+    let s = await read(page);
+    assert.equal(s.phase, 'light');
+    assert.ok(s.white > 0.05 && s.fire > 0.9, `the light growing (white ${s.white})`);
+    assert.equal(s.banner, 3, 'the warning still blinks');
+    await page.evaluate(() => window.__game.setDark(false)); // STOP, just in time
+    s = await read(page);
+    assert.equal(s.phase, 'idle');
+    assert.equal(s.dark, false);
+    assert.equal(s.log.at(-1), 'cancelled');
+    assert.equal(s.banner, 0, 'the warning goes');
+    const white = s.white;
+    await step(30);
+    s = await read(page);
+    assert.ok(s.white < white && s.fire < 1, 'fading back');
+    await step(90);
+    s = await read(page);
+    assert.deepEqual([s.warn, s.fire, s.white, s.meltOn], [0, 0, 0, false], 'all back to normal');
+    await step(150);
+    s = await read(page);
+    assert.equal(s.mode, 'play', 'no GAME OVER');
+    assert.equal(s.card, false);
+    assert.ok(!s.log.includes('gameOver'));
     assert.deepEqual(errors, []);
   } finally {
     await page.close();
