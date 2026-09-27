@@ -217,11 +217,12 @@ export const AI_RACE = 'AI RACE';
 export const AI_RACE_SCALE = 2;
 
 // The meltdown's warning (AlertBanner.js, 30 s into AI RACE: fx/Meltdown.js): lines of
-// [text, scale (times the HUD scale), text style].
+// [text, scale (times the HUD scale), text style]. The call to action is the biggest.
 export const MELTDOWN_WARNING = Object.freeze([
-  ['WARNING!', 2, 'red'],
+  ['WARNING!', 1.25, 'red'],
   ['THE SKY IS OVERHEATING', 1, 'gold'],
-  ['STOP THE AI RACE!', 1.25, 'red'],
+  ['STOP THE', 2.5, 'red'],
+  ['AI RACE!', 2.5, 'red'],
 ]);
 
 // Every string the UI draws with each font (the glyph-coverage test checks these).

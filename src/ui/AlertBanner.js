@@ -3,8 +3,8 @@
 // own box (window resizes, the 4:3 pillarbox via setViewport / alignOverlay) and the
 // devicePixelRatio, redrawing the text crisply at the new scale.
 // The meltdown's warning (fx/Meltdown.js, 'meltdown' { phase: 'warning' }, 30 s into the race)
-// shows the same way in three lines (hudLogic.js MELTDOWN_WARNING: WARNING!, THE SKY IS
-// OVERHEATING, STOP THE AI RACE!) and keeps blinking to the very end: it goes as soon as the
+// shows the same way in four lines (hudLogic.js MELTDOWN_WARNING: WARNING!, THE SKY IS
+// OVERHEATING, then big STOP THE / AI RACE!) and keeps blinking to the very end: it goes as soon as the
 // race is stopped ('cancelled', possible until the picture is all white) or at the white-out
 // ('white').
 //

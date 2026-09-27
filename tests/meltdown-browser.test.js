@@ -121,7 +121,7 @@ test('AI RACE not stopped: warning, fire, light, white, GAME OVER once, then the
     await step(36);
     s = await read(page);
     assert.equal(s.phase, 'warning');
-    assert.equal(s.banner, 3, 'WARNING! / THE SKY IS OVERHEATING / STOP THE AI RACE!');
+    assert.equal(s.banner, 4, 'WARNING! / THE SKY IS OVERHEATING / STOP THE / AI RACE!');
     assert.ok(s.warn > 0.3 && s.skyWarn > 0.3 && s.meltOn, 'the sky glows from the horizon');
     assert.equal(s.fire, 0);
 
@@ -132,7 +132,7 @@ test('AI RACE not stopped: warning, fire, light, white, GAME OVER once, then the
     assert.equal(s.phase, 'fire');
     assert.ok(s.fire > 0.9 && s.skyFire > 0.9 && s.embers > 0.9, 'flames, fiery grade, embers');
     assert.equal(s.buttonDead, false, 'the button still works');
-    assert.equal(s.banner, 3, 'the warning keeps blinking');
+    assert.equal(s.banner, 4, 'the warning keeps blinking');
 
     // 46 s: the light; then brighter and brighter.
     await step(150);
@@ -248,7 +248,7 @@ test('STOP as late as the growing light (50 s) rescues the world: the white fade
     let s = await read(page);
     assert.equal(s.phase, 'light');
     assert.ok(s.white > 0.05 && s.fire > 0.9, `the light growing (white ${s.white})`);
-    assert.equal(s.banner, 3, 'the warning still blinks');
+    assert.equal(s.banner, 4, 'the warning still blinks');
     await page.evaluate(() => window.__game.setDark(false)); // STOP, just in time
     s = await read(page);
     assert.equal(s.phase, 'idle');
