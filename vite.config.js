@@ -7,9 +7,9 @@ import padRelay from './tools/padRelay.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.2 MB minified, ~370 kB gzipped (plus
+// first frame, so splitting would only add requests. ~1.4 MB minified, ~445 kB gzipped (plus
 // the ~13 kB title-logo worker); the size warning is set a little above that.
-const GAME_CHUNK_LIMIT_KB = 1400;
+const GAME_CHUNK_LIMIT_KB = 1500;
 
 // The phone's controller page (pad.html) is built on its own, right after the game, into the
 // same output folder. Built together, the two pages would share a chunk (the touch controller
