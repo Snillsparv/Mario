@@ -431,11 +431,17 @@ export class N64Renderer {
     saveSettings({ n64: this.n64, pillarbox: this.pillarbox }, this.storage);
   }
 
+  // F1 debug overlay, F2 or R the retro filter, F3 or 4 the 4:3 screen (letter and digit keys for
+  // keyboards whose function keys are awkward to reach). Never with a modifier: Cmd/Ctrl+R
+  // still reloads the page.
   onKeyDown(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const actions = {
       F1: () => this.setDebugOverlay(!this.debug.visible),
       F2: () => this.setN64Mode(!this.n64),
+      KeyR: () => this.setN64Mode(!this.n64),
       F3: () => this.setPillarbox(!this.pillarbox),
+      Digit4: () => this.setPillarbox(!this.pillarbox),
     };
     const action = actions[e.code];
     if (!action) return;

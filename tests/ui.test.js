@@ -250,7 +250,7 @@ test('overlay box follows the picture viewport', () => {
 
 test('controls legends name every key and gamepad binding family', () => {
   const keys = KEY_CONTROLS.map(([k]) => k).join(' ');
-  for (const k of ['WASD', 'Q', 'Space', 'K', 'J', 'Shift', 'L', 'Arrow', 'C', 'Esc', 'Enter', 'F2', 'F3']) {
+  for (const k of ['WASD', 'Q', 'Space', 'K', 'J', 'Shift', 'L', 'Arrow', 'C', 'Esc', 'Enter', 'R', 'F2', '4', 'F3']) {
     assert.ok(keys.includes(k), `missing ${k}`);
   }
   // Standard-mapping pad bindings from core/input.js.
@@ -419,9 +419,9 @@ test('HUD coin icon is our coin: a ring around a diamond lit from the upper left
 
 test('no console trademark in any player-visible UI text', () => {
   assert.deepEqual(
-    KEY_CONTROLS.find(([k]) => k === 'F2'),
-    ['F2', 'Retro filter'],
-    'F2 names the look, not a console',
+    KEY_CONTROLS.find(([k]) => k === 'R / F2'),
+    ['R / F2', 'Retro filter'],
+    'R / F2 names the look, not a console',
   );
   const texts = [...BIG_STRINGS, ...SMALL_STRINGS, ...KEY_CONTROLS.flat(), ...PAD_CONTROLS.flat(), COURSE_NAME, TITLE_HINT];
   for (const t of texts) assert.ok(!/n64|nintendo|mario/i.test(t), `trademark in "${t}"`);

@@ -100,8 +100,8 @@ export const KEY_CONTROLS = [
   ['C', 'Camera mode'],
   ['Mouse drag', 'Orbit camera'],
   ['Esc / Enter', 'Pause'],
-  ['F2', 'Retro filter'],
-  ['F3', '4:3 screen'],
+  ['R / F2', 'Retro filter'],
+  ['4 / F3', '4:3 screen'],
 ];
 export const PAD_CONTROLS = [
   ['Left stick', 'Move (tilt to walk)'],

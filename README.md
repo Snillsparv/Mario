@@ -88,7 +88,9 @@ browser once with `npx playwright install chromium`.
 | arrow keys, mouse drag | right stick, d-pad | camera (up from close: first-person look) |
 | C | RB | camera mode |
 | Enter / Esc | Start | pause (shows the controls) |
-| F1 / F2 / F3 | | debug overlay / retro filter / 4:3 screen |
+| R (or F2) | | retro filter (the low-resolution N64 look on/off) |
+| 4 (or F3) | | 4:3 screen |
+| F1 | | debug overlay |
 
 USB and Bluetooth gamepads work (several connected pads are all read); press a button once
 so the browser shows the pad to the game. Switch-style pads jump with the button labelled A

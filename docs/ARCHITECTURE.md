@@ -444,8 +444,9 @@ tinted copy of its material that mixes `UNDERWATER_SKY_TINT` of the fog colour i
 pixel, so looking up shows a murky surface instead of a clear sky. The tinted program is
 compiled ahead of time while dry (`warm()`), so the first dive does not stall.
 
-Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 retro filter (240-line
-render + 16-bit quantise/filter pass; off = native resolution), F3 4:3 pillarbox. Player-visible
+Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 or R retro filter (240-line
+render + 16-bit quantise/filter pass; off = native resolution), F3 or 4 4:3 pillarbox (never
+with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads). Player-visible
 labels are neutral ("Retro filter" in the pause legend, "Retro WxH" / "native WxH" in the F1
 overlay, `MODE_LABELS`); internal names such as `N64Renderer`/`setN64Mode` are not shown. The
 retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
