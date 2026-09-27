@@ -97,13 +97,13 @@ export const KEY_CONTROLS = [
   ['Space / K', 'Jump'],
   ['J', 'Attack / Dive / Read'],
   ['Shift / L', 'Crouch / Ground pound'],
-  ['Arrow keys', 'Camera'],
+  ['Arrows / drag', 'Camera'],
   ['C', 'Camera mode'],
-  ['Mouse drag', 'Orbit camera'],
   ['Esc / Enter', 'Pause'],
   ['R / F2', 'Retro filter'],
   ['4 / F3', '4:3 screen'],
   ['V / 9', 'Record 16:9 / 9:16'],
+  ['F', 'Fullscreen'],
 ];
 export const PAD_CONTROLS = [
   ['Left stick', 'Move (tilt to walk)'],

@@ -453,7 +453,13 @@ compiled ahead of time while dry (`warm()`), so the first dive does not stall.
 Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 or R retro filter (240-line
 render + 16-bit quantise/filter pass; off = native resolution), F3 or 4 4:3 pillarbox (never
 with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads); V and 9 (the recorder's own listener, same
-rules, never on key repeat) record video, landscape and portrait, see "Recorder". Player-visible
+rules, never on key repeat) record video, landscape and portrait, see "Recorder"; F
+(`ui/fullscreen.js` `fullscreenKey()`, same rules) toggles Fullscreen-API fullscreen on the
+document through pad/device.js's `toggleFullscreen` (works in the artifact frame too, where F11
+would keep the host page around the game) and, while fullscreen, asks Keyboard Lock for Escape
+(Chromium; refused elsewhere and in frames) so Esc still pauses and holding Esc leaves.
+The pause legend stays at twelve rows (the narrow one must fit a 4:3 screen): the arrow-key
+and mouse-drag camera rows are one, `['Arrows / drag', 'Camera']`. Player-visible
 labels are neutral ("Retro filter" in the pause legend, "Retro WxH" / "native WxH" in the F1
 overlay, `MODE_LABELS`); internal names such as `N64Renderer`/`setN64Mode` are not shown. The
 retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.

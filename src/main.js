@@ -44,6 +44,7 @@ import { AlertBanner } from './ui/AlertBanner.js';
 import { TouchController } from './ui/TouchController.js';
 import { PhonePanel } from './ui/PhonePanel.js';
 import { Recorder } from './ui/Recorder.js';
+import { fullscreenKey } from './ui/fullscreen.js';
 import { RemotePad } from './net/RemotePad.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
@@ -109,6 +110,7 @@ async function start() {
   // one (ui/Recorder.js): while it records, the renderer frames the picture 16:9 or 9:16 and
   // calls it after every view.render().
   const recorder = new Recorder({ view, uiRoot, audio });
+  fullscreenKey(); // F: the whole screen (ui/fullscreen.js)
   events.on('dialogClosed', () => {
     player.endReading?.();
     input.flush();

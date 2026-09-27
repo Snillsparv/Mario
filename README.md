@@ -92,6 +92,7 @@ browser once with `npx playwright install chromium`.
 | 4 (or F3) | | 4:3 screen |
 | V | | record video, landscape: V starts, V again stops and saves a Full HD (1920x1080) MP4 or WebM with sound (works when the game runs on your own computer, `npm run dev` / `npm run preview`) |
 | 9 | | record video, portrait: the same at 1080x1920 (9:16), for Instagram Reels and Stories; 9 (or V) again stops and saves |
+| F | | fullscreen: the game fills the whole screen, without the browser's bars (F again leaves; in Chrome and Edge hold Esc to leave, a short Esc still pauses) |
 | F1 | | debug overlay |
 
 USB and Bluetooth gamepads work (several connected pads are all read); press a button once
