@@ -5,6 +5,12 @@
 //     soft horizontal video filter and upscales bilinearly. Off = native resolution.
 //   F3: 4:3 pillarbox (the canvas shrinks to a centred 4:3 rectangle; `viewport` says where,
 //     onViewportChange/alignOverlay keep DOM overlays such as the HUD inside it).
+//   setCapture({ aspect, minHeight }): the video recorder's framing (ui/Recorder.js): the
+//     picture at `aspect` (16:9) instead of the 4:3 or full-window setting, with the pixel
+//     ratio raised so the drawing buffer is at least `minHeight` device px tall (retro mode
+//     keeps its 240-line render; only the upscaled output grows). setCapture(null) restores
+//     the settings. setFrameHook(fn) calls fn right after every render() (the drawing buffer
+//     is still valid for drawImage); null (the default) costs nothing.
 //   F1: debug overlay (fps, draw calls, triangles, render mode; see describeMode/MODE_LABELS).
 //   Underwater: when the camera is below the water surface the fog switches to a short
 //     blue-green one and the sky dome is tinted toward it (surface heights from
@@ -64,6 +70,18 @@ export const AMBIENT_INTENSITY = 0.62 * Math.PI;
 
 const MAX_PIXEL_RATIO = 2;
 
+// Picture rectangle (CSS px) and pixel ratio for a width x height container: full size, the
+// 4:3 pillarbox, or, while a capture asks for it (the video recorder: { aspect, minHeight }),
+// its aspect with the pixel ratio raised so the drawing buffer is at least minHeight device px
+// tall (half a pixel over, so three.js's floor() of the buffer size never lands one short).
+export function frameLayout(width, height, { pillarbox = false, capture = null, basePixelRatio = 1 } = {}) {
+  const aspect = capture?.aspect ?? (pillarbox ? PILLARBOX_ASPECT : null);
+  const viewport = fitViewport(width, height, aspect);
+  let pixelRatio = basePixelRatio;
+  if (capture?.minHeight > 0) pixelRatio = Math.max(pixelRatio, (capture.minHeight + 0.5) / viewport.height);
+  return { viewport, pixelRatio };
+}
+
 // Player-visible names of the render modes in the F1 overlay. Neutral wording (like the pause
 // legend's "Retro filter" for F2): no console trademark in anything the player can read.
 export const MODE_LABELS = Object.freeze({ retro: 'Retro', native: 'native' });
@@ -109,6 +127,8 @@ export class N64Renderer {
     this.viewport = { x: 0, y: 0, width: 1, height: 1 }; // CSS px inside the container
     this.viewportListeners = new Set();
     this.pixelRatio = 1;
+    this.capture = null; // setCapture(): the video recorder's framing, { aspect, minHeight }
+    this.frameHook = null; // setFrameHook(): called after every render()
 
     const settings = loadSettings(storage);
     this.n64 = settings.n64;
@@ -427,6 +447,20 @@ export class N64Renderer {
     this.debug.setVisible(!!on);
   }
 
+  // The video recorder's framing (ui/Recorder.js): { aspect, minHeight } frames the picture at
+  // that aspect whatever the 4:3 setting (which is kept, not saved over) and raises the pixel
+  // ratio for a drawing buffer at least minHeight px tall; null goes back to the settings.
+  setCapture(capture = null) {
+    this.capture = capture ? { aspect: capture.aspect ?? null, minHeight: capture.minHeight ?? 0 } : null;
+    this.refit();
+  }
+
+  // fn() runs right after every render(), while the frame is still in the drawing buffer
+  // (the recorder copies it); null removes it.
+  setFrameHook(fn = null) {
+    this.frameHook = typeof fn === 'function' ? fn : null;
+  }
+
   saveSettings() {
     saveSettings({ n64: this.n64, pillarbox: this.pillarbox }, this.storage);
   }
@@ -461,9 +495,10 @@ export class N64Renderer {
     const { renderer, camera, container } = this;
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
-    const vp = fitViewport(width, height, this.pillarbox ? PILLARBOX_ASPECT : null);
-    // N64 mode upscales a small image anyway, so the canvas stays at CSS resolution.
-    const pixelRatio = this.n64 ? 1 : Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
+    // N64 mode upscales a small image anyway, so the canvas stays at CSS resolution (unless
+    // the recorder asks for a bigger buffer).
+    const basePixelRatio = this.n64 ? 1 : Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
+    const { viewport: vp, pixelRatio } = frameLayout(width, height, { pillarbox: this.pillarbox, capture: this.capture, basePixelRatio });
     this.lastDevicePixelRatio = window.devicePixelRatio;
     // Re-assigning the canvas size clears it, so skip redundant resizes.
     const key = `${vp.x},${vp.y},${vp.width},${vp.height},${pixelRatio},${this.n64}`;
@@ -492,6 +527,7 @@ export class N64Renderer {
     // Moving the window to a screen with another pixel density fires no resize event.
     if (window.devicePixelRatio !== this.lastDevicePixelRatio) this.resize();
     this.draw();
+    this.frameHook?.();
     this.debug.frame(performance.now() / 1000, this.renderer.info, () => this.describeMode());
   }
 
@@ -558,13 +594,15 @@ export class N64Renderer {
     this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
   }
 
-  // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater'.
+  // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater' ('16:9 rec'
+  // while the recorder frames the picture).
   describeMode() {
     const size = this.n64
       ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
       : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
-    if (this.viewScene) return size + (this.pillarbox ? ' 4:3' : '');
-    return size + (this.pillarbox ? ' 4:3' : '') + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '') + (this.meltOn ? ' meltdown' : '');
+    const frame = this.capture ? ' 16:9 rec' : this.pillarbox ? ' 4:3' : '';
+    if (this.viewScene) return size + frame;
+    return size + frame + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '') + (this.meltOn ? ' meltdown' : '');
   }
 
   dispose() {

@@ -152,11 +152,12 @@ describe('pause legend phone row', () => {
         if (H >= 240 && lay.wide) assert.ok(H - (p.y + p.h) >= PAUSE_BOTTOM_MARGIN - 1e-9, `${label}: bottom margin`);
       }
     }
-    // Wide legends: the row fills the empty slot of the right column (the panel does not grow).
+    // Wide legends: the row fills the right column's empty slot when the legend has an odd
+    // number of rows, else it adds one line (the panel grows by at most one row).
     const W = 1920 / 4.5;
     const before = pauseLayout(W, 240, measure, KEY_CONTROLS);
     const after = pauseLayout(W, 240, measure, controlsLegend('keys'));
-    assert.equal(after.panel.h, before.panel.h);
+    assert.equal(after.panel.h - before.panel.h, KEY_CONTROLS.length % 2 ? 0 : after.lineH);
   });
 });
 

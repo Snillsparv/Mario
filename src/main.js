@@ -43,6 +43,7 @@ import { DialogBox } from './ui/DialogBox.js';
 import { AlertBanner } from './ui/AlertBanner.js';
 import { TouchController } from './ui/TouchController.js';
 import { PhonePanel } from './ui/PhonePanel.js';
+import { Recorder } from './ui/Recorder.js';
 import { RemotePad } from './net/RemotePad.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
@@ -104,6 +105,9 @@ async function start() {
     canOpen: () => state.mode === 'title' || (state.mode === 'play' && state.paused),
   });
   if (!TEST || params.get('pad') === '1') remotePad.start();
+  // V records a 1920x1080 video of the picture, the UI and the sound (ui/Recorder.js): while it
+  // records, the renderer frames the picture 16:9 and calls it after every view.render().
+  const recorder = new Recorder({ view, uiRoot, audio });
   events.on('dialogClosed', () => {
     player.endReading?.();
     input.flush();
@@ -357,6 +361,7 @@ async function start() {
     touch,
     remotePad,
     phone,
+    recorder,
     get face() {
       return face; // the FaceScreen while it shows (test hooks: see ui/FaceScreen.js), else null
     },

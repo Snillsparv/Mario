@@ -1,6 +1,7 @@
 // Pure HUD helpers (no DOM): screen metrics, counters and animation curves.
 
 import { PHONE_SMALL_STRINGS, PHONE_BIG_STRINGS } from './phoneLogic.js';
+import { REC_SMALL_STRINGS } from './recordLogic.js';
 
 // The HUD is designed on a 320x240 grid and scaled by viewport height (or by width on
 // screens narrower than 4:3). Returns device pixels per logical pixel and the logical size.
@@ -102,6 +103,7 @@ export const KEY_CONTROLS = [
   ['Esc / Enter', 'Pause'],
   ['R / F2', 'Retro filter'],
   ['4 / F3', '4:3 screen'],
+  ['V', 'Record video'],
 ];
 export const PAD_CONTROLS = [
   ['Left stick', 'Move (tilt to walk)'],
@@ -168,7 +170,7 @@ export function pauseLayout(W, H, measure, controls = KEY_CONTROLS) {
   const wide = legend.columns.length > 1;
   const lineH = wide ? 12 : 9;
   const padX = 10;
-  const padY = 8;
+  const padY = wide ? 8 : 7; // narrow: tighter, so twelve rows fit a 4:3 screen
   const headerH = wide ? 14 : 0;
   const panelW = legend.width + padX * 2;
   const panelH = headerH + legend.rows * lineH + padY * 2 - 3;
@@ -246,6 +248,7 @@ export const SMALL_STRINGS = [
   ...TOUCH_CONTROLS.flat(),
   ...PHONE_CONTROL,
   ...PHONE_SMALL_STRINGS,
+  ...REC_SMALL_STRINGS,
   'starring',
   'CONTROLS',
   START_PROMPT,

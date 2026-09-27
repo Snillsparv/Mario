@@ -158,6 +158,33 @@ export class AudioEngine {
     }
   }
 
+  // Everything the speakers get, as a MediaStream for the video recorder (ui/Recorder.js): a
+  // MediaStreamAudioDestinationNode fed by the master bus in parallel with the speakers.
+  // Returns { stream, release() } (release disconnects the tap), or null while there is no
+  // context (audio muted, unavailable, or not unlocked yet): the recording is then silent.
+  captureStream() {
+    if (!this.ctx || !this.mix || this._muted || this.failed) return null;
+    try {
+      const tap = this.ctx.createMediaStreamDestination();
+      const master = this.mix.master;
+      master.connect(tap);
+      let live = true;
+      const release = () => {
+        if (!live) return;
+        live = false;
+        try {
+          master.disconnect(tap);
+        } catch {
+          // already disconnected (the context closed)
+        }
+      };
+      return { stream: tap.stream, release };
+    } catch (err) {
+      this.warnOnce(err);
+      return null;
+    }
+  }
+
   // Build the context, mixer and ambience; they are only kept if all of them succeed.
   createContext() {
     const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
