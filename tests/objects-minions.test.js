@@ -488,3 +488,28 @@ test('minion hot paths avoid allocating constructs', () => {
     assert.doesNotMatch(src, /for \((const|let|var) [^;]* of /, name);
   }
 });
+
+test('panic (the world ending): the Sporebots drop their attacks and flee from the hero; none come up; calm again after', () => {
+  const { minions, step } = swarm();
+  const player = fakePlayer(0, 0, 0);
+  step(player, MINION.FIRST_DELAY + 5);
+  for (const [x, z] of [[300, 0], [-250, 200], [0, -320]]) minions.spawnAt(x, z);
+  step(player, 40); // up and closing in
+  const near = live(minions).filter((m) => m.state !== 'emerging');
+  assert.ok(near.length >= 2);
+  const dist = (m) => Math.hypot(m.x - player.pos.x, m.z - player.pos.z);
+  const before = near.map(dist);
+  minions.setPanic(true);
+  const count = live(minions).length;
+  step(player, 90);
+  near.forEach((m, i) => {
+    assert.notEqual(m.state, 'windup');
+    assert.notEqual(m.state, 'lunge');
+    assert.ok(dist(m) > before[i] + 300, `fled from ${before[i].toFixed(0)} to ${dist(m).toFixed(0)}`);
+  });
+  assert.equal(player.hits.length, 0, 'nobody rams him');
+  step(player, 30 * 15);
+  assert.ok(live(minions).length <= count, 'no new ones come up while they panic');
+  minions.setPanic(false);
+  assert.equal(minions.panic, false);
+});

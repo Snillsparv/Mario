@@ -51,6 +51,7 @@ import { shadowSize } from './BlobShadows.js';
 
 export const MINION = {
   POOL: 8, // records (wrecks still animating need slots too)
+  PANIC_SPEED: 1.45, // setPanic(): they flee this much faster than they chase
   MAX_ALIVE: 5,
   FIRST_DELAY: 300, // ticks after the beast has fully risen (10 s)
   EVERY: [135, 165], // ticks between spawns (~5 s)
@@ -211,6 +212,7 @@ export class Minions {
     this.rams = 0; // rams that hurt the hero
     this.camera = null;
     this.hold = false;
+    this.panic = false; // setPanic(): the world is ending, they flee from the hero
 
     const geo = buildMinionGeometry();
     const anim = new THREE.InstancedBufferAttribute(new Float32Array(MINION.POOL * 4), 4);
@@ -238,7 +240,15 @@ export class Minions {
   }
 
   // Every minion gone at once, the spawn clock back to the start.
+  // The world is ending (AI RACE's meltdown, from the burning sky on): every Sporebot drops its
+  // attack and scuttles away from the hero, and no new ones come up, so the way to the STOP
+  // button is clear. Off again when the race is stopped or the game resets.
+  setPanic(on) {
+    this.panic = !!on;
+  }
+
   clear() {
+    this.panic = false;
     for (let i = 0; i < this.list.length; i++) this._free(this.list[i]);
     this.activeTicks = 0;
     this.nextSpawn = MINION.FIRST_DELAY;
@@ -271,7 +281,7 @@ export class Minions {
       this.activeTicks = 0;
       this._burrowAll();
     }
-    if (active && this.activeTicks >= this.nextSpawn) {
+    if (active && !this.panic && this.activeTicks >= this.nextSpawn) {
       if (this.hold || heroAway(player.action)) this.nextSpawn = this.activeTicks + MINION.RETRY;
       else if (this.alive >= MINION.MAX_ALIVE) this.nextSpawn = this.activeTicks + this._rand(MINION.EVERY);
       else this.nextSpawn = this.activeTicks + (this._trySpawn(player) ? this._rand(MINION.EVERY) : MINION.RETRY);
@@ -455,6 +465,7 @@ export class Minions {
     const dz = p.z - m.z;
     const d = Math.sqrt(dx * dx + dz * dz);
     if (m.cooldown > 0) m.cooldown--;
+    if (this.panic) return this._flee(m, dx, dz);
     const away = this.hold || heroAway(player.action);
     const dy = p.y - m.y;
     // The cap leans into the run and nods, scanning.
@@ -472,6 +483,22 @@ export class Minions {
     let moved = 0;
     if (d > (away ? M.HOLD_OFF : M.STOP)) moved = this._move(m, m.speed);
     else m.avoid *= 0.9;
+    const target = moved / M.SPEED[1];
+    m.stride += (target - m.stride) * 0.35;
+    m.phase += moved * M.GAIT;
+    m.pitch *= 0.7;
+  }
+
+  // Panic (setPanic): scuttle straight away from the hero (dx, dz: toward him), faster, the cap
+  // thrown back and the eyes flickering.
+  _flee(m, dx, dz) {
+    const M = MINION;
+    const want = Math.atan2(-dx, -dz) + 0.15 * Math.sin(this.tick * 0.3 + m.seed * TAU) + m.avoid;
+    m.yaw = approachAngle(m.yaw, want, M.TURN * 1.6);
+    m.tilt += (-0.35 - m.tilt) * 0.3;
+    m.crouch *= 0.6;
+    m.flare = 0.5 + 0.5 * Math.sin(this.tick * 1.3 + m.seed * 5);
+    const moved = this._move(m, m.speed * M.PANIC_SPEED);
     const target = moved / M.SPEED[1];
     m.stride += (target - m.stride) * 0.35;
     m.phase += moved * M.GAIT;
@@ -533,6 +560,11 @@ export class Minions {
 
   _windup(m, player) {
     const M = MINION;
+    if (this.panic) {
+      m.state = 'walk'; // the attack is dropped: run for it
+      m.t = 0;
+      return;
+    }
     const p = player.pos;
     const u = m.t / M.WINDUP;
     m.yaw = approachAngle(m.yaw, Math.atan2(p.x - m.x, p.z - m.z), 0.3);
@@ -584,7 +616,7 @@ export class Minions {
       m.rammed = true;
       strike = true;
       this._sfx('minion_bite', m);
-      if (!this.hold && !heroAway(player.action) && !heroInvincible(player)) {
+      if (!this.hold && !this.panic && !heroAway(player.action) && !heroInvincible(player)) {
         this.rams++;
         player.takeDamage?.(1, { x: m.x, y: m.y, z: m.z });
       }

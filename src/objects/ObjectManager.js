@@ -96,6 +96,7 @@ const TWINKLE_EVERY = 4; // ticks between the idle star's twinkles
 const ONE_UP_TWINKLE_EVERY = 9;
 const ONE_UP_BEHIND_CASTLE = 800; // default 1-up spot: this far behind the castle's back wall
 const COIN_DROPS = 6; // run-time coin slots (minion drops)
+const PANIC_PHASES = new Set(['fire', 'light', 'shock', 'white', 'over']); // meltdown phases the minions flee in
 const CLAIM_MARGIN = 60; // a server hall taking its ground claims this much round its footprint
 const MINION_SLOTS = 8; // shadow slots for the minions (Minions POOL)
 const _toCam = new THREE.Vector3();
@@ -220,6 +221,10 @@ export class ObjectManager {
     // button's light dies.
     events.on?.('meltdown', (e) => {
       if (e?.phase === 'white') this._buttonDies();
+      // From the burning sky on the Sporebots flee and Rustmaw's fireballs land beside the hero,
+      // so the way to STOP stays open; a rescue (or a new game) calms them.
+      if (PANIC_PHASES.has(e?.phase)) this._setPanic(true);
+      else if (e?.phase === 'cancelled') this._setPanic(false);
     });
 
     this.group = new THREE.Group();
@@ -251,6 +256,11 @@ export class ObjectManager {
     this.events.emit('sfx', { name: 'button_press', pos: { x: b.x, y: b.capTop0, z: b.z } });
     this.events.emit('aiRaceButton', { on });
     if (!on) b.retire();
+  }
+
+  _setPanic(on) {
+    this.minions?.setPanic(on);
+    this.beast?.setPanic(on);
   }
 
   // The meltdown can't be stopped any more: the button's cap light dies with a fizzle.

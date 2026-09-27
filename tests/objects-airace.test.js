@@ -431,6 +431,29 @@ test('it charges (throat glow, sfx) and spits a fireball every few seconds', () 
   assert.ok(player.hits.length > 0, 'a hero standing still gets hit');
 });
 
+test('as the world ends (the meltdown from the burning sky on) its fireballs land beside the hero, never on him', () => {
+  const { objects, player, events, step, sfx } = setup();
+  events.emit('darkMode', { on: true });
+  events.emit('meltdown', { phase: 'fire', seconds: 40 });
+  const beast = objects.beast;
+  assert.equal(beast.panic, true);
+  const misses = [];
+  for (let t = 0; t < 30 * 20; t++) {
+    const n = sfx('fireball_launch').length;
+    step();
+    if (sfx('fireball_launch').length > n) {
+      const g = beast.target;
+      misses.push(Math.hypot(g.x - player.pos.x, g.z - player.pos.z));
+    }
+  }
+  assert.ok(misses.length >= 4, `${misses.length} shots`);
+  for (const d of misses) assert.ok(d >= 540 && d <= 820, `landed ${d.toFixed(0)} away`);
+  assert.equal(player.hits.length, 0, 'a hero standing still is never hit');
+  // Rescued: its aim is back.
+  events.emit('meltdown', { phase: 'cancelled', seconds: 42 });
+  assert.equal(beast.panic, false);
+});
+
 test('it does not shoot at a hero behind it, far away, or dropping in', () => {
   for (const [pos, action] of [
     [{ x: 0, y: 0, z: -9000 }, 'idle'],

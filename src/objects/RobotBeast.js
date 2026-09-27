@@ -164,6 +164,9 @@ export const SHOT = {
   // running straight on) about 55 % of the shots land within 250 of him.
   SPREAD: 195,
   VEL_SMOOTH: 0.15, // the hero's velocity is an average of his recent motion (per-tick blend)
+  // setPanic() (the world ending): every shot lands this far beside the hero (across the line
+  // from the beast, left and right in turn), well clear of its blast (Fireballs BLAST_RADIUS).
+  MISS: [550, 800],
 };
 
 // Animation channels (the tick writes CUR, the render lerps from PREV).
@@ -333,6 +336,7 @@ export class RobotBeast {
     this.roarIn = 0;
     this.grace = 0;
     this.shots = 0;
+    this.panic = false; // setPanic(): its shots land beside the hero, never on him
     this.target = null; // aim point of the last shot { x, y, z, T }
     this.seen = { x: 0, z: 0, vx: 0, vz: 0, valid: false }; // the hero's smoothed motion
     this.flashAt = -10;
@@ -535,8 +539,15 @@ export class RobotBeast {
     if (g) g.active = g.held = g.lead = g.whirling = false;
   }
 
+  // The world is ending (AI RACE's meltdown, from the burning sky on): the beast's aim goes wild,
+  // every fireball lands beside the hero instead of on him, so the way to STOP stays open.
+  setPanic(on) {
+    this.panic = !!on;
+  }
+
   reset() {
     this._hide();
+    this.panic = false;
     this.shots = 0;
     this.starDue = false;
     this.riseAfter = false;
@@ -1441,10 +1452,22 @@ export class RobotBeast {
     const g = SHOT.SPREAD * Math.sqrt(-2 * Math.log(1 - rng() * 0.999));
     const ga = rng() * TAU;
     let T = flightTicks(Math.sqrt((pos.x - from.x) ** 2 + (pos.z - from.z) ** 2));
-    for (let i = 0; i < 2; i++) {
-      _to.x = pos.x + vx * T + Math.cos(ga) * g;
-      _to.z = pos.z + vz * T + Math.sin(ga) * g;
+    if (this.panic) {
+      // Beside him: across the line from the beast, left and right in turn.
+      const bx = pos.x - from.x;
+      const bz = pos.z - from.z;
+      const bl = Math.sqrt(bx * bx + bz * bz) || 1;
+      const side = this.shots % 2 === 0 ? 1 : -1;
+      const miss = SHOT.MISS[0] + (SHOT.MISS[1] - SHOT.MISS[0]) * rng();
+      _to.x = pos.x + (-bz / bl) * side * miss;
+      _to.z = pos.z + (bx / bl) * side * miss;
       T = flightTicks(Math.sqrt((_to.x - from.x) ** 2 + (_to.z - from.z) ** 2));
+    } else {
+      for (let i = 0; i < 2; i++) {
+        _to.x = pos.x + vx * T + Math.cos(ga) * g;
+        _to.z = pos.z + vz * T + Math.sin(ga) * g;
+        T = flightTicks(Math.sqrt((_to.x - from.x) ** 2 + (_to.z - from.z) ** 2));
+      }
     }
     const floor = this.collision.findFloor(_to.x, pos.y + 300, _to.z);
     _to.y = floor.surface ? floor.y : pos.y;
