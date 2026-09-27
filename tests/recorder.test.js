@@ -1,7 +1,9 @@
 // The video recorder's pure parts (ui/recordLogic.js, N64Renderer frameLayout) and its hooks
 // into the audio engine and the pause legend: the container/codec choice from
-// MediaRecorder.isTypeSupported answers, the 16:9 picture rect and the recording pixel ratio
-// for all kinds of windows, the element -> recording rect mapping, the file name, the frame
+// MediaRecorder.isTypeSupported answers, the two recording shapes (V landscape 1920x1080, 9
+// portrait 1080x1920 with a wider camera), the 16:9 / 9:16 picture rect, the recording pixel
+// ratio and the retro render's lines for all kinds of windows, the element -> recording rect
+// mapping, the file name, the frame
 // guard, the clock, the CSS vignettes and drop shadow it redraws, the master-bus tap, the
 // legend row and the recorder's texts in the pixel font. The recorder in the real game is
 // tests/recorder-browser.test.js (E2E=1).
@@ -9,6 +11,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   REC,
+  REC_SHAPES,
+  shapeForKey,
   REC_FORMATS,
   REC_TEXTS,
   REC_SMALL_STRINGS,
@@ -22,7 +26,9 @@ import {
   gradientRadii,
   parseDropShadow,
 } from '../src/ui/recordLogic.js';
-import { frameLayout } from '../src/render/N64Renderer.js';
+import { frameLayout, N64_INTERNAL_HEIGHT } from '../src/render/N64Renderer.js';
+import { internalResolution } from '../src/render/post/screen.js';
+import { FOV } from '../src/camera/cameraConfig.js';
 import { KEY_CONTROLS, SMALL_STRINGS } from '../src/ui/hudLogic.js';
 import { SMALL_FONT, missingGlyphs } from '../src/ui/bitmapFont.js';
 import { AudioEngine } from '../src/audio/AudioEngine.js';
@@ -72,18 +78,39 @@ test('format: without a sound track the audio codec is left out of the type', ()
   assert.equal(REC_FORMATS[0].audio, 'mp4a.40.2');
 });
 
-test('recording constants: exactly Full HD 16:9 at 60 fps, ~16 Mbit/s, 1 s chunks, a 10 minute limit', () => {
-  assert.equal(REC.width, 1920);
-  assert.equal(REC.height, 1080);
-  assert.equal(REC.width / REC.height, REC.aspect);
+test('recording constants: 60 fps, ~16 Mbit/s, 1 s chunks, a 10 minute limit', () => {
   assert.equal(REC.fps, 60);
   assert.ok(REC.videoBitsPerSecond >= 12e6 && REC.videoBitsPerSecond <= 20e6);
   assert.ok(REC.timesliceMs > 0 && REC.timesliceMs <= 2000);
   assert.equal(REC.maxSeconds, 600);
 });
 
-test('16:9 framing: letterbox or pillarbox in any window, the buffer at least 1080 px tall', () => {
-  const capture = { aspect: REC.aspect, minHeight: REC.height };
+test('shapes: V records landscape 1920x1080, 9 portrait 1080x1920 (Full HD both ways)', () => {
+  const { landscape: L, portrait: P } = REC_SHAPES;
+  assert.deepEqual([L.width, L.height, L.aspect, L.zoom, L.label, L.suffix], [1920, 1080, 16 / 9, 1, '16:9', '']);
+  assert.deepEqual([P.width, P.height, P.aspect, P.label, P.suffix], [1080, 1920, 9 / 16, '9:16', 'portrait']);
+  for (const s of [L, P]) assert.equal(s.width / s.height, s.aspect);
+  assert.equal(shapeForKey('KeyV'), 'landscape');
+  assert.equal(shapeForKey('Digit9'), 'portrait');
+  assert.equal(shapeForKey('KeyB'), null);
+  assert.equal(shapeForKey('Digit4'), null, '4 stays the 4:3 screen');
+  assert.equal(shapeForKey(undefined), null);
+});
+
+test('portrait widens the camera: not a narrow 26 degree slice, not a fish-eye either', () => {
+  // three.js: the effective vertical field of view is 2 atan(tan(fov / 2) / zoom).
+  const deg = (r) => (r * 180) / Math.PI;
+  const half = Math.tan((FOV * Math.PI) / 360);
+  const across = (zoom, aspect) => deg(2 * Math.atan((half / zoom) * aspect));
+  const up = (zoom) => deg(2 * Math.atan(half / zoom));
+  const P = REC_SHAPES.portrait;
+  assert.ok(across(1, P.aspect) < 27, 'unzoomed, 9:16 is only ~26 degrees across');
+  assert.ok(P.zoom > 0 && P.zoom < 1, 'zoomed out');
+  assert.ok(across(P.zoom, P.aspect) >= 33, `portrait across: ${across(P.zoom, P.aspect).toFixed(1)} degrees`);
+  assert.ok(up(P.zoom) <= 62, `portrait up: ${up(P.zoom).toFixed(1)} degrees`);
+  assert.equal(REC_SHAPES.landscape.zoom, 1, 'landscape is the game camera as it is');
+});
+test('16:9 and 9:16 framing: letterbox or pillarbox in any window, the buffer at least Full HD', () => {
   const windows = [
     [1920, 1080], // exactly 16:9
     [1280, 720],
@@ -97,32 +124,50 @@ test('16:9 framing: letterbox or pillarbox in any window, the buffer at least 10
     [3840, 2160], // 4K window: nothing to raise
     [333, 187],
     [1366, 768],
+    [1080, 1920], // exactly 9:16
+    [1440, 900], // laptop
   ];
-  for (const [w, h] of windows) {
-    for (const base of [1, 1.5, 2]) {
-      for (const pillarbox of [false, true]) {
-        const { viewport: vp, pixelRatio } = frameLayout(w, h, { pillarbox, capture, basePixelRatio: base });
-        const label = `${w}x${h} dpr ${base}${pillarbox ? ' 4:3 set' : ''}`;
-        assert.ok(Math.abs(vp.width / vp.height - 16 / 9) < 2 / vp.height + 1e-9, `${label}: 16:9 (${vp.width}x${vp.height})`);
-        assert.ok(vp.width <= w && vp.height <= h, `${label}: inside the window`);
-        assert.ok(vp.width === w || vp.height === h, `${label}: as big as fits`);
-        assert.ok(Math.abs(vp.x - (w - vp.width) / 2) <= 0.5 && Math.abs(vp.y - (h - vp.height) / 2) <= 0.5, `${label}: centred`);
-        assert.ok(pixelRatio >= base, `${label}: never below the normal ratio`);
-        // three.js sizes the buffer as floor(css * ratio).
-        const bufH = Math.floor(vp.height * pixelRatio);
-        const bufW = Math.floor(vp.width * pixelRatio);
-        assert.ok(bufH >= REC.height, `${label}: buffer ${bufW}x${bufH}`);
-        assert.ok(bufW >= REC.width - 2, `${label}: buffer ${bufW}x${bufH}`);
-        if (base * vp.height < REC.height) assert.ok(bufH <= REC.height + 1, `${label}: raised just enough (${bufH})`);
-        else assert.equal(pixelRatio, base, `${label}: already big enough`);
+  for (const [name, shape] of Object.entries(REC_SHAPES)) {
+    const capture = { aspect: shape.aspect, minHeight: shape.height, zoom: shape.zoom };
+    for (const [w, h] of windows) {
+      for (const base of [1, 1.5, 2]) {
+        for (const pillarbox of [false, true]) {
+          const { viewport: vp, pixelRatio, lines } = frameLayout(w, h, { pillarbox, capture, basePixelRatio: base });
+          const label = `${name} ${w}x${h} dpr ${base}${pillarbox ? ' 4:3 set' : ''}`;
+          assert.ok(Math.abs(vp.width / vp.height - shape.aspect) < 2 / Math.min(vp.width, vp.height) + 1e-9, `${label}: ${shape.label} (${vp.width}x${vp.height})`);
+          assert.ok(vp.width <= w && vp.height <= h, `${label}: inside the window`);
+          assert.ok(vp.width === w || vp.height === h, `${label}: as big as fits`);
+          assert.ok(Math.abs(vp.x - (w - vp.width) / 2) <= 0.5 && Math.abs(vp.y - (h - vp.height) / 2) <= 0.5, `${label}: centred`);
+          assert.ok(pixelRatio >= base, `${label}: never below the normal ratio`);
+          // three.js sizes the buffer as floor(css * ratio).
+          const bufH = Math.floor(vp.height * pixelRatio);
+          const bufW = Math.floor(vp.width * pixelRatio);
+          assert.ok(bufH >= shape.height, `${label}: buffer ${bufW}x${bufH}`);
+          assert.ok(bufW >= shape.width - 2, `${label}: buffer ${bufW}x${bufH}`);
+          if (base * vp.height < shape.height) assert.ok(bufH <= shape.height + 1, `${label}: raised just enough (${bufH})`);
+          else assert.equal(pixelRatio, base, `${label}: already big enough`);
+          // The retro render keeps 240 lines along the short side: 427x240 or 240x427 or so.
+          const internal = internalResolution(vp.width, vp.height, lines);
+          if (name === 'landscape') assert.equal(lines, N64_INTERNAL_HEIGHT, label);
+          if (vp.height >= N64_INTERNAL_HEIGHT * 2) {
+            assert.equal(Math.min(internal.width, internal.height), N64_INTERNAL_HEIGHT, `${label}: retro ${internal.width}x${internal.height}`);
+          }
+        }
       }
     }
   }
+  // A 1000x600 window: portrait is a 338x600 column, 1920 px tall in the buffer, retro 240x426.
+  const p = frameLayout(1000, 600, { capture: { aspect: 9 / 16, minHeight: 1920 } });
+  assert.deepEqual(p.viewport, { x: 331, y: 0, width: 338, height: 600 });
+  assert.equal(Math.floor(600 * p.pixelRatio), 1920);
+  assert.deepEqual(internalResolution(338, 600, p.lines), { width: 240, height: 426 });
 });
 
 test('framing without a capture is unchanged: full window, or the 4:3 pillarbox', () => {
-  assert.deepEqual(frameLayout(1280, 720), { viewport: { x: 0, y: 0, width: 1280, height: 720 }, pixelRatio: 1 });
-  assert.deepEqual(frameLayout(1280, 720, { pillarbox: true, basePixelRatio: 2 }), { viewport: { x: 160, y: 0, width: 960, height: 720 }, pixelRatio: 2 });
+  assert.deepEqual(frameLayout(1280, 720), { viewport: { x: 0, y: 0, width: 1280, height: 720 }, pixelRatio: 1, lines: 240 });
+  assert.deepEqual(frameLayout(1280, 720, { pillarbox: true, basePixelRatio: 2 }), { viewport: { x: 160, y: 0, width: 960, height: 720 }, pixelRatio: 2, lines: 240 });
+  // A phone held upright plays with the usual 240 lines (only a portrait recording turns them).
+  assert.equal(frameLayout(390, 844).lines, 240);
   // A capture overrides the 4:3 setting (restored when it ends: the setting is not touched).
   assert.deepEqual(frameLayout(1280, 960, { pillarbox: true, capture: { aspect: 16 / 9, minHeight: 1080 } }).viewport, { x: 0, y: 120, width: 1280, height: 720 });
 });
@@ -140,13 +185,18 @@ test('element rects map from the picture on screen into the 1920x1080 recording'
   const pic2 = { left: 140, top: 0, width: 640, height: 360 };
   mapRect({ left: 100, top: -10, width: 80, height: 20 }, pic2, out);
   assert.deepEqual(out, { x: -120, y: -30, w: 240, h: 60 });
-  // Any recording size.
+  // Any recording size, portrait too: a 338x600 column in a 1000x600 window -> 1080x1920.
   mapRect({ left: 0, top: 0, width: 320, height: 180 }, { left: 0, top: 0, width: 640, height: 360 }, out, 1280, 720);
   assert.deepEqual(out, { x: 0, y: 0, w: 640, h: 360 });
+  const column = { left: 331, top: 0, width: 337.5, height: 600 };
+  mapRect({ left: 331, top: 300, width: 337.5, height: 150 }, column, out, 1080, 1920);
+  assert.deepEqual(out, { x: 0, y: 960, w: 1080, h: 480 });
 });
 
-test('file name: castle-grounds-YYYY-MM-DD-HHMM.<ext> in local time', () => {
+test('file name: castle-grounds-YYYY-MM-DD-HHMM[-portrait].<ext> in local time', () => {
   assert.equal(recordFileName(new Date(2026, 8, 27, 14, 5), 'mp4'), 'castle-grounds-2026-09-27-1405.mp4');
+  assert.equal(recordFileName(new Date(2026, 8, 27, 14, 5), 'mp4', REC_SHAPES.portrait.suffix), 'castle-grounds-2026-09-27-1405-portrait.mp4');
+  assert.equal(recordFileName(new Date(2026, 8, 27, 14, 5), 'webm', REC_SHAPES.landscape.suffix), 'castle-grounds-2026-09-27-1405.webm');
   assert.equal(recordFileName(new Date(2027, 0, 3, 0, 0), 'webm'), 'castle-grounds-2027-01-03-0000.webm');
   assert.match(recordFileName(), /^castle-grounds-\d{4}-\d{2}-\d{2}-\d{4}\.webm$/);
 });
@@ -241,8 +291,8 @@ test('the title logo drop shadow parses from the computed filter', () => {
   assert.equal(parseDropShadow(''), null);
 });
 
-test('pause legend has the V row; every recorder text is in the pixel font and checked for glyphs', () => {
-  assert.deepEqual(KEY_CONTROLS.find(([k]) => k === 'V'), ['V', 'Record video']);
+test('pause legend has the V / 9 row; every recorder text is in the pixel font and checked for glyphs', () => {
+  assert.deepEqual(KEY_CONTROLS.find(([k]) => k.startsWith('V')), ['V / 9', 'Record 16:9 / 9:16']);
   for (const s of REC_SMALL_STRINGS) {
     assert.deepEqual(missingGlyphs(SMALL_FONT, s), [], s);
     assert.ok(SMALL_STRINGS.includes(s), `glyph coverage checks "${s}"`);
@@ -254,6 +304,7 @@ test('pause legend has the V row; every recorder text is in the pixel font and c
   assert.match(REC_TEXTS.iframe.join(' '), /npm run dev/);
   assert.match(REC_TEXTS.iframe.join(' '), /npm run preview/);
   assert.deepEqual(missingGlyphs(SMALL_FONT, recordFileName(new Date(), 'webm')), []);
+  assert.deepEqual(missingGlyphs(SMALL_FONT, recordFileName(new Date(), 'mp4', REC_SHAPES.portrait.suffix)), []);
   for (const t of REC_SMALL_STRINGS) assert.ok(!/n64|nintendo|mario/i.test(t), t);
 });
 
@@ -291,6 +342,7 @@ test('audio: the master bus is tapped in parallel with the speakers, and release
 test('the recorder imports and constructs in node without a DOM (nothing recorded)', async () => {
   const r = new Recorder({ view: null, uiRoot: null, audio: null, win: undefined });
   assert.equal(r.recording, false);
+  assert.equal(r.shape, null);
   assert.equal(await r.stop(), null);
   assert.equal(r.note, null);
 });

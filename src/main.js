@@ -105,8 +105,9 @@ async function start() {
     canOpen: () => state.mode === 'title' || (state.mode === 'play' && state.paused),
   });
   if (!TEST || params.get('pad') === '1') remotePad.start();
-  // V records a 1920x1080 video of the picture, the UI and the sound (ui/Recorder.js): while it
-  // records, the renderer frames the picture 16:9 and calls it after every view.render().
+  // V records a 1920x1080 video of the picture, the UI and the sound, 9 a 1080x1920 portrait
+  // one (ui/Recorder.js): while it records, the renderer frames the picture 16:9 or 9:16 and
+  // calls it after every view.render().
   const recorder = new Recorder({ view, uiRoot, audio });
   events.on('dialogClosed', () => {
     player.endReading?.();

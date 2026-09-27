@@ -4,9 +4,15 @@
 // frame, V again downloads castle-grounds-YYYY-MM-DD-HHMM.mp4|webm: a non-empty file whose
 // video is exactly 1920x1080, with a sound track, and whose frames show the HUD (the lives
 // counter's gold digit); afterwards the 4:3 framing, the pixel ratio and the UI root's box are
-// back. Inside a frame V only explains that recording works locally (no framing change), a
-// modified or repeated V does nothing, and without MediaRecorder it says so.
-// REC_OUT=<dir> also keeps the recorded file and a PNG of one of its frames there.
+// back. 9 records portrait the same way: the picture framed 9:16 with a buffer at least 1920
+// px tall, the camera zoomed out and the retro render turned to 240 columns, no frame recorded
+// before the HUD has re-laid out for the column, V (either key) stops and saves
+// castle-grounds-YYYY-MM-DD-HHMM-portrait.mp4|webm, exactly 1080x1920 with the HUD (from its
+// first frame on), and the full-window framing, camera and retro render come back. Inside a
+// frame V only explains that recording works locally (no framing change), a modified or
+// repeated V does nothing, and without MediaRecorder it says so.
+// REC_OUT=<dir> also keeps the recorded files and PNGs of their first frame (<name>-first.png)
+// and of one at ~0.8 s (<name>.png) there.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -62,6 +68,91 @@ const framing = (page) =>
     };
   });
 
+// Wait until the HUD has painted its counters (the game's first ticks feed it): recording
+// then starts mid-game, as a player would, not before the HUD was ever drawn.
+const hudShown = (page) =>
+  page.waitForFunction(
+    () => {
+      const c = window.__game.hud.canvas;
+      if (!window.__game.hud.active || !c.width || !c.height) return false;
+      const d = c.getContext('2d').getImageData(0, 0, c.width, Math.min(c.height, 80)).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true;
+      return false;
+    },
+    null,
+    { timeout: 120000, polling: 250 },
+  );
+
+// Save the download (into REC_OUT or a temporary folder) and check its container and sound.
+async function keep(download, format) {
+  const name = download.suggestedFilename();
+  const out = process.env.REC_OUT || (await fs.mkdtemp(path.join(os.tmpdir(), 'rec-')));
+  await fs.mkdir(out, { recursive: true });
+  const file = path.join(out, name);
+  await download.saveAs(file);
+  const bytes = await fs.readFile(file);
+  assert.ok(bytes.length > 20000, `file size ${bytes.length}`);
+  if (name.endsWith('.webm')) assert.equal(bytes.readUInt32BE(0), 0x1a45dfa3, 'EBML header');
+  else assert.equal(bytes.toString('latin1', 4, 8), 'ftyp', 'MP4 ftyp box');
+  const hasSound = /A_OPUS|mp4a|Opus|A_AAC/.test(bytes.toString('latin1'));
+  assert.equal(hasSound, !!format.audio, `sound track (${format.mimeType})`);
+  return { name, out };
+}
+
+// Count gold pixels (the HUD's lives digit) in each { x, y, w, h } region of the last saved
+// video's first frame (`first`: its cover on a phone) and of the frame at ~0.8 s (`gold`);
+// also its size and a PNG of the later frame.
+const readVideo = (page, regions) =>
+  page.evaluate(async (regions) => {
+    const { url, size } = window.__game.recorder.last;
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.src = url;
+    await new Promise((resolve, reject) => {
+      v.onloadedmetadata = resolve;
+      v.onerror = () => reject(new Error(`video error ${v.error?.code}`));
+    });
+    const meta = { width: v.videoWidth, height: v.videoHeight, size };
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    const ctx = c.getContext('2d');
+    const count = () => {
+      ctx.drawImage(v, 0, 0);
+      return regions.map(({ x, y, w, h }) => {
+        const px = ctx.getImageData(x, y, w, h).data;
+        let n = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i] > 200 && px[i + 1] > 110 && px[i + 2] < 120) n++;
+        return n;
+      });
+    };
+    // The first presented frame, read in its own frame callback (before that the element has
+    // nothing to draw).
+    let first = null;
+    let firstAt = null;
+    const shown = new Promise((resolve) =>
+      v.requestVideoFrameCallback((now, frame) => {
+        first = count();
+        firstAt = frame.mediaTime;
+        resolve();
+      }),
+    );
+    await v.play();
+    await shown;
+    const firstPng = c.toDataURL('image/png');
+    const t0 = performance.now();
+    while (v.currentTime < 0.8 && !v.ended && performance.now() - t0 < 8000) {
+      await new Promise((r) => v.requestVideoFrameCallback(() => r()));
+    }
+    v.pause();
+    const gold = count();
+    return { ...meta, time: v.currentTime, first, firstAt, gold, png: c.toDataURL('image/png'), firstPng };
+  }, regions);
+
+const savePng = (video, out, name) =>
+  process.env.REC_OUT ? Promise.all([fs.writeFile(path.join(out, name.replace(/\.\w+$/, '.png')), Buffer.from(video.png.split(',')[1], 'base64')), fs.writeFile(path.join(out, name.replace(/\.\w+$/, '-first.png')), Buffer.from(video.firstPng.split(',')[1], 'base64'))]) : null;
+
 test('V records a 1920x1080 video with the HUD and sound, V saves it, the framing comes back', { skip, timeout: 300000 }, async () => {
   const { page, errors } = await open('/?skipTitle=1&pad=0');
   try {
@@ -70,6 +161,7 @@ test('V records a 1920x1080 video with the HUD and sound, V saves it, the framin
     const before43 = await framing(page);
     assert.equal(before43.pillarbox, true);
     assert.ok(Math.abs(before43.viewport.width / before43.viewport.height - 4 / 3) < 0.01);
+    await hudShown(page);
 
     await page.keyboard.press('KeyV');
     const rec = await page.evaluate(() => {
@@ -105,19 +197,9 @@ test('V records a 1920x1080 video with the HUD and sound, V saves it, the framin
     assert.deepEqual(comp.size, [1920, 1080]);
 
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.keyboard.press('KeyV')]);
-    const name = download.suggestedFilename();
+    const { name, out } = await keep(download, rec.format);
     assert.match(name, /^castle-grounds-\d{4}-\d{2}-\d{2}-\d{4}\.(mp4|webm)$/);
-    const out = process.env.REC_OUT || (await fs.mkdtemp(path.join(os.tmpdir(), 'rec-')));
-    await fs.mkdir(out, { recursive: true });
-    const file = path.join(out, name);
-    await download.saveAs(file);
-    const bytes = await fs.readFile(file);
-    assert.ok(bytes.length > 20000, `file size ${bytes.length}`);
-    if (name.endsWith('.webm')) assert.equal(bytes.readUInt32BE(0), 0x1a45dfa3, 'EBML header');
-    else assert.equal(bytes.toString('latin1', 4, 8), 'ftyp', 'MP4 ftyp box');
-    const hasSound = /A_OPUS|mp4a|Opus|A_AAC/.test(bytes.toString('latin1'));
-    assert.equal(hasSound, !!rec.format.audio, `sound track (${rec.format.mimeType}, audio context: ${rec.audio})`);
-    assert.ok(rec.format.audio, 'recorded with the game sound');
+    assert.ok(rec.format.audio, `recorded with the game sound (audio context: ${rec.audio})`);
 
     // Framing, pixel ratio and the UI root's box are back (4:3).
     await page.waitForFunction(() => !window.__game.recorder.recording);
@@ -134,45 +216,118 @@ test('V records a 1920x1080 video with the HUD and sound, V saves it, the framin
     assert.equal(note.lines[0], `Saved ${name}`);
 
     // The saved video: exactly 1920x1080, and its frames show the HUD's lives counter (gold
-    // digits at the top left, over the blue sky).
-    const video = await page.evaluate(async () => {
-      const { url, size } = window.__game.recorder.last;
-      const v = document.createElement('video');
-      v.muted = true;
-      v.playsInline = true;
-      v.src = url;
-      await new Promise((resolve, reject) => {
-        v.onloadedmetadata = resolve;
-        v.onerror = () => reject(new Error(`video error ${v.error?.code}`));
-      });
-      const meta = { width: v.videoWidth, height: v.videoHeight, size };
-      await v.play();
-      const t0 = performance.now();
-      while (v.currentTime < 0.8 && !v.ended && performance.now() - t0 < 8000) {
-        await new Promise((r) => v.requestVideoFrameCallback(() => r()));
-      }
-      v.pause();
-      const c = document.createElement('canvas');
-      c.width = v.videoWidth;
-      c.height = v.videoHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(v, 0, 0);
-      // The lives digit: HUD scale 1080 / 240 = 4.5 px per logical px, the '4' at x 189..225,
-      // y 67..112 (hud.js: MARGIN 18, icon 14 + 2, '×' 8; TOP 13 + 2).
-      const px = ctx.getImageData(150, 55, 100, 70).data;
-      let gold = 0;
-      for (let i = 0; i < px.length; i += 4) if (px[i] > 200 && px[i + 1] > 110 && px[i + 2] < 120) gold++;
-      // The sky beside it (no HUD there) has no gold.
-      const sky = ctx.getImageData(700, 60, 100, 70).data;
-      let skyGold = 0;
-      for (let i = 0; i < sky.length; i += 4) if (sky[i] > 200 && sky[i + 1] > 110 && sky[i + 2] < 120) skyGold++;
-      return { ...meta, time: v.currentTime, gold, skyGold, png: c.toDataURL('image/png') };
-    });
+    // digits at the top left, over the blue sky). The lives digit: HUD scale 1080 / 240 = 4.5
+    // px per logical px, the '4' at x 189..225, y 67..112 (hud.js: MARGIN 18, icon 14 + 2,
+    // '×' 8; TOP 13 + 2); the sky and cloud beside it (no HUD there, and left of the castle's
+    // yellow flags) have no gold.
+    const video = await readVideo(page, [
+      { x: 150, y: 55, w: 100, h: 70 },
+      { x: 300, y: 55, w: 100, h: 70 },
+    ]);
+    await savePng(video, out, name);
     assert.equal(video.width, 1920);
     assert.equal(video.height, 1080);
-    assert.ok(video.gold > 150, `gold HUD digit pixels in the recording: ${video.gold}`);
-    assert.ok(video.skyGold < 20, `no gold in the open sky: ${video.skyGold}`);
-    if (process.env.REC_OUT) await fs.writeFile(path.join(out, name.replace(/\.\w+$/, '.png')), Buffer.from(video.png.split(',')[1], 'base64'));
+    const [gold, skyGold] = video.gold;
+    assert.ok(gold > 150, `gold HUD digit pixels in the recording: ${gold}`);
+    assert.ok(skyGold < 20, `no gold in the open sky: ${skyGold}`);
+    assert.ok(video.first[0] > 150, `the first frame (at ${video.firstAt} s) has the HUD too: ${video.first[0]}`);
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test('9 records a 1080x1920 portrait video with the HUD, V saves it, framing and camera come back', { skip, timeout: 300000 }, async () => {
+  const { page, errors } = await open('/?skipTitle=1&pad=0');
+  try {
+    const look = () =>
+      page.evaluate(() => {
+        const { view, recorder } = window.__game;
+        return { zoom: view.camera.zoom, internal: { ...view.internal }, n64: view.n64, mode: view.describeMode(), shape: recorder.shape, recording: recorder.recording };
+      });
+    const before = await framing(page);
+    const beforeLook = await look();
+    assert.equal(before.pillarbox, false);
+    assert.deepEqual(before.viewport, { x: 0, y: 0, width: 1000, height: 600 });
+    assert.equal(beforeLook.zoom, 1);
+    assert.equal(beforeLook.n64, true, 'the retro filter is on by default');
+    assert.equal(beforeLook.internal.height, 240);
+    await hudShown(page);
+    // Log every composited frame: the MediaRecorder's state and the HUD bitmap's width against
+    // its box. The HUD re-lays out for the 9:16 column a frame or two late (a ResizeObserver),
+    // and those frames must not be recorded: the video would open on the full-window HUD
+    // squeezed into the column.
+    await page.evaluate(() => {
+      const r = window.__game.recorder;
+      const frame = r.frame.bind(r);
+      window.__recFrames = [];
+      r.frame = () => {
+        frame();
+        const c = window.__game.hud.canvas;
+        if (r.session) window.__recFrames.push({ state: r.session.mr?.state ?? 'settling', bitmap: c.width, box: Math.round(c.getBoundingClientRect().width * devicePixelRatio) });
+      };
+    });
+
+    await page.keyboard.press('Digit9');
+    const rec = await page.evaluate(() => ({ format: window.__game.recorder.format, capture: window.__game.view.capture }));
+    const on = await look();
+    assert.equal(on.recording, true, '9 starts recording');
+    assert.equal(on.shape, 'portrait');
+    assert.equal(rec.capture.aspect, 9 / 16);
+    const during = await framing(page);
+    const vp = during.viewport;
+    assert.deepEqual(vp, { x: 331, y: 0, width: 338, height: 600 }, 'a 9:16 column, centred, full height');
+    assert.ok(during.buffer.height >= 1920, `drawing buffer ${during.buffer.width}x${during.buffer.height}`);
+    assert.ok(during.buffer.width >= 1078, `drawing buffer ${during.buffer.width}x${during.buffer.height}`);
+    assert.deepEqual(during.ui, { left: `${vp.x}px`, top: `${vp.y}px`, width: `${vp.width}px`, height: `${vp.height}px` }, 'the UI follows the picture');
+    assert.equal(on.zoom, 0.75, 'the camera sees wider');
+    assert.deepEqual(on.internal, { width: 240, height: 426 }, 'retro: 240 columns');
+    assert.match(on.mode, /9:16 rec/);
+
+    const t0 = Date.now();
+    await page.waitForFunction(() => window.__game.recorder.compositor.stats.frames >= 12, null, { timeout: 120000, polling: 250 });
+    await page.waitForTimeout(Math.max(0, 2000 - (Date.now() - t0)));
+    const comp = await page.evaluate(() => {
+      const { recorder, hud } = window.__game;
+      const c = recorder.compositor;
+      return { hud: c.drawn.includes(hud.canvas), size: [c.canvas.width, c.canvas.height] };
+    });
+    assert.equal(comp.hud, true, 'the HUD canvas is composited');
+    assert.deepEqual(comp.size, [1080, 1920]);
+    const frames = await page.evaluate(() => window.__recFrames);
+    const recorded = frames.filter((f) => f.state === 'recording');
+    assert.ok(recorded.length >= 2, `recorded frames: ${JSON.stringify(frames)}`);
+    for (const f of recorded) assert.ok(Math.abs(f.bitmap - f.box) <= 1, `a recorded frame with a stale HUD: ${JSON.stringify(frames)}`);
+
+    // V stops a portrait recording too (it does not start a landscape one).
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.keyboard.press('KeyV')]);
+    const { name, out } = await keep(download, rec.format);
+    assert.match(name, /^castle-grounds-\d{4}-\d{2}-\d{2}-\d{4}-portrait\.(mp4|webm)$/);
+    await page.waitForFunction(() => !window.__game.recorder.recording);
+    const off = await look();
+    assert.equal(off.recording, false);
+    assert.equal(off.shape, null);
+    assert.deepEqual(await framing(page), before, 'full-window framing, pixel ratio, buffer and UI box are back');
+    assert.deepEqual(off.internal, beforeLook.internal);
+    assert.equal(off.zoom, 1);
+    assert.equal(off.mode, beforeLook.mode);
+    assert.equal(await page.evaluate(() => window.__game.recorder.last.shape), 'portrait');
+
+    // Exactly 1080x1920; the lives digit at the top left (HUD 1080 / 320 = 3.375 px per logical
+    // px: x 142..169, y 50..84), none in the sky right of it.
+    const video = await readVideo(page, [
+      { x: 110, y: 35, w: 100, h: 65 },
+      { x: 480, y: 35, w: 100, h: 65 },
+    ]);
+    await savePng(video, out, name);
+    assert.equal(video.width, 1080);
+    assert.equal(video.height, 1920);
+    const [gold, skyGold] = video.gold;
+    assert.ok(gold > 80, `gold HUD digit pixels in the recording: ${gold}`);
+    assert.ok(skyGold < 20, `no gold in the open sky: ${skyGold}`);
+    // The very first frame (a reel's default cover) already has the HUD laid out for 9:16, not
+    // the old full-window HUD squeezed into the column.
+    assert.ok(video.first[0] > 80 && video.first[1] < 20, `the first frame's HUD (at ${video.firstAt} s): ${video.first}`);
     assert.deepEqual(errors, []);
   } finally {
     await page.close();

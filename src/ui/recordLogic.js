@@ -1,25 +1,40 @@
 // Pure helpers for the video recorder (ui/Recorder.js): no DOM, unit tested in node.
 //
-//   REC                                  // size, frame rate, bit rates, timeslice, safety limit
+//   REC                                  // frame rate, bit rates, timeslice, safety limit
+//   REC_SHAPES, shapeForKey(code)        // landscape 1920x1080 (V) and portrait 1080x1920 (9)
 //   pickFormat(isTypeSupported, { audio }) -> { mimeType, container, ext, video, audio } | null
-//   recordFileName(date, ext)            // 'castle-grounds-2026-09-27-1412.mp4' (local time)
+//   recordFileName(date, ext, suffix)    // 'castle-grounds-2026-09-27-1412.mp4' (local time)
 //   inIframe(win), recordSupport(win)    // the recorder's guards: 'iframe' | 'unsupported' | null
-//   mapRect(rect, picture, out)          // an on-screen rect -> the 1920x1080 recording's pixels
+//   mapRect(rect, picture, out, w, h)    // an on-screen rect -> the recording's pixels
 //   recClock(seconds)                    // 'mm:ss' for the REC indicator
 //   parseRadialGradient(css), gradientRadii(g, w, h), parseDropShadow(css)   // CSS-only visuals
 //   REC_TEXTS, REC_SMALL_STRINGS         // the recorder's messages (SMALL_FONT glyph coverage)
 
-// The recording: always exactly Full HD, 16:9, whatever the window's size and shape.
+// The recording's stream settings (the same for both shapes).
 export const REC = Object.freeze({
-  width: 1920,
-  height: 1080,
-  aspect: 16 / 9,
   fps: 60,
   videoBitsPerSecond: 16_000_000, // plenty for 1080p60 game footage
   audioBitsPerSecond: 192_000,
   timesliceMs: 1000, // MediaRecorder hands over a chunk every second
   maxSeconds: 600, // safety limit: stop and save after 10 minutes
 });
+
+// The two recordings, always exactly Full HD whatever the window's size and shape: landscape
+// 1920x1080 (V) and portrait 1080x1920 (9: phone stories and reels). `zoom` is the game
+// camera's zoom while recording (three.js PerspectiveCamera.zoom, below 1 = wider): at the
+// usual 45 degree vertical field of view a 9:16 picture would be a narrow slice, only 26
+// degrees across, so portrait widens it to about 58 x 35 degrees (from the start position
+// the castle front about fills the width). `suffix` goes into the file name.
+export const REC_SHAPES = Object.freeze({
+  landscape: Object.freeze({ key: 'KeyV', width: 1920, height: 1080, aspect: 16 / 9, zoom: 1, label: '16:9', suffix: '' }),
+  portrait: Object.freeze({ key: 'Digit9', width: 1080, height: 1920, aspect: 9 / 16, zoom: 0.75, label: '9:16', suffix: 'portrait' }),
+});
+
+// The shape a key (KeyboardEvent.code) records, or null.
+export function shapeForKey(code) {
+  for (const name in REC_SHAPES) if (REC_SHAPES[name].key === code) return name;
+  return null;
+}
 
 // Container + codecs, most phone-friendly first: MP4 with H.264 and AAC (High, Main, then
 // Baseline profile at level 4.2, which covers 1080p60), MP4 with H.264 and Opus (Chrome on
@@ -61,10 +76,10 @@ export function pickFormat(isTypeSupported, { audio = true } = {}) {
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
-// 'castle-grounds-YYYY-MM-DD-HHMM.<ext>' in local time.
-export function recordFileName(date = new Date(), ext = 'webm') {
+// 'castle-grounds-YYYY-MM-DD-HHMM[-suffix].<ext>' in local time.
+export function recordFileName(date = new Date(), ext = 'webm', suffix = '') {
   const d = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-  return `castle-grounds-${d}-${pad2(date.getHours())}${pad2(date.getMinutes())}.${ext}`;
+  return `castle-grounds-${d}-${pad2(date.getHours())}${pad2(date.getMinutes())}${suffix ? `-${suffix}` : ''}.${ext}`;
 }
 
 // True when the page runs inside a frame (e.g. the sandboxed claude.ai artifact page, where
@@ -90,9 +105,10 @@ export function recordSupport(win = globalThis.window) {
 }
 
 // Map an element's on-screen rect (client px) into the recording: `picture` is the game
-// picture's rect (the WebGL canvas, 16:9 while recording), which fills the whole
-// width x height recording. Writes { x, y, w, h } into `out` (reused: no allocation).
-export function mapRect(rect, picture, out = {}, width = REC.width, height = REC.height) {
+// picture's rect (the WebGL canvas, framed at the recording's aspect while recording), which
+// fills the whole width x height recording. Writes { x, y, w, h } into `out` (reused: no
+// allocation).
+export function mapRect(rect, picture, out = {}, width = REC_SHAPES.landscape.width, height = REC_SHAPES.landscape.height) {
   const sx = width / picture.width;
   const sy = height / picture.height;
   out.x = (rect.left - picture.left) * sx;
@@ -238,6 +254,6 @@ export const REC_SMALL_STRINGS = [
   ...REC_TEXTS.unsupported,
   ...REC_TEXTS.failed,
   REC_TEXTS.limit,
-  `${REC_TEXTS.saved} castle-grounds-2026-09-27-1412.mp4 webm`,
+  `${REC_TEXTS.saved} castle-grounds-2026-09-27-1412-portrait.mp4 webm`,
   `${REC_TEXTS.rec} 0123456789:`,
 ];

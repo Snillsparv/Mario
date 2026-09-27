@@ -32,8 +32,8 @@ copied from anywhere (in particular, never copy or transliterate decompiled game
 ## Frame flow (`src/main.js`, owned by integration)
 
 Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox and the recorder's
-16:9 frame), `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`,
-`new Recorder({ view, uiRoot, audio })` (V: see "Recorder"; it composites each frame from the
+16:9 or 9:16 frame), `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`,
+`new Recorder({ view, uiRoot, audio })` (V and 9: see "Recorder"; it composites each frame from the
 renderer's frame hook, right after `view.render()`, only while recording).
 
 Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …` (`'face'` instead of
@@ -429,9 +429,9 @@ view.isUnderwater                 // the camera is below the water surface
 view.viewport                     // picture rectangle in CSS px (4:3 pillarbox)
 view.onViewportChange(fn) -> unsubscribe; view.alignOverlay(element)  // keep DOM overlays on the picture
 view.setN64Mode(on); view.setPillarbox(on); view.setDebugOverlay(on)
-view.setCapture({ aspect, minHeight } | null)   // the recorder's framing (see "Recorder")
+view.setCapture({ aspect, minHeight, zoom, label } | null)   // the recorder's framing (see "Recorder")
 view.setFrameHook(fn | null)      // fn() right after every render() (the buffer is still valid)
-frameLayout(w, h, { pillarbox, capture, basePixelRatio }) -> { viewport, pixelRatio }   // pure
+frameLayout(w, h, { pillarbox, capture, basePixelRatio, retroLines }) -> { viewport, pixelRatio, lines }   // pure
 view.setView(scene, camera)       // draw another scene (a menu: the face screen) instead of the
                                   // world, through the same retro filter; its camera's aspect
                                   // follows the picture; setView() = back to the world
@@ -452,8 +452,8 @@ compiled ahead of time while dry (`warm()`), so the first dive does not stall.
 
 Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 or R retro filter (240-line
 render + 16-bit quantise/filter pass; off = native resolution), F3 or 4 4:3 pillarbox (never
-with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads); V (the recorder's own listener, same rules,
-never on key repeat) records video, see "Recorder". Player-visible
+with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads); V and 9 (the recorder's own listener, same
+rules, never on key repeat) record video, landscape and portrait, see "Recorder". Player-visible
 labels are neutral ("Retro filter" in the pause legend, "Retro WxH" / "native WxH" in the F1
 overlay, `MODE_LABELS`); internal names such as `N64Renderer`/`setN64Mode` are not shown. The
 retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
@@ -522,35 +522,49 @@ start key/button is released as well.
 
 ## Recorder (`src/ui/Recorder.js`, `src/ui/recordLogic.js`)
 
-V records the game as a video file that plays on a phone in Full HD: always exactly 1920x1080
-(16:9), up to 60 fps, with the game's sound, whatever the window's size and shape.
+V and 9 record the game as a video file that plays on a phone in Full HD: always exactly
+1920x1080 (16:9, V, landscape) or 1080x1920 (9:16, 9, portrait: Instagram Reels and Stories),
+up to 60 fps, with the game's sound, whatever the window's size and shape.
 
 ```js
-const recorder = new Recorder({ view, uiRoot, audio })   // main; listens for V itself
-recorder.toggle(); recorder.start() -> boolean; recorder.stop(reason?) -> Promise<saved | null>
-recorder.recording, .format ({ mimeType, ext, video, audio }), .compositor (while recording:
-  .canvas, .drawn: the UI elements painted in the last frame, .stats), .last ({ name, type,
-  size, url, seconds, reason }; url is revoked after 60 s), .note ({ kind, lines } while a
-  message shows), .dispose()
+const recorder = new Recorder({ view, uiRoot, audio })   // main; listens for V and 9 itself
+recorder.toggle(shape?); recorder.start(shape = 'landscape' | 'portrait') -> boolean
+recorder.stop(reason?) -> Promise<saved | null>
+recorder.recording, .shape ('landscape' | 'portrait' while recording, else null), .format
+  ({ mimeType, ext, video, audio }), .compositor (while recording: .canvas, .drawn: the UI
+  elements painted in the last frame, .stats), .last ({ name, type, size, url, seconds,
+  reason, shape }; url is revoked after 60 s), .note ({ kind, lines } while a message shows),
+  .dispose()
+REC_SHAPES.landscape / .portrait   // { key, width, height, aspect, zoom, label, suffix } (recordLogic.js)
 ```
 
-* **Keys**: V toggles (not with Ctrl/Cmd/Alt, not on key repeat). It also stops and saves at the
+* **Keys** (`shapeForKey`): V starts a landscape recording, 9 a portrait one; while one runs,
+  either key stops it (not with Ctrl/Cmd/Alt, not on key repeat). It also stops and saves at the
   safety limit (`REC.maxSeconds`, 10 minutes) and when the page is hidden; on `pagehide` the
-  chunks so far are saved at once. The pause legend has `['V', 'Record video']`.
+  chunks so far are saved at once. The pause legend has `['V / 9', 'Record 16:9 / 9:16']` (one
+  row, so the narrow legend still fits a 4:3 screen).
 * **Guards** (`recordSupport`): inside an iframe (the claude.ai artifact page is sandboxed and
-  blocks downloads) V shows a note instead ("Video recording is not available here / It works
+  blocks downloads) V and 9 show a note instead ("Video recording is not available here / It works
   when the game runs on your own computer / (npm run dev or npm run preview)"); without
   `MediaRecorder` / `canvas.captureStream` or any recordable type, "not supported in this
   browser".
-* **Framing**: `view.setCapture({ aspect: 16/9, minHeight: 1080 })` frames the picture 16:9 in the
-  window (the 4:3 pillarbox code with another aspect: bars as needed, `alignOverlay` keeps the UI
-  root on the picture) and raises the pixel ratio until the drawing buffer is at least 1080 px
-  tall (`frameLayout`; retro mode keeps its 240-line render, only the upscaled output grows).
-  `setCapture(null)` on stop brings the 4:3 / full-window setting and the pixel ratio back; the 4:3
-  setting itself is never changed (F3/4 while recording applies afterwards); F2/R works as usual.
-  F1 shows "16:9 rec".
+* **Framing**: `view.setCapture({ aspect, minHeight: height, zoom, label })` from the shape
+  frames the picture 16:9 or 9:16 in the window (the 4:3 pillarbox code with another aspect:
+  bars as needed, so portrait in a wide window is a centred column; `alignOverlay` keeps the UI
+  root on the picture) and raises the pixel ratio until the drawing buffer is at least 1080 /
+  1920 px tall (`frameLayout`). Retro mode keeps 240 lines along the picture's short side
+  (`frameLayout`'s `lines`: 427x240 landscape, 240x427 portrait instead of a 135-pixel-wide
+  sliver); only the upscaled output grows. Portrait also sets the world camera's
+  `zoom` to `REC_SHAPES.portrait.zoom` (0.75): at the game's 45 degree vertical field of view a
+  9:16 picture is only 26 degrees across, zoomed out it is about 58 x 35 (the camera logic keeps
+  its own `fov`; `Effects` sizes its streaks by `camera.getEffectiveFOV()`). `setCapture(null)`
+  on stop brings the 4:3 / full-window setting, the pixel ratio, the retro lines and zoom 1
+  back; the 4:3 setting itself is never changed (F3/4 while recording applies afterwards); F2/R
+  works as usual. F1 shows "16:9 rec" or "9:16 rec". The HUD, pause screen, dialog box and AI
+  RACE banners already lay out for tall pictures (the HUD scales by width below 4:3).
 * **Compositing** (`Compositor`, from `view.setFrameHook`, i.e. right after each `view.render()`
-  while the WebGL buffer is valid; no `preserveDrawingBuffer`): one reused 1920x1080 2D canvas:
+  while the WebGL buffer is valid; no `preserveDrawingBuffer`): one reused 2D canvas of the
+  recording's size:
   the WebGL canvas (it is the picture rect) scaled to fill it, then every element under the UI
   root in paint order (the root's children by z-index, then tree order) at its
   `getBoundingClientRect()` relative to the picture (`mapRect`): canvases (smoothing off for
@@ -567,22 +581,33 @@ recorder.recording, .format ({ mimeType, ext, video, audio }), .compositor (whil
   the UI root, so they are never recorded.
 * **Stream**: `compositor.canvas.captureStream(60)` plus the audio tap's track
   (`audio.captureStream()`: a `MediaStreamAudioDestinationNode` on the master bus, parallel to the
-  speakers; none while muted or before audio exists: the video is silent).
+  speakers; none while muted or before audio exists: the video is silent). Compositing, the
+  canvas stream and the MediaRecorder only begin `SETTLE_FRAMES` (3) animation frames after the
+  framing change (the first composite is in the frame hook, then `_record` opens the stream
+  and starts the MediaRecorder): the HUD and the other overlays re-lay out through
+  ResizeObservers and redraw on their next frame, and a frame painted before that (the old HUD
+  squeezed into the new shape) could still be in the capture pipeline when the MediaRecorder
+  starts, opening the video (and its cover frame) on it. Stopping during those frames saves
+  nothing ("Recording failed: nothing was saved").
 * **Format** (`pickFormat(MediaRecorder.isTypeSupported)`, `REC_FORMATS`): MP4 H.264 (High, Main,
   Baseline at level 4.2) + AAC; MP4 H.264 + Opus (Chrome on Linux has no AAC encoder); WebM
   VP9 or VP8 + Opus; the plain `video/mp4` / `video/webm`. 16 Mbit/s video, 192 kbit/s audio, a
   chunk every second (`REC`). Playwright's headless Chromium (no H.264) records WebM VP9 + Opus.
 * **Saving**: a Blob of the chunks, an object URL and a temporary `<a download>` click:
-  `castle-grounds-YYYY-MM-DD-HHMM.mp4|webm` (`recordFileName`, local time at the start), then a
-  note "Saved <file>" (plus "Stopped at the 10 minute limit").
+  `castle-grounds-YYYY-MM-DD-HHMM.mp4|webm`, portrait `...-HHMM-portrait.mp4|webm`
+  (`recordFileName`, local time at the start), then a note "Saved <file>" (plus "Stopped at
+  the 10 minute limit").
 * **REC indicator**: a blinking pixel red dot and "REC mm:ss" (SMALL_FONT, the HUD's scale) in the
   window's lower-right corner. All recorder texts are in `REC_SMALL_STRINGS` (glyph coverage).
 * **Cost**: while not recording nothing runs but the key listener (the renderer's hook is null).
-  While recording: the bigger drawing buffer (1080 lines), one full-frame drawImage plus one per
-  visible UI canvas, and the browser's encoder.
-* **Tests**: `tests/recorder.test.js` (pure parts), `tests/recorder-browser.test.js` (E2E=1: V in
-  play, the download is a 1920x1080 video with sound whose frames show the HUD, the framing is
-  restored; the iframe refusal; `REC_OUT=<dir>` keeps the file and a PNG of a frame).
+  While recording: the bigger drawing buffer (1080 or 1920 lines), one full-frame drawImage plus
+  one per visible UI canvas, and the browser's encoder.
+* **Tests**: `tests/recorder.test.js` (pure parts: both shapes' framing in many windows, the
+  portrait field of view), `tests/recorder-browser.test.js` (E2E=1: V in play, the download is
+  a 1920x1080 video with sound whose frames, the first included, show the HUD, the framing is
+  restored; 9 the same at 1080x1920 with the zoom and the retro columns, no recorded frame
+  with a HUD bitmap from the old shape, stopped by V, all restored; the iframe refusal;
+  `REC_OUT=<dir>` keeps the files and PNGs of their first frame and of one at ~0.8 s).
 
 ## Face screen (`src/ui/FaceScreen.js`, `src/ui/face/*`)
 
@@ -1212,9 +1237,9 @@ Unknown names must be ignored silently.
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
 * `/preview.html?m=world` shows the whole level without the player.
-* V in the game (run locally) records a 1920x1080 video with sound (see "Recorder");
-  `E2E=1 REC_OUT=<dir> node --test tests/recorder-browser.test.js` keeps a test recording and a
-  PNG of one of its frames.
+* V in the game (run locally) records a 1920x1080 video with sound, 9 a 1080x1920 portrait one
+  (see "Recorder"); `E2E=1 REC_OUT=<dir> node --test tests/recorder-browser.test.js` keeps the
+  test recordings and PNGs of their frames.
 * `/preview.html?m=fx&melt=48` holds AI RACE's meltdown at 48 s (sky, grade, embers, the light).
 * `/preview.html?m=face` shows the face screen alone (Start shows it again); scripted pulls for
   shot.mjs: `{"eval":"__face.pointer('down', 0.6, 0.55)"}`, `{"eval":"__face.pointer('move',

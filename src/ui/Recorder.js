@@ -1,39 +1,48 @@
-// In-game video recorder: V starts recording, V again stops and saves the video: always exactly
-// 1920x1080 (16:9, Full HD) at up to 60 fps with the game's sound, whatever the window's size.
+// In-game video recorder: V starts a landscape recording, 9 a portrait one, and either key again
+// stops and saves the video: always exactly Full HD, 1920x1080 (16:9) or 1080x1920 (9:16, for
+// phone stories and reels), at up to 60 fps with the game's sound, whatever the window's size.
 //
-//   const recorder = new Recorder({ view, uiRoot, audio });   // listens for V itself
-//   recorder.toggle(); recorder.start() -> boolean; recorder.stop(reason?) -> Promise<saved | null>
-//   recorder.recording, recorder.format ({ mimeType, ext, ... }), recorder.compositor (while
-//   recording: .canvas, .drawn = the UI elements in the last frame, .stats), recorder.last
-//   ({ name, type, size, url, seconds, reason } of the last saved file; url lives ~60 s),
-//   recorder.note ({ kind, lines } while a message shows), recorder.dispose()
+//   const recorder = new Recorder({ view, uiRoot, audio });   // listens for V and 9 itself
+//   recorder.toggle(shape?); recorder.start(shape = 'landscape' | 'portrait') -> boolean;
+//   recorder.stop(reason?) -> Promise<saved | null>
+//   recorder.recording, recorder.shape (the REC_SHAPES name while recording, else null),
+//   recorder.format ({ mimeType, ext, ... }), recorder.compositor (while recording: .canvas,
+//   .drawn = the UI elements in the last frame, .stats), recorder.last ({ name, type, size,
+//   url, seconds, reason, shape } of the last saved file; url lives ~60 s), recorder.note
+//   ({ kind, lines } while a message shows), recorder.dispose()
 //
 // While recording:
-//   * the renderer frames the picture at 16:9 inside the window (letter- or pillarbox bars as
-//     needed; the UI root follows through view.alignOverlay) and raises its pixel ratio until
-//     the drawing buffer is at least 1080 px tall (view.setCapture); retro mode keeps its
-//     240-line render, only its upscaled output grows. Stopping restores the 4:3 / full-window
-//     setting and the pixel ratio; F2/R and F3/4 keep working (4:3 applies after the recording).
-//   * after every view.render() (view.setFrameHook) the Compositor paints one reused 1920x1080
-//     2D canvas: the WebGL picture, then every visible UI canvas inside the UI root at its
-//     on-screen rect (computed display, visibility and the product of the ancestors' opacity;
-//     pixel art unsmoothed), and the CSS-only visuals: background colours and radial-gradient
-//     vignettes (the AI RACE alert's red one, the title card's, the GAME OVER card's dimming,
-//     the face screen's curtain), rounded corners and borders, and the title logo's drop shadow.
+//   * the renderer frames the picture at the recording's aspect inside the window (letter- or
+//     pillarbox bars as needed; the UI root follows through view.alignOverlay) and raises its
+//     pixel ratio until the drawing buffer is at least as tall as the recording
+//     (view.setCapture); retro mode keeps 240 lines along the picture's short side (portrait:
+//     240 columns), only its upscaled output grows. Portrait also widens the game camera's
+//     view (REC_SHAPES.portrait.zoom). Stopping restores the 4:3 / full-window setting, the
+//     pixel ratio and the camera; F2/R and F3/4 keep working (4:3 applies after the recording).
+//   * after every view.render() (view.setFrameHook) the Compositor paints one reused 2D canvas
+//     of the recording's size: the WebGL picture, then every visible UI canvas inside the UI
+//     root at its on-screen rect (computed display, visibility and the product of the
+//     ancestors' opacity; pixel art unsmoothed), and the CSS-only visuals: background colours
+//     and radial-gradient vignettes (the AI RACE alert's red one, the title card's, the GAME
+//     OVER card's dimming, the face screen's curtain), rounded corners and borders, and the
+//     title logo's drop shadow.
 //     The UI list is rebuilt only when the UI root's DOM changes (a MutationObserver). DOM
 //     text is not recorded (the game draws its text into canvases). canvas.captureStream(60)
 //     feeds a MediaRecorder together with the audio engine's master bus
-//     (audio.captureStream(): silent without audio).
+//     (audio.captureStream(): silent without audio). Compositing, the stream and the
+//     MediaRecorder begin a few animation frames after the framing change (SETTLE_FRAMES), once
+//     the UI has re-laid out for it: no frame of the old layout can reach the video.
 //   * format: MP4 (H.264 + AAC) where the browser records it, else WebM (VP9/VP8 + Opus)
 //     (recordLogic.js pickFormat), ~16 Mbit/s, a chunk every second.
 //   * a blinking REC dot and the running time in the window's lower-right corner, and the notes
 //     ("Saved <file>", "not available here", ...), live outside the UI root: never recorded.
-// Stopping (V, the 10-minute safety limit, the page hidden) saves
-// castle-grounds-YYYY-MM-DD-HHMM.mp4|webm through a temporary <a download>; when the page goes
-// away (pagehide) the chunks recorded so far are saved at once. Inside a frame (the sandboxed
-// artifact page blocks downloads) V only explains that recording works when the game runs on
-// your own computer; without MediaRecorder / captureStream it says so.
-// Nothing runs while not recording but the V key listener.
+// Stopping (V or 9, the 10-minute safety limit, the page hidden) saves
+// castle-grounds-YYYY-MM-DD-HHMM.mp4|webm (portrait: ...-HHMM-portrait.mp4|webm) through a
+// temporary <a download>; when the page goes away (pagehide) the chunks recorded so far are
+// saved at once. Inside a frame (the sandboxed artifact page blocks downloads) V and 9 only
+// explain that recording works when the game runs on your own computer; without
+// MediaRecorder / captureStream they say so.
+// Nothing runs while not recording but the key listener.
 
 import { SMALL_FONT } from './bitmapFont.js';
 import { textCanvas, SpriteCache, drawIcon } from './raster.js';
@@ -41,7 +50,9 @@ import { hudMetrics } from './hudLogic.js';
 import { pixelRatio } from './pixelRatio.js';
 import {
   REC,
+  REC_SHAPES,
   REC_TEXTS,
+  shapeForKey,
   pickFormat,
   recordFileName,
   recordSupport,
@@ -53,20 +64,29 @@ import {
 } from './recordLogic.js';
 
 const URL_TTL_MS = 60000; // the saved file's object URL is revoked after this
+// Animation frames between the framing change and the first composited frame: the UI re-lays
+// out for the new picture on its own schedule (a ResizeObserver, then the overlay's next
+// frame). Nothing is painted into the recording canvas, and no stream exists, before that: a
+// frame painted earlier (the old HUD squeezed into the new shape, or cleared by its resize)
+// could still be in the capture pipeline when the MediaRecorder starts and open the video.
+const SETTLE_FRAMES = 3;
 const NOTE_MS = 3500;
 const LONG_NOTE_MS = 6500;
 
 // A computed colour with zero alpha ('rgba(0, 0, 0, 0)', 'transparent', 'rgb(0 0 0 / 0)').
 const isClear = (c) => !c || c === 'transparent' || /[,/]\s*0\)$/.test(c);
 
-// Paints the game picture and the UI over it into one 1920x1080 canvas, once per frame.
+// Paints the game picture and the UI over it into one width x height canvas (the recording's
+// size), once per frame.
 export class Compositor {
-  constructor(root, source) {
+  constructor(root, source, { width, height } = REC_SHAPES.landscape) {
     this.root = root;
     this.source = source; // the WebGL canvas (it is the picture rect)
+    this.width = width;
+    this.height = height;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = REC.width;
-    this.canvas.height = REC.height;
+    this.canvas.width = width;
+    this.canvas.height = height;
     this.ctx = this.canvas.getContext('2d', { alpha: false });
     this.layers = []; // every element under the root, in paint order
     this.alpha = new Float32Array(64);
@@ -106,15 +126,15 @@ export class Compositor {
 
   // One frame; call right after the WebGL canvas was drawn (its buffer is still valid).
   draw(dpr = 1) {
-    const { ctx, source } = this;
+    const { ctx, source, width, height } = this;
     if (!source.width || !source.height) return false;
     const pic = source.getBoundingClientRect();
     if (pic.width < 1 || pic.height < 1) return false;
     if (this.dirty) this.refresh();
     ctx.globalAlpha = 1;
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = source.height > REC.height * 1.2 ? 'high' : 'low'; // a HiDPI buffer shrinks
-    ctx.drawImage(source, 0, 0, REC.width, REC.height);
+    ctx.imageSmoothingQuality = source.height > height * 1.2 ? 'high' : 'low'; // a HiDPI buffer shrinks
+    ctx.drawImage(source, 0, 0, width, height);
     const rs = this.rootStyle;
     const rootAlpha = rs.display === 'none' ? 0 : Number(rs.opacity);
     const { layers, alpha, shown, drawn } = this;
@@ -152,8 +172,8 @@ export class Compositor {
   place(el, pic) {
     const r = el.getBoundingClientRect();
     if (r.width < 0.5 || r.height < 0.5) return null;
-    const o = mapRect(r, pic, this.rect);
-    if (o.x >= REC.width || o.y >= REC.height || o.x + o.w <= 0 || o.y + o.h <= 0) return null;
+    const o = mapRect(r, pic, this.rect, this.width, this.height);
+    if (o.x >= this.width || o.y >= this.height || o.x + o.w <= 0 || o.y + o.h <= 0) return null;
     return o;
   }
 
@@ -166,12 +186,12 @@ export class Compositor {
     // Smooth only what the page smooths itself: a canvas stretched by CSS (the title logo).
     // Pixel art (image-rendering: pixelated, or drawn 1:1 in device px) stays crisp.
     const ir = L.cs.imageRendering;
-    const cssPx = (o.w / REC.width) * pic.width * dpr;
+    const cssPx = (o.w / this.width) * pic.width * dpr;
     ctx.imageSmoothingEnabled = ir !== 'pixelated' && ir !== 'crisp-edges' && Math.abs(cssPx - c.width) > Math.max(2, c.width * 0.04);
     ctx.globalAlpha = a;
     const sh = L.shadow;
     if (sh) {
-      const k = REC.height / pic.height;
+      const k = this.height / pic.height;
       ctx.shadowColor = sh.color;
       ctx.shadowOffsetX = sh.x * k;
       ctx.shadowOffsetY = sh.y * k;
@@ -205,7 +225,7 @@ export class Compositor {
     const o = this.place(L.el, pic);
     if (!o) return false;
     const { ctx } = this;
-    const k = REC.height / pic.height;
+    const k = this.height / pic.height;
     const radius = (parseFloat(cs.borderTopLeftRadius) || 0) * k;
     ctx.globalAlpha = a;
     if (fill) {
@@ -404,8 +424,9 @@ export class Recorder {
     };
     this._onPageHide = () => this.saveNow('unload');
     this._onKey = (e) => {
-      if (e.code !== 'KeyV' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-      this.toggle();
+      const shape = shapeForKey(e.code);
+      if (!shape || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      this.toggle(shape);
     };
     if (typeof document === 'undefined' || !win?.addEventListener) return; // node
     win.addEventListener('keydown', this._onKey);
@@ -415,16 +436,22 @@ export class Recorder {
     return !!this.session;
   }
 
+  // The REC_SHAPES name being recorded ('landscape' | 'portrait'), or null.
+  get shape() {
+    return this.session?.shape ?? null;
+  }
+
   get note() {
     return this.overlay?.note ?? null;
   }
 
-  toggle() {
+  // Start a `shape` recording, or stop the running one (whichever shape it is).
+  toggle(shape = 'landscape') {
     if (this.session) {
       this.stop('key');
       return false;
     }
-    return this.start();
+    return this.start(shape);
   }
 
   _overlay() {
@@ -432,9 +459,11 @@ export class Recorder {
     return this.overlay;
   }
 
-  // Start recording; false (with a note on screen) when it cannot here.
-  start() {
+  // Start recording at REC_SHAPES[shape]; false (with a note on screen) when it cannot here.
+  start(shape = 'landscape') {
     if (this.session) return true;
+    const size = REC_SHAPES[shape];
+    if (!size) throw new Error(`unknown recording shape: ${shape}`);
     const why = recordSupport(this.win);
     if (why) {
       this._overlay().showNote(why, REC_TEXTS[why], why === 'iframe' ? LONG_NOTE_MS : NOTE_MS);
@@ -450,22 +479,11 @@ export class Recorder {
     }
     const view = this.view;
     let compositor = null;
-    let stream = null;
-    let mr = null;
     try {
-      view.setCapture({ aspect: REC.aspect, minHeight: REC.height });
-      view.draw(); // the 16:9 frame in the buffer now, for the first composite
-      compositor = new Compositor(this.uiRoot, view.renderer.domElement);
-      compositor.draw(pixelRatio(this.win));
-      stream = compositor.canvas.captureStream(REC.fps);
-      for (const track of tap?.stream.getAudioTracks() ?? []) stream.addTrack(track);
-      const opts = { mimeType: format.mimeType, videoBitsPerSecond: REC.videoBitsPerSecond };
-      if (tap) opts.audioBitsPerSecond = REC.audioBitsPerSecond;
-      mr = new MR(stream, opts);
-      mr.start(REC.timesliceMs);
+      view.setCapture({ aspect: size.aspect, minHeight: size.height, zoom: size.zoom, label: size.label });
+      compositor = new Compositor(this.uiRoot, view.renderer.domElement, size);
     } catch (err) {
       console.warn('video recording could not start:', err);
-      for (const track of stream?.getVideoTracks() ?? []) track.stop();
       tap?.release();
       compositor?.dispose();
       view.setCapture(null);
@@ -473,26 +491,21 @@ export class Recorder {
       return false;
     }
     const s = {
-      mr,
-      stream,
+      mr: null, // the MediaRecorder and its stream, from the first composited frame on
+      stream: null,
       tap,
       compositor,
       format,
+      shape,
       chunks: [],
-      name: recordFileName(new Date(), format.ext),
-      startedAt: performance.now(),
+      name: recordFileName(new Date(), format.ext, size.suffix),
+      startedAt: performance.now(), // reset when the MediaRecorder starts
       second: -1,
       saved: false,
       limitTimer: 0,
+      settle: 0, // the pending animation frame while the UI settles
+      ready: false, // the UI has settled: composite and record
     };
-    mr.ondataavailable = (e) => {
-      if (e.data?.size > 0) s.chunks.push(e.data);
-    };
-    mr.onerror = (e) => {
-      console.warn('video recording failed:', e?.error ?? e);
-      if (this.session === s) this.stop('error');
-    };
-    s.limitTimer = setTimeout(() => this.stop('limit'), REC.maxSeconds * 1000);
     this.session = s;
     this.compositor = compositor;
     this.format = format;
@@ -501,14 +514,55 @@ export class Recorder {
     view.setFrameHook(this._frame);
     this._overlay().hideNote();
     this.frame();
+    let frames = SETTLE_FRAMES;
+    const settle = () => {
+      s.settle = 0;
+      if (this.session !== s) return;
+      if (--frames > 0) s.settle = this.win.requestAnimationFrame(settle);
+      else s.ready = true; // the next render composites the first frame and starts recording
+    };
+    s.settle = this.win.requestAnimationFrame(settle);
     return true;
+  }
+
+  // The first frame is composited: open the canvas stream (plus the sound) and start the
+  // MediaRecorder on it.
+  _record(s) {
+    s.stream = s.compositor.canvas.captureStream(REC.fps);
+    for (const track of s.tap?.stream.getAudioTracks() ?? []) s.stream.addTrack(track);
+    const opts = { mimeType: s.format.mimeType, videoBitsPerSecond: REC.videoBitsPerSecond };
+    if (s.tap) opts.audioBitsPerSecond = REC.audioBitsPerSecond;
+    const mr = new this.win.MediaRecorder(s.stream, opts);
+    mr.ondataavailable = (e) => {
+      if (e.data?.size > 0) s.chunks.push(e.data);
+    };
+    mr.onerror = (e) => {
+      console.warn('video recording failed:', e?.error ?? e);
+      if (this.session === s) this.stop('error');
+    };
+    s.mr = mr;
+    mr.start(REC.timesliceMs);
+    s.startedAt = performance.now();
+    s.second = -1;
+    s.limitTimer = setTimeout(() => this.stop('limit'), REC.maxSeconds * 1000);
   }
 
   // After every render while recording (the renderer's frame hook).
   frame() {
     const s = this.session;
     if (!s) return;
-    s.compositor.draw(pixelRatio(this.win));
+    if (s.ready) {
+      s.compositor.draw(pixelRatio(this.win));
+      if (!s.mr) {
+        try {
+          this._record(s);
+        } catch (err) {
+          console.warn('video recording could not start:', err);
+          this.stop('error');
+          return;
+        }
+      }
+    }
     const second = Math.floor((performance.now() - s.startedAt) / 1000);
     if (second !== s.second) {
       s.second = second;
@@ -522,6 +576,7 @@ export class Recorder {
     if (!s) return Promise.resolve(null);
     this.session = null;
     clearTimeout(s.limitTimer);
+    if (s.settle) this.win.cancelAnimationFrame(s.settle);
     this.view.setFrameHook(null);
     this.view.setCapture(null);
     document.removeEventListener('visibilitychange', this._onHidden);
@@ -535,11 +590,11 @@ export class Recorder {
       const finish = () => {
         if (done) return;
         done = true;
-        for (const track of s.stream.getTracks()) track.stop();
+        for (const track of s.stream?.getTracks() ?? []) track.stop();
         s.tap?.release();
         resolve(this.save(s, reason));
       };
-      if (s.mr.state === 'inactive') return finish();
+      if (!s.mr || s.mr.state === 'inactive') return finish();
       s.mr.addEventListener('stop', finish, { once: true });
       try {
         s.mr.stop();
@@ -562,14 +617,14 @@ export class Recorder {
   save(s, reason) {
     if (s.saved) return this.last;
     s.saved = true;
-    const mimeType = s.mr.mimeType || s.format.mimeType;
+    const mimeType = s.mr?.mimeType || s.format.mimeType;
     const blob = new Blob(s.chunks, { type: mimeType.split(';')[0] });
     if (!blob.size) {
       this._overlay().showNote('failed', REC_TEXTS.failed);
       return null;
     }
     const url = download(blob, s.name);
-    this.last = { name: s.name, type: mimeType, size: blob.size, url, seconds: s.seconds, reason };
+    this.last = { name: s.name, type: mimeType, size: blob.size, url, seconds: s.seconds, reason, shape: s.shape };
     const lines = [`${REC_TEXTS.saved} ${s.name}`];
     if (reason === 'limit') lines.push(REC_TEXTS.limit);
     this._overlay().showNote('saved', lines);

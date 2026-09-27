@@ -103,7 +103,7 @@ export const KEY_CONTROLS = [
   ['Esc / Enter', 'Pause'],
   ['R / F2', 'Retro filter'],
   ['4 / F3', '4:3 screen'],
-  ['V', 'Record video'],
+  ['V / 9', 'Record 16:9 / 9:16'],
 ];
 export const PAD_CONTROLS = [
   ['Left stick', 'Move (tilt to walk)'],

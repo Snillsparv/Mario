@@ -5,12 +5,14 @@
 //     soft horizontal video filter and upscales bilinearly. Off = native resolution.
 //   F3: 4:3 pillarbox (the canvas shrinks to a centred 4:3 rectangle; `viewport` says where,
 //     onViewportChange/alignOverlay keep DOM overlays such as the HUD inside it).
-//   setCapture({ aspect, minHeight }): the video recorder's framing (ui/Recorder.js): the
-//     picture at `aspect` (16:9) instead of the 4:3 or full-window setting, with the pixel
-//     ratio raised so the drawing buffer is at least `minHeight` device px tall (retro mode
-//     keeps its 240-line render; only the upscaled output grows). setCapture(null) restores
-//     the settings. setFrameHook(fn) calls fn right after every render() (the drawing buffer
-//     is still valid for drawImage); null (the default) costs nothing.
+//   setCapture({ aspect, minHeight, zoom, label }): the video recorder's framing
+//     (ui/Recorder.js): the picture at `aspect` (16:9 or 9:16) instead of the 4:3 or
+//     full-window setting, with the pixel ratio raised so the drawing buffer is at least
+//     `minHeight` device px tall (retro mode keeps 240 lines along the picture's short side;
+//     only the upscaled output grows) and the world camera's zoom set to `zoom` (portrait
+//     widens the view). setCapture(null) restores the settings and zoom 1. setFrameHook(fn)
+//     calls fn right after every render() (the drawing buffer is still valid for drawImage);
+//     null (the default) costs nothing.
 //   F1: debug overlay (fps, draw calls, triangles, render mode; see describeMode/MODE_LABELS).
 //   Underwater: when the camera is below the water surface the fog switches to a short
 //     blue-green one and the sky dome is tinted toward it (surface heights from
@@ -70,17 +72,21 @@ export const AMBIENT_INTENSITY = 0.62 * Math.PI;
 
 const MAX_PIXEL_RATIO = 2;
 
-// Picture rectangle (CSS px) and pixel ratio for a width x height container: full size, the
-// 4:3 pillarbox, or, while a capture asks for it (the video recorder: { aspect, minHeight }),
-// its aspect with the pixel ratio raised so the drawing buffer is at least minHeight device px
-// tall (half a pixel over, so three.js's floor() of the buffer size never lands one short).
-export function frameLayout(width, height, { pillarbox = false, capture = null, basePixelRatio = 1 } = {}) {
+// Picture rectangle (CSS px), pixel ratio and retro render lines for a width x height
+// container: full size, the 4:3 pillarbox, or, while a capture asks for it (the video
+// recorder: { aspect, minHeight }), its aspect with the pixel ratio raised so the drawing
+// buffer is at least minHeight device px tall (half a pixel over, so three.js's floor() of the
+// buffer size never lands one short). `lines`: the retro render's height; a capture taller
+// than wide (portrait) keeps `retroLines` along its short side, the width, instead.
+export function frameLayout(width, height, { pillarbox = false, capture = null, basePixelRatio = 1, retroLines = N64_INTERNAL_HEIGHT } = {}) {
   const aspect = capture?.aspect ?? (pillarbox ? PILLARBOX_ASPECT : null);
   const viewport = fitViewport(width, height, aspect);
   let pixelRatio = basePixelRatio;
   const min = capture?.minHeight ?? 0;
   if (Math.floor(viewport.height * pixelRatio) < min) pixelRatio = (min + 0.5) / viewport.height;
-  return { viewport, pixelRatio };
+  const tall = capture && viewport.height > viewport.width;
+  const lines = tall ? Math.round((retroLines * viewport.height) / viewport.width) : retroLines;
+  return { viewport, pixelRatio, lines };
 }
 
 // Player-visible names of the render modes in the F1 overlay. Neutral wording (like the pause
@@ -128,7 +134,7 @@ export class N64Renderer {
     this.viewport = { x: 0, y: 0, width: 1, height: 1 }; // CSS px inside the container
     this.viewportListeners = new Set();
     this.pixelRatio = 1;
-    this.capture = null; // setCapture(): the video recorder's framing, { aspect, minHeight }
+    this.capture = null; // setCapture(): the video recorder's framing, { aspect, minHeight, zoom, label }
     this.frameHook = null; // setFrameHook(): called after every render()
 
     const settings = loadSettings(storage);
@@ -448,11 +454,15 @@ export class N64Renderer {
     this.debug.setVisible(!!on);
   }
 
-  // The video recorder's framing (ui/Recorder.js): { aspect, minHeight } frames the picture at
-  // that aspect whatever the 4:3 setting (which is kept, not saved over) and raises the pixel
-  // ratio for a drawing buffer at least minHeight px tall; null goes back to the settings.
+  // The video recorder's framing (ui/Recorder.js): { aspect, minHeight, zoom, label } frames
+  // the picture at that aspect whatever the 4:3 setting (which is kept, not saved over), raises
+  // the pixel ratio for a drawing buffer at least minHeight px tall and sets the world
+  // camera's zoom (below 1 = a wider view; the camera logic keeps its own field of view);
+  // `label` names the framing in the F1 overlay ('9:16 rec'). null goes back to the settings.
   setCapture(capture = null) {
-    this.capture = capture ? { aspect: capture.aspect ?? null, minHeight: capture.minHeight ?? 0 } : null;
+    this.capture = capture
+      ? { aspect: capture.aspect ?? null, minHeight: capture.minHeight ?? 0, zoom: capture.zoom ?? 1, label: capture.label ?? '' }
+      : null;
     this.refit();
   }
 
@@ -499,10 +509,12 @@ export class N64Renderer {
     // N64 mode upscales a small image anyway, so the canvas stays at CSS resolution (unless
     // the recorder asks for a bigger buffer).
     const basePixelRatio = this.n64 ? 1 : Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-    const { viewport: vp, pixelRatio } = frameLayout(width, height, { pillarbox: this.pillarbox, capture: this.capture, basePixelRatio });
+    const layout = frameLayout(width, height, { pillarbox: this.pillarbox, capture: this.capture, basePixelRatio, retroLines: this.internalHeight });
+    const { viewport: vp, pixelRatio, lines } = layout;
+    const zoom = this.capture?.zoom ?? 1;
     this.lastDevicePixelRatio = window.devicePixelRatio;
     // Re-assigning the canvas size clears it, so skip redundant resizes.
-    const key = `${vp.x},${vp.y},${vp.width},${vp.height},${pixelRatio},${this.n64}`;
+    const key = `${vp.x},${vp.y},${vp.width},${vp.height},${pixelRatio},${this.n64},${lines},${zoom}`;
     if (key === this.sizeKey) return false;
     this.sizeKey = key;
     this.viewport = vp;
@@ -514,10 +526,11 @@ export class N64Renderer {
     renderer.domElement.style.top = `${vp.y}px`;
 
     camera.aspect = vp.width / vp.height;
+    camera.zoom = zoom;
     camera.updateProjectionMatrix();
     this.fitCamera(this.viewCamera);
 
-    this.internal = internalResolution(vp.width, vp.height, this.internalHeight);
+    this.internal = internalResolution(vp.width, vp.height, lines);
     this.target.setSize(this.internal.width, this.internal.height);
     for (const fn of this.viewportListeners) fn(vp);
     return true;
@@ -595,13 +608,13 @@ export class N64Renderer {
     this.pass.render(renderer, this.target.texture, this.internal.width, this.internal.height);
   }
 
-  // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater' ('16:9 rec'
-  // while the recorder frames the picture).
+  // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater' ('16:9 rec' or
+  // '9:16 rec' while the recorder frames the picture).
   describeMode() {
     const size = this.n64
       ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
       : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
-    const frame = this.capture ? ' 16:9 rec' : this.pillarbox ? ' 4:3' : '';
+    const frame = this.capture ? ` ${this.capture.label ? `${this.capture.label} ` : ''}rec` : this.pillarbox ? ' 4:3' : '';
     if (this.viewScene) return size + frame;
     return size + frame + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '') + (this.meltOn ? ' meltdown' : '');
   }

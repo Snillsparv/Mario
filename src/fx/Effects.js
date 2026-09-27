@@ -669,7 +669,8 @@ export class Effects {
     const view = this.view;
     let h = FX.pixelHeight;
     if (view?.internal && view.viewport) h = view.n64 ? view.internal.height : view.viewport.height * (view.pixelRatio || 1);
-    const fov = camera.fov || 45;
+    // (The effective field of view: the recorder's portrait framing zooms the camera out.)
+    const fov = camera.getEffectiveFOV?.() || camera.fov || 45;
     if (h !== this.pixelHeight || fov !== this.pixelFov) {
       this.pixelHeight = h;
       this.pixelFov = fov;
