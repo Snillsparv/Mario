@@ -1,9 +1,12 @@
-// Title-card flow in the real game (Vite + headless Chromium, ~30-90 s), opt-in:
+// Menu flow in the real game (Vite + headless Chromium, ~30-90 s), opt-in:
 //   E2E=1 node --test tests/ui-title.test.js
+// The game choice (ui/ChoiceScreen.js) comes first, then the title card.
 // Regression for "title music is never heard": browsers start audio only after a user
 // gesture, and the Start press that gave it used to begin the game at once (the title
-// track was replaced before it was ever heard). Now the first press only unlocks audio and
-// starts the title music; a fresh Start press begins the game.
+// track was replaced before it was ever heard). Now the press that plays the game choice
+// unlocks audio, the title card plays its music and asks for Start, and a fresh Start press
+// begins the game. A gamepad press is no gesture: after a pad picks, the card still shows
+// PRESS ANY KEY, and a pad Start begins from there.
 //
 // Nothing may be evaluated in the page before the first real press: Playwright's
 // page.evaluate() (and page.screenshot()/waitForSelector()) count as a user gesture.
@@ -36,9 +39,12 @@ after(async () => {
   await server?.close();
 });
 
-// Logs AudioEngine music calls and, per press, the card's phase; `padStartMs`: a fake
-// gamepad holds Start from that many ms after the title appears, for 700 ms.
-function hooks({ padStartMs = 0 } = {}) {
+// Logs AudioEngine music calls and, per press, the card's phase, and reports the choice screen,
+// the title card and play as they come (console CHOICE_SHOWN / TITLE_SHOWN <phase> / PLAYING);
+// `padPresses`: a fake gamepad holds Start from each [screen, ms, holdMs]: that many ms after the
+// choice screen ('choice') or the title card ('title') appeared. (Headless Chromium draws few
+// frames while the title's logo first renders, longer under load: long holds wait that out.)
+function hooks({ padPresses = [] } = {}) {
   window.__log = [];
   const card = () => {
     const el = document.querySelector('.cg-title');
@@ -46,16 +52,31 @@ function hooks({ padStartMs = 0 } = {}) {
     return el.classList.contains('cg-out') ? 'fading' : el.classList.contains('cg-locked') ? 'locked' : 'ready';
   };
   window.__card = card;
+  const playing = setInterval(() => {
+    if (window.__game?.state.mode !== 'play') return;
+    clearInterval(playing);
+    console.log('PLAYING');
+  }, 100);
   window.addEventListener('keydown', (e) => window.__log.push(['keydown', e.code, card()]), true);
-  let shownAt = 0;
+  const shownAt = { choice: 0, title: 0 };
+  new MutationObserver((_, obs) => {
+    if (!document.querySelector('.cg-choose canvas')) return;
+    obs.disconnect();
+    shownAt.choice = performance.now();
+    console.log('CHOICE_SHOWN');
+  }).observe(document, { childList: true, subtree: true });
   new MutationObserver((_, obs) => {
     if (!document.querySelector('.cg-title canvas')) return;
     obs.disconnect();
-    shownAt = performance.now();
+    shownAt.title = performance.now();
     console.log(`TITLE_SHOWN ${card()}`);
   }).observe(document, { childList: true, subtree: true });
-  if (padStartMs) {
-    const held = () => shownAt > 0 && performance.now() - shownAt > padStartMs && performance.now() - shownAt < padStartMs + 700;
+  if (padPresses.length) {
+    const held = () =>
+      padPresses.some(([screen, ms, holdMs]) => {
+        const since = performance.now() - shownAt[screen];
+        return shownAt[screen] > 0 && since > ms && since < ms + holdMs;
+      });
     navigator.getGamepads = () => [
       { index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: i === 9 && held(), value: 0 })) },
     ];
@@ -72,27 +93,31 @@ function hooks({ padStartMs = 0 } = {}) {
   });
 }
 
-async function openTitle(query = '', opts = {}) {
+// Opens the game at the choice screen; `title` resolves to the title card's phase when it shows.
+async function openChoice(query = '', opts = {}) {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   await page.addInitScript(hooks, opts);
-  const shown = page.waitForEvent('console', { predicate: (m) => m.text().startsWith('TITLE_SHOWN'), timeout: 180000 });
+  const choice = page.waitForEvent('console', { predicate: (m) => m.text() === 'CHOICE_SHOWN', timeout: 180000 });
+  const title = page
+    .waitForEvent('console', { predicate: (m) => m.text().startsWith('TITLE_SHOWN'), timeout: 240000 })
+    .then((m) => m.text().split(' ')[1]);
   await page.goto(`${base}/${query}`, { waitUntil: 'load', timeout: 180000 });
-  const phase = (await shown).text().split(' ')[1];
-  return { page, phase };
+  await choice;
+  return { page, title };
 }
 
 const state = (page) =>
   page.evaluate(() => ({ log: window.__log, card: window.__card(), mode: window.__game?.state.mode, track: window.__game?.audio.track?.name }));
 
-test('first press starts the title music; a second Start press begins the game', { skip, timeout: 240000 }, async () => {
-  const { page, phase } = await openTitle();
-  assert.equal(phase, 'locked', 'before any gesture the card asks for any key');
+test('the Enter that plays the choice starts the title music; a second Start press begins the game', { skip, timeout: 240000 }, async () => {
+  const { page, title } = await openChoice();
   await page.waitForTimeout(1000);
   await page.keyboard.press('Enter', { delay: 80 });
+  assert.equal(await title, 'ready', 'that Enter was a gesture: the title card asks for Start, not for any key');
   await page.waitForTimeout(1500);
   let s = await state(page);
-  assert.equal(s.mode, 'title', `the unlocking Enter must not start the game: ${JSON.stringify(s)}`);
-  assert.equal(s.card, 'ready', 'PRESS START shows once audio is unlocked');
+  assert.equal(s.mode, 'title', `the Enter that played the choice must not start the game: ${JSON.stringify(s)}`);
+  assert.equal(s.card, 'ready');
   assert.equal(s.track, 'title', 'the title music plays');
   assert.ok(s.log.some(([k, n]) => k === 'startMusic' && n === 'title'), JSON.stringify(s.log));
   await page.keyboard.press('Enter', { delay: 80 });
@@ -103,18 +128,21 @@ test('first press starts the title music; a second Start press begins the game',
   await page.close();
 });
 
-test('a gamepad Start begins from the locked card (pad presses cannot unlock audio)', { skip, timeout: 240000 }, async () => {
-  const { page, phase } = await openTitle('', { padStartMs: 1500 });
-  assert.equal(phase, 'locked');
-  await page.waitForTimeout(4000); // no page.evaluate before the pad press: it would unlock
+test('a gamepad picks the game and begins from the locked card (pad presses cannot unlock audio)', { skip, timeout: 240000 }, async () => {
+  const { page, title } = await openChoice('', { padPresses: [['choice', 1500, 2000], ['title', 3000, 4000]] });
+  // No page.evaluate before the second pad press (it would unlock): play is reported in the console.
+  const playing = page.waitForEvent('console', { predicate: (m) => m.text() === 'PLAYING', timeout: 90000 });
+  assert.equal(await title, 'locked', 'no gesture yet: the card asks for any key');
+  await playing;
   const s = await state(page);
   assert.equal(s.mode, 'play', JSON.stringify(s));
   await page.close();
 });
 
-test('with ?mute=1 there is nothing to unlock: the first Start press begins', { skip, timeout: 240000 }, async () => {
-  const { page, phase } = await openTitle('?mute=1');
-  assert.equal(phase, 'ready');
+test('with ?mute=1 there is nothing to unlock: Enter plays the choice, the next Enter begins', { skip, timeout: 240000 }, async () => {
+  const { page, title } = await openChoice('?mute=1');
+  await page.keyboard.press('Enter', { delay: 80 });
+  assert.equal(await title, 'ready');
   await page.keyboard.press('Enter', { delay: 80 });
   await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 30000 });
   await page.close();

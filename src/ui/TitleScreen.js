@@ -1,17 +1,10 @@
 // Title card shown over the live 3D scene: an extruded, bevelled 'CASTLE GROUNDS' logo that
-// drops in and gently bobs, 'starring JONAS', the game choice (WITH AI RACE / WITHOUT AI RACE),
-// a blinking PRESS START with the keys spelled out, and a controls hint.
+// drops in and gently bobs, 'starring JONAS', a blinking PRESS START with the start keys
+// spelled out, and a controls hint. (The game choice comes before it: ui/ChoiceScreen.js.)
 //
-//   const title = new TitleScreen(uiRoot, { events, audio, phone, aiRace });
+//   const title = new TitleScreen(uiRoot, { events, audio, phone });
 //   title.setViewport({ x, y, width, height });   // optional: picture rect (4:3 pillarbox)
-//   const { aiRace } = await title.show();   // after Enter / Space / Esc / click / tap / gamepad Start
-//
-// The game choice (ui/raceChoice.js): play with the AI RACE button on the lawn or without it.
-// `aiRace` is the choice shown first; left / right (arrows, A / D; up / down and Tab switch), a
-// click or tap on an option, or a gamepad's d-pad / left stick pick one. Each pick emits
-// 'aiRaceChoice' { on } (main shows or hides the button behind the card at once and remembers
-// the choice) and an sfx 'menu_move'; show() resolves with the choice. The options show once the
-// card asks for Start (not while it waits for the sound-unlocking press).
+//   await title.show();   // resolves after Enter / Space / Esc / click / tap / gamepad Start
 //
 // show() requests the 'title' track. Browsers only let audio start after a user gesture, so
 // on a first visit the card first asks for any key/click/tap (PRESS ANY KEY): that press
@@ -56,7 +49,6 @@ import {
 } from './hudLogic.js';
 import { pixelRatio } from './pixelRatio.js';
 import { touchUi } from './touchLogic.js';
-import { RACE_CHOICES, choiceForKey } from './raceChoice.js';
 
 // Touch-controller buttons that start the game like a click on the card (any touch over the
 // picture does too).
@@ -66,10 +58,6 @@ const TOUCH_START_BUTTONS = new Set(['START', 'A']);
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
 const PAD_START_BUTTONS = [9, 0, 1, 2]; // Start, and the jump / attack face buttons of any pad layout (core/input.js padLayout)
 const PAD_CLOSE_BUTTONS = [9, 0, 1, 2]; // Start, A, B, X: close the phone panel
-const PAD_LEFT = 14; // d-pad left / right (standard mapping): the game choice
-const PAD_RIGHT = 15;
-const STICK_PICK = 0.6; // left stick x past this picks the left / right option (once per push)
-const CHOICE_SCALE = 1.25; // the options' font pixels per logical pixel
 // Phone-controller buttons that start the game (net/RemotePad.js 'remotePress'), and those
 // that close the phone panel while it is up.
 const REMOTE_START_BUTTONS = new Set(['START', 'A']);
@@ -107,17 +95,6 @@ const CSS = `
 .cg-wake { animation: cg-pulse 2.4s ease-in-out infinite; }
 .cg-prompt, .cg-hint { position:absolute; left:50%; transform:translateX(-50%); opacity:0.9; }
 .cg-title.cg-locked .cg-if-ready, .cg-title:not(.cg-locked) .cg-if-locked { display:none; }
-.cg-choice { position:absolute; left:50%; transform:translateX(-50%); display:flex; align-items:center;
-  gap:calc(var(--u) * 8); white-space:nowrap; }
-.cg-opt { box-sizing:border-box; padding:calc(var(--u) * 2) calc(var(--u) * 4); cursor:pointer;
-  border:max(1px, calc(var(--u) * 0.75)) solid transparent; border-radius:calc(var(--u) * 3);
-  transition:background 0.12s, border-color 0.12s; }
-.cg-opt.cg-sel { background:rgba(8,10,40,0.72); border-color:rgba(255,230,150,0.9); }
-.cg-opt canvas { pointer-events:none; }
-.cg-opt .cg-opt-gold, .cg-opt.cg-sel .cg-opt-white { display:none; }
-.cg-opt.cg-sel .cg-opt-gold { display:block; }
-.cg-opt:not(.cg-sel) .cg-opt-white { opacity:0.6; }
-.cg-opt:not(.cg-sel):hover .cg-opt-white { opacity:0.9; }
 @keyframes cg-drop { from { transform: translateY(-60vh) scale(0.6); } to { transform: none; } }
 @keyframes cg-bob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
@@ -149,8 +126,8 @@ function hasBeenActive() {
 // `tolerance` (relative) from the scale it was drawn at, scaling with CSS in between.
 // Bitmap text uses tolerance 0 so its pixels stay crisp. The logo tolerates 25%, renders
 // synchronously at no more than maxPx and asks renderFull(px) (a promise of a canvas, or
-// null) for the full-resolution version.
-class Piece {
+// null) for the full-resolution version. (ui/ChoiceScreen.js draws its texts with it too.)
+export class Piece {
   constructor(className, render, { maxPx = Infinity, tolerance = 0, renderFull = null } = {}) {
     this.render = render;
     this.renderFull = renderFull;
@@ -243,12 +220,11 @@ class LogoWorker {
 }
 
 export class TitleScreen {
-  constructor(root, { events, audio, phone = null, aiRace = true } = {}) {
+  constructor(root, { events, audio, phone = null } = {}) {
     this.root = root;
     this.events = events;
     this.audio = audio;
     this.phone = phone;
-    this.aiRace = aiRace !== false; // the game choice: with the AI RACE button, or without
     this.el = null;
     this.viewport = null;
   }
@@ -306,7 +282,7 @@ export class TitleScreen {
           this.logoWorker.dispose();
           this.el.remove();
           this.el = null;
-          resolve({ aiRace: this.aiRace });
+          resolve();
         });
       };
 
@@ -318,14 +294,6 @@ export class TitleScreen {
         'keydown',
         (e) => {
           if (this.phone?.isOpen) return; // the panel takes the keys
-          // The game choice (only once the card asks for Start; before that any key unlocks).
-          const pick = gate.locked ? null : choiceForKey(e.code, this.aiRace);
-          if (pick !== null) {
-            e.preventDefault(); // (Tab: no focus move)
-            e.stopImmediatePropagation();
-            if (!e.repeat && !gate.starting) this._choose(pick);
-            return;
-          }
           const start = START_KEYS.has(e.code);
           if (start) {
             e.preventDefault();
@@ -350,13 +318,6 @@ export class TitleScreen {
       listen(window, 'pointerup', onPointer(false), true);
       listen(window, 'touchend', onPointer(false), true);
       listen(this.el, 'click', () => gate.click() === 'begin' && begin(Promise.resolve()));
-      // A click on an option picks it; it is not a click on the card.
-      for (const opt of this.options) {
-        listen(opt.el, 'click', (e) => {
-          e.stopPropagation();
-          if (!gate.starting && !this.phone?.isOpen) this._choose(opt.on);
-        });
-      }
 
       // The touch controller: START / A (or a touch over the picture) is a click on the card;
       // the game starts once that touch has ended. The pointer listeners above have already
@@ -366,13 +327,6 @@ export class TitleScreen {
         cleanups.push(
           this.events.on('touchPress', (e) => {
             if (!e || !(TOUCH_START_BUTTONS.has(e.button) || e.picture) || gate.starting || this.phone?.isOpen) return;
-            // A touch on an option picks it (the controller covers the card, so the option
-            // itself never sees the tap).
-            const hit = e.picture && !gate.locked ? this._optionAt(e.x, e.y) : null;
-            if (hit) {
-              this._choose(hit.on);
-              return;
-            }
             if (gate.click() === 'begin') begin(new Promise((r) => (touchHeld = { button: e.button, r })));
           }),
           this.events.on('touchRelease', (e) => {
@@ -400,7 +354,6 @@ export class TitleScreen {
       // Gamepad Start/A, polled every frame; waits for release like the keyboard path.
       let padRelease = null;
       let padCloseHeld = this._pressedPadButtons(PAD_CLOSE_BUTTONS);
-      let padDir = this._padDirection(); // -1 / 0 / 1: a pick needs a fresh push
       const poll = () => {
         // A new devicePixelRatio with the same CSS size (the window moved to a monitor with
         // another scale) never reaches the ResizeObserver: redraw the card at it.
@@ -416,9 +369,6 @@ export class TitleScreen {
           for (const k of down) heldPad.add(k);
         }
         padCloseHeld = closeDown;
-        const dir = this._padDirection();
-        if (dir !== padDir && dir !== 0 && !gate.locked && !gate.starting && !this.phone?.isOpen) this._choose(dir < 0 ? RACE_CHOICES[0].on : RACE_CHOICES[1].on);
-        padDir = dir;
         if (!gate.starting) {
           const fresh = [...down].find((k) => !heldPad.has(k));
           if (fresh && gate.pad()) begin(new Promise((r) => (padRelease = { key: fresh, r })));
@@ -463,42 +413,6 @@ export class TitleScreen {
     return out;
   }
 
-  // -1 (left), 1 (right) or 0: the d-pad or the left stick of any connected pad.
-  _padDirection() {
-    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) {
-      if (!p || !p.connected) continue;
-      const x = p.axes?.[0] ?? 0;
-      if (p.buttons[PAD_LEFT]?.pressed || x < -STICK_PICK) return -1;
-      if (p.buttons[PAD_RIGHT]?.pressed || x > STICK_PICK) return 1;
-    }
-    return 0;
-  }
-
-  // Pick the option `on` (true: with the AI RACE button): highlight it and tell main.
-  _choose(on) {
-    on = !!on;
-    if (on === this.aiRace) return;
-    this.aiRace = on;
-    this._markChoice();
-    this.events?.emit('sfx', { name: 'menu_move' });
-    this.events?.emit('aiRaceChoice', { on });
-  }
-
-  _markChoice() {
-    for (const opt of this.options ?? []) opt.el.classList.toggle('cg-sel', opt.on === this.aiRace);
-  }
-
-  // The option under the client point (x, y), or null.
-  _optionAt(x, y) {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    for (const opt of this.options ?? []) {
-      const r = opt.el.getBoundingClientRect();
-      if (r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return opt;
-    }
-    return null;
-  }
-
   // Create the card's elements once; _layout() sizes and places them.
   _build() {
     this.logoWorker = new LogoWorker();
@@ -519,19 +433,6 @@ export class TitleScreen {
       wakePrompt: new Piece('cg-prompt cg-if-locked cg-pixel', (px) => textCanvas(SMALL_FONT, UNLOCK_PROMPT, px, 'white')),
       hint: new Piece('cg-hint cg-pixel', (px) => textCanvas(SMALL_FONT, TITLE_HINT, px, 'white')),
     };
-    // The game choice: each option's label in gold (picked) and in white (not picked).
-    this.options = RACE_CHOICES.map(({ on, label }, i) => {
-      const gold = new Piece('cg-pixel cg-opt-gold', (px) => textCanvas(SMALL_FONT, label, CHOICE_SCALE * px, 'gold'));
-      const white = new Piece('cg-pixel cg-opt-white', (px) => textCanvas(SMALL_FONT, label, CHOICE_SCALE * px, 'white'));
-      this.pieces[`choice${i}Gold`] = gold;
-      this.pieces[`choice${i}White`] = white;
-      const el = document.createElement('div');
-      el.className = 'cg-opt';
-      el.setAttribute('role', 'button');
-      el.setAttribute('aria-label', label);
-      el.append(gold.el, white.el);
-      return { on, el };
-    });
     const div = (className, children) => {
       const d = document.createElement('div');
       d.className = className;
@@ -543,9 +444,7 @@ export class TitleScreen {
     const { castle, grounds, hero, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
     this.starringRow = div('cg-starring', [starring.el, hero.el]);
     this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el, this.starringRow])]);
-    this.choice = div('cg-choice cg-if-ready', this.options.map((o) => o.el));
-    this._markChoice();
-    this.el.append(this.logo, this.choice, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
+    this.el.append(this.logo, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
   }
 
   // Prompts for keys/clicks or for the touch controller; redraws them when that changes.
@@ -585,6 +484,5 @@ export class TitleScreen {
     p.press.el.style.top = p.wake.el.style.top = at(H * 0.73);
     p.prompt.el.style.top = p.wakePrompt.el.style.top = at(H * 0.73 + 16);
     p.hint.el.style.bottom = at(8);
-    this.choice.style.top = at(H * 0.73 - 24);
   }
 }

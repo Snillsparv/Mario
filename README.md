@@ -42,7 +42,7 @@ browser once with `npx playwright install chromium`.
 * **Lives**: Jonas starts with 4. Running out of health, or falling out of the world, costs one
   and he drops back in at the start; losing one at ×0 is GAME OVER. A **1-up gem** is hidden
   somewhere on the grounds and gives an extra life.
-* **With or without AI RACE**: the title card lets you choose before the game starts (left / right, or click an option; the choice is remembered). WITHOUT AI RACE leaves the AI RACE button off the lawn, so the grounds stay peaceful.
+* **With or without AI RACE**: the first screen, before the title, asks which game to play (up / down and Enter, or click an option; the choice is remembered). WITHOUT AI RACE leaves the AI RACE button off the lawn, so the grounds stay peaceful.
 * **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it for good: the button sinks into the ground and is gone until a new game.
   Don't take too long: if AI RACE is not stopped (or Rustmaw beaten) within **40 seconds**, the sky overheats (a klaxon warns you at 30 s), then catches fire, a blinding light rises over the horizon and the whole world burns white: GAME OVER, however many lives are left. Until the picture is completely white you can still pound STOP (the warning keeps blinking STOP THE AI RACE!) and everything fades back.
 * **Beating Rustmaw** (the giant mechanical lizard on the castle roof in AI RACE mode): its tail

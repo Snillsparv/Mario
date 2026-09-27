@@ -36,6 +36,7 @@ import { N64Renderer } from './render/N64Renderer.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { TitleScreen } from './ui/TitleScreen.js';
+import { ChoiceScreen } from './ui/ChoiceScreen.js';
 import { FaceScreen } from './ui/FaceScreen.js';
 import { menuPlan } from './ui/face/stretch.js';
 import { GameOverCard } from './ui/GameOverCard.js';
@@ -104,7 +105,7 @@ async function start() {
     remotePad,
     events,
     hud,
-    canOpen: () => state.mode === 'title' || (state.mode === 'play' && state.paused),
+    canOpen: () => (state.mode === 'title' && !state.choosing) || (state.mode === 'play' && state.paused),
   });
   if (!TEST || params.get('pad') === '1') remotePad.start();
   // V records a 1920x1080 video of the picture, the UI and the sound, 9 a 1080x1920 portrait
@@ -119,6 +120,7 @@ async function start() {
 
   const state = {
     mode: 'title', // 'title' | 'face' | 'play' | 'gameover'
+    choosing: false, // the game choice shows (before the title card, in mode 'title')
     frame: 0, // simulated (unpaused) ticks
     time: 0, // simulation clock in seconds; stands still while paused
     paused: false,
@@ -158,9 +160,9 @@ async function start() {
     state.dark = false;
     events.emit('darkMode', { on: false });
   });
-  // The title's game choice (ui/raceChoice.js): with the AI RACE button on the lawn, or without
-  // it (then nothing can start AI RACE). Remembered in the browser; the button appears or
-  // vanishes behind the title card as the choice moves.
+  // The game choice (ui/ChoiceScreen.js, before the title card): with the AI RACE button on the
+  // lawn, or without it (then nothing can start AI RACE). Remembered in the browser; the button
+  // appears or vanishes behind the screen as the choice moves.
   let aiRace = loadRaceChoice();
   objects.setAiRaceButton(aiRace);
   events.on('aiRaceChoice', ({ on }) => {
@@ -175,14 +177,14 @@ async function start() {
     objects.setDarkness?.(t);
   }
 
-  // Title card over a slow orbit of the grounds; resolves when the player presses start.
-  // Until play starts, objects.animate() runs the objects' ambient clock from `sec` itself
-  // (birds and butterflies move, nothing can be picked up), also after objects.reset().
+  // The game choice, then the title card, over a slow orbit of the grounds; resolves when the
+  // player presses start. Until play starts, objects.animate() runs the objects' ambient clock
+  // from `sec` itself (birds and butterflies move, nothing can be picked up), also after
+  // objects.reset().
   async function runTitle() {
     state.mode = 'title';
     hud.setVisible(false);
     model.object3D.visible = false;
-    const title = new TitleScreen(uiRoot, { events, audio, phone, aiRace });
     let raf = 0;
     const titleLoop = (t) => {
       const sec = t / 1000;
@@ -195,7 +197,11 @@ async function start() {
       raf = requestAnimationFrame(titleLoop);
     };
     raf = requestAnimationFrame(titleLoop);
-    await title.show();
+    // With or without AI RACE first (its picks arrive as 'aiRaceChoice'): the phone panel waits.
+    state.choosing = true;
+    await new ChoiceScreen(uiRoot, { events, audio, aiRace }).show();
+    state.choosing = false;
+    await new TitleScreen(uiRoot, { events, audio, phone }).show();
     cancelAnimationFrame(raf);
     // Audio: TitleScreen unlocks on the start press, and AudioEngine's 'gameStart' handler
     // unlocks with sticky user activation (not after a gamepad-only start, which is no gesture).

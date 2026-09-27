@@ -40,15 +40,17 @@ Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …` (`'f
 `'title'` with `?face=1`):
 
 ```
-title:    new TitleScreen(uiRoot, { events, audio, phone, aiRace }).show()   (requests the 'title' track)
+choice:   new ChoiceScreen(uiRoot, { events, audio, aiRace }).show()   (the game choice, first: see
+          "Game choice" below; state.choosing meanwhile, so P does not open the phone panel)
+title:    new TitleScreen(uiRoot, { events, audio, phone }).show()   (requests the 'title' track)
           two phases on a first visit (audio still locked by the browser's autoplay rules):
             1. PRESS ANY KEY: any key/click/tap unlocks audio and starts the title
                track; that press is swallowed (it does not start the game)
-            2. PRESS START: Enter/Space/Esc/click on the card/gamepad Start or A starts;
-               above it the game choice, WITH AI RACE / WITHOUT AI RACE (see below)
-          phase 1 is skipped when audio is muted, unavailable or already allowed (the title
-          after a game over); a gamepad press is no user gesture, so a pad starts from either
-          phase (audio then unlocks on the first key/click in play)
+            2. PRESS START: Enter/Space/Esc/click on the card/gamepad Start or A starts
+          phase 1 is skipped when audio is muted, unavailable or already allowed (after a key
+          or click played the game choice, or after a game over); a gamepad press is no user
+          gesture, so a pad starts from either phase (audio then unlocks on the first key/click
+          in play)
           show() resolves after the start key/button is released too (the game never sees it)
           hud.setVisible(false); hero model hidden
           rAF: level.update(t), objects.animate(t), cam.titleOrbit(t), cam.apply(1), view.render()
@@ -525,19 +527,28 @@ START. The locked phase is skipped when audio is muted, unavailable or already a
 Gamepad presses are no user gesture, so a pad Start/A begins the game from either phase
 (without creating audio). The start press calls `audio.unlock()` (keyboard/pointer only),
 emits `sfx 'menu_select'`, fades the card out in 0.4 s, and `show()` resolves once the
-start key/button is released as well, with `{ aiRace }`.
+start key/button is released as well. The title card has no phone button: P opens the phone
+panel (see "Phone controller").
 
-**Game choice** (`ui/raceChoice.js`): in the PRESS START phase two options sit above PRESS
-START, WITH AI RACE and WITHOUT AI RACE (`RACE_CHOICES`, SMALL_FONT, the picked one gold in a
-framed box). Left / right (arrows, A / D; up / down, W / S and Tab switch; `choiceForKey`), a
-click on an option (not a start), a touch on it (the touch controller covers the card, so its
-`'touchPress'` carries `x, y` and the card hit-tests its options) or a gamepad's d-pad / left
-stick (a fresh push) pick one: `sfx 'menu_move'` and `'aiRaceChoice' { on }`. Main then calls
-`objects.setAiRaceButton(on)` (the button appears or vanishes behind the card at once) and
+**Game choice** (`ui/ChoiceScreen.js`, `ui/raceChoice.js`): the first screen, before the title
+card (main's `runTitle`, over the same slow orbit of the grounds; not with `?skipTitle` /
+`?test`, nor with `?face=1` on the first visit, which skips the title card). CHOOSE YOUR GAME
+(BIG_FONT, gold) over two stacked options, WITH AI RACE and WITHOUT AI RACE (`RACE_CHOICES`,
+BIG_FONT, the picked one gold in a framed box, the other dimmed white), a SMALL_FONT line under
+them saying what the picked one means (`about`), and the prompt at the bottom ("Up / down to
+choose · Enter or Space to play"; on touch screens "Tap a choice to play"). Picking: up / down or
+left / right (arrows, W / S, A / D; Tab switches; `choiceForKey`), or a gamepad's d-pad / left
+stick (a fresh push): `sfx 'menu_move'` and `'aiRaceChoice' { on }`. Playing: Enter / Space /
+Esc, gamepad Start or a face button, the phone's or the touch controller's START / A; a click
+or tap on an option picks and plays it (the touch controller covers the screen, so its
+`'touchPress'` carries `x, y` and the screen hit-tests its options). A key or click also unlocks
+audio (a gesture), so the title card then plays its music and asks for Start at once; then
+`sfx 'menu_select'`, a 0.3 s fade, and `show()` resolves with `{ aiRace }` once the press is
+released (the title card never sees it). Main answers each `'aiRaceChoice'` with
+`objects.setAiRaceButton(on)` (the button appears or vanishes behind the screen at once) and
 saves it (`saveRaceChoice`, `localStorage['castleGrounds.aiRace.v1']`); at load it applies
 `loadRaceChoice()` (with, by default), also with `?skipTitle`. Without the button nothing can
 start AI RACE (its robots, Rustmaw, the meltdown); `__game.setDark(on)` still can, for tests.
-The title card has no phone button: P opens the phone panel (see "Phone controller").
 
 ## Recorder (`src/ui/Recorder.js`, `src/ui/recordLogic.js`)
 

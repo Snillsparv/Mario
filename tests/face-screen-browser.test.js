@@ -44,9 +44,11 @@ async function open(query) {
 const faceReady = (page) => page.waitForFunction(() => window.__game?.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 60000 });
 const state = (page) => page.evaluate(() => window.__game.face.state());
 
-test('by default the title card goes straight to play, with no face screen', { skip, timeout: 300000 }, async () => {
+test('by default the game choice and the title card go straight to play, with no face screen', { skip, timeout: 300000 }, async () => {
   const { page, errors } = await open('?mute=1');
   try {
+    await page.waitForSelector('.cg-choose canvas', { timeout: 180000 });
+    await page.keyboard.press('Enter');
     await page.waitForSelector('.cg-title canvas', { timeout: 180000 });
     await page.waitForTimeout(300);
     await page.keyboard.press('Enter');

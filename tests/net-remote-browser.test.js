@@ -82,6 +82,11 @@ async function gamePage(query) {
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   page.on('request', (r) => requests.push(new URL(r.url()).pathname));
   await page.goto(`${base}/${query}`, { waitUntil: 'load', timeout: 180000 });
+  // The game choice first (P does nothing there), then the title card.
+  await page.waitForSelector('.cg-choose canvas', { timeout: 180000 });
+  await page.keyboard.press('KeyP');
+  if (await page.evaluate(() => window.__game.phone.isOpen)) throw new Error('P opened the phone panel on the choice screen');
+  await page.keyboard.press('Enter');
   await page.waitForSelector('.cg-title canvas', { timeout: 180000 });
   return { page, errors, requests };
 }

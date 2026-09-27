@@ -180,6 +180,8 @@ test('AI RACE not stopped: warning, fire, light, white, GAME OVER once, then the
     assert.deepEqual([s.warn, s.fire, s.white, s.meltOn, s.darkness, s.skyFire, s.embers, s.orb, s.wave, s.dark], [0, 0, 0, false, 0, 0, 0, false, false, false]);
     assert.equal(s.buttonDead, false);
     assert.equal(s.lives, 4);
+    await page.waitForSelector('.cg-choose canvas', { timeout: 20000 }); // the game choice first
+    await page.keyboard.press('Enter');
     await page.waitForSelector('.cg-title canvas', { timeout: 20000 });
     await page.waitForTimeout(300);
     await page.keyboard.press('Enter');

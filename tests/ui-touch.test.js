@@ -605,38 +605,43 @@ test('landscape phone: a floating stick in the lower left; START pauses', { skip
   await context.close();
 });
 
-test('title on a phone: the first tap unlocks audio, START on the controller starts', { skip, timeout: 300000 }, async () => {
+test('menus on a phone: START plays the choice (and unlocks audio), START on the title card starts', { skip, timeout: 300000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
-  // No page.evaluate before the first tap (it would count as a user gesture): the title and
-  // the START button's position are reported through the console.
+  // No page.evaluate before the first tap (it would count as a user gesture): the choice
+  // screen, the title card and the START button's position are reported through the console.
   await page.addInitScript(() => {
     window.__card = () => {
       const el = document.querySelector('.cg-title');
       if (!el) return 'gone';
       return el.classList.contains('cg-out') ? 'fading' : el.classList.contains('cg-locked') ? 'locked' : 'ready';
     };
-    new MutationObserver((_, obs) => {
-      if (!document.querySelector('.cg-title canvas') || !document.querySelector('.cg-touch.cg-on .cg-tc-START')) return;
-      obs.disconnect();
-      const r = document.querySelector('.cg-tc-START').getBoundingClientRect();
-      console.log(`TITLE_SHOWN ${window.__card()} ${r.x + r.width / 2} ${r.y + r.height / 2}`);
-    }).observe(document, { childList: true, subtree: true, attributes: true });
+    const report = (sel, label) =>
+      new MutationObserver((_, obs) => {
+        if (!document.querySelector(sel) || !document.querySelector('.cg-touch.cg-on .cg-tc-START')) return;
+        obs.disconnect();
+        const r = document.querySelector('.cg-tc-START').getBoundingClientRect();
+        console.log(`${label} ${window.__card()} ${r.x + r.width / 2} ${r.y + r.height / 2}`);
+      }).observe(document, { childList: true, subtree: true, attributes: true });
+    report('.cg-choose canvas', 'CHOICE_SHOWN');
+    report('.cg-title canvas', 'TITLE_SHOWN');
   });
-  const shown = page.waitForEvent('console', { predicate: (m) => m.text().startsWith('TITLE_SHOWN'), timeout: 180000 });
+  const choice = page.waitForEvent('console', { predicate: (m) => m.text().startsWith('CHOICE_SHOWN'), timeout: 180000 });
+  const title = page.waitForEvent('console', { predicate: (m) => m.text().startsWith('TITLE_SHOWN'), timeout: 240000 });
   await page.goto(`${base}/?touch=1`, { waitUntil: 'load', timeout: 180000 });
-  const [, phase, x, y] = (await shown).text().split(' ');
-  assert.equal(phase, 'locked', 'the card first asks for a tap (audio is held back)');
+  const [, , x, y] = (await choice).text().split(' ');
   const cdp = await context.newCDPSession(page);
   const tap = async (holdMs = 100) => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Number(x), y: Number(y), id: 1 }] });
     await page.waitForTimeout(holdMs);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
-  await tap();
+  await tap(); // START on the choice screen: plays the picked game (with AI RACE)
+  const phase = (await title).text().split(' ')[1];
+  assert.equal(phase, 'ready', 'that tap was a gesture: the title card asks for START, not for a tap');
   await page.waitForTimeout(800);
-  const s = await page.evaluate(() => ({ card: window.__card(), audio: window.__game?.audio.ctx?.state ?? null }));
-  assert.equal(s.card, 'ready', 'the unlocking tap only unlocks: PRESS START');
+  const s = await page.evaluate(() => ({ card: window.__card(), mode: window.__game?.state.mode }));
+  assert.deepEqual(s, { card: 'ready', mode: 'title' }, 'the tap that played the choice did not start the game');
   await tap(150);
   await page.waitForFunction(() => window.__game?.state.mode === 'play', null, { timeout: 30000 });
   await page.waitForTimeout(500);

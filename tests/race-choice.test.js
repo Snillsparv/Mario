@@ -1,37 +1,47 @@
-// The title's game choice (ui/raceChoice.js): WITH AI RACE (the default) or WITHOUT, which keys
-// pick which, how it is remembered, and that its texts are in the pixel font and fit the card.
-// The choice on the real title card (keys, a click, the button behind the card, the saved
-// choice after a reload) runs in the browser with E2E=1.
+// The game choice (ui/raceChoice.js, ui/ChoiceScreen.js): WITH AI RACE (the default) or WITHOUT,
+// which keys pick which, how it is remembered, and that its texts are in the pixel font and fit
+// the screen. In the browser (E2E=1): the choice screen comes first, before the title card
+// (which has no choice and no phone button); keys and a click pick, the button behind the
+// screen appears and vanishes, Enter or the click plays and the title follows, and the choice
+// is remembered after a reload.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RACE_CHOICES, loadRaceChoice, saveRaceChoice, choiceForKey } from '../src/ui/raceChoice.js';
-import { SMALL_FONT, measureText, missingGlyphs } from '../src/ui/bitmapFont.js';
+import { RACE_TEXTS, RACE_SMALL_STRINGS, RACE_BIG_STRINGS } from '../src/ui/raceChoice.js';
+import { SMALL_FONT, BIG_FONT, measureText, missingGlyphs } from '../src/ui/bitmapFont.js';
+import { SMALL_STRINGS, BIG_STRINGS } from '../src/ui/hudLogic.js';
 
 function memoryStorage() {
   const m = new Map();
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), map: m };
 }
 
-test('two options, with the AI RACE button first (left) and without it second', () => {
+test('two options, with the AI RACE button first (top) and without it second', () => {
   assert.deepEqual(RACE_CHOICES.map((c) => c.on), [true, false]);
   assert.deepEqual(RACE_CHOICES.map((c) => c.label), ['WITH AI RACE', 'WITHOUT AI RACE']);
-  const width = RACE_CHOICES.reduce((w, c) => w + measureText(SMALL_FONT, c.label) * 1.25 + 8, 8);
-  assert.ok(width <= 300, `the row fits the 320-wide card: ${width}`);
-  for (const c of RACE_CHOICES) {
-    assert.deepEqual(missingGlyphs(SMALL_FONT, c.label), [], c.label);
-    assert.ok(!/n64|nintendo|mario/i.test(c.label));
+  assert.ok(RACE_CHOICES.every((c) => c.about.length > 0), 'each says what it means');
+  // Big-font labels and title, small-font lines: in the fonts, checked, and inside the 320-wide screen.
+  for (const s of RACE_BIG_STRINGS) {
+    assert.deepEqual(missingGlyphs(BIG_FONT, s), [], s);
+    assert.ok(BIG_STRINGS.includes(s), `glyph coverage checks "${s}"`);
+    assert.ok(measureText(BIG_FONT, s) * 1.2 + 24 <= 300, s);
   }
+  for (const s of RACE_SMALL_STRINGS) {
+    assert.deepEqual(missingGlyphs(SMALL_FONT, s), [], s);
+    assert.ok(SMALL_STRINGS.includes(s), `glyph coverage checks "${s}"`);
+    assert.ok(measureText(SMALL_FONT, s) <= 300, s);
+  }
+  assert.ok(RACE_BIG_STRINGS.includes(RACE_TEXTS.title));
+  for (const s of [...RACE_BIG_STRINGS, ...RACE_SMALL_STRINGS]) assert.ok(!/n64|nintendo|mario/i.test(s), s);
 });
 
-test('keys: left / A pick WITH, right / D pick WITHOUT, up / down / W / S / Tab switch', () => {
+test('keys: up / W / left / A pick WITH, down / S / right / D pick WITHOUT, Tab switches', () => {
   for (const cur of [true, false]) {
-    assert.equal(choiceForKey('ArrowLeft', cur), true);
-    assert.equal(choiceForKey('KeyA', cur), true);
-    assert.equal(choiceForKey('ArrowRight', cur), false);
-    assert.equal(choiceForKey('KeyD', cur), false);
-    for (const k of ['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS', 'Tab']) assert.equal(choiceForKey(k, cur), !cur, k);
+    for (const k of ['ArrowUp', 'KeyW', 'ArrowLeft', 'KeyA']) assert.equal(choiceForKey(k, cur), true, k);
+    for (const k of ['ArrowDown', 'KeyS', 'ArrowRight', 'KeyD']) assert.equal(choiceForKey(k, cur), false, k);
+    assert.equal(choiceForKey('Tab', cur), !cur);
   }
   for (const k of ['Enter', 'Space', 'Escape', 'KeyP', 'KeyF', 'KeyV', 'Digit9', 'KeyJ']) assert.equal(choiceForKey(k, true), null, k);
 });
@@ -71,62 +81,74 @@ after(async () => {
   await server?.close();
 });
 
-test('the title: no phone button; right picks WITHOUT (the button vanishes), a click picks WITH, the choice is remembered', { skip, timeout: 300000 }, async () => {
+test('the choice screen comes first: keys and a click pick, Enter plays, then the title (no choice, no phone button); remembered', { skip, timeout: 300000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const open = async () => {
     await page.goto(`${base}/?mute=1&pad=0`, { waitUntil: 'load', timeout: 180000 });
-    await page.waitForFunction(() => !!window.__game && !!document.querySelector('.cg-title .cg-opt'), null, { timeout: 180000 }); // (__ready comes after the title)
+    // (__ready comes only after the menus)
+    await page.waitForFunction(() => !!window.__game && !!document.querySelector('.cg-choose .cg-c-opt'), null, { timeout: 180000 });
   };
   const look = () =>
     page.evaluate(() => {
       const b = window.__game.objects.button;
-      const opts = [...document.querySelectorAll('.cg-title .cg-opt')];
+      const opts = [...document.querySelectorAll('.cg-choose .cg-c-opt')];
       return {
         mode: window.__game.state.mode,
+        choice: !!document.querySelector('.cg-choose'),
+        title: !!document.querySelector('.cg-title'),
         selected: opts.map((o) => o.classList.contains('cg-sel')),
-        shown: opts.map((o) => o.getBoundingClientRect().width > 0),
+        about: [...document.querySelectorAll('.cg-choose .cg-c-about')].map((a) => !a.hidden),
         button: { state: b.state, visible: b.mesh.visible },
-        phoneButton: !!document.querySelector('.cg-phone'),
         saved: localStorage.getItem('castleGrounds.aiRace.v1'),
       };
     });
   try {
     await open();
     let s = await look();
-    assert.equal(s.phoneButton, false, 'the title has no phone button');
-    assert.deepEqual(s.shown, [true, true], 'both options show');
+    assert.equal(s.title, false, 'the choice screen comes before the title card');
     assert.deepEqual(s.selected, [true, false], 'WITH AI RACE first');
+    assert.deepEqual(s.about, [true, false], 'the line under the options explains the picked one');
     assert.deepEqual(s.button, { state: 'up', visible: true });
 
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowDown');
     s = await look();
-    assert.equal(s.mode, 'title', 'picking does not start the game');
+    assert.equal(s.choice, true, 'picking does not leave the screen');
     assert.deepEqual(s.selected, [false, true]);
-    assert.deepEqual(s.button, { state: 'gone', visible: false }, 'the button vanishes behind the card');
+    assert.deepEqual(s.about, [false, true]);
+    assert.deepEqual(s.button, { state: 'gone', visible: false }, 'the button vanishes behind the screen');
     assert.equal(s.saved, 'off');
-
-    // A click on the first option picks it and does not start either.
-    await page.click('.cg-title .cg-opt >> nth=0');
+    await page.keyboard.press('ArrowUp');
     s = await look();
-    assert.equal(s.mode, 'title');
     assert.deepEqual(s.selected, [true, false]);
     assert.deepEqual(s.button, { state: 'up', visible: true });
 
-    // WITHOUT, then start: the game plays without the button.
-    await page.keyboard.press('KeyD');
+    // WITHOUT, then Enter: the title card follows (PRESS START, no choice, no phone button).
+    await page.keyboard.press('KeyS');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('.cg-choose') && !!document.querySelector('.cg-title canvas'), null, { timeout: 30000 });
+    s = await page.evaluate(() => ({
+      mode: window.__game.state.mode,
+      titleOptions: document.querySelectorAll('.cg-title .cg-opt, .cg-title .cg-c-opt').length,
+      phone: !!document.querySelector('.cg-phone'),
+      button: window.__game.objects.button.state,
+    }));
+    assert.deepEqual(s, { mode: 'title', titleOptions: 0, phone: false, button: 'gone' }, 'the Enter that played did not start the game');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => window.__game.state.mode === 'play', null, { timeout: 30000 });
-    s = await page.evaluate(() => ({ state: window.__game.objects.button.state, visible: window.__game.objects.button.mesh.visible }));
-    assert.deepEqual(s, { state: 'gone', visible: false });
+    assert.equal(await page.evaluate(() => window.__game.objects.button.state), 'gone', 'played without the button');
 
-    // Remembered after a reload.
+    // Remembered after a reload; a click on an option picks it and plays it.
     await open();
     s = await look();
     assert.deepEqual(s.selected, [false, true], 'WITHOUT is still picked');
     assert.deepEqual(s.button, { state: 'gone', visible: false });
+    await page.click('.cg-choose .cg-c-opt >> nth=0');
+    await page.waitForFunction(() => !document.querySelector('.cg-choose') && !!document.querySelector('.cg-title canvas'), null, { timeout: 30000 });
+    s = await page.evaluate(() => ({ mode: window.__game.state.mode, button: window.__game.objects.button.state, saved: localStorage.getItem('castleGrounds.aiRace.v1') }));
+    assert.deepEqual(s, { mode: 'title', button: 'up', saved: 'on' });
     assert.deepEqual(errors, []);
   } finally {
     await context.close();
