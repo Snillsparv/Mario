@@ -78,7 +78,8 @@ export function frameLayout(width, height, { pillarbox = false, capture = null, 
   const aspect = capture?.aspect ?? (pillarbox ? PILLARBOX_ASPECT : null);
   const viewport = fitViewport(width, height, aspect);
   let pixelRatio = basePixelRatio;
-  if (capture?.minHeight > 0) pixelRatio = Math.max(pixelRatio, (capture.minHeight + 0.5) / viewport.height);
+  const min = capture?.minHeight ?? 0;
+  if (Math.floor(viewport.height * pixelRatio) < min) pixelRatio = (min + 0.5) / viewport.height;
   return { viewport, pixelRatio };
 }
 

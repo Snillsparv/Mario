@@ -90,6 +90,7 @@ browser once with `npx playwright install chromium`.
 | Enter / Esc | Start | pause (shows the controls) |
 | R (or F2) | | retro filter (the low-resolution N64 look on/off) |
 | 4 (or F3) | | 4:3 screen |
+| V | | record video: V starts, V again stops and saves a Full HD (1920x1080) MP4 or WebM with sound (works when the game runs on your own computer, `npm run dev` / `npm run preview`) |
 | F1 | | debug overlay |
 
 USB and Bluetooth gamepads work (several connected pads are all read); press a button once
@@ -97,6 +98,13 @@ so the browser shows the pad to the game. Switch-style pads jump with the button
 (on the right) and attack with B (at the bottom). On a first visit
 the title asks for any key, click or tap first (browsers only allow sound after one), then
 for Start; a gamepad Start begins right away.
+
+The recording is always exactly 1920x1080 (16:9), whatever the window's shape: while it runs
+the picture is framed 16:9 in the window (with bars as needed) and a blinking REC shows in the
+corner (not recorded); it stops by itself after 10 minutes or when the tab is hidden. The file
+is MP4 (H.264 + AAC, which every phone plays) where the browser can record it (recent Chrome,
+Edge and Safari), else WebM (VP9 + Opus, e.g. Firefox). Inside the published artifact page (an
+iframe that blocks downloads) V only explains this.
 
 URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-time loop;
 driven through `window.__game`, see the docs).

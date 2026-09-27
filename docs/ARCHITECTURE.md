@@ -31,8 +31,10 @@ copied from anywhere (in particular, never copy or transliterate decompiled game
 
 ## Frame flow (`src/main.js`, owned by integration)
 
-Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox),
-`view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`.
+Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox and the recorder's
+16:9 frame), `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`,
+`new Recorder({ view, uiRoot, audio })` (V: see "Recorder"; it composites each frame from the
+renderer's frame hook, right after `view.render()`, only while recording).
 
 Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …` (`'face'` instead of
 `'title'` with `?face=1`):
@@ -132,6 +134,7 @@ posed after every tick with dt = 1/30 s, like a 30 fps real-time run, so pose bl
 and wing flaps have caught up after a big step), `render()` (draw with dt 0),
 `snapshot()`, `startGame(intro = true)` (replay the intro flow), and `player`, `camera`,
 `level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`, `fx`, `shake`,
+`recorder` (see "Recorder"),
 `meltdown` (AI RACE's 40-second clock: `meltdown.skipTo(seconds)` jumps it ahead, `.phase`,
 `.seconds`, `.levels`; see "Meltdown"), `setDark(on)`,
 `neutralController`, `face` (the FaceScreen while it shows, else null). `?skipTitle=1` skips
@@ -426,6 +429,9 @@ view.isUnderwater                 // the camera is below the water surface
 view.viewport                     // picture rectangle in CSS px (4:3 pillarbox)
 view.onViewportChange(fn) -> unsubscribe; view.alignOverlay(element)  // keep DOM overlays on the picture
 view.setN64Mode(on); view.setPillarbox(on); view.setDebugOverlay(on)
+view.setCapture({ aspect, minHeight } | null)   // the recorder's framing (see "Recorder")
+view.setFrameHook(fn | null)      // fn() right after every render() (the buffer is still valid)
+frameLayout(w, h, { pillarbox, capture, basePixelRatio }) -> { viewport, pixelRatio }   // pure
 view.setView(scene, camera)       // draw another scene (a menu: the face screen) instead of the
                                   // world, through the same retro filter; its camera's aspect
                                   // follows the picture; setView() = back to the world
@@ -446,7 +452,8 @@ compiled ahead of time while dry (`warm()`), so the first dive does not stall.
 
 Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 or R retro filter (240-line
 render + 16-bit quantise/filter pass; off = native resolution), F3 or 4 4:3 pillarbox (never
-with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads). Player-visible
+with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads); V (the recorder's own listener, same rules,
+never on key repeat) records video, see "Recorder". Player-visible
 labels are neutral ("Retro filter" in the pause legend, "Retro WxH" / "native WxH" in the F1
 overlay, `MODE_LABELS`); internal names such as `N64Renderer`/`setN64Mode` are not shown. The
 retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
@@ -458,6 +465,7 @@ const audio = new AudioEngine(events)   // subscribes to events itself
 audio.unlock()                          // only after a user gesture (else the browser warns)
 audio.play(name, { pos?, volume?, pitch?, terrain?, big?, index? }); audio.playMusic(name); audio.stopMusic()
 audio.setListener(pos, yaw); audio.update(dt); audio.muted = true|false
+audio.captureStream() -> { stream, release() } | null   // the master bus as a MediaStream (the recorder)
 ```
 
 All sound effects are synthesized with WebAudio. Music is an **original** composition.
@@ -511,6 +519,70 @@ Gamepad presses are no user gesture, so a pad Start/A begins the game from eithe
 (without creating audio). The start press calls `audio.unlock()` (keyboard/pointer only),
 emits `sfx 'menu_select'`, fades the card out in 0.4 s, and `show()` resolves once the
 start key/button is released as well.
+
+## Recorder (`src/ui/Recorder.js`, `src/ui/recordLogic.js`)
+
+V records the game as a video file that plays on a phone in Full HD: always exactly 1920x1080
+(16:9), up to 60 fps, with the game's sound, whatever the window's size and shape.
+
+```js
+const recorder = new Recorder({ view, uiRoot, audio })   // main; listens for V itself
+recorder.toggle(); recorder.start() -> boolean; recorder.stop(reason?) -> Promise<saved | null>
+recorder.recording, .format ({ mimeType, ext, video, audio }), .compositor (while recording:
+  .canvas, .drawn: the UI elements painted in the last frame, .stats), .last ({ name, type,
+  size, url, seconds, reason }; url is revoked after 60 s), .note ({ kind, lines } while a
+  message shows), .dispose()
+```
+
+* **Keys**: V toggles (not with Ctrl/Cmd/Alt, not on key repeat). It also stops and saves at the
+  safety limit (`REC.maxSeconds`, 10 minutes) and when the page is hidden; on `pagehide` the
+  chunks so far are saved at once. The pause legend has `['V', 'Record video']`.
+* **Guards** (`recordSupport`): inside an iframe (the claude.ai artifact page is sandboxed and
+  blocks downloads) V shows a note instead ("Video recording is not available here / It works
+  when the game runs on your own computer / (npm run dev or npm run preview)"); without
+  `MediaRecorder` / `canvas.captureStream` or any recordable type, "not supported in this
+  browser".
+* **Framing**: `view.setCapture({ aspect: 16/9, minHeight: 1080 })` frames the picture 16:9 in the
+  window (the 4:3 pillarbox code with another aspect: bars as needed, `alignOverlay` keeps the UI
+  root on the picture) and raises the pixel ratio until the drawing buffer is at least 1080 px
+  tall (`frameLayout`; retro mode keeps its 240-line render, only the upscaled output grows).
+  `setCapture(null)` on stop brings the 4:3 / full-window setting and the pixel ratio back; the 4:3
+  setting itself is never changed (F3/4 while recording applies afterwards); F2/R works as usual.
+  F1 shows "16:9 rec".
+* **Compositing** (`Compositor`, from `view.setFrameHook`, i.e. right after each `view.render()`
+  while the WebGL buffer is valid; no `preserveDrawingBuffer`): one reused 1920x1080 2D canvas:
+  the WebGL canvas (it is the picture rect) scaled to fill it, then every element under the UI
+  root in paint order (the root's children by z-index, then tree order) at its
+  `getBoundingClientRect()` relative to the picture (`mapRect`): canvases (smoothing off for
+  pixel art: `image-rendering: pixelated` or drawn 1:1 in device px; on for CSS-stretched ones
+  like the title logo) and the CSS-only visuals: background colours (the GAME OVER card's
+  dimming, the face screen's curtain, the phone panel), `radial-gradient` backgrounds redrawn as
+  canvas gradients (`parseRadialGradient`, farthest-corner ellipses: the AI RACE alert's red
+  vignette, blinking with its `visibility` animation, and the title card's), rounded corners and
+  borders, and the title logo's `drop-shadow` (canvas shadow). Computed `display`, `visibility`
+  and the product of the ancestors' `opacity` are honoured each frame; DOM text and box shadows
+  are not drawn. The element list (with live computed styles) is rebuilt only when a
+  `MutationObserver` on the UI root sees the DOM change; a frame allocates nothing but the
+  DOMRects. Its own REC indicator and notes live in a fixed root on `document.body`, outside
+  the UI root, so they are never recorded.
+* **Stream**: `compositor.canvas.captureStream(60)` plus the audio tap's track
+  (`audio.captureStream()`: a `MediaStreamAudioDestinationNode` on the master bus, parallel to the
+  speakers; none while muted or before audio exists: the video is silent).
+* **Format** (`pickFormat(MediaRecorder.isTypeSupported)`, `REC_FORMATS`): MP4 H.264 (High, Main,
+  Baseline at level 4.2) + AAC; MP4 H.264 + Opus (Chrome on Linux has no AAC encoder); WebM
+  VP9 or VP8 + Opus; the plain `video/mp4` / `video/webm`. 16 Mbit/s video, 192 kbit/s audio, a
+  chunk every second (`REC`). Playwright's headless Chromium (no H.264) records WebM VP9 + Opus.
+* **Saving**: a Blob of the chunks, an object URL and a temporary `<a download>` click:
+  `castle-grounds-YYYY-MM-DD-HHMM.mp4|webm` (`recordFileName`, local time at the start), then a
+  note "Saved <file>" (plus "Stopped at the 10 minute limit").
+* **REC indicator**: a blinking pixel red dot and "REC mm:ss" (SMALL_FONT, the HUD's scale) in the
+  window's lower-right corner. All recorder texts are in `REC_SMALL_STRINGS` (glyph coverage).
+* **Cost**: while not recording nothing runs but the key listener (the renderer's hook is null).
+  While recording: the bigger drawing buffer (1080 lines), one full-frame drawImage plus one per
+  visible UI canvas, and the browser's encoder.
+* **Tests**: `tests/recorder.test.js` (pure parts), `tests/recorder-browser.test.js` (E2E=1: V in
+  play, the download is a 1920x1080 video with sound whose frames show the HUD, the framing is
+  restored; the iframe refusal; `REC_OUT=<dir>` keeps the file and a PNG of a frame).
 
 ## Face screen (`src/ui/FaceScreen.js`, `src/ui/face/*`)
 
@@ -1140,6 +1212,9 @@ Unknown names must be ignored silently.
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
 * `/preview.html?m=world` shows the whole level without the player.
+* V in the game (run locally) records a 1920x1080 video with sound (see "Recorder");
+  `E2E=1 REC_OUT=<dir> node --test tests/recorder-browser.test.js` keeps a test recording and a
+  PNG of one of its frames.
 * `/preview.html?m=fx&melt=48` holds AI RACE's meltdown at 48 s (sky, grade, embers, the light).
 * `/preview.html?m=face` shows the face screen alone (Start shows it again); scripted pulls for
   shot.mjs: `{"eval":"__face.pointer('down', 0.6, 0.55)"}`, `{"eval":"__face.pointer('move',

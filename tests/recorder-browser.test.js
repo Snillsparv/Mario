@@ -27,9 +27,7 @@ before(async () => {
   server = await createServer({ root, logLevel: 'error', server: { port: 0, host: '127.0.0.1', hmr: false } });
   await server.listen();
   base = server.resolvedUrls.local[0].replace(/\/$/, '');
-  browser = await chromium.launch({
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
-  });
+  browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 }, { timeout: 120000 });
 
 after(async () => {

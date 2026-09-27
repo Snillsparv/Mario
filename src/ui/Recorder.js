@@ -113,6 +113,7 @@ export class Compositor {
     if (this.dirty) this.refresh();
     ctx.globalAlpha = 1;
     ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = source.height > REC.height * 1.2 ? 'high' : 'low'; // a HiDPI buffer shrinks
     ctx.drawImage(source, 0, 0, REC.width, REC.height);
     const rs = this.rootStyle;
     const rootAlpha = rs.display === 'none' ? 0 : Number(rs.opacity);
@@ -526,7 +527,6 @@ export class Recorder {
     document.removeEventListener('visibilitychange', this._onHidden);
     this.win.removeEventListener('pagehide', this._onPageHide);
     this.overlay?.hideRec();
-    this.lastStats = { ...s.compositor.stats };
     s.compositor.dispose();
     this.compositor = null;
     s.seconds = (performance.now() - s.startedAt) / 1000;
