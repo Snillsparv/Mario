@@ -13,11 +13,9 @@ export const PHONE_WAITING = 'Waiting for your phone...';
 export const PHONE_JOINED = 'Phone connected!';
 export const PHONE_LINKED = 'Phone connected';
 export const PHONE_CLOSE = 'Esc / B  close';
-export const PHONE_BUTTON = 'Phone';
-export const PHONE_BUTTON_TIP = 'Use your phone as a controller (P)';
 
 // Small-font / big-font strings of the panel (the glyph-coverage test checks them).
-export const PHONE_SMALL_STRINGS = [PHONE_SCAN, PHONE_OPEN, PHONE_ROOM, PHONE_LINKING, PHONE_WAITING, PHONE_LINKED, PHONE_CLOSE, PHONE_BUTTON, '×'];
+export const PHONE_SMALL_STRINGS = [PHONE_SCAN, PHONE_OPEN, PHONE_ROOM, PHONE_LINKING, PHONE_WAITING, PHONE_LINKED, PHONE_CLOSE, '×'];
 export const PHONE_BIG_STRINGS = [PHONE_TITLE, PHONE_JOINED, 'ABCDEFGHJKMNPQRSTUVWXYZ'];
 
 // Seconds "Phone connected!" stays up before the panel closes by itself.

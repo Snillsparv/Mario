@@ -42,6 +42,7 @@ browser once with `npx playwright install chromium`.
 * **Lives**: Jonas starts with 4. Running out of health, or falling out of the world, costs one
   and he drops back in at the start; losing one at ×0 is GAME OVER. A **1-up gem** is hidden
   somewhere on the grounds and gives an extra life.
+* **With or without AI RACE**: the title card lets you choose before the game starts (left / right, or click an option; the choice is remembered). WITHOUT AI RACE leaves the AI RACE button off the lawn, so the grounds stay peaceful.
 * **AI RACE**: ground-pound the AI RACE button to storm the grounds; among other horrors, server halls drop from the sky (dodge the red markers) and grind up out of the ground until tech has taken over the lawn. Pound STOP to end it for good: the button sinks into the ground and is gone until a new game.
   Don't take too long: if AI RACE is not stopped (or Rustmaw beaten) within **40 seconds**, the sky overheats (a klaxon warns you at 30 s), then catches fire, a blinding light rises over the horizon and the whole world burns white: GAME OVER, however many lives are left. Until the picture is completely white you can still pound STOP (the warning keeps blinking STOP THE AI RACE!) and everything fades back.
 * **Beating Rustmaw** (the giant mechanical lizard on the castle roof in AI RACE mode): its tail
@@ -125,7 +126,7 @@ through a small relay in the local server:
 1. On the computer, run `npm run dev` (or `npm run build && npm run preview`). The server
    listens on your network and prints a `Local` URL and one or more `Network` URLs.
 2. Open the `Local` URL (for example `http://localhost:5173/`) in a browser on the computer.
-3. On the title screen or the pause screen, press the phone button to show a QR code.
+3. On the title screen or the pause screen, press P to show a QR code.
 4. Connect the phone to the same Wi-Fi network and scan the QR code with its camera. The
    controller page opens and pairs with the game by its four-letter room code. Jonas now
    follows the phone; the keyboard and gamepads keep working as well.
@@ -133,9 +134,10 @@ through a small relay in the local server:
 One phone controls a game at a time: a second phone that scans the code takes over from the
 first.
 
-If there is no phone button, the server is not reachable from other devices: it was started
-with `--host localhost` or `--host 127.0.0.1` (which keeps it on this computer only; start it
-without that, or with `--host`), or the computer is not connected to a network.
+If P shows nothing (and the pause screen lists no P row), the server is not reachable from
+other devices: it was started with `--host localhost` or `--host 127.0.0.1` (which keeps it on
+this computer only; start it without that, or with `--host`), or the computer is not
+connected to a network.
 
 If the phone can't connect:
 
@@ -151,7 +153,7 @@ If the phone can't connect:
   `http://192.168.1.20:5173/pad.html?room=ABCD`).
 
 The hosted version (for example a claude.ai link, or any static web host) has no relay, so
-the phone button is hidden there. You can still open that link on the phone itself and play
+P does nothing there. You can still open that link on the phone itself and play
 with the on-screen touch controls.
 
 `npm run build` puts the controller page next to the game: `dist/pad.html`, with its own small

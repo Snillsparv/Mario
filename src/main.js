@@ -45,6 +45,7 @@ import { TouchController } from './ui/TouchController.js';
 import { PhonePanel } from './ui/PhonePanel.js';
 import { Recorder } from './ui/Recorder.js';
 import { fullscreenKey } from './ui/fullscreen.js';
+import { loadRaceChoice, saveRaceChoice } from './ui/raceChoice.js';
 import { RemotePad } from './net/RemotePad.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
@@ -157,6 +158,16 @@ async function start() {
     state.dark = false;
     events.emit('darkMode', { on: false });
   });
+  // The title's game choice (ui/raceChoice.js): with the AI RACE button on the lawn, or without
+  // it (then nothing can start AI RACE). Remembered in the browser; the button appears or
+  // vanishes behind the title card as the choice moves.
+  let aiRace = loadRaceChoice();
+  objects.setAiRaceButton(aiRace);
+  events.on('aiRaceChoice', ({ on }) => {
+    aiRace = on;
+    objects.setAiRaceButton(on);
+    saveRaceChoice(on);
+  });
   function applyDarkness(t) {
     level.setDarkness(t);
     view.setDarkness?.(t);
@@ -171,7 +182,7 @@ async function start() {
     state.mode = 'title';
     hud.setVisible(false);
     model.object3D.visible = false;
-    const title = new TitleScreen(uiRoot, { events, audio, phone });
+    const title = new TitleScreen(uiRoot, { events, audio, phone, aiRace });
     let raf = 0;
     const titleLoop = (t) => {
       const sec = t / 1000;

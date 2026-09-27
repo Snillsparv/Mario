@@ -561,6 +561,11 @@ export const SFX = {
     chime(ctx, out, t + 0.08, 1175, 0.2, 0.14);
     return 0.3;
   },
+  // The title's choice moved: one short, soft blip (under menu_select's two).
+  menu_move(ctx, out, t, { p }) {
+    tone(ctx, out, t, { wave: 'triangle', freq: 990 * p, dur: 0.06, gain: 0.16 });
+    return 0.08;
+  },
   menu_select(ctx, out, t, { p }) {
     tone(ctx, out, t, { wave: 'triangle', freq: 1320 * p, dur: 0.08, gain: 0.256 });
     tone(ctx, out, t + 0.05, { wave: 'triangle', freq: 1760 * p, dur: 0.14, gain: 0.256 });

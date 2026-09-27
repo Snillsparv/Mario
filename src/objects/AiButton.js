@@ -8,6 +8,8 @@
 // RETIRE_DELAY ticks, then the whole button sinks into the ground over RETIRE_TICKS ('sinking';
 // `justSank` is true on the tick it starts, for the dust and sound) and is gone for the rest of
 // the game ('gone': hidden, its colliders parked far below the world). reset() brings it back.
+// setPresent(false) (the title's WITHOUT AI RACE choice) takes it out of the game the same way
+// at once, and reset() keeps it out until setPresent(true).
 //
 //   new AiButton({ spot: { x, z, radius }, collision, groundAt })
 //   update(player) -> true on the tick it is pressed          (30 Hz)
@@ -18,7 +20,8 @@
 //   retire()        after this press, sink into the ground and stay gone (see above)
 //   setDead(on)     AI RACE's meltdown is past its point of no return (fx/Meltdown.js): the
 //                   cap's light dies (dark, no glow or pulse) and pounds do nothing
-//   reset()         cap up, ready, mode off ("AI RACE"), back above the ground, alive
+//   reset()         cap up, ready, mode off ("AI RACE"), back above the ground, alive (unless absent)
+//   setPresent(on)  whether the button is in this game at all; absent = 'gone' (see above)
 //
 // Collision: static triangles added to the world at construction (CollisionWorld.addTriangles
 // works after finalize()): the base's side walls and top ring, and the cap's flat top. The cap
@@ -141,6 +144,7 @@ export class AiButton {
 
     this.state = 'up'; // 'up' | 'pressing' | 'down' | 'rising' | 'sinking' | 'gone'
     this.retiring = false; // retire() called: sink away after this press
+    this.absent = false; // setPresent(false): not in this game at all (the title's choice)
     this.justSank = false; // true on the tick the sinking starts (read by ObjectManager)
     this.sink = 0; // how far the whole button has sunk into the ground (render: interpolated)
     this.prevSink = 0;
@@ -404,6 +408,13 @@ export class AiButton {
     return this.capMaterial.map.userData.label;
   }
 
+  // In this game or not (the title's choice). Absent: hidden and its colliders parked, like a
+  // retired button that has sunk away; present again: reset() brings it back up.
+  setPresent(on) {
+    this.absent = !on;
+    this.reset();
+  }
+
   reset() {
     this.setOn(false);
     this.retiring = false;
@@ -419,6 +430,10 @@ export class AiButton {
     this.lastAction = null;
     this.flash = 0;
     this.setDead(false);
+    if (this.absent) {
+      this.state = 'gone';
+      this.mesh.visible = false;
+    }
     this._moveCapFloor();
   }
 

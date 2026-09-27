@@ -222,6 +222,41 @@ test('pounding STOP retires the button: it sinks into the ground and is gone unt
   assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, b.capTop0);
 });
 
+test('WITHOUT AI RACE (the title\'s choice): no button, nothing to pound, also after a new game', () => {
+  const { objects, player, log, step, collision } = setup();
+  const b = objects.button;
+  objects.setAiRaceButton(false);
+  const gone = () => {
+    assert.equal(b.state, 'gone');
+    assert.equal(b.mesh.visible, false);
+    assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, 0, 'only the lawn there');
+    assert.equal(collision.findWalls(BTN.x + b.radius, 10, BTN.z, 0, 60).walls.length, 0, 'no base walls');
+  };
+  gone();
+  // A ground pound where it stood does nothing.
+  player.pos = { x: BTN.x, y: 0, z: BTN.z };
+  player.action = 'idle';
+  step();
+  player.action = 'ground_pound_land';
+  step(5);
+  assert.equal(pounds(log).length, 0, 'AI RACE never starts');
+  // A new game keeps the choice.
+  objects.reset();
+  gone();
+  // WITH AI RACE again: back up, ready and pressable.
+  objects.setAiRaceButton(true);
+  assert.equal(b.state, 'up');
+  assert.equal(b.mesh.visible, true);
+  assert.equal(b.label, 'AI RACE');
+  assert.equal(collision.findFloor(BTN.x, 500, BTN.z).y, b.capTop0);
+  player.pos = { x: BTN.x, y: b.capTop, z: BTN.z };
+  player.action = 'idle';
+  step();
+  player.action = 'ground_pound_land';
+  step();
+  assert.deepEqual(pounds(log).map((l) => l.e.on), [true]);
+});
+
 test('past the meltdown\'s point of no return (all white) the button\'s light dies and pounds do nothing, until reset()', () => {
   const { objects, player, events, log, step, sfx } = setup();
   const b = objects.button;

@@ -14,7 +14,7 @@
 // itself after JOINED_CLOSE_MS.
 //
 // Entry points: the P key whenever canOpen() allows it (main: on the title and on the pause
-// screen), the title card's phone button (ui/TitleScreen.js), and the pause legend's
+// screen) and the pause legend's
 // "P  Phone controller" row (drawn by ui/pauseScreen.js while phoneEntry.enabled; this panel
 // lays a click target over it). Closing: Esc / Enter / J (B) / P / Backspace, a click on the ×
 // or beside the panel, Start / B on a gamepad or the phone (update() on the pause screen; the
@@ -90,7 +90,8 @@ function injectStyles() {
   document.head.appendChild(style);
 }
 
-// The phone icon at `px` device px per icon pixel, optionally with a label to its right.
+// The phone icon at `px` device px per icon pixel (the panel's corner badge), optionally with a
+// label to its right.
 export function renderPhoneBadge(px, label = '', style = 'white') {
   const cache = new SpriteCache();
   const pad = Math.ceil(px * 2);

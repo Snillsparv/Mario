@@ -1,6 +1,6 @@
 // The game side of the phone controller in the real game (Vite dev server with the relay
 // plugin, headless Chromium) with a stand-in phone on a `ws` socket speaking the pad side of
-// the protocol: the title's phone button and P open the panel (QR code, address, room code),
+// the protocol: P opens the panel on the title (which has no phone button: QR code, address, room code),
 // Esc closes it without starting the game, a phone joining shows "connected" and closes the
 // panel by itself, the phone's START starts the game, its stick moves Pip, Pip getting hurt
 // rumbles the phone, the pause screen's P / phone B open and close the panel, and the phone
@@ -107,14 +107,13 @@ test('title and pause: panel, pairing, phone START / stick / B, rumble, leaving'
   try {
     await page.waitForFunction(() => window.__game?.remotePad?.status === 'online', null, { timeout: 30000 });
     assert.ok(requests.includes(PAD_INFO_PATH), 'the relay was probed');
-    const btn = await page.evaluate(() => ({ hidden: document.querySelector('.cg-phone').hidden, entry: document.querySelectorAll('.pp-root').length }));
-    assert.equal(btn.hidden, false, 'the title shows the phone button');
+    assert.equal(await page.evaluate(() => !!document.querySelector('.cg-phone')), false, 'the title has no phone button');
 
-    // The phone button opens the panel: QR code, address, room code.
-    await page.click('.cg-phone');
+    // P opens the panel: QR code, address, room code.
+    await page.keyboard.press('KeyP');
     let s = await panelState(page);
-    assert.ok(s.open && s.shown, 'open after a click on the phone button');
-    assert.equal(s.mode, 'title', 'the click did not start the game');
+    assert.ok(s.open && s.shown, 'open after P');
+    assert.equal(s.mode, 'title', 'P did not start the game');
     assert.match(s.room, /^[A-HJKMNP-Z]{4}$/);
     assert.match(s.padUrl, new RegExp(`^http://[^/]+/pad\\.html\\?room=${s.room}$`));
     const dom = await page.evaluate(() => {
@@ -132,7 +131,7 @@ test('title and pause: panel, pairing, phone START / stick / B, rumble, leaving'
     await page.waitForTimeout(600);
     assert.equal((await panelState(page)).mode, 'title', 'Esc on the panel is not a start press');
     await page.keyboard.press('KeyP');
-    assert.equal((await panelState(page)).open, true, 'P opens the panel on the title');
+    assert.equal((await panelState(page)).open, true, 'P opens it again');
 
     // A phone joins while it is open: "connected", then it closes by itself.
     phone = await fakePhone(s.room);
@@ -204,16 +203,15 @@ test('title and pause: panel, pairing, phone START / stick / B, rumble, leaving'
   }
 });
 
-test('?pad=0 (as on a static host): no probe, no phone button, P does nothing', { skip, timeout: 240000 }, async () => {
+test('?pad=0 (as on a static host): no probe, P does nothing', { skip, timeout: 240000 }, async () => {
   const { page, errors, requests } = await gamePage('?mute=1&pad=0');
   try {
     await page.waitForTimeout(1500);
     const s = await page.evaluate(() => ({
       status: window.__game.remotePad.status,
       available: window.__game.remotePad.available,
-      hidden: document.querySelector('.cg-phone').hidden,
     }));
-    assert.deepEqual(s, { status: 'unavailable', available: false, hidden: true });
+    assert.deepEqual(s, { status: 'unavailable', available: false });
     assert.ok(!requests.includes(PAD_INFO_PATH) && !requests.includes(PAD_WS_PATH), 'nothing asked');
     await page.keyboard.press('KeyP');
     assert.equal(await page.evaluate(() => window.__game.phone.isOpen), false);

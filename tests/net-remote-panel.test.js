@@ -13,7 +13,6 @@ import {
   PHONE_LINKED,
   PHONE_JOINED,
   PHONE_CLOSE,
-  PHONE_BUTTON,
   PHONE_SMALL_STRINGS,
   PHONE_BIG_STRINGS,
   PHONE_ICON,
@@ -119,7 +118,6 @@ describe('panel layout and texts', () => {
       assert.equal(row.length, PHONE_ICON.w);
       for (const ch of row) assert.ok(ch === '.' || PHONE_ICON.palette[ch], `palette ${ch}`);
     }
-    assert.ok(measure(PHONE_BUTTON) < 40);
   });
 });
 

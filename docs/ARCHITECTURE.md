@@ -40,11 +40,12 @@ Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …` (`'f
 `'title'` with `?face=1`):
 
 ```
-title:    new TitleScreen(uiRoot, { events, audio }).show()   (requests the 'title' track)
+title:    new TitleScreen(uiRoot, { events, audio, phone, aiRace }).show()   (requests the 'title' track)
           two phases on a first visit (audio still locked by the browser's autoplay rules):
             1. PRESS ANY KEY: any key/click/tap unlocks audio and starts the title
                track; that press is swallowed (it does not start the game)
-            2. PRESS START: Enter/Space/Esc/click on the card/gamepad Start or A starts
+            2. PRESS START: Enter/Space/Esc/click on the card/gamepad Start or A starts;
+               above it the game choice, WITH AI RACE / WITHOUT AI RACE (see below)
           phase 1 is skipped when audio is muted, unavailable or already allowed (the title
           after a game over); a gamepad press is no user gesture, so a pad starts from either
           phase (audio then unlocks on the first key/click in play)
@@ -524,7 +525,19 @@ START. The locked phase is skipped when audio is muted, unavailable or already a
 Gamepad presses are no user gesture, so a pad Start/A begins the game from either phase
 (without creating audio). The start press calls `audio.unlock()` (keyboard/pointer only),
 emits `sfx 'menu_select'`, fades the card out in 0.4 s, and `show()` resolves once the
-start key/button is released as well.
+start key/button is released as well, with `{ aiRace }`.
+
+**Game choice** (`ui/raceChoice.js`): in the PRESS START phase two options sit above PRESS
+START, WITH AI RACE and WITHOUT AI RACE (`RACE_CHOICES`, SMALL_FONT, the picked one gold in a
+framed box). Left / right (arrows, A / D; up / down, W / S and Tab switch; `choiceForKey`), a
+click on an option (not a start), a touch on it (the touch controller covers the card, so its
+`'touchPress'` carries `x, y` and the card hit-tests its options) or a gamepad's d-pad / left
+stick (a fresh push) pick one: `sfx 'menu_move'` and `'aiRaceChoice' { on }`. Main then calls
+`objects.setAiRaceButton(on)` (the button appears or vanishes behind the card at once) and
+saves it (`saveRaceChoice`, `localStorage['castleGrounds.aiRace.v1']`); at load it applies
+`loadRaceChoice()` (with, by default), also with `?skipTitle`. Without the button nothing can
+start AI RACE (its robots, Rustmaw, the meltdown); `__game.setDark(on)` still can, for tests.
+The title card has no phone button: P opens the phone panel (see "Phone controller").
 
 ## Recorder (`src/ui/Recorder.js`, `src/ui/recordLogic.js`)
 
@@ -1144,7 +1157,8 @@ build has no relay, so every phone feature stays hidden there.
   starts from the phone's START/A). `?pad=0` turns it off, `?pad=1` forces it (`?test=1`
   skips it). `PhonePanel` (`src/ui/PhonePanel.js`, `phoneLogic.js`): the pairing panel with a
   QR code of the pad URL (`qrcode-generator`), the URL, the room code and the connection
-  status, opened from a phone button on the title or the pause screen (P); a small badge
+  status, opened with P on the title or the pause screen (the pause legend's P row is also a
+  click target; the title card has no phone button); a small badge
   while a phone is connected.
 
 ## Objects (`src/objects/ObjectManager.js`)
@@ -1156,6 +1170,8 @@ objects.animate(time, alpha, threeCamera)   // render: spin, billboards
 objects.reset()                             // new game: every pickup back (see below)
 objects.ambient(time) -> alpha              // title backdrop clock (animate() calls it itself)
 objects.started                             // an update() ran since construction / reset()
+objects.setAiRaceButton(on)                 // the title's game choice: false = no AI RACE button
+                                            // (AiButton.setPresent: 'gone', colliders parked; kept by reset())
 ```
 
 `reset()` (always present; main calls it after GAME OVER, before the title): all yellow and
@@ -1220,7 +1236,8 @@ wallkick, dive, ground_pound, ground_pound_land, punch1, punch2, kick, jump_kick
 land_hard, skid,
 bonk, hurt, ledge_grab, climb, swim, splash, water_exit, coin, red_coin, star_appear,
 star_get, one_up, pause, menu_select`, plus `footstep, life_lost, unpause, camera_move,
-camera_buzz`, and the dialog box's `dialog_open, text_blip, dialog_next, dialog_close`, and
+camera_buzz`, the title's `menu_move` (its game choice moved), and the dialog box's
+`dialog_open, text_blip, dialog_next, dialog_close`, and
 AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
 cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, and Rustmaw's tail grab's

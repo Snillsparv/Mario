@@ -27,8 +27,9 @@
 // orbits the camera (input.addLookDelta). Presses vibrate briefly where supported. The page
 // cannot scroll, zoom or open long-press menus while the controller is shown.
 //
-// Events: 'touchPress' { button, picture } on each new touch (button: a controller button
-// name, 'stick', 'dpad' or 'none'; picture: the touch is over the game picture) and
+// Events: 'touchPress' { button, picture, x, y } on each new touch (button: a controller button
+// name, 'stick', 'dpad' or 'none'; picture: the touch is over the game picture; x, y: where,
+// in client px, so the title can tell a tap on one of its options) and
 // 'touchRelease' { button } when it ends (the title screen starts from them), 'touchUi'
 // { shown } when the controller appears or goes.
 //
@@ -689,7 +690,7 @@ export class TouchController {
     this.touches.push(r);
     this._move(r, x, y);
     const picture = !L.standalone && (L.mode === 'landscape' || y < L.top);
-    this.events?.emit('touchPress', { button: role, picture });
+    this.events?.emit('touchPress', { button: role, picture, x, y });
   }
 
   _move(r, x, y) {

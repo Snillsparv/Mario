@@ -247,6 +247,12 @@ export class ObjectManager {
     this.halls?.setMode(on);
   }
 
+  // The title's choice (ui/raceChoice.js): play with the AI RACE button, or without it (it is
+  // then gone, also after reset(), so AI RACE can never start).
+  setAiRaceButton(on) {
+    this.button?.setPresent(on);
+  }
+
   // The button was pounded: ask main to toggle the mode. Pounding STOP retires the button: it
   // sinks into the ground and is gone for the rest of the game (nobody can start AI RACE again).
   _pressButton() {

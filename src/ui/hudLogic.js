@@ -199,12 +199,12 @@ export const HERO_NAME = 'JONAS';
 // Title card lines under the logo. Until a first key/click/tap lets the browser start
 // audio, the card asks for any press (it starts the title music) instead of Start.
 export const START_PRESS = 'PRESS START';
-export const START_PROMPT = 'Press Enter, Space or click to start';
+export const START_PROMPT = 'Left / right to choose · Enter or Space to start';
 export const UNLOCK_PRESS = 'PRESS ANY KEY';
 export const UNLOCK_PROMPT = 'Click or press any key to turn the sound on';
 export const TITLE_HINT = 'WASD move · Space jump · J attack · Esc pause';
 // The same lines while the touch controller is shown (its first tap unlocks audio too).
-export const TOUCH_START_PROMPT = 'Tap the picture or press START';
+export const TOUCH_START_PROMPT = 'Tap a choice, then the picture or START';
 export const TOUCH_UNLOCK_PRESS = 'TAP ANYWHERE';
 export const TOUCH_UNLOCK_PROMPT = 'Tap anywhere to turn the sound on';
 export const TOUCH_TITLE_HINT = 'Stick move · A jump · B attack · START pause';
