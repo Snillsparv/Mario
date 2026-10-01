@@ -4,11 +4,16 @@
 // sky for the drop-in onto the jetty (the camera behind him over the jetty, clear), the sea
 // (sea level across the bay, none outside it) over a seabed under all of it, every top Jonas
 // can stand on low enough over the sea to get out of the water onto it (or with a gentle
-// beach), the enclosure (jump, crouch and attack spam from every rock and leaps off the
-// lighthouse gallery never get Jonas or the camera out of the bay; nothing high near its
-// walls), signs read from the front only, every coin over a floor but those in the air, the
-// star waiting on the gallery, the lamp dark until the star is won, and the camera keeping him
-// in view when he walks off the gallery's gap and the signal mast catches him under its floor.
+// beach), the enclosure (jump, crouch and attack spam from every rock, the east route's decks,
+// roofs and bridge and the meadow, and leaps off the lighthouse gallery never get Jonas or the
+// camera out of the bay; nothing high near its walls), signs read from the front only, every
+// coin over a floor but those in the air, the star waiting on the gallery, the 1-up in the
+// sunken boat on the seabed, the sand bar he stands up on mid-Sound, the houses' walls solid
+// where they stand, the firs stopping him like walls, the keeper's hut built into the rock (no
+// crack beside it), the camera's moment behind the cottage's corners, the net mast and the
+// maypole held from their south sides with the camera there, butterflies over the meadow and
+// white gulls overhead, the lamp dark until the star is won, and the camera keeping him in view
+// when he walks off the gallery's gap and the signal mast catches him under its floor.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -152,6 +157,14 @@ test('a seabed under the whole bay: from the sea surface, 200 sampled points all
 test('every top he can stand on is at most 260 over the sea, or the islet with its beach of at most 38 degrees', () => {
   for (const s of [...sk.SKERRIES.filter((s) => s.id !== 'great_rock'), ...sk.REEF]) assert.ok(s.top - sk.SEA_LEVEL <= 260, `${s.id ?? `reef (${s.x}, ${s.z})`}: ${s.top}`);
   assert.ok(sk.HOME.top <= 260 && sk.JETTY.top <= 260 && sk.BOAT.deck <= 260);
+  assert.ok(sk.EAST_ROCK.top <= 260 && sk.BOARDWALK.top <= 260, 'East Rock and the boardwalk');
+  // The boardwalk's floors (its stretches and the narrow plank) are where the layout says: the
+  // last at East Rock's height, a step over the rest.
+  for (const w of sk.BOARDWALK.stretches) {
+    const floor = col.findFloor((w.x0 + w.x1) / 2 + O.x, 600, (w.z0 + w.z1) / 2 + O.z);
+    assert.ok(Math.abs(floor.y - O.y - (w.top ?? sk.BOARDWALK.top)) < 1e-6 && floor.surface.terrain === 'wood', `stretch ${JSON.stringify(w)}: ${floor.y - O.y}`);
+  }
+  assert.equal(sk.BOARDWALK.stretches.at(-1).top, sk.EAST_ROCK.top);
   // Great Rock is the islet's first terrace's west spur: the islet has its beach.
   assert.equal(sk.skerry('great_rock').top, sk.TERRACES[0].top);
   const slope = (rise, run) => (Math.atan2(rise, run) * 180) / Math.PI;
@@ -190,12 +203,14 @@ function spam(start, seed, n, slack = 0) {
   return null;
 }
 
-test('the enclosure holds: jump, crouch and attack spam from every rock never gets Jonas or the camera out of the bay', () => {
-  const { ENTRIES, HOME, ISLET, TERRACES, LIGHTHOUSE: L, BOAT } = sk;
+test('the enclosure holds: jump, crouch and attack spam from every rock, deck and roof never gets Jonas or the camera out of the bay', () => {
+  const { ENTRIES, HOME, ISLET, TERRACES, LIGHTHOUSE: L, BOAT, EAST_ROCK: E, NET_SHED: N, PINNACLE: P, BRIDGE: B, MAYPOLE: M, SANDBAR: S } = sk;
   const starts = [
     [ENTRIES.arrival.x, ENTRIES.arrival.y, ENTRIES.arrival.z],
     [0, HOME.top, 3800],
     [-2000, HOME.top, 4800],
+    [M.x + 200, HOME.top, M.z + 200],
+    [1900, HOME.top, 4200],
     [(BOAT.x0 + BOAT.x1) / 2, BOAT.deck, 900],
     ...sk.SKERRIES.map((s) => [s.x, s.top, s.z]),
     ...sk.REEF.map((s) => [s.x, s.top, s.z]),
@@ -203,6 +218,13 @@ test('the enclosure holds: jump, crouch and attack spam from every rock never ge
     [ISLET.x + 900, TERRACES[1].top, ISLET.z - 900],
     [ISLET.x - 400, TERRACES[2].top, ISLET.z + 400],
     [L.x - 430, L.gallery, L.z],
+    ...sk.BOARDWALK.stretches.filter((w) => !w.narrow).map((w) => [(w.x0 + w.x1) / 2, w.top ?? sk.BOARDWALK.top, (w.z0 + w.z1) / 2]),
+    [E.x + 600, E.top, E.z - 200],
+    [E.x - 300, E.top, E.z - 700],
+    [(N.x0 + N.x1) / 2, N.top, (N.z0 + N.z1) / 2],
+    [(P.x0 + P.x1) / 2, P.top, (P.z0 + P.z1) / 2],
+    [(B.head.x + B.foot.x) / 2 + (B.head.x - B.foot.x) * 0.3, B.head.y - (B.head.y - B.foot.y) * 0.2, (B.head.z + B.foot.z) / 2 + (B.head.z - B.foot.z) * 0.3],
+    [S.x, S.top, S.z],
   ];
   const out = [];
   starts.forEach((s, run) => {
@@ -286,20 +308,32 @@ test('every sign is read from in front of its face, never from behind', () => {
   assert.deepEqual(problems, []);
 });
 
-test('31 coins, each over a floor within 120, but those in the air: the long jump\'s arc over the water and up the mast', () => {
-  assert.equal(sk.COINS.length, 31);
-  const { MAST } = sk;
-  const onMast = (c) => c.x === MAST.x && c.z === MAST.z;
-  const arc = sk.COINS.filter((c) => !onMast(c) && col.findFloor(c.x + O.x, c.y + O.y, c.z + O.z, 0).y - O.y < sk.SEA_LEVEL);
-  assert.equal(arc.length, 5, 'the five over the long jump\'s gap');
-  for (const c of arc) assert.ok(c.y >= 350 && c.y <= 450, `arc coin at ${c.y}`);
-  assert.equal(sk.COINS.filter(onMast).length, 3);
+test('58 coins, each over a floor within 120, but those in the air: the long jump\'s arc over the water, up the two masts\' axes and the chimney', () => {
+  assert.equal(sk.COINS.length, 58);
+  const { MAST, MAYPOLE, CHIMNEY } = sk;
+  const onAxis = (c, p) => c.x === p.x && c.z === p.z;
+  const inChimney = (c) => c.x > CHIMNEY.x0 && c.x < CHIMNEY.x1 && c.z > CHIMNEY.z0 && c.z < CHIMNEY.z1;
+  const air = { mast: [], maypole: [], chimney: [], arc: [] };
+  for (const c of sk.COINS) {
+    if (onAxis(c, MAST)) air.mast.push(c);
+    else if (onAxis(c, MAYPOLE)) air.maypole.push(c);
+    else if (inChimney(c)) air.chimney.push(c);
+    else if (col.findFloor(c.x + O.x, c.y + O.y, c.z + O.z, 0).y - O.y < sk.SEA_LEVEL && c.y > sk.SEA_LEVEL) air.arc.push(c);
+  }
+  assert.equal(air.arc.length, 5, 'the five over the long jump\'s gap');
+  for (const c of air.arc) assert.ok(c.y >= 350 && c.y <= 450, `arc coin at ${c.y}`);
+  assert.deepEqual([air.mast.length, air.maypole.length, air.chimney.length], [3, 4, 3]);
+  // Up the chimney: spread over its height, in its middle.
+  assert.deepEqual(air.chimney.map((c) => c.y), [450, 800, 1150]);
+  const inAir = new Set([...air.arc, ...air.mast, ...air.maypole, ...air.chimney]);
   for (const c of sk.COINS) {
     assert.ok(Number.isFinite(c.y), `${JSON.stringify(c)} has a height`);
-    if (onMast(c) || arc.includes(c)) continue;
+    if (inAir.has(c)) continue;
     const floor = col.findFloor(c.x + O.x, c.y + O.y, c.z + O.z, 0);
     assert.ok(floor.surface && c.y + O.y - floor.y <= 120 && c.y + O.y - floor.y >= 0, `${JSON.stringify(c)}: floor ${floor.y - O.y}`);
   }
+  // Five of them in the sunken boat, on the seabed.
+  assert.equal(sk.COINS.filter((c) => c.y < sk.BAY.bedY + 200).length, 5);
 });
 
 test("the star waits on the gallery's east side from the start, 160 over its floor, idle; the course's objects stay within 8 meshes", () => {
@@ -317,6 +351,233 @@ test("the star waits on the gallery's east side from the start, 160 over its flo
   let n = 0;
   om.group.traverse((o) => o.isMesh && n++);
   assert.ok(n > 0 && n <= 8, `${n} meshes`);
+});
+
+test('the course\'s objects: the 1-up waits in the sunken boat on the seabed, butterflies flutter over Home Island\'s meadow, white gulls circle over the island and round the lighthouse', () => {
+  const { WRECK, ONE_UP, BUTTERFLY_SPOTS, BIRD_CIRCLES, BIRD_TINT } = sk;
+  const { om } = hero(0, sk.HOME.top, 3800, 0, { objects: true });
+  const gem = om.oneUp;
+  assert.ok(gem && gem.alive, 'the 1-up');
+  assert.deepEqual([gem.pos.x, gem.pos.y, gem.pos.z], [ONE_UP.x + O.x, ONE_UP.y + O.y, ONE_UP.z + O.z]);
+  const floor = col.findFloor(gem.pos.x, gem.pos.y, gem.pos.z);
+  assert.ok(floor.surface.terrain === 'wood' && Math.abs(floor.y - O.y - WRECK.floor) < 1e-6, `on the boat's floor: ${floor.y - O.y}`);
+  assert.ok(Math.hypot(ONE_UP.x - WRECK.x, ONE_UP.z - WRECK.z) < WRECK.length / 2 - 20, 'inside the boat');
+  assert.ok(ONE_UP.y < sk.SEA_LEVEL - 500, 'a dive down');
+  // Three butterflies a spot, each spot over the meadow (grass).
+  assert.equal(om.butterflies.list.length, 3 * BUTTERFLY_SPOTS.length);
+  for (const b of BUTTERFLY_SPOTS) assert.equal(col.findFloor(b.x + O.x, 1000, b.z + O.z).surface.terrain, 'grass', `spot (${b.x}, ${b.z})`);
+  // The gulls: a flock a circle, white bodies (the tint) over a little darker wings, high over
+  // everything under them.
+  const birds = om.birds.birds;
+  assert.ok(birds.length >= 3 * BIRD_CIRCLES.length && birds.length <= 5 * BIRD_CIRCLES.length, `${birds.length} gulls`);
+  const white = new THREE.Color(BIRD_TINT);
+  const colour = om.birds.mesh.geometry.attributes.color;
+  assert.deepEqual([colour.getX(0), colour.getY(0), colour.getZ(0)].map((v) => +v.toFixed(4)), [white.r, white.g, white.b].map((v) => +v.toFixed(4)), 'body');
+  const last = colour.count - 1;
+  assert.ok(colour.getX(last) < white.r && colour.getX(last) > 0.5 * white.r, 'wings a shade darker');
+  for (const b of birds) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const under = col.findFloor(b.c.x + Math.cos(a) * b.radius, 1e5, b.c.z + Math.sin(a) * b.radius).y;
+      assert.ok(b.alt > under + 300, `a gull at ${b.alt.toFixed(0)} over ${under.toFixed(0)}`);
+    }
+  }
+});
+
+test('the props: the sand bar mid-Sound is shallow enough to stand on (he swims in over its edge and stands up on it); the houses and the plank bridge are solid; five climbable poles', () => {
+  const S = sk.SANDBAR;
+  for (const [dx, dz] of [[0, 900], [900, 0], [-900, -300]]) {
+    const yaw = Math.atan2(-dx, -dz);
+    const { p, ctl, at } = hero(S.x + dx, 0, S.z + dz, yaw);
+    p.teleport(S.x + dx + O.x, -80 + O.y, S.z + dz + O.z, yaw);
+    p.setAction('water_surface');
+    let t = 0;
+    for (; t < 300 && (p.inWater || !p.grounded); t++) p.update(ctl.next(p.inWater ? { A: t % 12 === 0 } : {}), yaw);
+    for (let k = 0; k < 20; k++) p.update(ctl.next({}), yaw);
+    assert.ok(p.grounded && !p.inWater && Math.abs(at().y - S.top) < 1e-6, `from (${dx}, ${dz}): ${JSON.stringify(at())} (${p.action})`);
+    assert.ok(Math.hypot(at().x - S.x, at().z - S.z) < S.r, 'on its top');
+    assert.equal(p.health, 8);
+  }
+  // A horizontal ray at each of every house's walls from 200 outside it (in the open, at its
+  // middle or as near it as the open goes) hits that wall, there: not something else in the way,
+  // nor a wall further in. The only wall with no open in front of it is the keeper's hut's west
+  // wall, built into the rock (next test).
+  const buried = [];
+  for (const [name, h, y0] of [['cottage', sk.COTTAGE, sk.HOME.top], ['hut', sk.HUT, sk.TERRACES[1].top], ['boathouse', sk.BOATHOUSE, sk.EAST_ROCK.top], ['net shed', sk.NET_SHED, sk.EAST_ROCK.top]]) {
+    const y = (h.eaves ?? h.top) - 100;
+    for (const [side, dx, dz, wall] of [['west', 1, 0, h.x0], ['east', -1, 0, h.x1], ['north', 0, 1, h.z0], ['south', 0, -1, h.z1]]) {
+      const start = (k) => (dx ? [wall - dx * 200, h.z0 + (h.z1 - h.z0) * k] : [h.x0 + (h.x1 - h.x0) * k, wall - dz * 200]);
+      const k = [0.5, 0.35, 0.65, 0.2, 0.8].find((f) => col.findFloor(start(f)[0] + O.x, 1e4, start(f)[1] + O.z).y - O.y < y0 + 1);
+      if (k === undefined) {
+        buried.push(`${name} ${side}`);
+        continue;
+      }
+      const [x, z] = start(k);
+      const hit = col.raycast(world(x, y, z), { x: dx, y: 0, z: dz }, 400);
+      assert.ok(hit && Math.abs(hit.distance - 200) < 2 && hit.surface.terrain === 'wood', `the ${name}'s ${side} wall from (${x}, ${z}): ${hit?.distance}`);
+    }
+    if (h.ridge) assert.ok(Math.abs(col.findFloor((h.x0 + h.x1) / 2 + O.x, 1e4, (h.z0 + h.z1) / 2 + O.z).y - O.y - h.ridge) < 1, `the ${name}'s ridge at ${h.ridge}`);
+  }
+  assert.deepEqual(buried, ['hut west']);
+  // The bridge's decks: a floor at the deck's height a quarter and three quarters down it, none in
+  // its gap's middle (the water, far under).
+  const B = sk.BRIDGE;
+  const deck = (k) => col.findFloor(B.head.x + (B.foot.x - B.head.x) * k + O.x, 3000, B.head.z + (B.foot.z - B.head.z) * k + O.z).y - O.y;
+  for (const k of [0.25, 0.75]) assert.ok(Math.abs(deck(k) - (B.head.y + (B.foot.y - B.head.y) * k)) < 1, `deck at ${k}: ${deck(k)}`);
+  assert.ok(deck(0.5) < 0, `the gap: ${deck(0.5)}`);
+  // The poles as built (moved to the course's place): the boat's mast, the signal mast, the
+  // net mast, the maypole and the flagpole, the three over Home Island and East Rock standing on
+  // their floors; the signal mast, the net mast and the maypole with sides of their own.
+  assert.equal(col.poles.length, 5);
+  const built = col.poles.map((p) => ({ x: p.x - O.x, z: p.z - O.z, y0: p.y0 - O.y, y1: p.y1 - O.y, camYaw: p.camYaw }));
+  const want = [[sk.BOAT_MAST, sk.BOAT.deck], [sk.MAST, sk.TERRACES[2].top], [sk.NET_MAST, sk.EAST_ROCK.top], [sk.MAYPOLE, sk.HOME.top], [sk.FLAGPOLE, sk.HOME.top]];
+  want.forEach(([p, floor], i) => {
+    assert.deepEqual([built[i].x, built[i].z, built[i].y1], [p.x, p.z, p.y1], `pole ${i}`);
+    assert.equal(built[i].y0, floor, `pole ${i} stands on its floor`);
+    assert.ok(Math.abs(col.findFloor(p.x + O.x, floor + 10 + O.y, p.z + O.z).y - O.y - floor) < 1, `a floor under pole ${i}`);
+  });
+  assert.deepEqual(built.map((p) => p.camYaw), [undefined, 0, 0, 0, undefined]);
+});
+
+test('the firs on the second terrace stop him like walls: walked into from any side, he is never carried up them, and stays on the terrace beside them', () => {
+  const T2 = sk.TERRACES[1].top;
+  const problems = [];
+  let walks = 0;
+  for (const f of sk.FIRS) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const d = f.r + 150;
+      const [x, z] = [f.x + Math.sin(a) * d, f.z + Math.cos(a) * d];
+      // A start on the terrace, with the fir the first thing in the way.
+      if (Math.abs(col.findFloor(x + O.x, T2 + 100 + O.y, z + O.z).y - O.y - T2) > 1) continue;
+      const yaw = a + Math.PI;
+      const first = col.raycast(world(x, T2 + 60, z), { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) }, d);
+      if (!first || Math.hypot(first.point.x - O.x - f.x, first.point.z - O.z - f.z) > f.r) continue;
+      for (const stickY of [1, 0.5]) {
+        walks++;
+        const { p, ctl, at } = hero(x, T2, z, yaw);
+        let top = 0;
+        let near = Infinity;
+        let off = 0;
+        for (let t = 0; t < 40; t++) {
+          p.update(ctl.next({ stickY }), yaw);
+          const q = at();
+          const r = Math.hypot(q.x - f.x, q.z - f.z);
+          top = Math.max(top, q.y);
+          near = Math.min(near, r);
+          if (r < f.r + 150 && (!p.grounded || Math.abs(q.y - T2) > 1)) off++;
+        }
+        if (top > T2 + 1 || near < f.r * 0.8 || off > 0) problems.push(`fir at (${f.x}, ${f.z}) from ${k * 22.5} degrees, stick ${stickY}: up to ${top.toFixed(0)}, ${near.toFixed(0)} from its trunk, ${off} ticks off the terrace by it`);
+      }
+    }
+  }
+  assert.ok(walks >= 16, `${walks} walks`);
+  assert.deepEqual(problems, []);
+});
+
+test("the keeper's hut is built into the third terrace's corner: the rock runs on over its whole west wall (no crack between them to squeeze into); walked at it and along the rock beside it from round about, with the follow camera, he is never hidden", () => {
+  const H = sk.HUT;
+  const T2 = sk.TERRACES[1].top;
+  const T3 = sk.TERRACES[2].top;
+  for (let z = H.z0; z <= H.z1; z += 25) {
+    const floor = col.findFloor(H.x0 + 5 + O.x, 1e4, z + O.z);
+    assert.ok(Math.abs(floor.y - O.y - T3) < 1 && floor.surface.terrain !== 'wood', `the rock over its west wall at z ${z}: ${floor.y - O.y}`);
+  }
+  // Under the terrace's top: nothing of it to stand on up there.
+  assert.ok(H.ridge < T3);
+  const hidden = [];
+  for (const [x, z] of [[750, -3600], [934, -3476], [1100, -3650], [1150, -3900], [950, -4200]]) {
+    for (const [tx, tz] of [[700, -4000], [840, -3900], [800, -4300]]) {
+      const { p, ctl, at } = hero(x, T2, z, Math.atan2(tx - x, tz - z));
+      const cam = camera(p);
+      let n = 0;
+      for (let t = 0; t < 80; t++) {
+        const q = at();
+        const a = wrapAngle(cam.getYaw() - Math.atan2(tx - q.x, tz - q.z));
+        const c = ctl.next({ stickX: Math.sin(a), stickY: Math.cos(a) });
+        p.update(cam.playerInput(c), cam.getYaw());
+        cam.update(c, p);
+        const d = { x: p.pos.x - cam.pos.x, y: p.pos.y + 100 - cam.pos.y, z: p.pos.z - cam.pos.z };
+        if (col.raycast(cam.pos, d, Math.hypot(d.x, d.y, d.z) - 5)) n++;
+      }
+      assert.ok(p.grounded && Math.abs(at().y - T2) < 1, `from (${x}, ${z}) toward (${tx}, ${tz}): on the terrace (${JSON.stringify(at())})`);
+      if (n > 0) hidden.push(`from (${x}, ${z}) toward (${tx}, ${tz}): ${n} ticks hidden, at ${JSON.stringify(at())}`);
+    }
+  }
+  assert.deepEqual(hidden, []);
+});
+
+test("walked round the cottage close to its walls, either way, with the follow camera: at each corner the camera trailing behind is hidden by the house for a moment, until it is trapped and turns back to a clear view (sight.js), never more than 24 ticks; he is in view again on every side", () => {
+  const H = sk.COTTAGE;
+  const m = 70;
+  const out = [];
+  for (const way of [1, -1]) {
+    let corners = [[H.x0 - m, H.z1 + m], [H.x1 + m, H.z1 + m], [H.x1 + m, H.z0 - m], [H.x0 - m, H.z0 - m]];
+    if (way < 0) corners = corners.reverse();
+    const [a, b] = corners;
+    const { p, ctl, at } = hero(a[0], sk.HOME.top, a[1], Math.atan2(b[0] - a[0], b[1] - a[1]));
+    const cam = camera(p);
+    let streak = 0;
+    let longest = 0;
+    for (let i = 1; i <= 4; i++) {
+      const [tx, tz] = corners[i % 4];
+      for (let t = 0; t < 200 && Math.hypot(tx - at().x, tz - at().z) > 40; t++) {
+        const q = at();
+        const yaw = wrapAngle(cam.getYaw() - Math.atan2(tx - q.x, tz - q.z));
+        const c = ctl.next({ stickX: Math.sin(yaw), stickY: Math.cos(yaw) });
+        p.update(cam.playerInput(c), cam.getYaw());
+        cam.update(c, p);
+        const d = { x: p.pos.x - cam.pos.x, y: p.pos.y + 100 - cam.pos.y, z: p.pos.z - cam.pos.z };
+        streak = col.raycast(cam.pos, d, Math.hypot(d.x, d.y, d.z) - 5) ? streak + 1 : 0;
+        longest = Math.max(longest, streak);
+      }
+      // At the next corner, along this side: on the meadow, in view.
+      if (Math.hypot(tx - at().x, tz - at().z) > 40 || Math.abs(at().y - sk.HOME.top) > 1 || streak > 0) out.push(`${way > 0 ? 'one way' : 'the other way'}, side ${i}: at ${JSON.stringify(at())}, ${streak} ticks hidden`);
+    }
+    if (longest > 24) out.push(`${way > 0 ? 'one way' : 'the other way'}: hidden ${longest} ticks in a row`);
+  }
+  assert.deepEqual(out, []);
+});
+
+test("the net mast and the maypole have a side of their own: grabbed from any side with the follow camera, he works round to the south and the camera swings round behind him there; the flagpole, without one, is held where he grabbed it", () => {
+  const holds = {};
+  // (The net mast's east side: 200 out, short of the boathouse.)
+  for (const [name, P, east] of [['net mast', sk.NET_MAST, 200], ['maypole', sk.MAYPOLE, 400], ['flagpole', sk.FLAGPOLE, 400]]) {
+    for (const [side, dx, dz] of [['south', 0, 400], ['east', east, 0], ['west', -400, 0], ['north', 0, -200]]) {
+      const { p, ctl, at } = hero(P.x + dx, P.y0, P.z + dz, Math.atan2(-dx, -dz));
+      const cam = camera(p);
+      const tick = (input) => {
+        const c = ctl.next(input);
+        p.update(cam.playerInput(c), cam.getYaw());
+        cam.update(c, p);
+      };
+      // Walked at and jumped onto, then held still.
+      for (let k = 0; k < 200 && p.action !== 'pole'; k++) {
+        const q = at();
+        const a = wrapAngle(cam.getYaw() - Math.atan2(P.x - q.x, P.z - q.z));
+        tick({ stickX: Math.sin(a), stickY: Math.cos(a), A: Math.hypot(q.x - P.x, q.z - P.z) < 130 && p.grounded });
+      }
+      assert.equal(p.action, 'pole', `${name} from the ${side}: grabbed it`);
+      for (let k = 0; k < 120; k++) tick({});
+      const q = at();
+      const c = local(cam.pos);
+      holds[`${name} from the ${side}`] = q.z > P.z + 20 && c.z > P.z + 800 && Math.abs(c.x - P.x) < 300 ? 'south' : 'elsewhere';
+    }
+  }
+  assert.deepEqual(holds, {
+    'net mast from the south': 'south',
+    'net mast from the east': 'south',
+    'net mast from the west': 'south',
+    'net mast from the north': 'south',
+    'maypole from the south': 'south',
+    'maypole from the east': 'south',
+    'maypole from the west': 'south',
+    'maypole from the north': 'south',
+    'flagpole from the south': 'south',
+    'flagpole from the east': 'elsewhere',
+    'flagpole from the west': 'elsewhere',
+    'flagpole from the north': 'elsewhere',
+  });
 });
 
 test('the look: the lighthouse lamp and its beams wait dark until setLit(true), sweep round once lit, and reset() puts them out', () => {
@@ -344,6 +605,7 @@ test('the look: the lighthouse lamp and its beams wait dark until setLit(true), 
   const pos = beam.geometry.attributes.position;
   for (let i = 0; i < alpha.count; i++) assert.ok(Math.abs(pos.getX(i)) < 100 ? alpha.getW(i) > 0.4 : alpha.getW(i) < 0.01, `vertex ${i}`);
   assert.ok(mesh('skerries-nets').material.alphaTest > 0);
+  assert.ok(mesh('skerries-leaves').material.map, 'the firs and the maypole\'s leaves: the leaf texture');
   assert.equal(mesh('skerries-sea').material.side, THREE.DoubleSide);
   assert.equal(mesh('skerries-sea').material.transparent, true);
 });

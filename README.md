@@ -77,10 +77,16 @@ in **Midsummer Skerries**, the first course: a bay of pink granite rocks in the 
 evening, with the bottle's red-sailed boat moored at the jetty. Far out on the last rock stands
 a white lighthouse with a red band, and the course's **star** sits on its lamp gallery.
 
-* Two ways out to the lighthouse's rock: **hop across the skerries** to the west (one gap is too
-  wide for a normal jump: a sign there teaches the **long jump**, and a row of coins shows the
-  way), or **swim across the sound** to the sandy beach. Missed a jump? The water is friendly:
-  swim to a rock and jump out (pull back and press jump at the surface).
+* Three ways out to the lighthouse's rock: **hop across the skerries** to the west (one gap is
+  too wide for a normal jump: a sign there teaches the **long jump**, and a row of coins shows
+  the way); **swim across the sound** to the sandy beach (stand up for a rest on the sand bar
+  half way, or dive down to the **sunken rowing boat**: its coins and the course's **1-up** lie
+  in it); or take the **fishermen's boardwalk** east (run and jump where planks are missing,
+  balance along the single plank) to East Rock with its red sheds. There, **wall-kick** up the
+  narrow gap between the granite pinnacle and the tall net shed, or climb the net mast and jump
+  from its top, onto the shed's loft; then walk the **plank bridge** down to the lighthouse's
+  rock (jump the gap in its middle at a run). Missed a jump? The water is friendly: swim to a
+  rock and jump out (pull back and press jump at the surface).
 * On the lighthouse's rock, hop up the two stone blocks (or double jump up the rock face), climb
   the wooden stair, then the tall **signal mast** in front of the lighthouse: climb all the way
   up (the camera turns round to show the lighthouse ahead), stand on your hands on its top, push
@@ -91,8 +97,11 @@ a white lighthouse with a red band, and the course's **star** sits on its lamp g
   screen shows "Leave course" (not while Jonas is still dropping in). A life lost in the course
   drops him back onto the jetty; GAME OVER, wherever it happens, goes back to the castle
   grounds and puts every coin and star back.
-* 31 coins wait in the course: along the jetty, on the skerries, in the air over the long
-  jump's gap, up the signal mast, round the gallery.
+* 58 coins wait in the course: along the jetty, on the skerries, in the air over the long
+  jump's gap, up the signal mast, round the gallery, along the boardwalk, up the wall-kick gap,
+  down the plank bridge, in the sunken boat, and round and up the **maypole** on Home Island's
+  midsummer meadow (by the red cottage and the flagpole; butterflies over it and gulls in the
+  sky). The maypole, the flagpole and the masts can all be climbed.
 
 ### Moves
 

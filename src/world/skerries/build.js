@@ -1,7 +1,10 @@
 // Midsummer Skerries' land (area 'skerries', see skerries/layout.js): a WorldPart built in the
 // course's local frame, which world/area.js places at its origin. The sea is its own part
 // (skerries/sea.js); the lighthouse and the signal mast are written into this one's kit by
-// skerries/lighthouse.js.
+// skerries/lighthouse.js, the east route (the boardwalk, East Rock's buildings, the plank
+// bridge) by skerries/east.js and the props (the maypole, the cottage, the flagpole, the
+// keeper's hut, the firs, the sand bar, the sunken boat) by skerries/props.js, the houses
+// among them by skerries/houses.js.
 //
 //   buildSkerries(layout) -> { object3D, colliders, update(time), reset(), setLit(on), lit }
 //
@@ -11,25 +14,28 @@
 // polygons, skerry()), and the lighthouse islet, whose first terrace drops into the sea like
 // a skerry while the two above stand on it behind sheer rock faces, with a sand beach up out
 // of the Sound, two stone blocks up to the second terrace and a wooden stair (on a stone base)
-// up to the third. The jetty on its stone crib with the red-sailed boat alongside. Outside the
-// enclosure, drawn only: the mainland cliffs (faceted granite under a grass cap with dark
-// firs) and the net-drying racks along the outer reef. The seabed: sand under the bay, sinking
-// away and darkening out to sea.
+// up to the third; flat East Rock. The jetty on its stone crib with the red-sailed boat
+// alongside. Outside the enclosure, drawn only: the mainland cliffs (faceted granite under a
+// grass cap with dark firs) and the net-drying racks along the outer reef. The seabed: sand
+// under the bay, sinking away and darkening out to sea.
 //
 // Unlit worldMaterial meshes with the lighting baked into vertex colours under a low golden
-// sun (SKERRIES_SUN; rock darker where it is wet and under water), one mesh per material, ten
-// here (and the sea's two): skerries-granite (the terrain's rock texture, tinted pink-grey),
-// -meadow (grass, and the firs), -sand (the beaches and the seabed), -wood (the castle's planks:
-// the jetty, the boat's deck and spars, the stair, the racks; the gallery's iron, tinted dark),
-// -paint (painted planks: the lighthouse, the boat's hull), -cloth (sails), -nets
-// (alpha-tested), -signs, and the lighthouse's -lamp and -beam (lighthouse.js).
+// sun (SKERRIES_SUN; rock darker where it is wet and under water), one mesh per material,
+// eleven here (and the sea's two): skerries-granite (the terrain's rock texture, tinted
+// pink-grey), -meadow (grass), -leaves (the props' leaf texture: the firs, tinted dark, and the
+// maypole's leaves), -sand (the beaches, the sand bar and the seabed), -wood (the castle's
+// planks: the jetty, the boardwalk, the boat's deck and spars, the stair, the racks, the
+// bridge, the loft's deck; the gallery's iron, tinted dark), -paint (painted planks: the
+// lighthouse, the boats' hulls, the houses' Falu-red walls, white trim and tarred roofs, the
+// maypole's flowers), -cloth (sails, pennants), -nets (alpha-tested), -signs, and the
+// lighthouse's -lamp and -beam (lighthouse.js).
 //
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): the enclosure
 // (four walls from the seabed to BAY.wallTop), the seabed, every rock's flanks and top (stone,
 // a meadow's grass, a beach's sand), the terraces' rock faces, the blocks, the stair (a smooth
 // not_slippery ramp on a solid base) and its landing, the jetty and the boat (solid to the
-// seabed), the lighthouse (lighthouse.js), the signposts. The two masts are climbable poles
-// (layout.POLES).
+// seabed), the lighthouse (lighthouse.js), the east route (east.js), the props (props.js), the
+// signposts. The masts, the maypole and the flagpole are climbable poles (layout.POLES).
 
 import * as THREE from 'three';
 import { worldMaterial, bakeLighting } from '../../render/materials.js';
@@ -38,13 +44,15 @@ import { woodTexture } from '../castle/textures.js';
 import { grassTexture, pathTexture, rockTexture } from '../terrainTextures.js';
 import { MeshBuilder, bakedMesh } from '../props/geom.js';
 import { addSignpost } from '../props/decor.js';
-import { woodTexture as signWoodTexture } from '../props/textures.js';
+import { leafTexture, woodTexture as signWoodTexture } from '../props/textures.js';
 import { makeRng } from '../../core/math.js';
 import { faluPlankTexture, netTexture, sailTexture } from './textures.js';
 import { buildLighthouse } from './lighthouse.js';
+import { buildEast } from './east.js';
+import { buildProps, fir } from './props.js';
 
 // World units per texture repeat (projected UVs); the cloth's and the nets' UVs are set per face.
-const REPEAT = { granite: 1600, meadow: 480, sand: 560, wood: 300, paint: 300, cloth: 1, nets: 1 };
+const REPEAT = { granite: 1600, meadow: 480, leaves: 260, sand: 560, wood: 300, paint: 300, cloth: 1, nets: 1 };
 const NET_TILE = 160; // world size of one repeat of the net texture
 
 // Vertex tints (sRGB).
@@ -53,7 +61,6 @@ const TINT = {
   reef: 0xeed8dc,
   blocks: 0xf4ecea,
   meadow: 0xf4f4d8,
-  fir: 0x4a6a46,
   beach: 0xffeedd,
   seabed: 0x8a8c78,
   deep: 0x203848,
@@ -93,6 +100,9 @@ export function buildSkerries(layout) {
   islet(kit, layout);
   blocks(kit, layout);
   stair(kit, layout);
+  eastRock(kit, layout);
+  buildEast(kit, layout);
+  buildProps(kit, layout);
   const light = buildLighthouse(kit, layout);
   cliffs(kit, layout);
   nets(kit, layout);
@@ -113,6 +123,7 @@ function assemble(kit, layout, light) {
   };
   add('granite', kit.granite, worldMaterial({ map: rockTexture() }));
   add('meadow', kit.meadow, worldMaterial({ map: grassTexture() }));
+  add('leaves', kit.leaves, worldMaterial({ map: leafTexture() }));
   add('sand', kit.sand, worldMaterial({ map: pathTexture() }));
   add('wood', kit.wood, worldMaterial({ map: woodTexture() }));
   add('paint', kit.paint, worldMaterial({ map: faluPlankTexture() }));
@@ -413,6 +424,13 @@ function boat(kit, { BOAT: B, BOAT_MAST: M, BAY }) {
   cloth.poly(jib, { facing: [1, 0, 0], uvs: jib.map(([, y, z]) => [(M.z - z) / (M.z - B.z0), (y - boomY) / (M.y1 - boomY)]) });
 }
 
+// East Rock: a flat granite rock (no meadow) carrying the fishermen's buildings (east.js).
+function eastRock(kit, layout) {
+  const { EAST_ROCK: E, SHORE } = layout;
+  const outline = ngon(E.x, E.z, E.r, E.sides);
+  rock(kit, layout, { outline, top: E.top, foot: grow(outline, SHORE.foot), tint: TINT.granite, tone: 0.97 });
+}
+
 // ---------------------------------------------------------------- the islet
 
 // The lighthouse islet: the first terrace a rock dropping into the sea (granite round a meadow),
@@ -628,7 +646,6 @@ function cliffs(kit, { BAY, CLIFFS: C }) {
       meadow.poly([A(a, a.h + 160, C.cap), A(b, b.h + 160, C.cap), A(b, b.h + 600, C.cap * 2.6), A(a, a.h + 600, C.cap * 2.6)], { facing: UP, shade: 0.9 });
     }
     // Firs on the cap.
-    meadow.color(TINT.fir);
     for (let f = 0; f < C.firs / sides.length; f++) {
       const c = cols[Math.floor(rng() * cols.length)];
       const d = 500 + rng() * (C.cap * 1.6);
@@ -638,7 +655,7 @@ function cliffs(kit, { BAY, CLIFFS: C }) {
       const base = c.h + 160 * Math.min(1, d / C.cap) + Math.max(0, d - C.cap) * (440 / (C.cap * 1.6));
       const h = 520 + rng() * 420;
       const r = 150 + rng() * 90;
-      meadow.lathe(fx, fz, [[r, base], [r * 0.5, base + h * 0.45], [r * 0.78, base + h * 0.45], [0, base + h]], 6, { flat: true, a0: rng() });
+      fir(kit, fx, fz, base, h, r, { a0: rng(), solid: false });
     }
   }
 }

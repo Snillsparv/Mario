@@ -173,7 +173,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Core | `src/core/*` (but `AreaSwitch.js`), `src/main.js`, `src/world/level.js`, `index.html`, `vite.config.js`, `tools/*`, `docs/*` | integration |
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder, bottle, textures) | WorldPart, built by `area.js` |
-| Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, sea, textures) | WorldParts, built by `area.js` |
+| Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
 | Terrain + water | `src/world/terrain.js`, `src/world/terrain/*` (tessellate, floorBlocks, walls, shading, MeshBuffer), `src/world/water.js`, `src/world/terrainTextures.js` | WorldPart |
@@ -318,10 +318,10 @@ builder left it), with the water from `def.waterLevelAt` shifted likewise. The A
 def, root, collision, parts, entries, respawn, signs, groundAt, objectsLayout, waterFn, objects,
 update(time, camera), reset(), setVisible(on) }`, everything in world coordinates:
 `objectsLayout` is what an ObjectManager reads (COINS, RED_COINS, SIGNS, STAR, ONE_UP, DOORS,
-BUTTERFLY_SPOTS, BIRD_CIRCLES shifted, and `groundHeight(x, z)`, the floor under a point probed
-from `probeY`, so a coin's shadow never lands on the roof), `respawn` the entry `def.respawn`
-names with its drop (player.setWorld's spawn), `waterFn` the collision world's water (the
-renderer's, per area).
+BUTTERFLY_SPOTS, BIRD_CIRCLES shifted, BIRD_TINT as it is, and `groundHeight(x, z)`, the floor
+under a point probed from `probeY`, so a coin's shadow never lands on the roof), `respawn` the
+entry `def.respawn` names with its drop (player.setWorld's spawn), `waterFn` the collision
+world's water (the renderer's, per area).
 
 Rules for areas:
 * **Far apart**: the hall's origin is (0, 0, −60000), the course's (60000, 0, 0). Separate
@@ -611,31 +611,43 @@ The first course, through the neck of the ship in the bottle: a sheltered bay of
 granite skerries in midsummer evening light. Jonas drops in onto the jetty of Home Island, where
 the red-sailed boat from the bottle is moored; far out on the last rock a white lighthouse with
 a red band holds the course's star on its lamp gallery, in view from the first second. The way
-there: hop across the stepping skerries to the west (one gap wants a long jump) or swim across
-the Sound to the islet's beach, climb its terraces, then the signal mast, and jump from its top
-onto the gallery. Water catches every missed jump.
+there, three ways out to the islet: hop across the stepping skerries to the west (one gap wants
+a long jump); swim across the Sound to the islet's beach (a sand bar to stand on half way, a
+sunken rowing boat with the course's 1-up to dive to); or take the fishermen's boardwalk east
+to East Rock, wall-kick up the chimney beside the net shed (or climb the net mast) onto its
+loft and walk the plank bridge down onto the islet. Then climb its terraces and the signal
+mast, and jump from its top onto the gallery. Water catches every missed jump. Home Island's
+meadow has a maypole, a red cottage and a flagpole, butterflies over it and white gulls
+overhead.
 
 `world/skerries/layout.js` holds the anchors in the course's local frame (sea level at y 0, +x
 east, −z north toward the lighthouse; world = local + (60000, 0, 0)); `world/skerries/build.js`
-builds the land (`buildSkerries(layout)`, the WorldPart `'skerries'`), writing the lighthouse and
-the signal mast into its kit through `world/skerries/lighthouse.js` (`buildLighthouse(kit,
-layout)`, which also owns the lamp and its beams); `world/skerries/sea.js` builds the sea
-(`buildSea(layout)`, the WorldPart `'sea'`); `world/skerries/textures.js` its three textures of
-its own (`faluPlankTexture` 64 × 64, `sailTexture` and `netTexture` 32 × 32; the rest reuses the
-terrain's rock, grass, path and water textures and the castle's wood).
+builds the land (`buildSkerries(layout)`, the WorldPart `'skerries'`), writing into its kit the
+lighthouse and the signal mast through `world/skerries/lighthouse.js` (`buildLighthouse(kit,
+layout)`, which also owns the lamp and its beams), the east route through
+`world/skerries/east.js` (`buildEast(kit, layout)`: the boardwalk, East Rock's pinnacle, net
+shed, boathouse and net mast, the plank bridge) and the props through
+`world/skerries/props.js` (`buildProps(kit, layout)`: the maypole, the cottage, the flagpole,
+the keeper's hut, the firs, the sand bar, the sunken boat; `fir()` also draws the cliffs'),
+the houses among them through `world/skerries/houses.js` (`house(kit, h)`: Falu-red board
+walls with white corners, doors and windows, a tarred board gable roof or a flat plank deck);
+`world/skerries/sea.js` builds the sea (`buildSea(layout)`, the WorldPart `'sea'`);
+`world/skerries/textures.js` its three textures of its own (`faluPlankTexture` 64 × 64,
+`sailTexture` and `netTexture` 32 × 32; the rest reuses the terrain's rock, grass, path and
+water textures, the castle's wood and the trees' leaves).
 
 ```
                           -Z (north)
      ┌── net racks ── reef ── net racks ── reef ── net racks ──┐
-     │       great rock ┐  ┌ islet: three terraces               │
+     │       great rock ┐  ┌ islet: three terraces, firs        │
      │       s5         └──┤  lighthouse (star), signal mast     │
-     │                     └ stair, blocks; south beach          │
-west │  s4 (long jump)                                          │ east
-cliff│  s3                 the Sound (open water)               │ cliff
-     │     s2                                                   │
-     │       s1    boat  jetty                                  │
-     │          ┌── Home Island ────────┐ beach                 │
-     └──────────┴──── meadow ───────────┴───────────────────────┘
+     │                     └ stair, blocks, hut; beach  ╲        │
+west │  s4 (long jump)       sunken boat       plank bridge     │ east
+cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
+     │     s2                 sand bar    chimney ──┘ boathouse │
+     │       s1    boat  jetty                     boardwalk    │
+     │          ┌── Home Island ────────┐ beach ────┘           │
+     └──────────┴─ maypole, cottage ────┴───────────────────────┘
                           +Z (south): the mainland cliffs
 ```
 
@@ -696,18 +708,79 @@ cliff│  s3                 the Sound (open water)               │ cliff
   at the lighthouse is pushing the stick up. Walking off the gallery through its gap the mast
   catches him under its floor, and the same swing keeps the camera off the gallery, in view of
   him. The `skerries_mast` sign stands by the mast, facing the stair's head.
+* **The east route** (`east.js`): the **boardwalk** (`BOARDWALK`, deck at 120) from Home
+  Island's east shore (over its beach) east, then north up to East Rock, in stretches of plank
+  deck (the planks across the walk) on cribs boarded down to the water and solid to the seabed
+  like the jetty, with water where planks are missing: a gap of 300 and one of 450 (running
+  jumps) and between them a single plank 110 wide (`narrow`: a slab, water under it) to balance
+  along. The stretch past the first gap is 800 long, so a running jump over it (landing about
+  500 past the gap) skids to a stop short of the plank. The last stretch, past the second gap,
+  has a top of its own, East Rock's 150 (a step up the running jump clears), and runs on over
+  the rock's flank into its top like the jetty into the island's: a rise of 30 (the knee probe's
+  height, `step.js` `KNEE_Y`) would be a wall to him, sliding him along the rock's slanted face
+  off the deck. **East Rock** (`EAST_ROCK`, flat granite, top 150, one of `build.js`'s rocks)
+  carries a red **boathouse** on its east side, the tall red **net shed** (`NET_SHED`, its flat
+  roof at 1250 a loft deck with a railing 100 high along its north and east edges) and west of
+  it a granite **pinnacle** as tall. Between the pinnacle's east face (sheer) and the shed's
+  west wall runs the wall-kick **chimney** (`CHIMNEY`, 360 wide like the hall's slot, open to
+  the south), shut at its north end by a granite **back wall** 200 thick, as tall, whose top
+  joins the pinnacle's to the loft: kicking back and forth up it reaches the top (three coins on
+  the way; the follow camera, behind him, never loses him), with the stick straight across or
+  angled toward the back wall, from anywhere in it; a runner who turns to kick without a stop is
+  stopped by the back wall (open, it let him run on out of the chimney's north end). The back
+  wall's collider goes in before the pinnacle's: in the corner between them a kick goes off the
+  last wall that pushed him, which must be the pinnacle's face he meets head-on (were it the
+  back wall, which he only grazes, he would stop and drop). From a camera off to a side or ahead
+  of him, the chimney's walls hide him for a moment as he goes in or starts to kick (at most
+  half a second, as in the hall's slot), until the camera has swung round. The easier way up,
+  the **net mast** (`NET_MAST`, a climbable pole 250 south of the shed, `camYaw` 0 like the
+  signal mast): its tip stands 300 under the loft, not 150, because from 150 under a jump with
+  the stick held on carried him clean over the 600-deep loft; from 300 under it lands on the
+  loft whether the stick is let go or held on, and the railing stops a landing sliding on over
+  the far edges. The **plank bridge** (`BRIDGE`, 160 wide, about 12°) leaves from the back
+  wall's top (west of the loft, so no gap in the loft's railing lies in the mast jump's way)
+  down to the islet's second terrace: planks across two stringers on trestles, a 400 gap in the
+  middle (a running jump downhill; a walking one falls in), flat landings at both ends (its
+  head's lies on the back wall's top, so the bridge crosses the wall's edge at a slant with no
+  hole beside it).
+* **In the Sound** (`props.js`): the **sand bar** (`SANDBAR`, r 400, its top 88 under the surface:
+  deeper than his feet float, 80, so he swims in over its edge, and shallower than he wades, 95,
+  so he stands up on it, his head above the water: a rest half way across) and the **sunken
+  rowing boat** (`WRECK`) on the seabed in the middle of the Sound, its hull solid up to its
+  planked floor (the gunwales and thwarts above are drawn only), five coins in it and the
+  course's **1-up** (`ONE_UP`) in its stern: a dive from the surface reaches it in about two
+  seconds (breath lasts eight wedges of 8.5 s).
+* **Home Island's meadow and the islet's extras** (`props.js`, `houses.js`): the **maypole**
+  (`MAYPOLE`, a climbable pole wrapped in leaves from 150 to 1650 with a crossbar and two leafy
+  hoops with flowers, a little pennant on top; `camYaw` 0: held from its south side, the crossbar
+  along x clear of him), a ring of six coins round it and four up its axis; a red **cottage**
+  (`COTTAGE`, walls to 630, ridge 960, a white chimney); the **flagpole** (`FLAGPOLE`, climbable,
+  a blue and yellow pennant) by the boardwalk's start; on the second terrace the keeper's **hut**
+  (`HUT`, north of the bridge's foot, built into the third terrace's south-east corner: its west
+  wall inside the rock all along, so no narrowing crack is left between them, its ridge under the
+  terrace's top) and two **firs** (`FIRS`, north-west of the stair's head; their colliders steep
+  octagonal frustums from the ground to the tip, whose sides lean in less than a floor may, so
+  they stop him like walls: a cone round the needles is a slope he walks straight up).
+  Walking close round a house, at each corner the camera trailing behind him is hidden by it
+  for a moment (up to about 0.7 s) until it is trapped and turns back to a clear view
+  (`sight.js`; the grounds' castle corner towers do the same, for longer). Butterflies
+  (`BUTTERFLY_SPOTS`) over the meadow; white gulls (`BIRD_CIRCLES`, `BIRD_TINT`) circling over
+  the island and round the lantern.
 * **Star** (`STAR`, `placed`): `skerries_star` on the gallery's east side, 160 over its floor,
   idle from the start (`Star.place`). Taking it ends the course (the star exit, see "Areas and
-  transitions": back out of the bottle onto the hall's landing). 31 coins (`COINS`: the jetty,
+  transitions": back out of the bottle onto the hall's landing). 58 coins (`COINS`: the jetty,
   one over each stepping skerry, the long jump's arc, Great Rock, the blocks, the second terrace
   and the stair, three up the mast's axis (the climbing hero is 60 from it, inside the pickup
-  radius), four round the gallery); no 1-up yet; three signs.
+  radius), four round the gallery; six along the boardwalk, three up the chimney, three down the
+  bridge, five in the sunken boat, six round the maypole and four up it); the 1-up in the boat;
+  three signs. Climbable poles (`POLES`): the boat's mast, the signal mast, the net mast, the
+  maypole and the flagpole.
 * **Edges** (drawn only, outside the enclosure): the mainland cliffs, faceted granite slabs
   (each column leaning back from the wall, some set back a little) up to ~1500 under a grass cap
-  rising inland with dark firs, the side cliffs running on north past the reef and sinking to
-  their tips; the net-drying racks (`NETS`: tarred posts 900 high every 600, two rails, nets
-  hung between them, now and then a rack empty) just outside the north wall, low reef rocks
-  (`REEF`, tops 60 … 120, solid) in front of them.
+  rising inland with dark firs (`props.js` `fir()`, no colliders), the side cliffs running on
+  north past the reef and sinking to their tips; the net-drying racks (`NETS`: tarred posts 900
+  high every 600, two rails, nets hung between them, now and then a rack empty) just outside the
+  north wall, low reef rocks (`REEF`, tops 60 … 120, solid) in front of them.
 * **Sea** (`sea.js`): the moat's two water layers (the same textures, base and glint, scrolling
   by game time), a fine grid over the bay (slow swaths in its vertex colours) and big cells out
   to 36000, past the fog's end from anywhere in the bay, so the sea meets the sky dome in the
@@ -717,17 +790,22 @@ cliff│  s3                 the Sound (open water)               │ cliff
   7000 to 28000, a low golden actor sun 0xffe2b4 (0.66π) from the west-south-west (`SKERRIES_SUN`,
   (−0.5, 0.45, 0.74)), the grounds' hemisphere. Lighting baked from `SKERRIES_SUN` with a warm
   golden-hour tint; rock darker where the sea wets it and under the water.
-* **Meshes** (12): `skerries-granite` (the rock texture tinted pink-grey: every rock, the cliffs,
-  the blocks and the stair's base), `-meadow` (grass: the meadows, the cliffs' caps, the firs),
-  `-sand` (the path texture: the beaches; tinted dark, the seabed), `-wood` (the castle's planks:
-  the jetty, the boat's deck and spars, the stair, the racks; the gallery's iron), `-paint`
-  (`faluPlankTexture`, painted planks tinted by vertex colour: the lighthouse, the boat's hull),
-  `-cloth` (the sails, double-sided), `-nets` (alpha-tested), `-signs`, `-lamp` and `-beam` (the
-  lighthouse's lamp: full-bright glass over the dark panes and a lamp inside; two beams, each a
-  horizontal and a vertical fan whose vertex colours' alpha fades along it, unfogged), `-sea`,
-  `-glint`. ~6.4k triangles, ~1.3k collider triangles (stone, grass, sand, wood; the stair
-  `not_slippery`), built in ~40–80 ms in node; 35 draw calls from the arrival (the E2E budget is
-  55). The `'skerries'` part's `setLit(on)` / `lit` lights the lamp (both its meshes hidden until
+* **Meshes** (13): `skerries-granite` (the rock texture tinted pink-grey: every rock, the cliffs,
+  the blocks, the stair's base, the pinnacle and the back wall), `-meadow` (grass: the meadows,
+  the cliffs' caps), `-leaves` (the trees' leaf texture: the firs, tinted dark, and the
+  maypole's leaves), `-sand` (the path texture: the beaches, the sand bar; tinted dark, the
+  seabed), `-wood` (the castle's planks: the jetty, the boardwalk, the boat's deck and spars,
+  the stair, the racks, the loft's deck and railing, the bridge, the sunken boat's insides;
+  the gallery's iron), `-paint` (`faluPlankTexture`, painted planks tinted by vertex colour: the
+  lighthouse, the boats' hulls, the houses' Falu-red walls, white trim and tarred roofs, the
+  flagpole, the maypole's flowers), `-cloth` (the sails and pennants, double-sided), `-nets`
+  (alpha-tested), `-signs`, `-lamp` and `-beam` (the lighthouse's lamp: full-bright glass over
+  the dark panes and a lamp inside; two beams, each a horizontal and a vertical fan whose vertex
+  colours' alpha fades along it, unfogged), `-sea`, `-glint`. ~9.8k triangles, ~1.7k collider
+  triangles (stone, grass, sand, wood; the stair `not_slippery`), built in ~70–120 ms in node
+  (~60 ms in the browser); the course's objects 7 meshes (coins, sparkles, shadows, star, 1-up,
+  butterflies, gulls); 37 draw calls from the arrival (the E2E budget is 55).
+  The `'skerries'` part's `setLit(on)` / `lit` lights the lamp (both its meshes hidden until
   then; its beams sweep round by game time) and `reset()` puts it out (GAME OVER's
   `resetCourses()`).
 * **Entries and exits**: `arrival` (−830, 150, 1700) on the jetty facing north, in the lane up
@@ -741,18 +819,27 @@ cliff│  s3                 the Sound (open water)               │ cliff
   grounds' outdoor bed; its tree birds, waterfall and moat are far off, so they stay silent).
 * **Preview**: `/preview.html?m=skerries` (`src/dev/previews/skerries.js`: the course and its sea
   under its fog with the grounds' sky dome; `&col=1` the collider overlay; `&lit=1` the lamp lit;
-  `&view=overview|arrival|skerries|islet|gallery|bay`, default `overview`; `&t=` freezes the
-  clock).
+  `&view=overview|arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`, default
+  `overview`; `&t=` freezes the clock).
 * **Tests**: `tests/skerries.test.js` (node, the course as `buildArea` places it with the real
   Player, camera and objects: the budgets (its objects at most 8 meshes too), the arrival's open
   sky and the drop onto the jetty with the camera behind him, clear, and a straight push from
   there up the jetty past the welcome sign through its coins, the water over the bay and
   none outside it, a seabed under 200 sampled points, every top low enough or the islet's beach
-  gentle enough, spam from every rock (Jonas and the camera stay in the bay), full-speed long
-  jumps off the gallery's railing in 16 directions (the walls stop them), nothing high near the
-  walls, signs read from the front only, every coin over a floor but the long jump's arc and the
-  mast's, the star on the gallery, the lamp and its beams, the camera keeping him in view when
-  he walks off the gallery's gap onto the mast); `tests/skerries-routes.test.js`
+  gentle enough, spam from every rock, deck and roof (Jonas and the camera stay in the bay),
+  full-speed long jumps off the gallery's railing in 16 directions (the walls stop them),
+  nothing high near the walls, signs read from the front only, every coin over a floor but the
+  long jump's arc and those up the masts and the chimney, the star on the gallery, the 1-up in
+  the sunken boat, the butterflies over the meadow and the white gulls clear over everything,
+  the sand bar he stands up on, every house's walls solid where they stand (rays from 200 out
+  hitting them there) and the bridge's decks, the five poles as built, the firs stopping him
+  from every side (never carried up them), the hut built into the rock with no crack beside it
+  and the camera never losing him round it, the camera's moment behind the cottage's corners
+  walked round either way (at most 24 ticks), the net mast and the maypole held from their south
+  sides with the camera there however he grabbed them (the flagpole where he grabbed it), the
+  lamp and its beams, the camera keeping him in view when he walks off the gallery's gap onto
+  the mast);
+  `tests/skerries-routes.test.js`
   (scripted input on the real course: the hops from the island's corner to Great Rock, s4 to s5
   by long jump (with the arc's coins) and not by a running jump, out of the water onto every rock
   from every clear side, the swim across the Sound and up the beach, the blocks and the stair, the
@@ -760,7 +847,19 @@ cliff│  s3                 the Sound (open water)               │ cliff
   real follow camera (walked to from the stair's head and four other sides, a rest on its tip,
   the stick pushed at the lighthouse where it shows on the screen: always up, always onto the
   gallery), the walk round to the star: `'starCollected' { id: 'skerries_star', area:
-  'skerries' }`).
+  'skerries' }`; the east route: running jumps over the boardwalk's two gaps from three lines
+  (past the first onto the long deck, skidding to a stop short of the plank; past the second
+  onto the higher last stretch and on up onto East Rock without leaving the ground), the walk
+  and run up off the last stretch onto the rock with and without the follow camera, its narrow
+  plank walked and run along its middle, 40 off it and with the stick 5° off (and from 100 off
+  it, his middle past its edge, he falls off), wall kicks up the chimney from five spots with the
+  stick straight across or angled up to 20° toward the back wall, and as a player does them with
+  the follow camera (walked in and a stop; run in and the stick swung at a wall at once; the
+  camera starting off to a side or ahead: hidden at most 15 ticks in a row), the net mast's tip
+  jump onto the loft for five aims with the stick let go or held on, the bridge from the loft
+  over the back wall, its gap jumped at a run (landing 100 to 550 past it) and not at a walk,
+  down onto the second terrace; a dive to the sunken boat's 1-up from five sides with no wedge
+  lost; the maypole climbed from four sides past its four coins, the flagpole's climb).
 
 ## Player (`src/player/Player.js`)
 
@@ -1834,7 +1933,9 @@ placed star back there, taking it off `player.stars` as usual; `STAR.id` names i
 (`new Butterflies(BUTTERFLY_SPOTS, { collision, groundAt, rng, waterTop })`; optional
 `waterTop` (default `Infinity`) is the highest water surface anywhere, so the water query is
 skipped over floors above it; ObjectManager passes `layout.WATER_LEVEL`) and
-circling birds (`new Birds(BIRD_CIRCLES, { collision, rng })`, circles `{ x, z, y, radius }`).
+circling birds (`new Birds(BIRD_CIRCLES, { collision, rng, tint })`, circles `{ x, z, y, radius
+}`; `tint`, from `layout.BIRD_TINT`, colours the flock's bodies, their wings a shade darker: a
+course's white gulls; without one the grounds' dark birds).
 A second star, Rustmaw's reward (`new BossStar({ events, collision, sparkles, shadows,
 shadowSlot, envMap })`, a `Star` instance of its own: `new Star(envMap, { color, emissive })`),
 rises out of the crash site after the tail throw (see "AI RACE mode"); the objects set
@@ -1908,7 +2009,7 @@ Unknown names must be ignored silently.
 * `/preview.html?m=world` shows the whole level without the player; `/preview.html?m=hall` the
   Great Hall alone (`&col=1` its colliders, `&view=entry|bottle|fire|roof`, `&lamp=1`);
   `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
-  `&view=arrival|skerries|islet|gallery|bay`).
+  `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`).
 * `node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'`
   — the game straight in an area (`&entry=` for another of its entries; `__game.enterArea(name,
   entry)` switches at once mid-run).

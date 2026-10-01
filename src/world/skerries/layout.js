@@ -3,29 +3,34 @@
 // pink-grey granite skerries in midsummer evening light. Jonas starts on the jetty of Home
 // Island, where the red-sailed boat from the bottle is moored; far out on the last rock a white
 // lighthouse with a red band holds the star on its lamp gallery, in view from the first second.
-// The way there: hop across the stepping skerries to the west (one gap wants a long jump) or
-// swim across the Sound to the islet's beach, climb its terraces, then the signal mast, and
-// jump from its top onto the gallery. Water catches every missed jump.
+// The way there: hop across the stepping skerries to the west (one gap wants a long jump),
+// swim across the Sound to the islet's beach (diving on the way to the sunken rowing boat and
+// its 1-up), or take the fishermen's boardwalk east to East Rock, wall-kick up the chimney
+// beside the net shed (or climb the net mast) onto its loft and walk the plank bridge down onto
+// the islet; then climb its terraces and the signal mast, and jump from its top onto the
+// gallery. Water catches every missed jump. Home Island has a maypole, a cottage and a
+// flagpole on its meadow, butterflies over it and gulls circling.
 // Everything here is in the course's own local frame: 1 unit = 1 cm, sea level at y 0, +x
 // east, -z north (toward the lighthouse). world/areas.js places it at its origin (world =
 // local + origin); world/area.js shifts these anchors into world coordinates.
 //
 //                         -Z (north)
 //        ┌── net racks ── reef ── net racks ── reef ── net racks ──┐
-//        │        great rock ┐  ┌ islet: three terraces            │
+//        │        great rock ┐  ┌ islet: three terraces, firs      │
 //        │        s5         └──┤  lighthouse (star), mast         │
-//        │                      └ stair, blocks; south beach       │
-//   west │  s4  (long jump)                                         │ east
-//   cliff│  s3                  the Sound (open water)              │ cliff
-//        │      s2                                                  │
-//        │        s1     boat  jetty                                │
-//        │           ┌── Home Island ─────────┐ beach               │
-//        └───────────┴──── meadow ────────────┴─────────────────────┘
+//        │                      └ stair, blocks, hut; beach  ╲     │
+//   west │  s4  (long jump)        sunken boat      plank bridge   │ east
+//   cliff│  s3                  the Sound      net shed ┐ East Rock│ cliff
+//        │      s2                 sand bar   chimney ──┘ boathouse│
+//        │        s1     boat  jetty                  boardwalk    │
+//        │           ┌── Home Island ─────────┐ beach ──┘          │
+//        └───────────┴─ maypole, cottage ─────┴─────────────────────┘
 //                         +Z (south): the mainland cliffs
 //
 // Ownership: like world/layout.js, the anchors are shared contract: the builders
-// (skerries/build.js, lighthouse.js, sea.js), the objects (COINS, STAR, SIGNS, POLES) and the
-// entry all read them. The builders own everything drawn around them.
+// (skerries/build.js, lighthouse.js, east.js, props.js, sea.js), the objects (COINS, ONE_UP,
+// STAR, SIGNS, POLES, BUTTERFLY_SPOTS, BIRD_CIRCLES) and the entry all read them. The builders
+// own everything drawn around them.
 
 import { NO_WATER } from '../../core/constants.js';
 
@@ -181,6 +186,84 @@ export const LIGHTHOUSE = {
 // lighthouse): pushing toward it is pushing the stick up. That also keeps the camera off the
 // gallery when he walks off its gap onto the mast.
 export const MAST = { x: 0, z: -3600, y0: TERRACES[2].top, y1: 2600, radius: 30, camYaw: 0 };
+// The keeper's hut on the second terrace, north of the plank bridge's foot (Falu-red planks, a
+// tarred board roof; solid), built into the third terrace's south-east corner: its west wall
+// lies inside the rock all along, so no narrowing crack is left between them to squeeze into,
+// and its ridge stays under the terrace's top. Two firs on the terrace's north-west side, past
+// the stair's head.
+export const HUT = { x0: 690, x1: 990, z0: -4070, z1: -3770, eaves: TERRACES[1].top + 260, ridge: TERRACES[2].top - 10 };
+export const FIRS = [
+  { x: -1200, z: -4600, h: 700, r: 170 },
+  { x: -1000, z: -4950, h: 820, r: 190 },
+];
+
+// ---------------------------------------------------------------- the east route
+
+// East Rock: a flat granite rock (a regular polygon of `sides` with corners at r, an edge facing
+// south, rising sheer out of the sea like a skerry) carrying the fishermen's buildings: a red
+// boathouse on its east side; the tall red net shed, its flat roof a loft Jonas can walk on
+// (`top`, a railing `rail` high along its north and east edges); and west of it a granite
+// pinnacle as tall. Between the pinnacle's east face and the shed's west wall runs the
+// wall-kick chimney, 360 wide, open to the south, shut at its north end by a granite wall
+// `back` thick from the pinnacle across to the shed, as tall: kicking back and forth up the
+// chimney reaches the loft (or the pinnacle's top), and the back wall's top joins the two.
+// The easier way up: the net mast south of the shed (a climbable pole 250 from the shed's
+// south wall), whose tip jump lands on the loft. Its tip stands 300 under the loft (not 150:
+// from there a jump with the stick held on carried him clean over the loft), so the jump lands
+// on it whether the stick is let go or held on, and the railing stops a landing sliding on over
+// the loft's far edges. Like the signal mast it has a side of its own (camYaw 0: the camera
+// swings round to its south side, looking past him at the shed).
+export const EAST_ROCK = { x: 3100, z: -1300, r: 1050, sides: 12, top: 150 };
+export const PINNACLE = { x0: 2240, x1: 2540, z0: -1700, z1: -1300, top: 1250 };
+export const NET_SHED = { x0: 2900, x1: 3500, z0: -1700, z1: -1100, top: 1250, rail: 100 };
+export const CHIMNEY = { x0: PINNACLE.x1, x1: NET_SHED.x0, z0: PINNACLE.z0 + 200, z1: PINNACLE.z1, back: 200 };
+export const BOATHOUSE = { x0: 3480, x1: 3880, z0: -1000, z1: -700, eaves: EAST_ROCK.top + 300, ridge: EAST_ROCK.top + 520 };
+export const NET_MAST = { x: 3200, z: NET_SHED.z1 + 250, y0: EAST_ROCK.top, y1: NET_SHED.top - 300, radius: 30, camYaw: 0 };
+// The fishermen's boardwalk out to it: from Home Island's east shore (over its beach) east, then
+// north up to East Rock. A plank deck at `top` on a crib boarded down to the water and solid to
+// the seabed (like the jetty: nothing to swim under), in stretches ([x0, x1, z0, z1], 280 wide)
+// with water between them where planks are missing: a gap of 300 and one of 450 (running
+// jumps), and between them one plank (`narrow`: 110 wide, nothing under it but water) to
+// balance along. The stretch past the first gap is 800 long: a running jump over it lands
+// about 500 past the gap, and he skids on to a stop before the plank. The last stretch, past
+// the second gap, is a step higher (its own `top`, East Rock's: a running jump clears the
+// rise) and runs on over East Rock's flank into its top, as the jetty does into Home
+// Island's, so he walks straight on up onto the rock (a rise of 30 would be a wall to him).
+export const BOARDWALK = {
+  top: 120,
+  stretches: [
+    { x0: 1800, x1: 2560, z0: 2160, z1: 2440 },
+    { x0: 2560, x1: 2840, z0: 1850, z1: 2440 },
+    { x0: 2560, x1: 2840, z0: 750, z1: 1550 },
+    { x0: 2645, x1: 2755, z0: 450, z1: 750, narrow: true },
+    { x0: 2560, x1: 2840, z0: 200, z1: 450 },
+    { x0: 2560, x1: 2840, z0: -460, z1: -250, top: EAST_ROCK.top },
+  ],
+};
+// The plank bridge from the north edge of the chimney's back wall (just west of the loft,
+// whose railing so has no gap where a landing off the net mast could slide off) down to the
+// islet's second terrace (about 12 degrees): planks on two stringers, `width` wide, on
+// trestles, with `gap` missing in its middle (a running jump across, downhill); at each end a
+// flat landing `landing` long, lying on the back wall's top at its head (the bridge crosses the
+// wall's edge at a slant: no hole beside it) and on the terrace at its foot.
+export const BRIDGE = { head: { x: (CHIMNEY.x0 + CHIMNEY.x1) / 2, y: PINNACLE.top, z: PINNACLE.z0 }, foot: { x: 1040, y: TERRACES[1].top, z: -3370 }, width: 160, gap: 400, landing: 150 };
+
+// ---------------------------------------------------------------- in the Sound, on Home Island
+
+// A sand bar in the Sound, shallow enough to stand on for a rest on the swim: its top 88 under
+// the surface, a little deeper than his feet float (80), so he swims in over its edge, and
+// shallower than he wades (95), so he stands up on it; a rowing boat sunk on the seabed in the
+// middle of the Sound, lying along `yaw`, with five coins and the course's 1-up in it (a dive:
+// breath lasts eight wedges of 8.5 s).
+export const SANDBAR = { x: 700, z: 400, r: 400, foot: 900, top: -88 };
+export const WRECK = { x: 200, z: -700, yaw: 0.5, length: 480, beam: 180, floor: BAY.bedY + 40, gunwale: BAY.bedY + 110 };
+// Home Island's midsummer meadow: the maypole (a climbable pole with a crossbar and two leafy
+// hoops hanging from it, `bar` high; camYaw 0: held from its south side, the camera looking
+// past him north up the bay), a red cottage (its long side along x), and the flagpole by the
+// boardwalk's start with a blue and yellow pennant (climbable too).
+export const MAYPOLE = { x: -500, z: 3400, y0: HOME.top, y1: 1650, radius: 30, camYaw: 0, bar: 1250, arm: 330, hoop: 150 };
+export const COTTAGE = { x0: 500, x1: 1500, z0: 3150, z1: 3850, eaves: 630, ridge: 960 };
+export const FLAGPOLE = { x: 1900, z: 2600, y0: HOME.top, y1: 1350, radius: 20 };
 
 // ---------------------------------------------------------------- the edges (drawn only)
 
@@ -213,10 +296,12 @@ export const STAR = { id: 'skerries_star', x: 440, y: LIGHTHOUSE.gallery + 160, 
 // No doors: the way out is the pause screen's (world/areas.js `leave`) or the star.
 export const DOORS = [];
 
-// 31 coins, each at its floor + 60 but those in the air (the long jump's arc, up the mast):
-// along the jetty, one over each stepping skerry, an arc over the long jump's gap, on Great
-// Rock, by and on the blocks, on the second terrace and the stair, up the mast (the climbing
-// hero is 60 off its axis, inside the pickup radius) and round the gallery.
+// 58 coins, each at its floor + 60 but those in the air (the long jump's arc, up the masts and
+// the chimney): along the jetty, one over each stepping skerry, an arc over the long jump's
+// gap, on Great Rock, by and on the blocks, on the second terrace and the stair, up the signal
+// mast (the climbing hero is 60 off its axis, inside the pickup radius) and round the gallery;
+// along the boardwalk, up the chimney, down the plank bridge, in the sunken boat, in a ring
+// round the maypole and up it.
 const above = (y) => y + 60;
 const longJump = (() => {
   const a = skerry('s4');
@@ -235,6 +320,17 @@ const stairAt = (k) => {
   const { foot, head } = STAIR;
   return { x: foot.x + (head.x - foot.x) * k, y: above(foot.y + (head.y - foot.y) * k), z: foot.z + (head.z - foot.z) * k };
 };
+// A point on the plank bridge's deck (k: 0 at its head, 1 at its foot), over it; a point in the
+// sunken boat (along its length from its middle, across it, at height y).
+const bridgeAt = (k) => {
+  const { head, foot } = BRIDGE;
+  return { x: head.x + (foot.x - head.x) * k, y: above(head.y + (foot.y - head.y) * k), z: head.z + (foot.z - head.z) * k };
+};
+function wreckAt(along, across, y) {
+  const s = Math.sin(WRECK.yaw);
+  const c = Math.cos(WRECK.yaw);
+  return { x: WRECK.x + s * along + c * across, y, z: WRECK.z + c * along - s * across };
+}
 const gallery = [45, 135, 225, 315].map((deg) => {
   const a = (deg * Math.PI) / 180;
   return { x: LIGHTHOUSE.x + Math.sin(a) * 440, y: above(LIGHTHOUSE.gallery), z: LIGHTHOUSE.z + Math.cos(a) * 440 };
@@ -254,7 +350,18 @@ export const COINS = [
   stairAt(0.7),
   ...[1500, 1900, 2300].map((y) => ({ x: MAST.x, y, z: MAST.z })),
   ...gallery,
+  ...[[2150, 2300], [2450, 2300], [2700, 2050], [2700, 1150], [2700, 600], [2700, 330]].map(([x, z]) => ({ x, y: above(BOARDWALK.top), z })),
+  ...[450, 800, 1150].map((y) => ({ x: (CHIMNEY.x0 + CHIMNEY.x1) / 2, y, z: (CHIMNEY.z0 + CHIMNEY.z1) / 2 })),
+  ...[0.25, 0.68, 0.92].map(bridgeAt),
+  ...[[-100, -40], [-100, 40], [10, 0], [120, -35], [120, 35]].map(([along, across]) => wreckAt(along, across, above(WRECK.floor))),
+  ...[0, 1, 2, 3, 4, 5].map((i) => {
+    const a = ((i + 0.5) / 6) * Math.PI * 2;
+    return { x: MAYPOLE.x + Math.sin(a) * 450, y: above(HOME.top), z: MAYPOLE.z + Math.cos(a) * 450 };
+  }),
+  ...[500, 800, 1100, 1400].map((y) => ({ x: MAYPOLE.x, y, z: MAYPOLE.z })),
 ];
+// The course's 1-up: in the sunken boat's stern, over its floor.
+export const ONE_UP = wreckAt(-185, 0, WRECK.floor + 90);
 
 // Signposts (props/decor.js addSignpost; each stands on the floor at its y): on the jetty by
 // the arrival (148 of deck free beside it: the arrival's lane), on s4 west of the hop in and
@@ -270,7 +377,7 @@ export const SIGNS = [
     pages: [
       'Midsummer Skerries',
       'A star has landed on top of the old lighthouse, far out on the last rock.',
-      'Hop across the skerries to the west, or swim across the sound. The water is cold but friendly!',
+      "Hop across the skerries to the west, follow the fishermen's boardwalk to the east, or swim across the sound. The water is cold but friendly!",
       'Press pause if you want to leave the course.',
     ],
   },
@@ -292,5 +399,18 @@ export const SIGNS = [
   },
 ];
 
-// Climbable poles (CollisionWorld.addPole): the boat's mast and the signal mast.
-export const POLES = [BOAT_MAST, MAST];
+// Climbable poles (CollisionWorld.addPole): the boat's mast, the signal mast, the net mast, the
+// maypole and the flagpole.
+export const POLES = [BOAT_MAST, MAST, NET_MAST, MAYPOLE, FLAGPOLE];
+
+// Butterflies over Home Island's meadow (ObjectManager), and white gulls (BIRD_TINT) circling
+// over the island and round the lighthouse's lantern.
+export const BUTTERFLY_SPOTS = [
+  { x: -1150, z: 3950 },
+  { x: 250, z: 4500 },
+];
+export const BIRD_CIRCLES = [
+  { x: -300, z: 3300, y: 2300, radius: 1250 },
+  { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, y: 3300, radius: 1000 },
+];
+export const BIRD_TINT = 0xf4f2ec;

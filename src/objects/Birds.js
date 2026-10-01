@@ -1,8 +1,9 @@
 // Small dark low-poly birds circling high over the grounds in loose flocks, alternating bouts
-// of flapping with glides. Purely decorative: the pose is a function of time, and every bird is
-// written into one dynamic flat-shaded mesh (one draw call). animate() allocates nothing: each
-// bird's local-space vertices go through a typed-array scratch and are transformed inline (no
-// helper calls taking doubles, which lower JIT tiers would box).
+// of flapping with glides (or, given a tint, white gulls over a course's bay). Purely
+// decorative: the pose is a function of time, and every bird is written into one dynamic
+// flat-shaded mesh (one draw call). animate() allocates nothing: each bird's local-space
+// vertices go through a typed-array scratch and are transformed inline (no helper calls taking
+// doubles, which lower JIT tiers would box).
 //
 // A circle may pass over the castle, so at startup each bird's ring is checked against the
 // scenery: a bird whose path would clip a tower moves to the nearest clear radius at its
@@ -55,6 +56,7 @@ const LOCAL = new Float32Array(VERTS_PER_BIRD * 3);
 LOCAL.set(BODY);
 const BODY_RGB = [0.3, 0.26, 0.24];
 const WING_RGB = [0.22, 0.2, 0.2];
+const TINT_WING = 0.78; // a tinted flock's wings: its body colour this much darker
 const GLIDE_LO = 0.1; // glide = smoothstep(GLIDE_LO, GLIDE_HI, sin(...))
 const GLIDE_HI = 0.5;
 
@@ -134,7 +136,9 @@ function clearOfScenery(b, topNear) {
 
 export class Birds {
   // collision: CollisionWorld (findFloor, findWalls) used once to keep the rings clear.
-  constructor(circles, { collision, rng }) {
+  // tint: the birds' body colour (sRGB hex; their wings a little darker), or null for the
+  // grounds' dark birds.
+  constructor(circles, { collision, rng, tint = null }) {
     this.birds = [];
     circles.forEach((c, ci) => {
       const n = 3 + Math.floor(rng() * 3);
@@ -157,15 +161,22 @@ export class Birds {
         this.birds.push(b);
       }
     });
-    this.mesh = this._buildMesh();
+    this.mesh = this._buildMesh(tint);
   }
 
-  _buildMesh() {
+  _buildMesh(tint) {
     const verts = this.birds.length * VERTS_PER_BIRD;
     this.positions = new Float32Array(verts * 3);
     this.normals = new Float32Array(verts * 3);
     const colors = new Float32Array(verts * 3);
-    for (let i = 0; i < verts; i++) colors.set(i % VERTS_PER_BIRD < BODY.length / 3 ? BODY_RGB : WING_RGB, i * 3);
+    let body = BODY_RGB;
+    let wing = WING_RGB;
+    if (tint !== null) {
+      const c = new THREE.Color(tint); // (linear)
+      body = [c.r, c.g, c.b];
+      wing = [c.r * TINT_WING, c.g * TINT_WING, c.b * TINT_WING];
+    }
+    for (let i = 0; i < verts; i++) colors.set(i % VERTS_PER_BIRD < BODY.length / 3 ? body : wing, i * 3);
     const geo = new THREE.BufferGeometry();
     for (const [name, array] of [['position', this.positions], ['normal', this.normals]]) {
       const attr = new THREE.BufferAttribute(array, 3);

@@ -1,8 +1,8 @@
 // ObjectManager logic in node (no canvas): coin pickups, red coins -> star, star and 1-up
-// pickups, butterflies fleeing, pause freeze, title backdrop, reset for a new game after GAME
-// OVER, draw-call budget, placement on
-// the real layout, and the allocation-free hot paths (pooled sparkles, few collision queries,
-// no boxing constructs in the per-tick / per-frame methods).
+// pickups, butterflies fleeing, a tinted flock of birds, pause freeze, title backdrop, reset for
+// a new game after GAME OVER, draw-call budget, placement on the real layout, and the
+// allocation-free hot paths (pooled sparkles, few collision queries, no boxing constructs in
+// the per-tick / per-frame methods).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -290,6 +290,24 @@ test('bird normals are unit length and finite', () => {
     const len = Math.hypot(n[i], n[i + 1], n[i + 2]);
     assert.ok(Math.abs(len - 1) < 1e-4, `normal ${i / 3} length ${len}`);
   }
+});
+
+test('a tinted flock (a course\'s gulls, layout.BIRD_TINT): white bodies over a little darker wings; without a tint the birds stay dark', () => {
+  const colours = (tint) => {
+    const birds = new Birds([{ x: 0, z: 0, y: 1500, radius: 800 }], { collision: flatWorld(), rng: () => 0.5, tint });
+    const c = birds.mesh.geometry.attributes.color;
+    return { body: [c.getX(0), c.getY(0), c.getZ(0)], wing: [c.getX(c.count - 1), c.getY(c.count - 1), c.getZ(c.count - 1)] };
+  };
+  const gull = colours(0xf4f2ec);
+  const white = new THREE.Color(0xf4f2ec);
+  assert.deepEqual(gull.body.map((v) => +v.toFixed(5)), [white.r, white.g, white.b].map((v) => +v.toFixed(5)));
+  for (let i = 0; i < 3; i++) assert.ok(gull.wing[i] < gull.body[i] && gull.wing[i] > 0.6 * gull.body[i], 'wings a shade darker');
+  const dark = colours(null);
+  assert.ok(Math.max(...dark.body, ...dark.wing) < 0.35, 'the grounds\' dark birds');
+  // The manager passes the layout's tint on.
+  const events = new Events();
+  const objects = new ObjectManager({ scene: new THREE.Scene(), collision: flatWorld(), events, layout: { ...LAYOUT, BIRD_TINT: 0xf4f2ec }, player: fakePlayer() });
+  assert.ok(objects.birds.mesh.geometry.attributes.color.getX(0) > 0.8);
 });
 
 test('objects use at most 8 draw calls and finite geometry', () => {

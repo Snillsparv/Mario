@@ -3,8 +3,11 @@
 //   &col=1   overlay collider triangles (front faces only: floors green, walls blue, ceilings
 //            red) to check winding (the enclosure's walls show from inside the bay only)
 //   &lit=1   the lighthouse's lamp and beams lit (dark until the course's star is won)
-//   &view=overview|arrival|skerries|islet|gallery|bay   camera presets (default: overview, from
-//            over the island up the bay to the lighthouse; arrival: where the camera starts)
+//   &view=overview|arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck   camera
+//            presets (default: overview, from over the island up the bay to the lighthouse;
+//            arrival: where the camera starts; east: the boardwalk out to East Rock; chimney: the
+//            wall-kick chimney and the net mast; bridge: down the plank bridge to the islet;
+//            meadow: the maypole and the cottage; wreck: the sunken boat, from under the water)
 //   &t=secs  freeze the clock (the sea's ripples, the beams' sweep)
 import * as layout from '../../world/skerries/layout.js';
 import { buildSkerries } from '../../world/skerries/build.js';
@@ -21,6 +24,11 @@ const VIEWS = {
   islet: { pos: [600, 1300, -900], look: [0, 1200, -4300] },
   gallery: { pos: [900, 3200, -3300], look: [0, 2800, -4600] },
   bay: { pos: [0, 5200, 6500], look: [0, 0, -1500] },
+  east: { pos: [1400, 900, 3400], look: [2900, 300, -900] },
+  chimney: { pos: [2900, 900, 600], look: [2900, 700, -1400] },
+  bridge: { pos: [3100, 1750, -1250], look: [1000, 800, -3400] },
+  meadow: { pos: [-500, 700, 5100], look: [100, 600, 3300] },
+  wreck: { pos: [800, -500, 100], look: [200, -760, -700] },
 };
 
 export async function setup({ THREE, scene, params }) {

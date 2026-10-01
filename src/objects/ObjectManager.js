@@ -47,6 +47,9 @@
 // pressed) and, once the wreck has sunk away, a reward star rises there (BossStar.js; once per
 // game, collected like the red-coin star; reset() takes it back).
 //
+// Butterflies flutter round layout.BUTTERFLY_SPOTS and birds circle layout.BIRD_CIRCLES (tinted
+// with layout.BIRD_TINT where a layout gives one: a course's white gulls).
+//
 // Mystery box (layout.MYSTERY_BOX, MysteryBox.js): bumped from below or punched it releases the
 // winged hat (player.giveWingHat). Doors (Door.js): the castle's (layout.CASTLE, CastleDoor.js)
 // and layout.DOORS ([{ id, x, z, yaw, width, floorY, to, entry, kind, locked, sealedSign,
@@ -163,7 +166,7 @@ export class ObjectManager {
     this.oneUpFloor = null; // { y, normal, size } of the 1-up's shadow (null: no floor)
     this.oneUp = this._makeOneUp(oneUpSpot(layout), groundAt);
     this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng, waterTop: layout.WATER_LEVEL });
-    this.birds = new Birds(layout.BIRD_CIRCLES ?? [], { collision, rng: this.rng });
+    this.birds = new Birds(layout.BIRD_CIRCLES ?? [], { collision, rng: this.rng, tint: layout.BIRD_TINT ?? null });
     // The hero's previous tick (box bumps and stomps need his motion before the physics
     // stopped it): feet height, vertical speed, airborne.
     this.hero = { y: 0, vy: 0, air: false, valid: false };
