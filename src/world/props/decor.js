@@ -255,7 +255,10 @@ function addBush(kit, layout, { x, z, r, h }, i, rng) {
 // dark "writing" squiggles (shaped like the words of its text, but no real letters), into
 // the wood builder, and its SIGN_BOX collider. A sign with a `y` stands on that floor instead of
 // the lawn (the one on the castle keep's roof, layout.SIGNS 'keep_top'): no ground shadow then.
-function addSignpost(kit, layout, sign) {
+// Also the Great Hall's signs (world/hall/hall.js), all with a `y`: kit = { wood: MeshBuilder,
+// colliders: { wood: [] }, shadow(x, z, radius, strength) } (shadow and layout.groundHeight
+// are only used for a sign on the ground).
+export function addSignpost(kit, layout, sign) {
   const { x, z, yaw } = sign;
   const raised = Number.isFinite(sign.y);
   const ground = raised ? sign.y : layout.groundHeight(x, z);

@@ -35,9 +35,13 @@ browser once with `npx playwright install chromium`.
 * **Jonas's stretchy face**: open the game with `?face=1` for a start screen with Jonas's big face: grab and pull his cheeks, nose, glasses, ears or cap (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start to play.
 * **Into the castle**: walk up the steps to the big front door and keep walking into it. The
   door creaks open, the picture closes in a circle around Jonas and opens again inside the
-  **Great Hall**, a long stone hall behind the castle's front. The same door, inside, takes him
-  back out onto the porch. While AI RACE is on (or its storm is still clearing) the storm keeps
-  the door sealed.
+  **Great Hall**, a long candle-lit hall under an open timber roof. At its far end a giant
+  **ship in a bottle** lies on its stand (climb the stairs, or hop up the cork or the stack of
+  books, to its mouth: the little boat's course is still being rigged). A **1-up** waits on the
+  fireplace's mantel: wall-kick up the narrow gap beside it, or climb the banner pole and jump
+  from its top. The doors in the east wall are still being built. The front door, inside, takes
+  him back out onto the porch. While AI RACE is on (or its storm is still clearing) the storm
+  keeps the door sealed.
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and
   grab it.

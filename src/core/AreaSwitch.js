@@ -13,8 +13,8 @@
 //                                      // 'warpRequest' event (objects/Door.js) calls it
 //   areas.step(controller) -> controller   // 30 Hz in play, before Jonas's update: runs the
 //                                      // transition and returns the controller Jonas and the
-//                                      // camera use this tick (also after it: a stick held
-//                                      // through a door, below)
+//                                      // camera use this tick (also outside one: a stick held
+//                                      // through a door or the approach cut, below)
 //   areas.wipe(alpha) -> { amount, kind, color }   // the screen wipe now (ui/ScreenWipe.js)
 //   areas.leave(), areas.canLeave()    // the pause screen's way out of a course (def.leave)
 //   areas.onStar(e)                    // 'starCollected': the current course's own star
@@ -38,7 +38,7 @@
 // them, START is ignored while busy):
 //   close (CLOSE ticks; STAR_CLOSE for the star exit): the wipe closes; through a door Jonas
 //         keeps pushing toward it (the stick scripted along the door's yaw + pi); a camera
-//         between him and that door (he walked toward it) cuts to the room side behind him
+//         still between him and that door (he backed into it) cuts to the room side behind him
 //   hold  (HOLD ticks): the screen is covered; the first tick switches (building the area if
 //         it is new, so the build hides behind the covered frame); the stick is neutral
 //   open  (OPEN ticks): the wipe opens; with entry.walkIn he walks on along entry.yaw for that
@@ -58,12 +58,21 @@
 // A and the other buttons his own. Letting go, or turning it clearly, hands it back to the
 // new camera.
 //
+// The approach cut: walking toward the camera into a door that leads somewhere (the inner
+// door, right after arriving through it), the camera backs up to the wall the door is in and
+// would have him walk into its lens with the door never in view. So once he is within
+// APPROACH of the door's face, lined up with it and heading for it, with the camera between
+// him and it, the camera cuts round to the room side behind him, looking at the door, and the
+// stick he holds is carried across that cut the same way (so he walks on into the door, and
+// out of it on the other side the way he was going).
+//
 // Allocation: the timeline allocates nothing per tick (one reused scripted controller, one
 // reused carried one, one reused neutral one, one reused wipe state).
 
 import { wrapAngle } from './math.js';
 import { neutralController } from './input.js';
 import { ObjectManager } from '../objects/ObjectManager.js';
+import { DOOR } from '../objects/Door.js';
 import { buildArea } from '../world/area.js';
 import { groundsArea } from '../world/areas.js';
 
@@ -75,6 +84,7 @@ export const WARP = {
   STAR_SWIM: 45, // the star exit waits this long for a swimmer (no dance in the water)...
   STAR_AFTER: 20, // ...and this long after the dance before the fade
   CARRY_TURN: 0.77, // a carried stick is let go once turned further than this cos (~40 deg)
+  APPROACH: 800, // walking toward the camera into a door: cut round to the room side this far out
 };
 
 // Actions a warp never starts from (the door ignores most of them already).
@@ -158,7 +168,7 @@ export class AreaSwitch {
     if (this.phase !== null || !this.canWarp() || REFUSE.has(this.player.action)) return false;
     if (!this._hasEntry(to, entry)) return false;
     this.warp = { to, entry, kind, from };
-    this.carry = false;
+    if (!from) this.carry = false; // (through a door, the switch reads a stick carried up to it)
     this._close(WARP.CLOSE, 'iris', IRIS_COLOR);
     if (from) this._doorShot(from);
     return true;
@@ -187,7 +197,10 @@ export class AreaSwitch {
 
   step(controller) {
     if (this.carry) this._keepCarry(controller);
-    if (this.phase === null) return this.carry ? this._carried(controller) : controller;
+    if (this.phase === null) {
+      if (!this.carry) this._approach(controller);
+      return this.carry ? this._carried(controller) : controller;
+    }
     const p = this.player;
     const w = this.warp;
     this.t++;
@@ -215,7 +228,9 @@ export class AreaSwitch {
             this._open(0, 0);
             return this.neutral;
           }
-          const camYaw = this.cam.getYaw(); // the stick's frame before the cut
+          // The stick's frame before the cut (a stick carried across the approach cut: the
+          // frame it was carried in).
+          const camYaw = this.carry ? this.carryYaw : this.cam.getYaw();
           if (this._swap(w.to, w.entry)) {
             const entry = this.current.entries[w.entry];
             this.walk = entry.walkIn > 0 ? entry.walkIn : 0;
@@ -319,6 +334,37 @@ export class AreaSwitch {
     const hero = (p.x - door.x) * door.sin + (p.z - door.z) * door.cos;
     const cam = (c.x - door.x) * door.sin + (c.z - door.z) * door.cos;
     if (cam < hero) this.cam.reset(this.player, { yaw: door.yaw });
+  }
+
+  // Walking toward the camera into a door that leads somewhere (the door behind the camera,
+  // which presses to the wall over him and has him walk into its lens): once he is within
+  // APPROACH of its face, lined up with it, on its floor and heading for it, cut round to the
+  // room side behind him, looking at the door, and carry the stick he holds across the cut, so
+  // he walks on into the door with it in view. (Per tick while nothing runs: a few products
+  // per door, no allocation.)
+  _approach(controller) {
+    const doors = this.current.objects?.doors;
+    const p = this.player;
+    if (!doors || !p.grounded || p.forwardVel <= 0 || REFUSE.has(p.action)) return;
+    const fx = Math.sin(p.faceYaw);
+    const fz = Math.cos(p.faceYaw);
+    const c = this.cam.pos;
+    for (let i = 0; i < doors.length; i++) {
+      const d = doors[i];
+      if (d.to === null || !d.armed) continue;
+      const dx = p.pos.x - d.x;
+      const dz = p.pos.z - d.z;
+      const front = dx * d.sin + dz * d.cos; // in front of its face
+      const side = dx * d.cos - dz * d.sin; // along it
+      if (front <= 0 || front > WARP.APPROACH || side > d.halfWidth || -side > d.halfWidth) continue;
+      if (p.pos.y - d.floorY > DOOR.ABOVE || d.floorY - p.pos.y > DOOR.BELOW) continue;
+      if (-(fx * d.sin + fz * d.cos) < DOOR.FACING) continue; // not heading for it
+      if ((c.x - d.x) * d.sin + (c.z - d.z) * d.cos >= front) continue; // the camera is behind him
+      const yaw = this.cam.getYaw();
+      this.cam.reset(p, { yaw: d.yaw });
+      this._startCarry(controller, yaw);
+      return;
+    }
   }
 
   // The stick held at the switch (if any) is carried, read against camera yaw `yaw`.

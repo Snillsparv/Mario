@@ -4,8 +4,10 @@
 // him; 40 steps later he is in the Great Hall: the picture is the hall's warm fog and walls, not
 // the sky, in fewer than 45 draw calls, and the pause screen names the course; setDark(true) in
 // the hall is ignored; the inner door takes him back out onto the porch with the camera in front
-// of him; ?area=hall boots straight into the hall, and a stick held forward through the inner
-// door walks him on out across the porch instead of back in. No page errors anywhere.
+// of him; ?area=hall boots straight into the hall (its furnished picture, and the bottle's end
+// from the landing, each in fewer than 45 draw calls; the hall's own textures at most 128 px),
+// and a stick held forward through the inner door walks him on out across the porch instead of
+// back in. No page errors anywhere.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -159,6 +161,22 @@ test('?area=hall boots straight into the Great Hall; forward held through the in
     const f = await frame(page);
     assert.ok(f.calls < 45, `${f.calls} draw calls`);
     for (const p of f.pixels) assert.ok(!skyBlue(p), `no sky in the hall: ${p}`);
+    // Out of the bottle onto the landing, looking past him at the bottle and its model.
+    await page.evaluate(() => {
+      window.__game.enterArea('hall', 'bottle');
+      window.__game.step(20);
+    });
+    const end = await frame(page);
+    assert.ok(end.calls < 45, `the bottle's end: ${end.calls} draw calls`);
+    const sizes = await page.evaluate(async () => {
+      const textures = await import('/src/world/hall/textures.js');
+      return Object.entries(textures).map(([name, make]) => {
+        const { image } = make();
+        return [name, image.width, image.height];
+      });
+    });
+    assert.ok(sizes.length > 0);
+    for (const [name, w, h] of sizes) assert.ok(w <= 128 && h <= 128, `${name}: ${w} x ${h}`);
     // Facing the inner door with the camera behind him, forward held all the way: out onto the
     // porch (where the camera looks at the door) and on away from it, not back in.
     const run = await page.evaluate(() => {

@@ -1,4 +1,4 @@
-// Small geometry toolkit for the castle and the drawbridge.
+// Small geometry toolkit for the castle and the drawbridge (and the Great Hall, world/hall/).
 //
 // Shapes are described as lists of convex planar polygons ("polys", arrays of [x, y, z]).
 // GeoBuilder turns them into render triangles (position, normal, uv, colour) for one
@@ -414,13 +414,19 @@ export class GeoBuilder {
 
 export class SolidBuilder {
   constructor() {
-    this.byTerrain = new Map();
+    // One collider per terrain kind (and surface kind, where one is given):
+    // key -> { terrain, surface, positions }.
+    this.byKind = new Map();
   }
 
-  // Convex solid (list of polys) -> outward-wound triangles tagged with a terrain kind.
-  solid(polys, terrain = 'stone') {
-    let out = this.byTerrain.get(terrain);
-    if (!out) this.byTerrain.set(terrain, (out = []));
+  // Convex solid (list of polys) -> outward-wound triangles tagged with a terrain kind and,
+  // optionally, a surface kind (CollisionWorld's: 'slippery', 'not_slippery', ...; without
+  // one the collider leaves it to the default).
+  solid(polys, terrain = 'stone', surface = null) {
+    const key = surface ? `${terrain}|${surface}` : terrain;
+    let kind = this.byKind.get(key);
+    if (!kind) this.byKind.set(key, (kind = { terrain, surface, positions: [] }));
+    const out = kind.positions;
     const c = centroid(polys.flat());
     for (const p of polys) {
       const facing = sub(centroid(p), c);
@@ -440,7 +446,8 @@ export class SolidBuilder {
     this.solid(boxPolys(x0, x1, y0, y1, z0, z1, opts), terrain);
   }
 
+  // [{ positions, terrain, surface? }], one per kind in the order first used.
   colliders() {
-    return [...this.byTerrain].map(([terrain, positions]) => ({ positions, terrain }));
+    return [...this.byKind.values()].map(({ terrain, surface, positions }) => (surface ? { positions, terrain, surface } : { positions, terrain }));
   }
 }

@@ -39,8 +39,8 @@
 //  * Reach: along the ray the camera may extend up to the first surface while in front of it,
 //    or up to the next one beyond while already past it. This applies immediately.
 //  * Path: the camera never tunnels. A move into a wall or ceiling stops in front of it and
-//    slides along it; floors are left to the height limit, which carries the camera over
-//    terrain edges.
+//    slides along it (a slide that would end on another one, in an inside corner, stops short);
+//    floors are left to the height limit, which carries the camera over terrain edges.
 //  * Speed: the resolved camera moves at most STEP_MARGIN further per tick than the orbit
 //    position or the hero moved (whichever moved more), so a camera released by a pillar it was
 //    held back by, or pulled in toward a hero dropping out of sight into the moat, glides instead
@@ -125,6 +125,7 @@ const TOLERANT_MIN_FRACTION = 0.5; // ...or at this fraction of the orbit distan
 const TOLERANT_OMEGA = 0.3; // ...on a softer spring...
 const TOLERANT_PULL_SPEED = 30; // ...at most this many units per tick
 const SLIDE_SKIN = 25; // a camera sliding along a wall keeps this far off it
+const ENTER_SLOP = 1; // a move ending this close to a surface it heads into enters it (_entering)
 const RESET_YAW_DEG = 30; // yaw steps a reset tries when the spot behind the hero is walled in
 const BODY_CLEARANCE = 180; // minimum distance from the hero's chest-to-head segment...
 const BODY_RAMP = 300; // ...reached by rising gradually from this horizontal distance in
@@ -544,7 +545,10 @@ export class CameraCollider {
   }
 
   // First wall or ceiling the straight move from a to b enters through its front (copied into
-  // `out`, with `dot` = cosine between the move and the surface normal), or null.
+  // `out`, with `dot` = cosine between the move and the surface normal), or null. A move that
+  // ends on a surface (within ENTER_SLOP: a slide along one wall into the corner with another,
+  // whose plane the orbit was slid onto) enters it too: left there, the camera would sit in its
+  // plane, which no wall push moves it out of.
   _entering(a, b, out) {
     const d = this._ray;
     d.x = b.x - a.x;
@@ -552,7 +556,7 @@ export class CameraCollider {
     d.z = b.z - a.z;
     const move = Math.sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
     if (move < 1) return null;
-    const hit = this.collision.raycast(a, d, move, NO_FLOORS);
+    const hit = this.collision.raycast(a, d, move + ENTER_SLOP, NO_FLOORS);
     if (!hit) return null;
     const dot = (d.x * hit.normal.x + d.y * hit.normal.y + d.z * hit.normal.z) / move;
     if (dot >= 0) return null;

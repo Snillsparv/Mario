@@ -6,8 +6,9 @@
 // camera then holds any collision world but the hall's (the grounds' again after the way
 // back); the renderer got the hall's look and water; he stands at the front entry with the
 // camera behind him, clear, inside the room. Walking back toward the camera to the inner door,
-// the camera pressed to the wall over him cuts to the room side as the door opens, so the wipe
-// closes on him at the door. The inner door takes him back onto the porch
+// the camera cuts round to the room side as he nears it (never close over him at the wall) and
+// the stick he holds walks him on into the door, so the wipe closes on him at the door (only
+// for a door behind the camera that leads somewhere). The inner door takes him back onto the porch
 // facing out with the camera in front of him; the castle door re-arms as he walks out and
 // takes him in again. AI RACE (on, or still fading out) seals the door: the laugh and the
 // castle_sealed sign, no warp. A refused warp leaves the door quiet until he has stepped off
@@ -18,7 +19,8 @@
 // is let go or turned). A small course of our own (a placed star, a star exit, a way out from
 // the pause screen) shows the star exit waiting out the dance and fading to gold-white,
 // leave(), refused requests, and resetCourses() taking the star back; another, whose arrival
-// stands in a door, shows every switch keeping that door quiet (objects.enter).
+// stands in a door, shows every switch keeping that door quiet (objects.enter). The hall's
+// east doors and the bottle's mouth (not open yet) show their sign, without a laugh or a warp.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -271,25 +273,40 @@ test('the inner door back out onto the porch, facing out with the camera in fron
   assert.equal(g.areas.name, 'hall');
 });
 
-test('walking back toward the camera to the inner door: the camera, pressed to the wall over him, cuts to the room side as the door opens', () => {
+test('walking back toward the camera to the inner door: as he nears it the camera cuts round to the room side, and the stick he holds walks him on into the door', () => {
   const g = game();
   g.areas.enter('hall', 'front');
   g.until(() => false, 20);
   g.until(() => false, 60, { stickY: 1 }); // into the room, the camera behind him (south)
   const door = g.areas.objects.doors[0];
+  const front = () => (g.player.pos.x - door.x) * door.sin + (g.player.pos.z - door.z) * door.cos;
   g.resets.length = 0;
-  // Back toward the camera (and the door behind it): it backs up to the south wall and stays.
+  // Back toward the camera (and the door behind it), the stick held down all the way: the
+  // camera backs up to the south wall, then, once he is within APPROACH of the door, cuts round
+  // behind him; he walks on south (the stick carried across the cut) into the door. It never
+  // comes close over him.
   let near = Infinity;
-  const toCamera = () => {
+  let cutAt = null;
+  let lastZ = g.player.pos.z;
+  const back = () => {
     near = Math.min(near, Math.hypot(g.cam.pos.x - g.player.pos.x, g.cam.pos.z - g.player.pos.z));
     assert.equal(g.cam.hideHero, false);
+    if (cutAt === null && g.resets.length) cutAt = front();
     return { stickY: -1 };
   };
-  g.until(() => g.log.includes('warp:grounds'), 150, toCamera);
-  assert.ok(g.log.includes('warp:grounds'));
-  assert.ok(near < 500, `the camera came close over him at the wall (${Math.round(near)})`);
-  assert.deepEqual(g.resets, ['close'], 'one cut, as the door opened');
-  // While the wipe closes: behind him in the room, clear, well back, looking at the door.
+  const n = g.until(() => g.log.includes('warp:grounds'), 150, () => {
+    if (g.resets.length && g.phases.at(-1) === null) {
+      assert.ok(g.player.pos.z > lastZ - 1, `still walking south after the cut (${Math.round(g.player.pos.z - lastZ)})`);
+    }
+    lastZ = g.player.pos.z;
+    return back();
+  });
+  assert.ok(g.log.includes('warp:grounds') && n < 150);
+  assert.deepEqual(g.resets, [null], 'one cut, before the door');
+  assert.ok(cutAt > WARP.APPROACH - 60 && cutAt <= WARP.APPROACH, `cut ${Math.round(cutAt)} from the door`);
+  assert.ok(near > 600, `the camera never came close over him (${Math.round(near)})`);
+  // From the cut and while the wipe closes: behind him in the room, clear, well back, looking
+  // at the door.
   for (let i = 0; g.areas.phase === 'close'; i++) {
     const c = g.cam.pos;
     const p = g.player.pos;
@@ -298,9 +315,41 @@ test('walking back toward the camera to the inner door: the camera, pressed to t
     assert.equal(g.cam.collider.occluded, false);
     assert.equal(g.cam.hideHero, false);
     assert.ok(Math.abs(wrapAngle(g.cam.getYaw() - (door.yaw + Math.PI))) < 0.3, 'looking at the door');
-    g.tick();
+    g.tick({ stickY: -1 });
   }
   pushedToward(g, door.yaw + Math.PI);
+  // The stick he still holds comes out on the porch the way he was walking: away from the
+  // castle door, not back into it.
+  g.until(() => g.areas.phase === null, 40, { stickY: -1 });
+  assert.equal(g.areas.name, 'grounds');
+  const z = g.player.pos.z;
+  g.until(() => false, 20, { stickY: -1 });
+  assert.ok(g.player.pos.z > z + 100, `walked on out (z ${Math.round(z)} -> ${Math.round(g.player.pos.z)})`);
+});
+
+test('the approach cut is only for a door behind the camera that leads somewhere: walking into the inner door with the camera behind him, or at a door still being built, no cut', () => {
+  const g = game();
+  g.areas.enter('hall', 'front');
+  g.until(() => false, 20);
+  // South to the inner door with the camera north of him (behind him): no cut until the door.
+  g.player.teleport(0, 0, HALL_Z + 1800, 0);
+  g.player.setAction('idle');
+  g.cam.reset(g.player);
+  g.resets.length = 0;
+  g.until(() => g.log.includes('warp:grounds'), 120, { stickY: 1 });
+  assert.ok(g.log.includes('warp:grounds'));
+  assert.deepEqual(g.resets, [], 'no cut: the camera already looks at the door');
+  // East to a door still being built, the camera between him and it: no cut.
+  const g2 = game();
+  g2.areas.enter('hall', 'front');
+  const d = hall.DOORS.find((e) => e.id === 'hall_east_1');
+  g2.player.teleport(d.x - 900, 0, HALL_Z + d.z, Math.PI / 2);
+  g2.player.setAction('idle');
+  g2.cam.reset(g2.player, { yaw: Math.PI / 2 }); // the camera east of him, by the door
+  g2.resets.length = 0;
+  g2.until(() => g2.dialog.isOpen, 90, g2.toward(Math.PI / 2));
+  assert.ok(g2.log.includes('sign:hall_door_soon'));
+  assert.deepEqual(g2.resets, []);
 });
 
 test('AI RACE seals the castle door, also while it fades out: the laugh and the sealed sign, no warp', () => {
@@ -332,6 +381,25 @@ test('AI RACE seals the castle door, also while it fades out: the laugh and the 
   g.objects.setDarkness(0);
   log = tryDoor();
   assert.ok(log.includes('warp:hall') && log.includes('door_open') && !log.includes('evil_laugh'), log.join());
+});
+
+test("the hall's doors still being built and the bottle's mouth say so: their sign, no laugh, no warp", () => {
+  const g = game();
+  g.areas.enter('hall');
+  const doors = g.areas.objects.doors;
+  for (const [id, sign] of [['hall_east_1', 'hall_door_soon'], ['hall_east_2', 'hall_door_soon'], ['bottle', 'bottle_soon']]) {
+    const d = doors.find((door) => door.id === id);
+    const yaw = d.yaw + Math.PI;
+    g.dialog.isOpen = false;
+    g.place(d.x + d.sin * 400, d.floorY, d.z + d.cos * 400, yaw);
+    g.log.length = 0;
+    g.until(() => g.dialog.isOpen, 60, g.toward(yaw));
+    assert.ok(g.log.includes(`sign:${sign}`), `${id}: ${g.log.join()}`);
+    assert.ok(!g.log.includes('evil_laugh'), `${id}: no laugh`);
+    assert.ok(!g.log.some((n) => n.startsWith('warp:')), `${id}: no warp`);
+    assert.equal(g.areas.phase, null);
+    assert.equal(g.areas.name, 'hall');
+  }
 });
 
 test('a refused warp: the door stays quiet until he steps off its apron; dying while it closes cancels the switch', () => {
@@ -440,7 +508,8 @@ test("enter('grounds', 'start') brings back the grounds' spawn, signs and collis
   assert.equal(g.player.collision, g.areas.current.collision);
   const front = hall.ENTRIES.front;
   assert.deepEqual(g.player.spawn, { x: front.x, y: front.y, z: front.z + HALL_Z, yaw: front.yaw, drop: hall.RESPAWN.drop });
-  assert.deepEqual(g.player.signs, []);
+  assert.deepEqual(g.player.signs.map((e) => e.sign.id), hall.SIGNS.map((e) => e.id), "the hall's signs");
+  assert.deepEqual(g.player.signs.map((e) => e.z - HALL_Z), hall.SIGNS.map((e) => e.z), 'in world coordinates');
   g.dialog.isOpen = true;
   g.areas.enter('grounds', 'start');
   assert.equal(g.dialog.isOpen, false, 'a dialog up is closed');

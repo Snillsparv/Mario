@@ -213,6 +213,22 @@ test('wall avoidance keeps the camera on the hero side of a wall', () => {
   }
 });
 
+test('a slide along one wall into the corner with another stops in front of it, not in its plane', () => {
+  // An inside corner: a long wall (its face at x 0, facing +x) and a block standing out of it
+  // (its face at z 0, facing +z, out to x 400). The move runs up the long wall's side toward a
+  // point past it that lies in the block's face plane (an orbit slid along that face): the
+  // slide along the wall must not end in the block's plane, where no wall push moves it out.
+  const world = new CollisionWorld();
+  world.addTriangles(quad([-3000, 0, 3000], [3000, 0, 3000], [3000, 0, -3000], [-3000, 0, -3000]));
+  world.addTriangles(box(-200, 0, 0, 2000, -3000, 3000));
+  world.addTriangles(box(0, 400, 0, 2000, -1000, 0));
+  world.finalize();
+  const cam = new CameraController({ collision: world, camera: new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000), events: null });
+  const to = new THREE.Vector3(-165, 300, 0);
+  cam.collider._slideMove(new THREE.Vector3(60, 300, 60), to);
+  assert.ok(to.x > 0 && to.z > 1, `in front of both faces: ${to.x.toFixed(1)}, ${to.z.toFixed(1)}`);
+});
+
 test('C-rotation into a wall is refused with a buzz', () => {
   const { cam, sfx } = makeCam();
   // Camera looks along the wall (hero faces -z); rotating toward +x would bury it.

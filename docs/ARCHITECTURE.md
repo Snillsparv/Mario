@@ -166,7 +166,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 |---|---|---|
 | Core | `src/core/*` (but `AreaSwitch.js`), `src/main.js`, `src/world/level.js`, `index.html`, `vite.config.js`, `tools/*`, `docs/*` | integration |
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
-| Great Hall | `src/world/hall/*` (layout, builder) | WorldPart, built by `area.js` |
+| Great Hall | `src/world/hall/*` (layout, builder, bottle, textures) | WorldPart, built by `area.js` |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
 | Terrain + water | `src/world/terrain.js`, `src/world/terrain/*` (tessellate, floorBlocks, walls, shading, MeshBuffer), `src/world/water.js`, `src/world/terrainTextures.js` | WorldPart |
@@ -322,6 +322,9 @@ Rules for areas:
   back), or a `camYaw` that puts the camera where there is room (the porch: in front of him,
   the door at his back). A ceiling over walkable floor is at least 300 above it (lower ones let
   the follow camera escape), and a respawn drop starts under it (the hall: 400 under 2600).
+  Inside the hall no spot Jonas can stand on lies under a ceiling (an overhang included) lower
+  than 400 over it (`hall/layout.js` `HEADROOM`): a lower overhang is filled solid or too low
+  for him to fit under (`tests/hall.test.js` scans a grid of every floor for it).
 * **Not re-pointed**: the effects (`fx`: area objects get `fx: null`), the meltdown, the camera
   shake, the look-up and boss camera and the cannon's perimeter clamp stay the grounds': they
   only act in AI RACE mode, which never leaves the grounds (below).
@@ -360,7 +363,7 @@ them, START is ignored while `busy`):
 
 | Phase | Ticks | Stick | Wipe |
 |---|---|---|---|
-| `close` | 14 (the star exit 18) | through a door, pushing on toward it (world yaw = the door's yaw + π); else neutral. A camera between him and the door (he walked toward the camera, the door behind it: the hall's inner door) cuts to the room side behind him as the door opens (`cam.reset(player, { yaw: door.yaw })`), so the wipe closes on him at the door, not on his cap | 0 → 1 |
+| `close` | 14 (the star exit 18) | through a door, pushing on toward it (world yaw = the door's yaw + π); else neutral. A camera still between him and the door (he backed into it) cuts to the room side behind him as the door opens (`cam.reset(player, { yaw: door.yaw })`), so the wipe closes on him at the door, not on his cap | 0 → 1 |
 | `hold` | 4 | neutral; the **first** tick switches (building a new area there, behind the covered frame) | 1 |
 | `open` | 14 | with `entry.walkIn: n`, walking on along `entry.yaw` for n ticks (then `sfx door_close` after a door); then his own (carried, below) | 1 → 0 |
 
@@ -372,7 +375,17 @@ switch on, while the stick stays pushed within ~40° (`WARP.CARRY_TURN`) of wher
 read against the old camera's yaw turned through the door (`carryYaw` = old camera yaw +
 `entry.yaw` − (door yaw + π)), so after the walk-in he walks on the way he was going (his buttons
 his own, in a second reused controller); letting go or turning it hands it to the new camera,
-also after the transition has ended. A request is refused while a transition runs,
+also after the transition has ended. **The approach cut**: walking toward the camera into a
+door that leads somewhere (the hall's inner door, right after arriving through it), the camera
+backs up to the wall the door is in and he would walk into its lens with the door never in
+view. So while no transition runs, once he is within 800 (`WARP.APPROACH`) of a door's face,
+lined up with it, on its floor, grounded and heading for it (within 60°), with the camera
+between him and it, the camera cuts round to the room side behind him looking at the door
+(`cam.reset(player, { yaw: door.yaw })`) and the stick he holds is carried across that cut the
+same way (read against the old camera's yaw), so he walks on into the door with it in view;
+the switch then reads a carried stick in the frame it was carried in, so he comes out on the
+other side the way he was walking. A locked door, or one with the camera already behind him,
+never cuts. A request is refused while a transition runs,
 while `canWarp()` says no (main: `mode 'play'`, not `state.dark`, `darkT` 0, the meltdown not
 running, no dialog up), while Jonas is in `death`, `spawn`, `reading` or `cannon`, and for an
 unknown area or entry; the door that asked stays disarmed until he steps off its apron. Dying
@@ -404,39 +417,148 @@ the look-up, boss camera and shake have nothing to react to.
 `meltdown.reset()` and the title (the grounds' look is back before the meltdown's reset
 repaints it). Everything lasts for one game; nothing about areas is stored.
 
-**The Great Hall** (`world/hall/layout.js`: the anchors in local coordinates, +x east, −z north
-toward the bottle at the far end, the floor at y 0; `world/hall/hall.js`: the builder): a long
-stone room, inside x ±2200, z −4200 … 3000, the collision ceiling at 2600, walls, floor and
-ceiling as 200-thick stone slabs (the faces toward the room are the boxes' outward faces), with
-stone pilasters up the side walls. Drawn: a flagstone floor (tessellated on a 200 grid, darker
-within 400 of a wall), cream plaster walls over a 140 stone base course, a dark oak ceiling with
-tie-beam bands, and in the south wall the inside of the castle's front door
-(`castle/building.js` `door()`, exported for it; its collider puts the face at z 2944). Baked
-light from `HALL_SUN`; four meshes (`hall-floor`, `hall-wall`, `hall-trim`, `hall-wood`), ~1.9k
-triangles, built in ~15–25 ms. The layout also names the anchors of the hall's furnishings
-(fireplace, wall-kick slot, banner pole, east doors, chart table, the ship in the bottle with its
-landing, stairs, cork and books, chandeliers), which this plain room does not draw; nor does it
-draw the open timber roof above the collision ceiling (tie beams 200 × 160 every 1200 from 2600
-to 2760, king-post trusses and rafters to a ridge at 3800, plaster panels between them; no
-colliders): the beams are only painted on the flat ceiling for now. Entries: `front` (0, 0, 1550) facing north with the room
-behind him for the camera, walking in 10 ticks; `bottle` (0, 550, −1230) facing south, dropping
-250, `camYaw` 0; the respawn drops in at `front` from 400. Doors (`DOORS`): `hall_front`, the
-inside of the front door (face z 2944, yaw π), back out to the grounds' `porch`. Look
-(`HALL_ATMOSPHERE`): brown-amber fog 0x3b2a1d from 3500 to 16000 (also the clear colour: no sky),
-a warm actor sun 0xffe0b0 (0.5π) from (0, 0.72, 0.69), hemisphere 0xfff0da / 0x6e5038 (0.55π).
-Measured in the browser: 25 draw calls in the hall (the E2E budget is 45).
-
 **Tests**: `tests/areas.test.js` (node: the real grounds, hall, Player and camera through main's
 tick: the walk in, the phases and the stick each gives, the graph walk that finds no stale
-collision world on Jonas or the camera, the arrival framing, the way back (and the door shot
-when he walks toward the camera), the stick held through the inner door carried out across the
+collision world on Jonas or the camera, the arrival framing, the way back (and the approach cut
+when he walks toward the camera into the inner door: never close over him, one cut, walked on
+into the door and out on the porch; none at a locked door or with the camera already behind
+him), the stick held through the inner door carried out across the
 porch until let go or turned, AI RACE's seal, refusals (also once the screen is covered), a
 death mid-close, GAME OVER's return, a test course's star exit, leave and resetCourses, and one
 whose arrival stands in a door: objects.enter on every switch);
 `tests/areas-browser.test.js` (E2E=1: the iris over the picture and under the HUD, setDark
-ignored mid-warp and in the hall, the hall's picture and draw calls, the pause course name, the
-way out, `?area=hall`, forward held through the inner door). `tests/ui.test.js` checks the pause
-screen draws the HUD's course name; `tests/ui-dialog.test.js` that "AI RACE" never wraps apart.
+ignored mid-warp and in the hall, the hall's picture and draw calls (also from the landing), the
+hall's textures at most 128 px, the pause course name, the way out, `?area=hall`, forward held
+through the inner door); `tests/hall.test.js` (node, the hall as `buildArea` places it with the
+real Player, camera and objects: the budgets (the hall's own objects at most 8 meshes too), a
+closed room (sampled with 12 seeds, outside the furniture), no floor under less than `HEADROOM`,
+spam runs that never leave it, the entries' footing and framing, walks round the bottle's end
+and into its flanks that never trap the camera, C-button swings by the bottle and the furniture
+that never take it into a solid, the routes (stairs, cork, books, wall kicks up the slot with
+its coins, the banner pole onto the buttress for aims up to 15° off, staying up there, the hop
+onto the mantel to the 1-up), signs read from the front only, every coin over a floor, the
+doors' triggers on their faces, the glass and its rim, the flicker (its shader hook too) and the
+lamp). `tests/ui.test.js` checks the pause screen draws the HUD's course name;
+`tests/ui-dialog.test.js` that every hall sign and door page draws in the dialog font, fits one
+screen of the box and is its own (no trademark), and that "AI RACE" never wraps apart. `tests/areas.test.js` also walks Jonas up to the hall's east doors
+and the bottle's mouth: their sign, no laugh, no warp.
+
+### The Great Hall (`src/world/hall/*`)
+
+`world/hall/layout.js` holds the anchors in the hall's local frame (+x east, −z north toward the
+bottle at the far end, the floor at y 0; world = local + (0, 0, −60000)); `world/hall/hall.js`
+builds the room (`buildHall(layout)`, a WorldPart), `world/hall/bottle.js` its north end
+(`buildBottle(kit, layout)`, writing into the same kit), `world/hall/textures.js` the one texture
+of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and the courtyard's).
+
+```
+                       -Z (north)
+     ┌──── window ──── bottle on its stand and cradles ──── window ────┐
+     │ buttress  pole                                     door (cog)   │
+     │ (slot)             books  landing  cork                         │
+     │ fireplace   sign          stairs                  door (snow)   │
+     │ (pi, 1-up)                chandelier                            │
+     │ window                    sign      chart table          window │
+     │ window    sign            chandelier                     window │
+     └──── banner ──── rose window over the front door ──── banner ────┘
+                       +Z (south, the courtyard)
+```
+
+* **Room**: inside x ±2200, z −4200 … 3000; floor, walls and the collision ceiling (2600) are
+  200-thick stone slabs (their faces toward the room are the boxes' outward faces), stone
+  pilasters up the side walls. Over the collision ceiling, drawn only and out of the camera's
+  reach (it stays under ~2540): the open roof (`ROOF`): oak tie beams 200 × 160 from 2600 to
+  2760 every 900 from z −3900 (so both candle rings hang from one), each carrying a king-post
+  truss (principal rafters, struts) to the ridge at 3800, a ridge beam and a purlin down each
+  slope, plaster panels under the slopes, the end walls rising into gables.
+* **South wall**: the inside of the castle's front door (`castle/building.js` `door()`; its
+  collider puts the face at z 2944) under the stained-glass rose window (`castle/parts.js`
+  `roundWindow`, the castle's rose texture, full-bright), two crimson-and-gold banners (the
+  castle's golden sun) at x ±700 from 2400 down to 1200, pleated, cut to a point.
+* **Windows**: two tall arched windows in each side wall (z 1900, 700) and two in the north wall
+  (x ±1500): `castle/parts.js` `archWindow`, 320 × 1000 from a 600 sill, panes glowing pale gold
+  behind iron bars.
+* **West wall**: the chimney breast (stone collider x −2200 … −1750, z −1260 … −200, top 1700:
+  the mantel, with the 1-up and a flue up the wall beside it) with its hearth (drawn only, 700 ×
+  600, 120 deep: logs, embers and flickering flames, the inside lit warm from below) and Jonas's
+  crest (a white π on a red disc with a gold rim, over the hearth); the buttress (x −2200 …
+  −1750, z −2080 … −1620, top 1700) with the **wall-kick slot** between them (z −1620 … −1260,
+  360 wide, open to the east); the **banner pole** (`POLES`: r 30 at (−1500, −1850), up to 1550,
+  150 under the buttress top, level with its middle and 250 east of its face) with a small banner
+  near its top: the jump off its top toward the wall carries 730 … 850, clears the buttress's
+  edge and stops against the west wall over it, so any aim within 15° of straight at the wall
+  drops him mid-top, where he stays.
+* **East wall**: two arched stone alcoves (the arch standing 80 out of the wall; its piers
+  solid) with doors still being built (`door()`, faces at x 2144), a snowflake and a cog on the
+  plaques over them; out in the room the round **chart table** (oak, octagonal collider r 320,
+  top 90 at (1100, 700)) with a chart of the first course on it (home island, the skerries, the
+  lighthouse's islet, a dotted route), a ring of 8 coins round it.
+* **The ship in the bottle** (`bottle.js`): a giant glass bottle lying along x 0 (axis 760; body
+  r 520 from z −4190, just off the north wall so no corridor behind it can trap the camera, to
+  −2300, a shoulder to the neck, r 240 to −1440, a lip ring r 270 to −1400). Its colliders are
+  convex solids round the axis of **slippery** stone, each cross-section with a corner straight
+  up and down and a vertical face across its widest band (the body and shoulder 75° … 105°, the
+  neck and lip 70° … 110°): a wall there stops the camera's path check, where corners at the
+  widest point would leave a steep floor (which the path leaves to the height limit) and a
+  C-button swing could carry the camera into the glass. It lies on a dark oak **stand** that
+  runs its length from its end to the landing, rising round the glass to 45° either side of
+  straight down (its half-width follows the glass: 368 under the body, narrowing under the
+  shoulder to 170 under the neck; a lighter rail along its top), with two lighter carved
+  **cradles** across it (z −3600 and −2600, tops 420, level with the putty sea) whose cheeks rise
+  round the glass from there into its widest band (to 640, their outer sides sloping in from
+  650 to 580). So no spot under the glass is lower than `HEADROOM` (400) under it: beside the
+  stand the glass is 440 or more over the floor, the stand's own top lies inside the glass (its
+  colliders flat-topped boxes; at worst a sliver under it, far too low to stand in), and no
+  cradle leaves a ledge under it. Inside, a putty sea (420) with a model of the first course:
+  pink granite islets, a red cottage on the green home island, a boat with a red sail and a
+  white jib, a white lighthouse with a red band whose lamp is the `hall-lamp` mesh, hidden until
+  that course's star is won. The **landing** (wood, x ±450, z −1400 … −900, top 550: the neck's
+  inner floor) at its mouth; the **stairs** up to it a smooth ramp collider (`not_slippery`,
+  28.8°, from z 100) under 11 drawn steps (each tread's middle on the ramp; dark risers, light
+  treads) between two dark stringers 40 wide, their tops along the ramp (the collider runs on
+  under them); a giant **cork** (octagonal, r 190 at its foot narrowing to 160 at its top, 380,
+  90 from the landing; a darker ring round its foot) and three giant **books** stacked like
+  stairs against the landing's west side (tops 150, 300, 450).
+* **Two candle rings** (iron, r 380, 8 candles each, at 2050) hang on chains from the tie beams
+  over (0, 1500) and (0, −300).
+* **Meshes** (10): `hall-floor` (flagstones on a 200 grid), `hall-wall` (plaster), `hall-trim`
+  (stone), `hall-wood` (oak and iron), `hall-paint` (untextured vertex colours: the model, the
+  crest, plaques, chart, candles, cork and books), `hall-glow` (full-bright: the rose window's
+  glass from the rose texture, and the window panes, embers and flames, which all sample the rose
+  texture's pale gold middle), `hall-cloth` (the banners), `hall-bottle` (the glass: one
+  transparent surface, front faces only, no depth write, a highlight stripe in its vertex
+  colours; outer faces only, so it never lies over itself; opacity 0.22 face on, rising to 0.62
+  and paler where the view grazes it, from the angle between each face and the view in its
+  shader, so its outline reads against the cream walls and the dark stand), `hall-signs` (signposts:
+  `props/decor.js` `addSignpost`, exported for it), `hall-lamp`. Lighting baked from `HALL_SUN`
+  (0.1, 0.8, 0.6; ambient 0.55, diffuse 0.45); the floor 25 % darker within 400 of a wall, 15 %
+  brighter in pools under the windows, a little under the candle rings, and faintly coloured
+  under the rose window. The flames flicker: the glow mesh's `'flame'` attribute (0 steady, else
+  the flame's phase) scales their colour by a wobble of the uniform `update(time)` sets
+  (`material.userData.flameTime`). ~7.3k triangles, ~580 collider triangles (stone and wood; the
+  glass `slippery`, the stairs `not_slippery`: `castle/geom.js` `SolidBuilder.solid(polys,
+  terrain, surface?)`), built in ~40–80 ms in node, ~45 ms in the browser; 32 draw calls in the
+  hall (the E2E budget is 45).
+* **Entries**: `front` (0, 0, 1550) facing north with the room behind him for the camera,
+  walking in 10 ticks; `bottle` (0, 550, −1230) facing south, dropping 250, `camYaw` 0; the
+  respawn drops in at `front` from 400.
+* **Doors** (`DOORS`): `hall_front`, the inside of the front door (face z 2944, yaw π), back out
+  to the grounds' `porch`; `hall_east_1`, `hall_east_2` (faces x 2144, yaw −π/2) and `bottle`
+  (the lip's end face, z −1400, on the landing at 550, `kind: 'bottle'`), all `to: null` for now:
+  no laugh, just their sign (`HALL_DOOR_SOON` 'This door is still being built.' / 'Come back
+  after the next update!'; `BOTTLE_SOON` 'The little boat is still being rigged.' / 'Come back
+  soon!').
+* **Pickups and signs**: 19 coins (`COINS`, each at its floor + 60, but the three hanging in the
+  wall-kick slot at 450, 900, 1350: the ring round the chart table, the slot, up the stairs and
+  onto the landing, the cork and the top two books), the 1-up on the mantel (`ONE_UP`), three
+  signs (`SIGNS`, each with its `y`): `hall_welcome` by the front door, `bottle` by the stairs,
+  `wallkick` in front of the fireplace.
+* **Look** (`HALL_ATMOSPHERE`): brown-amber fog 0x3b2a1d from 3500 to 16000 (also the clear
+  colour: no sky), a warm actor sun 0xffe0b0 (0.5π) from (0, 0.72, 0.69), hemisphere 0xfff0da /
+  0x6e5038 (0.55π).
+* **Preview**: `/preview.html?m=hall` (`src/dev/previews/hall.js`: the hall alone under its fog;
+  `&col=1` the collider overlay, whose every face shows from inside the room; `&lamp=1` the
+  lamp lit; `&view=entry|bottle|fire|roof`; `&t=` freezes the flicker).
 
 ## Player (`src/player/Player.js`)
 
@@ -604,6 +726,10 @@ whirling round high over the castle); on `'bossThrown'` it chases the beast alon
 starts to rise, then hands back to the orbit. Nothing changes while `w` is 0.
 
 Keeping the hero in view (`src/camera/CameraCollider.js`, `src/camera/sight.js`):
+* The path: a move into a wall or ceiling stops in front of it and slides along it; a slide that
+  would end on another one (an inside corner, the orbit slid onto that wall's plane) stops short
+  (`_entering` counts a move ending within `ENTER_SLOP` of a face), so the camera never sits in
+  a wall's plane, where no wall push moves it out (`tests/camera.test.js`).
 * A C-left/C-right press first runs the swing ahead on a copy of the collider; if the hero
   would end up hidden behind something taller than him (a corner tower, a wall), the press
   is refused with `sfx 'camera_buzz'`. Low, see-through blockers (fences) never veto it.
@@ -961,7 +1087,10 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
 
 `layout.SIGNS`: `[{ id, x, z, yaw, y?, pages: [string] }]`, wooden signposts built by props (the
 readable board faces `yaw`; a sign with `y` stands on that floor instead of the lawn: the one on
-top of the keep), with original text. Reading works like the classic games:
+top of the keep), with original text. Other areas list theirs in their own layout (the Great
+Hall's `SIGNS`, each with its `y`, drawn by its builder with the same `props/decor.js`
+`addSignpost`; `player.setWorld` hands Jonas the current area's). Reading works like the classic
+games:
 
 * Player: B pressed while grounded and not attacking, with a sign within reach in front of Jonas
   (Jonas in front of the sign's face and facing it) -> action `'reading'` (anim `idle`, no
@@ -1541,7 +1670,8 @@ Unknown names must be ignored silently.
 * `node tools/shot.mjs --url "/?test=1" --actions '[{"step":30,"input":{"stickY":1}},{"shot":"shots/a.png"},{"eval":"__game.snapshot()"}]'`
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
-* `/preview.html?m=world` shows the whole level without the player.
+* `/preview.html?m=world` shows the whole level without the player; `/preview.html?m=hall` the
+  Great Hall alone (`&col=1` its colliders, `&view=entry|bottle|fire|roof`, `&lamp=1`).
 * V in the game (run locally) records a 1920x1080 video with sound, 9 a 1080x1920 portrait one
   (see "Recorder"); `E2E=1 REC_OUT=<dir> node --test tests/recorder-browser.test.js` keeps the
   test recordings and PNGs of their frames.

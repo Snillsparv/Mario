@@ -59,7 +59,10 @@ function standInGround(THREE) {
   return group;
 }
 
-function colliderOverlay(THREE, colliders) {
+// Collider triangles as a see-through overlay (front faces only: floors green, walls blue,
+// ceilings red; a wrongly wound face disappears from the side it should face) with a wireframe.
+// Also used by the Great Hall's preview (hall.js).
+export function colliderOverlay(THREE, colliders) {
   const pos = [];
   const col = [];
   for (const c of colliders) {

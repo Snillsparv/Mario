@@ -12,7 +12,8 @@
 //   name,
 //   origin: { x, y, z },         // world = local + origin (areas are authored in local coords)
 //   builders: [build(layout)],   // WorldParts (level.js); colliders must be { positions }
-//   layout,                      // local anchors: ENTRIES, DOORS, and later COINS, SIGNS, ...
+//   layout,                      // local anchors: ENTRIES, DOORS, COINS, ONE_UP, SIGNS, POLES
+//                                // (and later STAR, ...)
 //   entries: { id: { x, y, z, yaw, drop?, camYaw?, walkIn? } }   // local
 //                                //   drop: he falls in from that high (action 'spawn');
 //                                //   camYaw: the camera's orbit yaw (default: behind him);
