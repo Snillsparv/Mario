@@ -7,6 +7,8 @@
 //   ?mute=1        no audio
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
+//   ?area=hall     start in another area (world/areas.js), at &entry=<id> (default: its
+//                  respawn entry); only where play starts at once (?test, ?skipTitle)
 //
 // Game flow (state.mode 'title' -> 'play' -> 'gameover' -> 'title' ...; 'face' with ?face=1):
 //   * title: the camera orbits the grounds behind the title card. On a first visit the card
@@ -23,6 +25,8 @@
 //   * AI RACE not stopped within 40 s (fx/Meltdown.js): the sky catches fire, the world burns
 //     white and it is GAME OVER the same way, whatever the lives left.
 //   * pause freezes everything drawn from the simulation clock (world, objects, hero).
+//   * areas (core/AreaSwitch.js): walking into the castle door wipes to the Great Hall and its
+//     inner door back out; GAME OVER always returns to the grounds.
 
 import { FRAME_DT, MAX_STEPS_PER_FRAME, GAME_OVER_SECONDS } from './core/constants.js';
 import { Events } from './core/events.js';
@@ -51,6 +55,9 @@ import { RemotePad } from './net/RemotePad.js';
 import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
 import { Meltdown } from './fx/Meltdown.js';
+import { AreaSwitch } from './core/AreaSwitch.js';
+import { AREA_DEFS } from './world/areas.js';
+import { ScreenWipe } from './ui/ScreenWipe.js';
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
@@ -91,6 +98,8 @@ async function start() {
   // AI RACE's 40-second clock: not stopped in time, the sky catches fire and the world burns
   // white (it listens to 'darkMode'; ticked below while playing; its 'over' ends the game).
   const meltdown = new Meltdown({ events, targets: { view, level, fx, audio, shake }, trees: level.trees });
+  // The wipe between areas, under the HUD (added to the root first).
+  const wipe = new ScreenWipe(uiRoot);
   const hud = new HUD(uiRoot, { events });
   // Sign dialogs: the Player enters 'reading' and emits 'signRead'; the box takes the input
   // until its last page, then Pip is released (the closing press never reaches him).
@@ -133,6 +142,25 @@ async function start() {
     darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
   let lastAction = player.action;
+  // The areas (the grounds, the Great Hall): walking through a door, GAME OVER's way back.
+  // A warp waits for plain play: not in AI RACE (the storm stays on the grounds), nor while the
+  // meltdown runs or a dialog is up.
+  const areas = new AreaSwitch({
+    scene,
+    view,
+    events,
+    input,
+    player,
+    cam,
+    hud,
+    dialog,
+    defs: AREA_DEFS,
+    grounds: { level, objects },
+    canWarp: () => state.mode === 'play' && !state.dark && state.darkT === 0 && !meltdown.running && !dialog.isOpen,
+    onSwap: () => {
+      lastAction = player.action; // an arrival (even one dropping in) is no respawn
+    },
+  });
   let face = null; // the face screen while it shows
   const inMenu = () => state.mode === 'title' || state.mode === 'face';
 
@@ -149,6 +177,9 @@ async function start() {
   // button is dead by then); until then STOP rescues the world.
   events.on('aiRaceButton', ({ on }) => {
     if (!on && meltdown.doomed) return;
+    // AI RACE stays on the grounds: not in another area (a test's setDark in the hall), nor while
+    // a warp is under way (it could carry the storm through the door).
+    if (on && (areas.name !== 'grounds' || areas.busy)) return;
     state.dark = on;
     events.emit('darkMode', { on });
   });
@@ -248,16 +279,18 @@ async function start() {
       }
       state.lives--; // a 1-up arrived during the death animation: it pays for this life
     }
-    // Player.respawn() already put Pip above the spawn, facing the castle: snap the camera
-    // behind him (it would otherwise keep the orbit yaw from where he died).
+    // Player.respawn() already put Pip above the spawn (the current area's respawn point:
+    // on the grounds, facing the castle): snap the camera behind him (it would otherwise keep
+    // the orbit yaw from where he died).
     cam.reset(player);
     return false;
   }
 
   // GAME OVER card over the frozen world (audio plays its jingle on 'gameOver'), then a fresh
-  // world behind the title: the new game's pickups, star and counters are back before the
-  // title shows, and play starts with 4 lives and 0 coins. Also the meltdown's end (the white
-  // held a second), whatever the lives left: a direct "game over now".
+  // world behind the title: back on the grounds from whatever area, the new game's pickups,
+  // stars and counters are back before the title shows, and play starts with 4 lives and 0
+  // coins. Also the meltdown's end (the white held a second), whatever the lives left: a direct
+  // "game over now".
   function gameOver() {
     if (state.mode === 'gameover') return;
     state.mode = 'gameover';
@@ -269,6 +302,8 @@ async function start() {
     const card = new GameOverCard(uiRoot).show();
     setTimeout(async () => {
       card.remove();
+      areas.enter('grounds', 'start'); // back on the grounds from any area, before their reset
+      areas.resetCourses(); // every area built so far gets its pickups and star back
       objects.reset(); // also takes the star it awarded back off player.stars
       meltdown.reset(); // the sky, grade, white-out, embers, light and sounds all off, clock stopped
       if (state.dark || state.darkT > 0) {
@@ -294,7 +329,7 @@ async function start() {
       phone.update(controller); // the phone panel over the pause screen: Start / B close it
       return;
     }
-    if (controller.START.pressed) {
+    if (controller.START.pressed && !areas.busy) {
       state.paused = !state.paused;
       hud.setPaused?.(state.paused);
       events.emit(state.paused ? 'pause' : 'unpause');
@@ -316,6 +351,8 @@ async function start() {
       dialog.update(controller);
       controller = neutralController(); // Pip and the camera wait while the box is up
     }
+    // Walking through a door: the transition scripts the stick while the wipe closes and opens.
+    controller = areas.step(controller);
     if (state.dropHold > 0) {
       state.dropHold--; // Pip waits above the spawn; input is ignored
     } else {
@@ -328,7 +365,7 @@ async function start() {
       lastAction = player.action;
       if (lastAction === 'spawn' && onRespawn()) return;
     }
-    objects.update({ player, frame: state.frame, camera: cam });
+    areas.objects.update({ player, frame: state.frame, camera: cam }); // the current area's
     cam.update(controller, player);
     hud.update({
       lives: state.lives,
@@ -354,10 +391,11 @@ async function start() {
     model.object3D.visible = state.mode === 'play' && state.dropHold === 0 && !cam.hideHero;
     cam.apply(renderAlpha);
     shake.apply(camera, state.mode === 'play' && !state.paused ? dt : 0);
-    level.update(state.time, camera);
-    objects.animate(state.time, renderAlpha, camera);
+    areas.update(state.time, camera); // the current area's world...
+    areas.objects.animate(state.time, renderAlpha, camera); // ...and objects
     fx.update(state.mode === 'play' && !state.paused ? dt : 0, state.time, camera);
     audio.update?.(dt);
+    wipe.draw(areas.wipe(renderAlpha), model.object3D.position, camera);
     view.render();
   }
 
@@ -377,6 +415,8 @@ async function start() {
     dialog,
     fx,
     meltdown, // AI RACE's 40-second clock (fx/Meltdown.js): meltdown.skipTo(seconds), .phase, .levels
+    areas, // core/AreaSwitch.js: .current, .phase, .buildMs, .get(name)
+    wipe,
     shake,
     touch,
     remotePad,
@@ -384,6 +424,15 @@ async function start() {
     recorder,
     get face() {
       return face; // the FaceScreen while it shows (test hooks: see ui/FaceScreen.js), else null
+    },
+    get area() {
+      return areas.name; // the area Jonas is in: 'grounds' | 'hall'
+    },
+    // Switch area at once (no wipe), at an entry (default: its respawn entry), then draw.
+    enterArea(name, entry) {
+      const ok = areas.enter(name, entry);
+      draw(0);
+      return ok;
     },
     // Switch AI RACE mode directly (tests / debugging), as the floor button does.
     setDark(on) {
@@ -427,6 +476,9 @@ async function start() {
         cameraYaw: cam.getYaw(),
         cameraPos: camera.position.toArray(),
         frame: state.frame,
+        area: areas.name,
+        // A transition under way: { phase, to, entry, kind }, else null.
+        warp: areas.warp && { phase: areas.phase, to: areas.warp.to, entry: areas.warp.entry, kind: areas.warp.kind },
       };
     },
     neutralController,
@@ -435,6 +487,7 @@ async function start() {
   cam.reset(player);
   if (!MENUS.title && !MENUS.face) {
     startGame(false);
+    if (params.has('area')) areas.enter(params.get('area'), params.get('entry') ?? undefined);
   } else {
     if (MENUS.title) await runTitle();
     if (MENUS.face) await runFace();

@@ -364,6 +364,20 @@ function laughVoice(ctx, out, t, { p, hall, outGain = 1 }) {
   });
 }
 
+// A door's sound in the castle's hall: `send` of it also goes into the engine's shared hall
+// reverb (opts.hall, SFX_INFO hall) at the voice's own volume, since that convolver sits on
+// the sfx bus after the voice's gain and pan. Returns the node the recipe plays into (a bare
+// render, without a hall, plays dry).
+function inHall(ctx, out, { hall, outGain = 1 }, send) {
+  if (!hall) return out;
+  const bus = ctx.createGain();
+  bus.connect(out);
+  const toHall = ctx.createGain();
+  toHall.gain.value = send * outGain;
+  bus.connect(toHall).connect(hall);
+  return bus;
+}
+
 // F major scale from F5 up an octave: red coins 1..8 climb it.
 const RED_COIN_STEPS = [0, 2, 4, 5, 7, 9, 11, 12];
 
@@ -1052,13 +1066,45 @@ export const SFX = {
     return 2.2;
   },
 
-  // Trying the locked castle door: an original villain's laugh ('mwa-ha-ha-haaa', formant
+  // Trying the locked (or storm-sealed) castle door: an original villain's laugh ('mwa-ha-ha-haaa', formant
   // synthesis: see laughVoice) booming out of a big stone hall with a slapback echo, over a
   // low rumble swelling up from the castle's depths.
   evil_laugh(ctx, out, t, opts) {
     laughVoice(ctx, out, t, opts);
     noise(ctx, out, t, { filter: 'lowpass', freq: 140, dur: 2.4, gain: 0.14, attack: 0.5, kind: 'brown' });
     return 3.4;
+  },
+
+  // ---- Doors between areas (objects/Door.js, core/AreaSwitch.js)
+
+  // A heavy door swinging open: the iron latch lifts (a dry click and a short ring), then the
+  // old hinges creak (a buzzy stick-slip whine wobbling upward) over the soft rush of the
+  // leaf swinging through the air.
+  door_open(ctx, out, t, opts) {
+    const { p } = opts;
+    const o = inHall(ctx, out, opts, 0.5);
+    noise(ctx, o, t, { filter: 'highpass', freq: 2600, dur: 0.02, gain: 0.16, attack: 0.001 });
+    bell(ctx, o, t + 0.004, { freq: 880 * p, dur: 0.22, gain: 0.07, partials: METAL });
+    tone(ctx, o, t, { freq: 320 * p, to: 210 * p, dur: 0.05, gain: 0.12, attack: 0.001 });
+    const creak = tone(ctx, o, t + 0.12, { wave: 'sawtooth', freq: 118 * p, to: 176 * p, dur: 0.75, hold: 0.3, gain: 0.07, attack: 0.08 });
+    lfo(ctx, creak.frequency, t + 0.12, 0.8, { rate: 11, depth: 14 * p });
+    const whine = tone(ctx, o, t + 0.2, { wave: 'triangle', freq: 470 * p, to: 610 * p, dur: 0.6, hold: 0.2, gain: 0.04, attack: 0.1 });
+    lfo(ctx, whine.frequency, t + 0.2, 0.65, { rate: 7, depth: 40 * p });
+    noise(ctx, o, t + 0.15, { filter: 'lowpass', freq: 500, to: 260, dur: 0.8, gain: 0.07, attack: 0.25, kind: 'brown' });
+    return 1.1;
+  },
+
+  // A heavy door falling shut behind Jonas: a deep wooden thud with a knock on top, the
+  // latch dropping home a moment later.
+  door_close(ctx, out, t, opts) {
+    const { p } = opts;
+    const o = inHall(ctx, out, opts, 0.6);
+    tone(ctx, o, t, { freq: 96 * p, to: 46 * p, glide: 0.2, dur: 0.34, gain: 0.36, attack: 0.002 });
+    tone(ctx, o, t, { wave: 'triangle', freq: 190 * p, to: 120 * p, glide: 0.06, dur: 0.1, gain: 0.14, attack: 0.001 });
+    noise(ctx, o, t, { filter: 'lowpass', freq: 700, to: 200, dur: 0.24, gain: 0.2, attack: 0.002, kind: 'brown' });
+    noise(ctx, o, t + 0.14, { filter: 'highpass', freq: 2400, dur: 0.018, gain: 0.12, attack: 0.001 });
+    bell(ctx, o, t + 0.144, { freq: 1040 * p, dur: 0.18, gain: 0.05, partials: METAL });
+    return 0.8;
   },
 
   // ---- The cannon (objects/Cannon.js, player actions/cannon.js)
@@ -1277,6 +1323,8 @@ export const SFX_INFO = {
   minion_wreck: { gap: 0.05, max: 3 },
   minions_stinger: { gap: 4, duck: { music: 0.45, amb: 1, seconds: 1.8 } },
   evil_laugh: { range: 2, gap: 3, max: 1, hall: true, duck: { music: 0.4, amb: 0.45, seconds: 2.4 } },
+  door_open: { gap: 0.5, max: 1, hall: true },
+  door_close: { gap: 0.5, max: 1, hall: true },
   hall_warn: { range: 2.5, gap: 0.3, max: 2 }, // heard across the grounds: a unit is coming down
   hall_impact: { range: 2.5, gap: 0.1, max: 3 },
   hall_rise: { range: 2, gap: 0.25, max: 2 },

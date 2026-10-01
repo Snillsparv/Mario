@@ -251,6 +251,14 @@ export class CameraCollider {
     this.tolerant = false; // flight camera: lift first, dolly gently (see top; the controller sets it every tick)
   }
 
+  // Collide with another world from now on (an area switch, CameraController.setCollision):
+  // the crest probes follow, and the eased state starts over (the last pose was in the old one).
+  setCollision(collision) {
+    this.collision = collision;
+    this.crest.collision = collision;
+    this.reset();
+  }
+
   // Copies the eased state of another collider (the controller's probe runs a C-button
   // rotation ahead on a copy to see whether it would trap the camera).
   copyState(src) {

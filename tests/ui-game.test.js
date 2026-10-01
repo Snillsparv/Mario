@@ -52,7 +52,7 @@ test('HUD stays inside the 4:3 pillarbox picture', { skip, timeout: 60000 }, asy
     view.setPillarbox(true);
     window.__game.step(1);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const b = document.querySelector('#ui canvas').getBoundingClientRect(); // the HUD (no title in test mode)
+    const b = window.__game.hud.canvas.getBoundingClientRect(); // the HUD's (the screen wipe's canvas comes first in #ui)
     const result = { vp: { ...view.viewport }, box: { x: b.x, y: b.y, width: b.width, height: b.height } };
     view.setPillarbox(false); // the setting is persisted; leave it as found
     return result;

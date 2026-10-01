@@ -4,6 +4,9 @@
 // positional waterfall roar and water lapping at the nearest moat/pond edge.
 // In AI RACE mode (setDark) the pastoral part, the leaves bed and the birds, fades away
 // (the storm beds in storm.js take over); the water keeps sounding.
+// Areas (setProfile, from AudioEngine.setArea): 'grounds' is all of the above; indoors
+// ('hall') there are no birds, no distant chorus, no waterfall and no lapping water, and the
+// pastoral bed fades out.
 
 import { WATERFALL, WATER_LEVEL, MOAT, ISLAND, POND, TREES, groundHeight, sdRoundRect, sdCircle } from '../world/layout.js';
 import { clamp, TAU } from '../core/math.js';
@@ -27,6 +30,12 @@ const BED_LAYERS = [
 ];
 const GUST_RANGE = [0.6, 1.45]; // gust level multipliers
 const GUST_SECONDS = [1.2, 3.5]; // time between new gust targets
+
+// What each area's ambience plays (setProfile); unknown names are the grounds'.
+export const PROFILES = {
+  grounds: { pastoral: true, birds: true, chorus: true, waterfall: true, laps: true },
+  hall: { pastoral: false, birds: false, chorus: false, waterfall: false, laps: false },
+};
 
 // Seamless pink-ish noise (Paul Kellet's filter) for the waterfall body.
 function pinkBuffer(ctx, seconds) {
@@ -151,7 +160,8 @@ export class Ambience {
     this.playAt = playAt;
     this.spatial = spatial;
     this.dark = false;
-    this.birds = 1; // bird call level, eased toward 0 while dark
+    this.profile = PROFILES.grounds; // what this area plays (setProfile)
+    this.birds = 1; // bird call level, eased toward 0 while dark (or in an area without birds)
     this.birdFade = 3; // seconds for a full bird fade
     this.paramTimer = 0;
     this.lapTimer = 0.5;
@@ -210,12 +220,25 @@ export class Ambience {
   // Fade the pastoral bed and the birds out (dark) or back in over `fade` seconds.
   setDark(on, fade = 3) {
     this.dark = !!on;
+    this.fadePastoral(fade);
+  }
+
+  // Switch to an area's ambience (PROFILES; unknown names are the grounds'): its pastoral bed
+  // and birds fade in or out over `fade` seconds, the rest follows at once.
+  setProfile(name, fade = 1) {
+    this.profile = Object.hasOwn(PROFILES, name) ? PROFILES[name] : PROFILES.grounds;
+    this.fadePastoral(fade);
+  }
+
+  // The pastoral bed plays in an area that has it, while not dark.
+  fadePastoral(fade) {
     this.birdFade = Math.max(fade, 0.01);
-    smoothRamp(this.pastoral.gain, this.ctx.currentTime, this.dark ? 0 : 1, this.birdFade);
+    smoothRamp(this.pastoral.gain, this.ctx.currentTime, this.dark || !this.profile.pastoral ? 0 : 1, this.birdFade);
   }
 
   update(dt, listener) {
-    this.birds = clamp(this.birds + (this.dark ? -dt : dt) / this.birdFade, 0, 1);
+    const prof = this.profile;
+    this.birds = clamp(this.birds + (this.dark || !prof.birds ? -dt : dt) / this.birdFade, 0, 1);
     this.paramTimer -= dt;
     if (this.paramTimer <= 0) {
       this.paramTimer = PARAM_INTERVAL;
@@ -224,7 +247,7 @@ export class Ambience {
     this.updateGusts(dt);
 
     this.lapTimer -= dt;
-    if (this.lapTimer <= 0) {
+    if (this.lapTimer <= 0 && prof.laps) {
       this.lapTimer = rand(0.9, 2.2);
       const pos = nearestWater(listener.x, listener.z);
       if (Math.hypot(listener.x - pos.x, listener.y - pos.y, listener.z - pos.z) < LAP_RANGE) this.playAt(slosh, pos);
@@ -247,7 +270,7 @@ export class Ambience {
 
     // Distant chorus: a few soft calls a second from random directions.
     this.farBirdTimer -= dt;
-    if (this.farBirdTimer <= 0) {
+    if (this.farBirdTimer <= 0 && prof.chorus) {
       this.farBirdTimer = rand(0.2, 0.6);
       const a = Math.random() * TAU;
       const pos = { x: listener.x + Math.sin(a) * FAR_BIRD_DIST, y: listener.y + FAR_BIRD_RISE, z: listener.z + Math.cos(a) * FAR_BIRD_DIST };
@@ -280,7 +303,7 @@ export class Ambience {
       z: clamp(listener.z, w.z - w.width / 2, w.z + w.width / 2),
     };
     const d = Math.hypot(listener.x - pos.x, listener.y - pos.y, listener.z - pos.z);
-    const near = clamp(1 - (d - 800) / (WATERFALL_RANGE - 800), 0, 1) ** 2;
+    const near = this.profile.waterfall ? clamp(1 - (d - 800) / (WATERFALL_RANGE - 800), 0, 1) ** 2 : 0;
     this.fallGain.gain.setTargetAtTime(0.25 * near, t, 0.15);
     this.hissGain.gain.setTargetAtTime(0.15 * near * near, t, 0.15);
     this.fallFilter.frequency.setTargetAtTime(350 + 2600 * near, t, 0.15);

@@ -13,6 +13,9 @@
 // the first minion of a storm brings the minions' stinger. A hat grabbed again while its
 // theme is still fading out brings that same theme back (no second copy starts over it).
 // The locked castle's laugh shares one hall reverb, made ahead at idle time.
+// Areas: 'areaChange' into the Great Hall fades the pastoral bed out and stops the birds, the
+// distant chorus, the waterfall and the lapping water; back on the grounds they return (and
+// the grounds still have no music); an area entered before audio exists applies on attach.
 // AI RACE's meltdown: the sky catching fire whoomphs, fades the rain and the dark track and
 // raises the inferno (a roaring blaze, crackles, a rumble) with the levels; the light booms and
 // the roar swells; the shockwave blasts; the white-out collapses the roar into a ring; no music
@@ -30,6 +33,8 @@ import { LEVELS } from '../src/audio/mixer.js';
 import { Storm } from '../src/audio/storm.js';
 import { Inferno, INFERNO_MIX } from '../src/audio/inferno.js';
 import { smoothRamp } from '../src/audio/synth.js';
+import { PROFILES } from '../src/audio/ambience.js';
+import { AREA_DEFS } from '../src/world/areas.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.
@@ -562,6 +567,65 @@ test('darkMode: the storm replaces the birds and pastoral bed, the dark track fa
     audio.stopMusic();
     mock.timers.tick(5000);
   }
+});
+
+test('areaChange: indoors the pastoral bed fades out, no birds, chorus, waterfall or laps; back outside they return, no music', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const calls = []; // everything the ambience plays (bird calls, the chorus, laps)
+  const playAt = audio.ambience.playAt;
+  audio.ambience.playAt = (recipe, pos, volume) => {
+    calls.push(volume);
+    playAt(recipe, pos, volume);
+  };
+  const fall = () => audio.ambience.fallGain.gain.calls.findLast(([m]) => m === 'setTargetAtTime')[1];
+  try {
+    audio.ctx.currentTime = 20; // the arrival cue has long ended: the grounds have no music
+    // By the moat near the waterfall: birds, the chorus, laps and the falls all sound.
+    audio.setListener({ x: -6000, y: 200, z: -800 }, 0);
+    run(audio, 5);
+    assert.ok(calls.length > 3, 'the grounds\' ambience plays');
+    assert.ok(fall() > 0.01, 'the waterfall roars');
+    const t0 = audio.ctx.currentTime;
+    events.emit('areaChange', { from: 'grounds', to: 'hall', entry: 'front', audio: AREA_DEFS.hall.audio });
+    assert.equal(audio.ambience.profile, PROFILES.hall);
+    assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [0, t0 + 1.2]);
+    run(audio, 2);
+    calls.length = 0;
+    run(audio, 20); // (still standing where the grounds would be loud)
+    assert.equal(calls.length, 0, 'no birds, chorus or laps indoors');
+    assert.equal(fall(), 0, 'no waterfall');
+    assert.equal(audio.wantMusic, null);
+    // The same area again changes nothing; back outside everything returns.
+    events.emit('areaChange', { from: 'hall', to: 'hall', audio: AREA_DEFS.hall.audio });
+    const t1 = audio.ctx.currentTime;
+    events.emit('areaChange', { from: 'hall', to: 'grounds', entry: 'porch', audio: AREA_DEFS.grounds.audio });
+    assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [1, t1 + 1.2]);
+    run(audio, 10);
+    assert.ok(calls.length > 3, 'the birds are back');
+    assert.ok(fall() > 0.01);
+    assert.equal(audio.track, null, 'the grounds stay without music');
+    // AI RACE on the grounds still silences the pastoral bed.
+    events.emit('darkMode', { on: true });
+    assert.equal(lastRamp(audio.ambience.pastoral.gain)[1], 0);
+    events.emit('darkMode', { on: false });
+    assert.equal(lastRamp(audio.ambience.pastoral.gain)[1], 1);
+  } finally {
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('an area entered before audio exists applies its ambience when the context is made', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  events.emit('areaChange', { from: 'grounds', to: 'hall', entry: 'front', audio: AREA_DEFS.hall.audio });
+  await audio.unlock();
+  assert.equal(audio.ambience.profile, PROFILES.hall);
+  assert.equal(lastRamp(audio.ambience.pastoral.gain)[1], 0);
+  audio.stopMusic();
+  mock.timers.tick(5000);
 });
 
 test('the storm mode set before audio exists applies when the context is made', async () => {

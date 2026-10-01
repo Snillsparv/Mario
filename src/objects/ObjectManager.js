@@ -1,19 +1,28 @@
-// Interactive objects of the castle grounds: yellow and red coins, the red-coin star, a hidden
-// 1-up gem, butterflies and circling birds, plus their sparkles and blob shadows; the mystery box
-// with the winged hat (MysteryBox.js) and the locked castle door (CastleDoor.js); and for AI RACE
+// Interactive objects of the castle grounds (and of each other area: core/AreaSwitch.js builds
+// one manager per area): yellow and red coins, the red-coin star, a hidden 1-up gem, butterflies
+// and circling birds, plus their sparkles and blob shadows; the mystery box with the winged hat
+// (MysteryBox.js), the castle door (CastleDoor.js) and other doors (Door.js); and for AI RACE
 // mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs, the
 // mushroom-capped robot minions (Minions.js) and the server halls taking over the grounds
 // (ServerHalls.js).
 //
-//   new ObjectManager({ scene, collision, events, layout, player, fx?, level?, view? })
+//   new ObjectManager({ scene, collision, events, layout, player, fx?, level?, view?, area? })
 //                                  view: the renderer (default scene.userData.view), to compile
-//                                  the server halls' shaders ahead of their first arrival
+//                                  the server halls' shaders ahead of their first arrival;
+//                                  area: the name of the area these objects belong to (default
+//                                  'grounds'), sent with 'starCollected'
 //   update({ player })             30 Hz: pickups, star state, butterfly AI, button, beast, fireballs
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
-//   reset()                        new game: every pickup back, star hidden, star count taken back,
-//                                  no beast, fireballs, fire zones, minions or server halls (their
-//                                  colliders parked, the ground circuits cleared), button up, mode
-//                                  off, the mystery box lit with its hat inside, the door armed
+//   reset()                        new game: every pickup back, star hidden (or back on its spot
+//                                  when placed), star count taken back, no beast, fireballs, fire
+//                                  zones, minions or server halls (their colliders parked, the
+//                                  ground circuits cleared), button up, mode off, the mystery box
+//                                  lit with its hat inside, every door armed
+//   enter(player)                  the hero was just placed in this area (a warp): his last tick is
+//                                  forgotten, no dialog is up, and a door he stands at stays quiet
+//                                  until he has walked away from it
+//   door, doors                    the castle door (null without layout.CASTLE); every door: the
+//                                  castle's first, then layout.DOORS
 //   spawnCoin(x, y, z)             a yellow coin appears over the floor there (minion drops)
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
@@ -39,8 +48,13 @@
 // game, collected like the red-coin star; reset() takes it back).
 //
 // Mystery box (layout.MYSTERY_BOX, MysteryBox.js): bumped from below or punched it releases the
-// winged hat (player.giveWingHat). Castle door (layout.CASTLE, CastleDoor.js): walking up to it
-// plays 'evil_laugh' and opens the dialog ('signRead' { sign: { id: 'castle_locked', ... } }).
+// winged hat (player.giveWingHat). Doors (Door.js): the castle's (layout.CASTLE, CastleDoor.js)
+// and layout.DOORS ([{ id, x, z, yaw, width, floorY, to, entry, kind, locked, sealedSign,
+// laugh }]). Walking up to an open one emits 'warpRequest' (core/AreaSwitch.js takes the hero
+// through it); a locked one plays 'evil_laugh' and opens the dialog ('signRead' { sign: { id:
+// 'castle_locked', ... } }). While AI RACE mode is on or fading out (modeOn || darkT > 0) every
+// door is sealed: the castle door shows its 'castle_sealed' sign instead of opening, so the
+// storm never follows the hero indoors.
 // Cannon (layout.CANNON, Cannon.js): standing on its loading pad puts Pip in the barrel
 // (player.enterCannon); the barrel follows his aim and recoils when he fires ('cannonFire').
 //
@@ -63,9 +77,13 @@
 // Math.hypot and Math.max/min on doubles, iterators, and numbers passed to calls that may not
 // be inlined (tests/objects.test.js guards the hot methods' source).
 //
+// The star (layout.STAR) appears when the last red coin is taken; with `placed: true` it waits
+// on its spot from the start instead (a course's star, not tied to red coins).
+//
 // Events: 'coin' { value, pos, red, index? } (index = running red-coin count),
 // 'redCoinsComplete' { pos } when the last red coin is taken (the audio plays the star
-// jingle on it), 'starCollected' { pos }, 'oneUp' {}.
+// jingle on it), 'starCollected' { pos, id, area } (id: layout.STAR.id or null; area: see the
+// constructor), 'oneUp' {}.
 
 import * as THREE from 'three';
 import { FRAME_DT, MAX_STEPS_PER_FRAME } from '../core/constants.js';
@@ -85,6 +103,7 @@ import { FireSprites } from './FireSprites.js';
 import { MysteryBox } from './MysteryBox.js';
 import { Minions } from './Minions.js';
 import { CastleDoor } from './CastleDoor.js';
+import { Door } from './Door.js';
 import { ServerHalls } from './ServerHalls.js';
 import { BossStar } from './BossStar.js';
 import { Cannon } from './Cannon.js';
@@ -112,8 +131,9 @@ function oneUpSpot(layout) {
 }
 
 export class ObjectManager {
-  constructor({ scene, collision, events, layout, player, fx = null, level = null, buildHat = null, view = scene?.userData?.view ?? null }) {
+  constructor({ scene, collision, events, layout, player, fx = null, level = null, buildHat = null, view = scene?.userData?.view ?? null, area = 'grounds' }) {
     this.events = events;
+    this.area = area; // the area these objects belong to ('starCollected' names it)
     this.fx = fx; // (the retiring button's dust)
     this.player = player;
     this.collision = collision;
@@ -139,6 +159,7 @@ export class ObjectManager {
     this.star = new Star(makeStarEnvMap());
     this.starSpot = layout.STAR;
     this.starFloor = null; // floor under the star (for its shadow), found while it rises
+    if (this.starSpot?.placed) this._placeStar();
     this.oneUpFloor = null; // { y, normal, size } of the 1-up's shadow (null: no floor)
     this.oneUp = this._makeOneUp(oneUpSpot(layout), groundAt);
     this.butterflies = new Butterflies(layout.BUTTERFLY_SPOTS ?? [], { collision, groundAt, rng: this.rng, waterTop: layout.WATER_LEVEL });
@@ -150,7 +171,10 @@ export class ObjectManager {
     this.box = layout.MYSTERY_BOX
       ? new MysteryBox({ spot: layout.MYSTERY_BOX, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowSlots: [boxShadow, boxShadow + 1], groundAt, buildHat })
       : null;
+    // Doors: the castle's (this.door, null without one), then the layout's own (layout.DOORS).
     this.door = Number.isFinite(layout.CASTLE?.frontZ) ? new CastleDoor({ castle: layout.CASTLE, collision, events }) : null;
+    this.doors = this.door ? [this.door] : [];
+    for (const spec of layout.DOORS ?? []) this.doors.push(new Door({ ...spec, events }));
     // The cannon (Cannon.js): its pad puts Pip in the barrel (before the server halls, whose
     // planning keeps clear of it).
     this.cannon = layout.CANNON ? new Cannon({ spot: layout.CANNON, collision, events, groundAt: layout.groundHeight ?? null, fx }) : null;
@@ -210,7 +234,7 @@ export class ObjectManager {
       ? new BossStar({ events, collision, sparkles: this.sparkles, shadows: this.shadows, shadowSlot: minionShadow0 + MINION_SLOTS, envMap: this.star.mesh.material.envMap })
       : null;
     events.on?.('darkMode', (e) => this._setMode(!!e?.on));
-    // A dialog box is up (a sign, the locked door): Pip is frozen, so the minions and the beast
+    // A dialog box is up (a sign, a locked or sealed door): Pip is frozen, so the minions and the beast
     // hold off until it closes, and fireballs already in flight (their blasts, fire zones) spare
     // him: nothing can hurt him while he cannot move.
     this.dialogOpen = false;
@@ -329,6 +353,7 @@ export class ObjectManager {
       holder.stars = holder.stars > 0 ? holder.stars - 1 : 0;
       this._starHolder = null;
     }
+    if (this.starSpot?.placed) this._placeStar();
     const gem = this.oneUp;
     if (gem) {
       gem.reset();
@@ -346,12 +371,24 @@ export class ObjectManager {
     this.halls?.clear();
     this.box?.reset();
     this.cannon?.reset();
-    this.door?.reset();
+    for (let i = 0; i < this.doors.length; i++) this.doors[i].reset();
     this.hero.valid = false;
     this.dialogOpen = false;
     this.setDarkness(0);
     this.started = false;
     this._backdropStart = null;
+  }
+
+  // The hero was just placed in this area (a warp, or back from another one): last tick's
+  // motion is not his (no stomp or box bump from it), a dialog that was up is gone, and a door
+  // he stands at waits until he has walked away instead of going off where he arrives.
+  enter(player) {
+    this.hero.valid = false;
+    this.dialogOpen = false;
+    for (let i = 0; i < this.doors.length; i++) {
+      const door = this.doors[i];
+      if (door.near(player)) door.disarm();
+    }
   }
 
   // Simulation time of the latest tick, in seconds.
@@ -390,7 +427,9 @@ export class ObjectManager {
     if (this.button?.justSank) this._buttonSinks();
     const hero = this.hero.valid ? this.hero : null;
     if (this.box !== null) this.box.update(player, hero, this.tick, this.cameraYaw);
-    if (this.door !== null) this.door.update(player);
+    // AI RACE mode seals the doors (the storm stays on the grounds), also while it fades out.
+    const sealed = this.modeOn || this.darkT > 0;
+    for (let i = 0; i < this.doors.length; i++) this.doors[i].update(player, sealed);
     if (this.cannon !== null) this.cannon.update(player, this.tick);
     if (this.beast !== null) {
       if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
@@ -424,6 +463,14 @@ export class ObjectManager {
     return c;
   }
 
+  // A star that waits on its spot from the start (layout.STAR.placed): idle there at once, with
+  // the floor under it for its shadow.
+  _placeStar() {
+    const s = this.starSpot;
+    this.star.place(s);
+    this.starFloor = this.collision.findFloor(s.x, s.y, s.z, 0);
+  }
+
   _spawnStar() {
     const s = this.starSpot;
     if (!s) return;
@@ -453,7 +500,7 @@ export class ObjectManager {
         this.sparkles.burst(pos, this.time, TINT.star, 12);
         player.collectStar();
         this._starHolder = player;
-        this.events.emit('starCollected', { pos });
+        this.events.emit('starCollected', { pos, id: this.starSpot?.id ?? null, area: this.area });
       }
     }
   }

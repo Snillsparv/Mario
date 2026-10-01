@@ -23,10 +23,12 @@ import {
   GAME_OVER,
   GAME_OVER_SCALE,
   COURSE_NAME,
+  COURSE_NAMES,
   TITLE_HINT,
 } from '../src/ui/hudLogic.js';
 import { watchPixelRatio, pixelRatio } from '../src/ui/pixelRatio.js';
 import { HUD } from '../src/ui/HUD.js';
+import { drawPauseScreen } from '../src/ui/pauseScreen.js';
 import { GameOverCard } from '../src/ui/GameOverCard.js';
 import { Events } from '../src/core/events.js';
 
@@ -355,6 +357,63 @@ test('GAME OVER is covered by the big font and fits the 320-wide card like PAUSE
   assert.equal(card.shown, false);
   assert.doesNotThrow(() => card.remove());
   assert.doesNotThrow(() => card.setViewport({ x: 0, y: 0, width: 320, height: 240 }));
+});
+
+test('course names: one per area, big-font glyphs, fit the 320-wide pause screen; the HUD names the area it is in', () => {
+  assert.deepEqual(Object.keys(COURSE_NAMES), ['grounds', 'hall', 'skerries']);
+  assert.equal(COURSE_NAMES.grounds, COURSE_NAME);
+  for (const name of Object.values(COURSE_NAMES)) {
+    assert.ok(BIG_STRINGS.includes(name), `glyph coverage checks ${name}`);
+    assert.deepEqual(missingGlyphs(BIG_FONT, name), [], name);
+    assert.ok(measureText(BIG_FONT, name) <= 300, `${name}: ${measureText(BIG_FONT, name)} px`);
+    assert.ok(!/n64|nintendo|mario/i.test(name), name);
+  }
+  const hud = new HUD(null); // logic only in node
+  assert.equal(hud.course, COURSE_NAME);
+  hud.setCourse('hall');
+  assert.equal(hud.course, 'THE GREAT HALL');
+  hud.setCourse('grounds');
+  assert.equal(hud.course, COURSE_NAME);
+  hud.setCourse('toString'); // not an area: the grounds' name
+  assert.equal(hud.course, COURSE_NAME);
+});
+
+// A 2D context that keeps only the glyph sprites drawn and where (everything else does nothing),
+// with a sprite cache whose glyphs name their character: what the rows of text on it spell.
+function recordingCanvas(width, height) {
+  const glyphs = []; // { ch, x, y }
+  const ctx = new Proxy(
+    { canvas: { width, height }, drawImage: (img, x, y) => img.ch && glyphs.push({ ch: img.ch, x, y }) },
+    { get: (t, k) => (k in t ? t[k] : () => {}), set: () => true },
+  );
+  const sprite = (ch) => ({ back: {}, front: { ch }, ox: 0, oy: 0 });
+  const cache = { glyph: (font, ch) => sprite(ch), icon: () => sprite(null), clear() {} };
+  // Each row of glyphs (one y), left to right (spaces are not drawn).
+  const rows = () => {
+    const by = new Map();
+    for (const g of [...glyphs].sort((a, b) => a.x - b.x)) by.set(g.y, (by.get(g.y) ?? '') + g.ch);
+    return [...by.values()];
+  };
+  return { ctx, cache, rows };
+}
+
+test('the pause screen draws the course name the HUD was given (the area Jonas is in)', () => {
+  const [W, H, s] = [320, 240, 2];
+  const r = recordingCanvas(W * s, H * s);
+  drawPauseScreen(r.ctx, r.cache, { W, H, s, coins: 3, stars: 1, course: COURSE_NAMES.hall });
+  assert.ok(r.rows().includes('THEGREATHALL'), r.rows().join(' | '));
+  assert.ok(!r.rows().includes('CASTLEGROUNDS'));
+  // Through the HUD's own frame: setCourse reaches the pause screen.
+  const hud = new HUD(null); // logic only in node: given a recording canvas to draw on
+  hud.update({ coins: 0 });
+  hud.setPaused(true);
+  for (const [area, name] of [['hall', 'THEGREATHALL'], ['grounds', 'CASTLEGROUNDS']]) {
+    const h = recordingCanvas(W * s, H * s);
+    Object.assign(hud, { ctx: h.ctx, cache: h.cache, canvas: h.ctx.canvas, W, H, s, _dpr: pixelRatio(), _last: 0 });
+    hud.setCourse(area);
+    hud._draw(16);
+    assert.ok(h.rows().includes(name), `${area}: ${h.rows().join(' | ')}`);
+  }
 });
 
 test('HUD setVisible hides it without losing state; showing again repaints', () => {

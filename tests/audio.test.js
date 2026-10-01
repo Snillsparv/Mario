@@ -76,7 +76,7 @@ test('every standard sfx name has a recipe', () => {
     water_exit coin red_coin star_appear star_get one_up pause menu_select menu_move camera_move camera_buzz
     footstep life_lost unpause punch1 punch2 jump_kick dialog_open text_blip dialog_next dialog_close
     button_press alarm kaiju_roar fireball_charge fireball_launch fireball_explode burn fire_crackle steam thunder
-    box_hit powerup wing_flap stomp minion_emerge minion_bite minion_wreck evil_laugh`;
+    box_hit powerup wing_flap stomp minion_emerge minion_bite minion_wreck evil_laugh door_open door_close`;
   for (const n of names.split(/\s+/)) assert.equal(typeof SFX[n], 'function', n);
 });
 

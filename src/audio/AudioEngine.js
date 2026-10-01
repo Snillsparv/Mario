@@ -22,11 +22,15 @@
 // fanfare; when the hat comes off the grounds get their own music back (the dark track in
 // the storm, otherwise silence). Switching the storm on or off mid-flight swaps the two
 // flying themes, and a hat grabbed again while its theme is still fading out brings that
-// theme back rather than starting a second copy over it. Some stings (power-up, the locked
-// castle's laugh, the minions' stinger) duck the music and ambience while they play
-// (SFX_INFO duck). The first minion to surface in a storm ('minion_emerge') brings the
-// minions' stinger, once per storm. The locked castle's laugh rings in one shared hall
-// reverb, made ahead at idle time (see prepare).
+// theme back rather than starting a second copy over it. Some stings (power-up, the castle
+// door's laugh, the minions' stinger) duck the music and ambience while they play (SFX_INFO
+// duck). The first minion to surface in a storm ('minion_emerge') brings the minions'
+// stinger, once per storm. The castle door's laugh (locked or sealed) and the doors' creaks
+// and thuds ring in one shared hall reverb, made ahead at idle time (see prepare).
+//
+// Areas ('areaChange' { audio: { music, ambience, reverb } }, core/AreaSwitch.js): setArea()
+// switches the ambience to the area's profile (ambience.js PROFILES: indoors the birds, the
+// pastoral bed and the water fall quiet), also when the context only exists later.
 //
 // AI RACE's meltdown (fx/Meltdown.js): the klaxon comes as 'sfx' meltdown_klaxon. On
 // 'meltdown' { phase: 'fire' } the sky catching fire whoomphs (meltdown_ignite), the storm's
@@ -72,6 +76,7 @@ const MELT_RAIN_FADE = 2.5; // the meltdown: the rain beds fade as the sky catch
 const MELT_MUSIC_FADE = 3; // ...and the dark track with them
 const FLY_TRACKS = new Set(['fly', 'fly_dark']); // the winged hat's themes (sunny, storm)
 const FLY_OUT_FADE = 2.5; // the flying theme fading out as the hat comes off in sunny weather
+const AREA_FADE = 1.2; // the ambience changing to another area's (under the covered screen)
 const PREPARE_IDLE_MS = 3000; // each step of prepare() runs within this long of the one before
 // Sounds that mark Pip leaving the ground: a landing's weight follows the air time since.
 const TAKEOFFS = new Set(['jump', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'long_jump', 'wallkick', 'water_exit']);
@@ -99,6 +104,7 @@ export class AudioEngine {
     this.inferno = null; // the meltdown's blaze (inferno.js)
     this.melt = { fire: 0, light: 0, doom: false }; // the meltdown's levels; doom: past 40 s
     this.dark = false; // AI RACE mode (kept while there is no context, applied when one is made)
+    this.area = 'grounds'; // the ambience profile of the area Jonas is in (setArea; kept the same way)
     this.flying = false; // the winged hat is on (its theme has the music slot)
     this.minionsHeard = false; // the minions' stinger has played in this storm
     this.groundedAt = -Infinity; // context time Pip was last known on the ground
@@ -218,6 +224,7 @@ export class AudioEngine {
     const storm = new Storm(ctx, mix.amb);
     const inferno = new Inferno(ctx, mix.amb);
     Object.assign(this, { ctx, mix, ambience, storm, inferno, hall: null });
+    if (this.area !== 'grounds') ambience.setProfile(this.area, 0);
     if (this.dark) {
       ambience.setDark(true, 0);
       ambience.birds = 0;
@@ -319,6 +326,14 @@ export class AudioEngine {
     else if (this.wantMusic === 'fly_dark') this.playMusic('fly');
     this.ambience?.setDark(on, DARK_FADE);
     this.storm?.set(on, DARK_FADE);
+  }
+
+  // Jonas moved to another area (world/areas.js def.audio): its ambience profile fades in.
+  setArea({ ambience = 'grounds' } = {}) {
+    const name = ambience ?? 'grounds';
+    if (name === this.area) return;
+    this.area = name;
+    this.ambience?.setProfile(name, AREA_FADE);
   }
 
   // The winged hat on/off: its flying theme (the storm variant in AI RACE mode) takes the
@@ -523,6 +538,8 @@ export class AudioEngine {
     on('aiRaceButton', (e) => this.play('button_press', e)); // deduped with an sfx of it
     // The winged hat (emitted by the player): its flying theme while it is on.
     on('wingHat', (e) => this.setFlying(e.on));
+    // Another area (core/AreaSwitch.js): its ambience.
+    on('areaChange', (e) => this.setArea(e.audio));
   }
 
   installBrowserHooks() {

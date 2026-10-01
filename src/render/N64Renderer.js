@@ -31,6 +31,13 @@
 //     orange while the sky burns, then raises the exposure, bleaches the picture and pulls a
 //     white fog in until everything is white; the light's glare centres on where its fireball
 //     is on screen, and a heat shimmer ripples the picture. All levels 0 = nothing changes.
+//   Areas (a place with a look of its own, such as a warm hall): setAtmosphere(preset) swaps
+//     the day look that the storm, the meltdown and the underwater fog start from, i.e. the fog
+//     colour and range (the clear colour follows the fog), the underwater fog's colour and the
+//     actor lights (sun colour, strength and direction; the hemisphere's sky and ground colours
+//     and strength). preset = { fog, near, far, water, sun, sunIntensity, sunDir, sky, ground,
+//     ambientIntensity }; a field left out keeps the grounds' value, and null is the grounds
+//     exactly. No light is added or removed, so the actors' shader programs never change.
 //
 // World geometry is unlit (baked vertex colours). The sun and hemisphere lights below only
 // shade dynamic actors (hero, coins, star) that use Lambert/Phong materials.
@@ -169,7 +176,11 @@ export class N64Renderer {
     this.keyDir = new THREE.Vector3();
     this.warmList = []; // objects to compile ahead of their first visible frame (prewarm)
     this.warmed = { n64: 0, native: 0, grade: 0 }; // how many of them each setup has compiled
-    this.day = {
+    // The day look the storm and the meltdown crossfade from, and its fog range: the grounds'
+    // until setAtmosphere() gives an area's. dayDefault keeps the grounds' own (with the sun's
+    // direction) for setAtmosphere(null). (Set up here, not in the constructor: the node tests
+    // build their renderer stand-in from initStorm() alone.)
+    const day = (this.day = {
       fog: new THREE.Color(FOG_COLOR),
       water: new THREE.Color(UNDERWATER_FOG.color),
       sun: this.sun.color.clone(),
@@ -177,6 +188,19 @@ export class N64Renderer {
       sky: this.ambient.color.clone(),
       ground: this.ambient.groundColor.clone(),
       ambientIntensity: this.ambient.intensity,
+    });
+    this.fogRange = { near: FOG_NEAR, far: FOG_FAR };
+    this.dayDefault = {
+      fog: day.fog.clone(),
+      water: day.water.clone(),
+      sun: day.sun.clone(),
+      sunIntensity: day.sunIntensity,
+      sky: day.sky.clone(),
+      ground: day.ground.clone(),
+      ambientIntensity: day.ambientIntensity,
+      near: FOG_NEAR,
+      far: FOG_FAR,
+      sunDir: { x: SUN_DIR.x, y: SUN_DIR.y, z: SUN_DIR.z },
     };
     this.storm = {
       fog: new THREE.Color(STORM_FOG.color),
@@ -206,6 +230,29 @@ export class N64Renderer {
     // Effects (src/fx/Effects.js) find the renderer through the scene to flash it and to
     // size their streaks in pixels. Not enumerable: scene.toJSON()/clone() never see it.
     Object.defineProperty(this.scene.userData, 'view', { value: this, enumerable: false, configurable: true });
+  }
+
+  // An area's own look (see the top): its fields replace the grounds' day look, which the storm,
+  // the meltdown and the underwater fog then work from as they do on the grounds; a field left
+  // out keeps the grounds' value. null restores the grounds exactly. Applied at once (a camera
+  // under water gets it on surfacing).
+  setAtmosphere(preset = null) {
+    const a = preset ?? {};
+    const { day, dayDefault: d } = this;
+    const color = (out, value, fallback) => (value === undefined || value === null ? out.copy(fallback) : out.set(value));
+    const number = (value, fallback) => (Number.isFinite(value) ? value : fallback);
+    color(day.fog, a.fog, d.fog);
+    color(day.water, a.water, d.water);
+    color(day.sun, a.sun, d.sun);
+    day.sunIntensity = number(a.sunIntensity, d.sunIntensity);
+    color(day.sky, a.sky, d.sky);
+    color(day.ground, a.ground, d.ground);
+    day.ambientIntensity = number(a.ambientIntensity, d.ambientIntensity);
+    this.fogRange.near = number(a.near, d.near);
+    this.fogRange.far = number(a.far, d.far);
+    const dir = a.sunDir ?? d.sunDir;
+    this.sun.position.set(dir.x, dir.y, dir.z).multiplyScalar(10000);
+    this.applyAtmosphere();
   }
 
   // AI RACE mode crossfade: 0 = the sunny grounds (untouched) .. 1 = full storm.
@@ -241,11 +288,12 @@ export class N64Renderer {
     if (atmosphere) this.applyAtmosphere();
   }
 
-  // Fog (above and under water) and actor lights for the darkness and the meltdown.
+  // Fog (above and under water) and actor lights for the darkness and the meltdown, from the
+  // current day look (the grounds', or an area's: setAtmosphere).
   applyAtmosphere() {
     const k = this.darkness;
     const { day, storm, fogScratch, melt: m, meltColors: F } = this;
-    const range = stormFogRange(k, { near: FOG_NEAR, far: FOG_FAR }, UNDERWATER_FOG, fogScratch.range);
+    const range = stormFogRange(k, this.fogRange, UNDERWATER_FOG, fogScratch.range);
     const c = fogScratch.color.lerpColors(day.fog, storm.fog, k);
     const cw = fogScratch.water.lerpColors(day.water, storm.water, k);
     this.sun.color.lerpColors(day.sun, storm.sun, k);

@@ -65,6 +65,8 @@ export const BRIDGE = { x: 0, width: 700, southZ: 1300, northZ: 150, deckY: LAWN
 
 // Castle footprint: the front facade is at frontZ, the building extends north to backZ.
 // Door is centred on x = 0 in the front facade. Castle builder owns everything inside.
+// `enter`: the front door opens into the Great Hall (objects/CastleDoor.js, world/areas.js);
+// without it the door is locked.
 export const CASTLE = {
   x: 0,
   frontZ: -700,
@@ -75,6 +77,7 @@ export const CASTLE = {
   doorHeight: 620,
   mainHeight: 1900, // height of the main body walls above baseY
   keepTopY: ISLAND_TOP + 5200, // tip of the central tower roof / flag
+  enter: { to: 'hall', entry: 'front' },
 };
 
 // Paved flagstone courtyard on the island between the bridge landing and the castle door

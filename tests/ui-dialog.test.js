@@ -21,6 +21,7 @@ import { DialogBox } from '../src/ui/DialogBox.js';
 import { missingGlyphs, measureText } from '../src/ui/bitmapFont.js';
 import { Events } from '../src/core/events.js';
 import { SIGNS } from '../src/world/layout.js';
+import { CASTLE_LOCKED, CASTLE_SEALED } from '../src/objects/CastleDoor.js';
 
 const measure = (t) => measureText(DIALOG_FONT, t);
 const WRAP = dialogMetrics(960, 540).wrap;
@@ -185,6 +186,20 @@ describe('dialog box metrics', () => {
     for (const sign of SIGNS) {
       const screens = paginate(sign.pages, { wrap: WRAP });
       assert.equal(screens.length, sign.pages.length, sign.id);
+    }
+  });
+
+  // A dialog page that names AI RACE keeps the two words on one line at every size (the
+  // castle door's sealed sign: "Stop the AI" / "RACE and..." read as two things).
+  test('AI RACE is never split over two lines, at any size', () => {
+    const pages = [...SIGNS.flatMap((s) => s.pages), ...CASTLE_LOCKED.pages, ...CASTLE_SEALED.pages].filter((p) => p.includes('AI RACE'));
+    assert.ok(pages.length > 0);
+    for (const [w, h, dpr] of [...SIZES, [320, 240, 1], [480, 270, 1]]) {
+      const m = dialogMetrics(w, h, dpr);
+      for (const page of pages) {
+        const lines = wrapText(normalizeText(page), m.wrap, measure).map((l) => l.text);
+        assert.ok(!lines.some((l) => /(^| )AI$/.test(l)), `${w}x${h}@${dpr}: ${JSON.stringify(lines)}`);
+      }
     }
   });
 

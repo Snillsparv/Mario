@@ -1,7 +1,8 @@
-// The mystery box, the locked door and the minions in the real level (built in node) with the
+// The mystery box, the castle door and the minions in the real level (built in node) with the
 // real hero: a standing jump under the box bumps it and he can walk into the hat; walking up the
-// steps to the castle door laughs and opens the locked message; minion spawn spots round the
-// lawn are all on dry land, on the real ground.
+// steps to the castle door creaks it open and asks for the warp into the Great Hall (in AI RACE
+// mode it laughs and shows the sealed message instead); minion spawn spots round the lawn are
+// all on dry land, on the real ground.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -26,6 +27,7 @@ const events = new Events();
 const log = [];
 events.on('sfx', (e) => log.push(e.name));
 events.on('signRead', (e) => log.push('sign:' + e.sign.id));
+events.on('warpRequest', (e) => log.push(`warp:${e.to}/${e.entry}`));
 let objects = null;
 
 function setup() {
@@ -143,15 +145,34 @@ test("the real hero's head stops at the drawn underside; a jump kick beside the 
   assert.equal(box.hits, hits0 + 2);
 });
 
-test('walking up the steps to the castle door: evil laugh and the locked message', () => {
+test('walking up the steps to the castle door: it creaks open and asks for the warp into the hall', () => {
   const { log, player, tick } = setup();
   const z0 = layout.CASTLE.frontZ + 700;
   player.teleport(0, col.findFloor(0, 2000, z0).y, z0, Math.PI);
   player.setAction('idle');
-  for (let t = 0; t < 90 && !log.includes('sign:castle_locked'); t++) tick({ stickY: 1 });
-  assert.ok(log.includes('evil_laugh'));
-  assert.ok(log.includes('sign:castle_locked'));
+  for (let t = 0; t < 90 && !log.includes('warp:hall/front'); t++) tick({ stickY: 1 });
+  assert.ok(log.includes('warp:hall/front'), log.join());
+  assert.ok(log.includes('door_open'));
+  assert.ok(!log.includes('evil_laugh') && !log.some((e) => e.startsWith('sign:')), 'no laugh, no message');
   assert.ok(player.pos.y > layout.CASTLE.baseY + 100, 'on the porch');
+});
+
+test('in AI RACE mode the castle door is sealed: evil laugh and the sealed message, no warp', () => {
+  const { log, player, objects, events, tick } = setup();
+  events.emit('darkMode', { on: true });
+  objects.setDarkness(1);
+  try {
+    const z0 = layout.CASTLE.frontZ + 700;
+    player.teleport(0, col.findFloor(0, 2000, z0).y, z0, Math.PI);
+    player.setAction('idle');
+    for (let t = 0; t < 90 && !log.includes('sign:castle_sealed'); t++) tick({ stickY: 1 });
+    assert.ok(log.includes('evil_laugh'));
+    assert.ok(log.includes('sign:castle_sealed'));
+    assert.ok(!log.some((e) => e.startsWith('warp:')));
+  } finally {
+    events.emit('darkMode', { on: false });
+    objects.setDarkness(0);
+  }
 });
 
 test('minion spawn spots in the real level are on dry land, on the real ground', () => {

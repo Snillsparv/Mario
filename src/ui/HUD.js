@@ -8,6 +8,7 @@
 //   const hud = new HUD(uiRoot, { events });   // events optional (red-coin pop-ups)
 //   hud.update({ lives, coins, stars, health, showPower, breath, paused })   // 30 Hz
 //   hud.setPaused(bool)
+//   hud.setCourse(areaName)                     // the pause screen's course name (COURSE_NAMES)
 //   hud.setVisible(bool)                        // e.g. hidden behind the title card
 //   hud.setViewport({ x, y, width, height })   // picture rect in the root (4:3 pillarbox)
 //
@@ -20,7 +21,7 @@ import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { SpriteCache, drawText, drawIcon, textCanvas, textWidth } from './raster.js';
 import { PowerMeterLogic, drawPowerMeter, isLowHealth } from './powerMeter.js';
-import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME } from './hudLogic.js';
+import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME, COURSE_NAME, COURSE_NAMES } from './hudLogic.js';
 import { drawPauseScreen, gamepadConnected, gamepadLegend } from './pauseScreen.js';
 import { pixelRatio } from './pixelRatio.js';
 import { touchUi } from './touchLogic.js';
@@ -50,6 +51,7 @@ export class HUD {
     this.redPopup = null; // { n, age }
     this.gamepad = false; // pause legend shows pad bindings
     this.controls = 'keys'; // pause legend: 'touch' (the touch controller is shown) | 'pad' | 'keys'
+    this.course = COURSE_NAME; // the pause screen's course name (setCourse)
     this.slide = new MeterSlide();
     this.active = false; // nothing is drawn until the game first feeds state (not over the title)
     this.visible = true; // setVisible(): hidden HUDs skip their repaints
@@ -106,6 +108,12 @@ export class HUD {
       this.gamepad = gamepadConnected();
       this.controls = touchUi.active ? 'touch' : this.gamepad ? gamepadLegend() : 'keys';
     }
+    this.dirty = true;
+  }
+
+  // The area Jonas is in (world/areas.js): the pause screen names its course.
+  setCourse(area) {
+    this.course = Object.hasOwn(COURSE_NAMES, area) ? COURSE_NAMES[area] : COURSE_NAME;
     this.dirty = true;
   }
 
@@ -193,7 +201,7 @@ export class HUD {
     ctx.imageSmoothingEnabled = false;
     if (this.paused) {
       const { coins, stars } = this.state;
-      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls });
+      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course });
     }
     this._drawCounters();
     if (!this.paused) this._drawMeter(now);

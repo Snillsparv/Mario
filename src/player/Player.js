@@ -30,23 +30,30 @@ function unpressed(b) {
 }
 
 // Readable signs as the reach test uses them: `y` is the sign's foot (sign.y if given, else
-// the layout's ground height there).
-function signEntries(signs) {
+// groundAt(x, z): by default the grounds layout's ground height there).
+export function signEntries(signs, groundAt = groundHeight) {
   return (signs ?? []).map((sign) => ({
     sign,
     x: sign.x,
     z: sign.z,
-    y: sign.y ?? groundHeight(sign.x, sign.z),
+    y: sign.y ?? groundAt(sign.x, sign.z),
     yaw: sign.yaw ?? 0,
   }));
 }
 
+// The respawn point as kept: { x, y, z, yaw, drop } (`drop`: how far above it beginIntro starts
+// the fall; undefined = INTRO_DROP).
+function spawnPoint(spawn) {
+  return { x: spawn.x, y: spawn.y, z: spawn.z, yaw: spawn.yaw ?? 0, drop: spawn.drop };
+}
+
 export class Player {
   // `signs`: readable signs ([{ x, z, yaw, y?, pages, ... }], default layout.SIGNS; [] for none).
+  // `spawn.drop` (optional): the respawn drop-in's height above the spawn (default INTRO_DROP).
   constructor({ collision, events, spawn, signs = SIGNS }) {
     this.collision = collision;
     this.events = events;
-    this.spawn = { x: spawn.x, y: spawn.y, z: spawn.z, yaw: spawn.yaw ?? 0 };
+    this.spawn = spawnPoint(spawn);
     this.signs = signEntries(signs);
     this.readingSign = null; // the p.signs entry being read (action 'reading')
     this.pressGuard = false; // the next tick ignores fresh A/B/Z presses (see endReading)
@@ -340,12 +347,55 @@ export class Player {
     this.waterLevel = this.collision.waterLevelAt(x, z);
   }
 
-  // Optional drop-in from the sky at the spawn point (also used on respawn).
+  // Optional drop-in from the sky at the spawn point (also used on respawn), from spawn.drop
+  // above it (INTRO_DROP unless the spawn names its own: a room's ceiling is lower).
   beginIntro() {
     this.removeWingHat();
     const s = this.spawn;
-    this.teleport(s.x, s.y + T.INTRO_DROP, s.z, s.yaw);
+    this.teleport(s.x, s.y + (s.drop ?? T.INTRO_DROP), s.z, s.yaw);
     this.setAction('spawn');
+  }
+
+  // Moves the hero into another area (a place with a collision world of its own): its world,
+  // its respawn point ({ x, y, z, yaw, drop? }) and its readable signs (a sign without `y`
+  // stands on groundAt(x, z), by default the grounds layout's ground). Everything tied to the
+  // old place is dropped: a sign being read, the cannon, Rustmaw's tail grip (the grounds'
+  // objects set it again on their first tick back), the blink after a hit, held breath, jump
+  // chains, a wall to kick off, grabs, and the winged hat ('wingHat' { on: false }). Health,
+  // coins and stars are kept. placeAt() then puts him down there.
+  setWorld({ collision, spawn, signs = [], groundAt = groundHeight }) {
+    this.collision = collision;
+    this.spawn = spawnPoint(spawn);
+    this.signs = signEntries(signs, groundAt);
+    this.readingSign = null;
+    this.pressGuard = false;
+    this.cannon = null;
+    this.cannonSafeUntil = 0;
+    this.tailGrip = null;
+    this.tailSpeed = 0;
+    this.tailRelease = -1;
+    this.invincibleUntil = 0;
+    this.drownTicks = 0;
+    this.breath = 1;
+    this.jumpChain.kind = null;
+    this.jumpChain.landedAt = -Infinity;
+    this.comboJump = null;
+    this.wall = null;
+    this.wallTouchTick = -Infinity;
+    this.grabCooldownUntil = 0;
+    this.letGoPole = null;
+    this.walkOff = null;
+    this.flightFall = false;
+    this.stompBounce = false;
+    this.removeWingHat();
+  }
+
+  // Puts the hero at an area entry { x, y, z, yaw, drop? }: standing there (idle), or with
+  // drop > 0 falling in from that far above it (action 'spawn', like the respawn drop-in).
+  placeAt(entry) {
+    const drop = entry.drop > 0 ? entry.drop : 0;
+    this.teleport(entry.x, entry.y + drop, entry.z, entry.yaw);
+    this.setAction(drop > 0 ? 'spawn' : 'idle');
   }
 
   respawn() {

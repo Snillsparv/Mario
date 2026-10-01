@@ -194,6 +194,8 @@ export function pauseLayout(W, H, measure, controls = KEY_CONTROLS) {
 }
 
 export const COURSE_NAME = 'CASTLE GROUNDS';
+// The pause screen's course name in each area (world/areas.js; HUD.setCourse).
+export const COURSE_NAMES = Object.freeze({ grounds: COURSE_NAME, hall: 'THE GREAT HALL', skerries: 'MIDSUMMER SKERRIES' });
 // The hero's name on the title card ('starring JONAS', BIG_FONT logo letters).
 export const HERO_NAME = 'JONAS';
 
@@ -232,7 +234,7 @@ export const MELTDOWN_WARNING = Object.freeze([
 export const BIG_STRINGS = [
   '0123456789×',
   'PAUSE',
-  COURSE_NAME,
+  ...Object.values(COURSE_NAMES),
   START_PRESS,
   UNLOCK_PRESS,
   TOUCH_UNLOCK_PRESS,

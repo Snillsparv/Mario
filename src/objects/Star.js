@@ -1,7 +1,8 @@
 // The star: an original chunky five-pointed star (puffy, bevelled, gold with a metallic sheen
 // and an emissive glow). Hidden until spawned; rises in a spiral to its spot, then spins and
 // bobs until the hero touches it. Used for the red-coin star and for Rustmaw's reward star
-// (BossStar.js).
+// (BossStar.js). place() puts one straight on its spot instead (a star waiting there from the
+// start).
 
 import * as THREE from 'three';
 import { TAU } from '../core/math.js';
@@ -96,6 +97,18 @@ export class Star {
     this.age = 0;
     this._setRisePos(0);
     Object.assign(this.prev, this.pos);
+    this.mesh.visible = true;
+  }
+
+  // Put the star straight onto its spot, idle and ready to be taken: a star that waits there
+  // from the start (layout.STAR.placed) rather than one that appears.
+  place(target) {
+    this.target = { ...target };
+    this.state = 'idle';
+    this.age = 0;
+    this.pos.x = this.prev.x = target.x;
+    this.pos.y = this.prev.y = target.y;
+    this.pos.z = this.prev.z = target.z;
     this.mesh.visible = true;
   }
 

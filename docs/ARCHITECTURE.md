@@ -34,7 +34,9 @@ copied from anywhere (in particular, never copy or transliterate decompiled game
 Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox and the recorder's
 16:9 or 9:16 frame), `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`,
 `new Recorder({ view, uiRoot, audio })` (V and 9: see "Recorder"; it composites each frame from the
-renderer's frame hook, right after `view.render()`, only while recording).
+renderer's frame hook, right after `view.render()`, only while recording), `new ScreenWipe(uiRoot)`
+(before the HUD, so it lies under it) and `new AreaSwitch({ ... })` (see "Areas and
+transitions": the grounds are the area play starts in).
 
 Game flow, `state.mode` `'title' → 'play' → 'gameover' → 'title' …` (`'face'` instead of
 `'title'` with `?face=1`):
@@ -74,9 +76,11 @@ respawn:  player enters 'spawn' again (Player.respawn after death / out of bound
 lives:    4 at start; 'lifeLost' at x0 -> once the death plays out: mode 'gameover', emit
           'gameOver' (audio plays the 'game_over' jingle), new GameOverCard(uiRoot).show()
           over the frozen world for GAME_OVER_SECONDS (3.2 s, core/constants.js); then
-          card.remove(), objects.reset(), player.coins = 0, lives = 4 — all *before* the
-          title, so the title backdrop already shows the new game's world — then the title,
-          the face screen and start (with the intro) as above
+          card.remove(), areas.enter('grounds', 'start') and areas.resetCourses() (back on
+          the grounds from whatever area, every area's pickups and star back), objects.reset(),
+          player.coins = 0, lives = 4 — all *before* the title, so the title backdrop already
+          shows the new game's world — then the title, the face screen and start (with the
+          intro) as above
 meltdown: AI RACE not stopped within 40 s (see "Meltdown"): once the white has held a second,
           meltdown.update() returns 'over' and main calls the same gameOver() directly ("game
           over now", whatever the lives left; a pending death's game over is dropped); its reset
@@ -88,14 +92,17 @@ Simulation and rendering:
 ```
 tick (30 Hz, only in 'play'):
   controller = input.poll()
-  START.pressed -> toggle pause (hud.setPaused, emit 'pause' / 'unpause')
+  START.pressed (not while areas.busy) -> toggle pause (hud.setPaused, emit 'pause' / 'unpause')
   paused -> return                        (nothing below runs; state.time stands still)
   state.time += FRAME_DT
   darkT eases toward state.dark (AI RACE mode: applyDarkness(t), see below)
   meltdown.update(camera.position, cam.getYaw()) === 'over' -> gameOver(), return   (see "Meltdown")
+  dialog up -> dialog.update(controller), and a neutral controller from here on
+  controller = areas.step(controller)    (a walk through a door: the transition's scripted stick,
+                                          see "Areas and transitions"; the switch itself runs here)
   dropHold > 0 ? dropHold-- : player.update(cam.playerInput(controller), cam.getYaw())
   action changed to 'spawn' -> respawn / game over (above)
-  objects.update({ player, frame, camera })
+  areas.objects.update({ player, frame, camera })   (the current area's objects)
   cam.update(controller, player)
   hud.update({ lives, coins, stars, health, showPower, breath, paused })
   audio.setListener(cam.camera.position, cam.getYaw())
@@ -103,8 +110,9 @@ render (rAF):
   input.sample()                          (latches gamepad flicks between ticks)
   rs = player.getRenderState(alpha); model.update(rs, paused ? 0 : dt)
   model.object3D.visible = play && !dropHold && !cam.hideHero
-  cam.apply(alpha); level.update(state.time, threeCamera); objects.animate(state.time, alpha, threeCamera)
-  audio.update(dt); view.render()
+  cam.apply(alpha); areas.update(state.time, threeCamera)   (the current area's parts: level.update
+  on the grounds); areas.objects.animate(state.time, alpha, threeCamera)
+  audio.update(dt); wipe.draw(areas.wipe(alpha), hero feet, threeCamera); view.render()
 ```
 
 While paused (or on the game-over card) `alpha` is held and `state.time` does not advance,
@@ -139,10 +147,14 @@ and wing flaps have caught up after a big step), `render()` (draw with dt 0),
 `level`, `objects`, `state`, `view`, `input`, `hud`, `audio`, `model`, `events`, `fx`, `shake`,
 `recorder` (see "Recorder"),
 `meltdown` (AI RACE's 40-second clock: `meltdown.skipTo(seconds)` jumps it ahead, `.phase`,
-`.seconds`, `.levels`; see "Meltdown"), `setDark(on)`,
-`neutralController`, `face` (the FaceScreen while it shows, else null). `?skipTitle=1` skips
-the title, the face screen and the intro. `?face=1` opens the (opt-in) face screen at once
-(no title card). `?mute=1` disables audio.
+`.seconds`, `.levels`; see "Meltdown"), `setDark(on)` (ignored outside the grounds),
+`neutralController`, `face` (the FaceScreen while it shows, else null), `areas` (the
+AreaSwitch: `.current`, `.phase`, `.buildMs`, `.get(name)`), `wipe`, `area` (the area Jonas is
+in) and `enterArea(name, entry?)` (switch at once, no wipe, then draw); `snapshot()` also
+carries `area` and `warp` (`{ phase, to, entry, kind }` while a transition runs, else null).
+`?skipTitle=1` skips the title, the face screen and the intro. `?face=1` opens the (opt-in)
+face screen at once (no title card). `?mute=1` disables audio. `?area=hall` (with `?test` or
+`?skipTitle`) starts play in that area, at `&entry=<id>` (default: its respawn entry).
 `window.__ready` is set once play starts (after the title without `?skipTitle`).
 In `?test=1` nothing requests animation frames while the GAME OVER card shows, so headless
 Chromium does not advance its CSS fade (it stays transparent until something paints, e.g. a
@@ -152,7 +164,9 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 
 | Area | Files | Contract |
 |---|---|---|
-| Core | `src/core/*`, `src/main.js`, `src/world/level.js`, `index.html`, `vite.config.js`, `tools/*`, `docs/*` | integration |
+| Core | `src/core/*` (but `AreaSwitch.js`), `src/main.js`, `src/world/level.js`, `index.html`, `vite.config.js`, `tools/*`, `docs/*` | integration |
+| Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
+| Great Hall | `src/world/hall/*` (layout, builder) | WorldPart, built by `area.js` |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
 | Terrain + water | `src/world/terrain.js`, `src/world/terrain/*` (tessellate, floorBlocks, walls, shading, MeshBuffer), `src/world/water.js`, `src/world/terrainTextures.js` | WorldPart |
@@ -230,7 +244,9 @@ but below the castle walls; was 2600). Further exports used by the terrain and o
 `distToPath`, the per-region heights `waterFloorHeight`, `islandHeight`, `cliffHeight`,
 `regionHeight(region, x, z)`, and the terrain facet grid `FACET` (500) / `facetFlip(i, j)`.
 An optional `ONE_UP = { x, z }` places the hidden 1-up gem (ObjectManager reads it; the
-default spot is 800 behind the castle's back wall).
+default spot is 800 behind the castle's back wall). `CASTLE.enter = { to: 'hall', entry: 'front' }`
+opens the castle's front door into the Great Hall (without it the door is locked; see "Castle
+door").
 `CANNON = { x, z, yaw, pad }` places the cannon (see "Cannon"; `yaw`: its barrel's rest
 direction, toward the keep; `pad`: its loading pad's direction off `yaw`), and `KEEP_TOP =
 { x, z, y, halfX, halfZ, towerR, eaveR }` describes the top of the castle, the keep's flat
@@ -253,10 +269,179 @@ coins (`COINS` entries with `y`) and the `'keep_top'` sign wait.
   conical roofs, grey stone bricks, brown wood, blue-green translucent water, bright blue
   sky with white clouds.
 
+## Areas and transitions (`src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js`)
+
+Jonas is always in one **area**, a place with its own collision world, objects, entries and look:
+`'grounds'` (the castle grounds, `world/level.js`, built at boot) or `'hall'` (the Great Hall
+inside the castle, `world/hall/*`, built the first time he goes in and kept for the session).
+All areas share the one scene: each built area has a root group (`'area-<name>'`) shown only
+while he is in it, so hidden areas cost no draw calls, and only the current area is updated
+(`areas.update`) and animated (`areas.objects`).
+
+```js
+// world/areas.js: AREA_DEFS[name] (data and builder references only)
+{
+  name: 'hall',
+  origin: { x: 0, y: 0, z: -60000 },   // world = local + origin (areas are authored in local coords)
+  builders: [buildHall],               // WorldParts (level.js); colliders must be { positions }
+  layout,                              // local anchors: ENTRIES, DOORS (and COINS, STAR, SIGNS, ...)
+  entries: { front: { x, y, z, yaw, walkIn }, bottle: { x, y, z, yaw, drop, camYaw } },
+  respawn: { entry: 'front', drop: 400 },
+  waterLevelAt: (x, z) => NO_WATER,    // local
+  probeY: 2400,                        // the ground probe's start (under the ceiling)
+  sky: false,                          // the grounds' sky dome shows here
+  atmosphere: HALL_ATMOSPHERE,         // view.setAtmosphere preset (null: the grounds' look)
+  audio: { music, ambience: 'hall', reverb },   // AudioEngine.setArea (on 'areaChange')
+  leave: null, starExit: null,         // { to, entry }: the pause screen's way out, the star's
+}
+groundsArea(level, objects) -> Area    // the grounds as an Area: entries 'start' (the spawn) and
+                                       // 'porch' (174 in front of the door face, facing out, camYaw 0,
+                                       // walkIn 8); setVisible toggles every part but the sky
+buildArea(scene, def) -> Area          // world/area.js; shiftPositions(positions, origin)
+```
+
+`buildArea` runs the builders on the local layout, adds their objects under the root (placed at
+the origin, hidden), and fills a new CollisionWorld with every collider's `positions` and every
+pole shifted by the origin (an `{ object3D }` collider is refused: it would stay where the
+builder left it), with the water from `def.waterLevelAt` shifted likewise. The Area is `{ name,
+def, root, collision, parts, entries, respawn, signs, groundAt, objectsLayout, waterFn, objects,
+update(time, camera), reset(), setVisible(on) }`, everything in world coordinates:
+`objectsLayout` is what an ObjectManager reads (COINS, RED_COINS, SIGNS, STAR, ONE_UP, DOORS,
+BUTTERFLY_SPOTS, BIRD_CIRCLES shifted, and `groundHeight(x, z)`, the floor under a point probed
+from `probeY`, so a coin's shadow never lands on the roof), `respawn` the entry `def.respawn`
+names with its drop (player.setWorld's spawn), `waterFn` the collision world's water (the
+renderer's, per area).
+
+Rules for areas:
+* **Far apart**: the hall's origin is (0, 0, −60000). Separate collision worlds keep the flight
+  rim, water, the hole test and camera probes apart by construction; the distance is a second
+  safeguard, so code that still reads the grounds' layout (ambience emitters, the shake's
+  falloff, the AI RACE look-up zone, the effects' height cache) finds nothing there. Heights
+  stay within −800 … 4500 (`OUT_OF_BOUNDS_Y` −3000, `CEIL_NONE` 20000).
+* **Entries**: every entry has at least 1300 of clear floor behind it (the camera trails ~1250
+  back), or a `camYaw` that puts the camera where there is room (the porch: in front of him,
+  the door at his back). A ceiling over walkable floor is at least 300 above it (lower ones let
+  the follow camera escape), and a respawn drop starts under it (the hall: 400 under 2600).
+* **Not re-pointed**: the effects (`fx`: area objects get `fx: null`), the meltdown, the camera
+  shake, the look-up and boss camera and the cannon's perimeter clamp stay the grounds': they
+  only act in AI RACE mode, which never leaves the grounds (below).
+
+```js
+const areas = new AreaSwitch({ scene, view, events, input, player, cam, hud, dialog, defs: AREA_DEFS,
+                               grounds: { level, objects }, canWarp, onSwap })
+areas.get(name)                 // built on first use (buildArea + an ObjectManager of its own:
+                                // fx and level null, area: name; its group hidden; root and
+                                // group handed to view.prewarm), then kept; null if unknown
+areas.enter(name, entryId?)     // switch at once, no wipe (GAME OVER, ?area=, tests)
+areas.request({ to, entry, kind, from }) -> accepted   // 'warpRequest' calls it (objects/Door.js)
+areas.step(controller) -> controller   // 30 Hz, in play after the dialog block (main's tick)
+areas.wipe(alpha) -> { amount, kind, color }            // for ui/ScreenWipe.js
+areas.leave(); areas.canLeave() // def.leave: the pause screen's way out of a course
+areas.onStar(e)                 // 'starCollected' of the current area (def.starExit)
+areas.resetCourses()            // GAME OVER: every built area's reset() and objects.reset()
+areas.update(time, camera)      // per frame: the current area (and the sky where def.sky)
+areas.busy, .name, .current, .objects, .phase, .warp, .buildMs[name], .carry
+```
+
+**The switch** (`_swap`, the one place that points the game at another area), in this order:
+1. an open dialog closes;
+2. the old area hides, the new one shows, the grounds' sky dome only where `def.sky`;
+3. `view.setAtmosphere(def.atmosphere)` (`null`: the grounds) and `view.setWaterLevelFn(waterFn)`;
+4. `player.setWorld({ collision, spawn: respawn, signs, groundAt })`, then `player.placeAt(entry)`;
+5. `cam.setCollision(collision)`, then `cam.reset(player, { yaw: entry.camYaw })`;
+6. `objects.enter(player)` (his last tick forgotten, a door he arrives at kept quiet);
+7. `hud.setCourse(name)`;
+8. `input.flush()`;
+9. `onSwap()` (main: `lastAction = player.action`, so an arrival dropping in is no respawn), then
+   `'areaChange' { from, to, entry, audio }` (the audio's ambience follows it).
+
+**Transitions** run on the simulation clock inside `'play'` (no mode of their own: pause freezes
+them, START is ignored while `busy`):
+
+| Phase | Ticks | Stick | Wipe |
+|---|---|---|---|
+| `close` | 14 (the star exit 18) | through a door, pushing on toward it (world yaw = the door's yaw + π); else neutral. A camera between him and the door (he walked toward the camera, the door behind it: the hall's inner door) cuts to the room side behind him as the door opens (`cam.reset(player, { yaw: door.yaw })`), so the wipe closes on him at the door, not on his cap | 0 → 1 |
+| `hold` | 4 | neutral; the **first** tick switches (building a new area there, behind the covered frame) | 1 |
+| `open` | 14 | with `entry.walkIn: n`, walking on along `entry.yaw` for n ticks (then `sfx door_close` after a door); then his own (carried, below) | 1 → 0 |
+
+The scripted stick for world yaw W is `a = wrap(cameraYaw − W)`, `(sin a, cos a)` (the inverse of
+`stickToWorldYaw`), in one reused controller. **A stick held through a door is carried** across
+the camera cut: the camera on the other side may face the other way (the porch: in front of him,
+looking at the door), where the same push would turn him round into the door again. From the
+switch on, while the stick stays pushed within ~40° (`WARP.CARRY_TURN`) of where it was, it is
+read against the old camera's yaw turned through the door (`carryYaw` = old camera yaw +
+`entry.yaw` − (door yaw + π)), so after the walk-in he walks on the way he was going (his buttons
+his own, in a second reused controller); letting go or turning it hands it to the new camera,
+also after the transition has ended. A request is refused while a transition runs,
+while `canWarp()` says no (main: `mode 'play'`, not `state.dark`, `darkT` 0, the meltdown not
+running, no dialog up), while Jonas is in `death`, `spawn`, `reading` or `cannon`, and for an
+unknown area or entry; the door that asked stays disarmed until he steps off its apron. Dying
+(or a respawn) during `close` opens the wipe again from where it got to, without a switch, and
+`canWarp()` saying no on the first covered tick opens it from covered, without a switch. The
+star exit (`onStar`, the current area's own star only, never Rustmaw's `{ boss: true }`) waits
+out the dance (`star_dance` / `star_fall`; 45 ticks for a swimmer), 20 ticks more, then closes
+with a gold-white fade (`#fff4d0`) instead of the iris; `leave()` is a request to `def.leave`.
+
+**The wipe** (`src/ui/ScreenWipe.js`): `new ScreenWipe(uiRoot)` before the HUD (its canvas lies
+under the HUD's counters and pause screen); main calls `wipe.draw(areas.wipe(alpha),
+model.object3D.position, camera)` every frame before `view.render()` (so the recorder's
+composite has it). A black circle iris centred on Jonas's chest (100 above his feet, projected
+with the world camera; off screen or behind it: the middle), from the farthest corner at 0 to
+nothing at 1, drawn at the HUD's logical resolution (240 lines, `image-rendering: pixelated`)
+as two solid spans per row, so its edge steps like the pixel art; `'fade'` fills with the
+colour at `amount` opacity; `display: none` at 0.
+
+**AI RACE stays on the grounds.** Its button and beast are the grounds' objects; the castle door
+is sealed while `modeOn || darkT > 0` (ObjectManager passes it to every door: the laugh and the
+`castle_sealed` sign instead of the warp); main's `'aiRaceButton'` handler ignores `on` outside
+the grounds (a test's `setDark(true)` in the hall) and while a transition runs; `canWarp()`
+refuses warps while it is on, fading or melting down, and is asked again on the first covered
+tick (a no then opens the wipe without a switch). So away from the grounds darkness is 0, the meltdown idle, rain 0, and
+the look-up, boss camera and shake have nothing to react to.
+
+**GAME OVER** from any area: after the card, `areas.enter('grounds', 'start')` and
+`areas.resetCourses()` run first in the `setTimeout` body, before `objects.reset()`,
+`meltdown.reset()` and the title (the grounds' look is back before the meltdown's reset
+repaints it). Everything lasts for one game; nothing about areas is stored.
+
+**The Great Hall** (`world/hall/layout.js`: the anchors in local coordinates, +x east, −z north
+toward the bottle at the far end, the floor at y 0; `world/hall/hall.js`: the builder): a long
+stone room, inside x ±2200, z −4200 … 3000, the collision ceiling at 2600, walls, floor and
+ceiling as 200-thick stone slabs (the faces toward the room are the boxes' outward faces), with
+stone pilasters up the side walls. Drawn: a flagstone floor (tessellated on a 200 grid, darker
+within 400 of a wall), cream plaster walls over a 140 stone base course, a dark oak ceiling with
+tie-beam bands, and in the south wall the inside of the castle's front door
+(`castle/building.js` `door()`, exported for it; its collider puts the face at z 2944). Baked
+light from `HALL_SUN`; four meshes (`hall-floor`, `hall-wall`, `hall-trim`, `hall-wood`), ~1.9k
+triangles, built in ~15–25 ms. The layout also names the anchors of the hall's furnishings
+(fireplace, wall-kick slot, banner pole, east doors, chart table, the ship in the bottle with its
+landing, stairs, cork and books, chandeliers), which this plain room does not draw; nor does it
+draw the open timber roof above the collision ceiling (tie beams 200 × 160 every 1200 from 2600
+to 2760, king-post trusses and rafters to a ridge at 3800, plaster panels between them; no
+colliders): the beams are only painted on the flat ceiling for now. Entries: `front` (0, 0, 1550) facing north with the room
+behind him for the camera, walking in 10 ticks; `bottle` (0, 550, −1230) facing south, dropping
+250, `camYaw` 0; the respawn drops in at `front` from 400. Doors (`DOORS`): `hall_front`, the
+inside of the front door (face z 2944, yaw π), back out to the grounds' `porch`. Look
+(`HALL_ATMOSPHERE`): brown-amber fog 0x3b2a1d from 3500 to 16000 (also the clear colour: no sky),
+a warm actor sun 0xffe0b0 (0.5π) from (0, 0.72, 0.69), hemisphere 0xfff0da / 0x6e5038 (0.55π).
+Measured in the browser: 25 draw calls in the hall (the E2E budget is 45).
+
+**Tests**: `tests/areas.test.js` (node: the real grounds, hall, Player and camera through main's
+tick: the walk in, the phases and the stick each gives, the graph walk that finds no stale
+collision world on Jonas or the camera, the arrival framing, the way back (and the door shot
+when he walks toward the camera), the stick held through the inner door carried out across the
+porch until let go or turned, AI RACE's seal, refusals (also once the screen is covered), a
+death mid-close, GAME OVER's return, a test course's star exit, leave and resetCourses, and one
+whose arrival stands in a door: objects.enter on every switch);
+`tests/areas-browser.test.js` (E2E=1: the iris over the picture and under the HUD, setDark
+ignored mid-warp and in the hall, the hall's picture and draw calls, the pause course name, the
+way out, `?area=hall`, forward held through the inner door). `tests/ui.test.js` checks the pause
+screen draws the HUD's course name; `tests/ui-dialog.test.js` that "AI RACE" never wraps apart.
+
 ## Player (`src/player/Player.js`)
 
 ```js
-new Player({ collision, events, spawn: { x, y, z, yaw } })
+new Player({ collision, events, spawn: { x, y, z, yaw, drop? }, signs? })
 player.update(controller, cameraYaw)      // one 30 Hz tick
 player.getRenderState(alpha) -> RenderState
 player.pos {x,y,z}, player.vel {x,y,z}, player.forwardVel, player.faceYaw,
@@ -268,7 +453,25 @@ player.collectStar()           // stars++, triggers the celebration action
 player.takeDamage(wedges, fromPos, { fire }?)  // fire: true -> the 'burn' hot-foot hop
 player.enterCannon(cannon)     // climb into a cannon (objects call it: see "Cannon")
 player.cannon                  // { desc, phase, yaw, pitch, inside, ... } once in a cannon
+player.setWorld({ collision, spawn, signs, groundAt? })  // move into another area (below)
+player.placeAt({ x, y, z, yaw, drop? })                  // put him down at an area entry
+signEntries(signs, groundAt?)  // (export) signs as the reach test uses them
 ```
+
+Areas (places with a collision world of their own): `setWorld` points Jonas at the area's
+`collision` world, makes `spawn` his respawn point (`spawn.drop`: the respawn drop-in's height
+above it, `INTRO_DROP` 1600 when left out; `beginIntro()` and so every respawn use it, so a
+room's lower ceiling is never above the start of the fall; the constructor keeps it too) and
+takes the area's readable `signs` (a sign without `y` stands on `groundAt(x, z)`, by default the
+grounds layout's `groundHeight`). Everything tied to the old place is dropped: a sign being read
+(and the press guard), the cannon, Rustmaw's tail grip and spin (the grounds' objects set
+`tailGrip` again on their first tick back), the blink after a hit, held breath and drowning,
+jump chains and combo jumps, a wall to kick off, grab cooldowns, a let-go pole, a walk-off
+drift, a flight's safe fall, a stomp bounce, and the winged hat (`'wingHat' { on: false }`).
+Health, coins and stars carry over. `placeAt(entry)` then teleports him to the entry and stands
+him there (`idle`), or with `entry.drop > 0` starts him that far above it in the `spawn`
+drop-in. The winged-hat flight's rim (`actions/flying.js` `worldBounds`) is always that of
+`player.collision`, so it follows the area too.
 
 Cross-module writes: `objects.reset()` takes the star it awarded back off `player.stars`
 (stars − 1, not below 0); main sets `player.coins = 0` for a new game after GAME OVER.
@@ -355,7 +558,8 @@ about `dims.BOOT_PIVOT_Y`, and a dive swells both hands slightly; pose channels
 
 ```js
 new CameraController({ collision, camera /* THREE.PerspectiveCamera */, events })
-cam.reset(player)   // snap behind the hero (level start, respawn)
+cam.reset(player, { yaw }?)   // snap behind the hero (level start, respawn), or to orbit yaw `yaw`
+cam.setCollision(collision)   // probe another area's world from now on (reset() should follow)
 cam.update(controller, player) /* 30 Hz */; cam.apply(alpha) /* render */
 cam.getYaw()        // yaw the camera looks along (used for stick-relative movement)
 cam.startIntro?(player)      // 96-tick fly-in from above the castle to behind the spawn
@@ -367,6 +571,15 @@ cam.underwater      // the rendered camera position is below the water surface
 cam.celebration     // the star-celebration swing state ({ ..., returning }) or null
 cam.cannonView      // the cannon's aiming view is up (mode 'cannon', see "Cannon")
 ```
+
+Areas: `cam.setCollision(world)` points every part of the camera that probes the level at the
+new world (the controller, the collider and its crest rise, the cover, sight and flight
+helpers, the boss camera) and drops the C-button rotation probe, which is made again in the
+new world when next needed; the collider starts its eased state over. `reset(player, { yaw })`
+snaps the orbit to `yaw` (the direction from the hero to the camera) instead of behind him: an
+entry facing away from a door gets the camera in front of him with the doorway at his back
+(on the grounds porch at (0, 300, −470) facing +Z the default reset would sit side-on at
+x −1238; yaw 0 puts it at (0, 624, 768)). A non-finite `yaw` means behind him, as before.
 
 Swimmer under a low cover (`src/camera/cover.js`, `COVER_*` in `cameraConfig.js`): when a
 swimming hero is under a low ceiling (the drawbridge deck) with no room for the camera between
@@ -441,7 +654,21 @@ view.setView(scene, camera)       // draw another scene (a menu: the face screen
 view.setDarkness(t); view.flash(strength)   // AI RACE mode's storm (see "AI RACE mode")
 view.setMeltdown(levels)          // AI RACE's meltdown (see "Meltdown"): fire grade, white-out,
                                   // glare, heat shimmer, fog and actor lights; all 0 = no change
+view.setAtmosphere(preset | null) // an area's own look (below); null = the grounds
 ```
+
+Areas (`setAtmosphere`): `preset = { fog, near, far, water, sun, sunIntensity, sunDir, sky,
+ground, ambientIntensity }` (colours as anything `THREE.Color.set` takes, `sunDir` a unit
+`{ x, y, z }`) replaces the day look the storm (`setDarkness`), the meltdown and the
+underwater fog work from: the fog colour and range with the clear colour, the underwater fog's
+colour, and the actor lights (the sun's colour, strength and direction, `sun.position =
+sunDir x 10000`; the hemisphere's sky and ground colours and strength). A field left out keeps
+the grounds' value; `null` restores the grounds exactly (`view.dayDefault`, snapshot in
+`initStorm()`). The per-area fog range lives in `view.fogRange`, which `applyAtmosphere()` uses
+instead of the constants, so a storm or meltdown fading out returns to the area's look, not the
+grounds'. Applied at once; with the camera under water the new surface fog waits for surfacing
+(`UnderwaterFog.setSurfaceFog`). No light is added or removed (the lights stay `sun`,
+`ambient` and `stormKey`), so the actors' shader programs never change.
 
 While a `setView()` scene is drawn the world's underwater fog, storm grade, lightning flash and
 meltdown grade are left out (`drawView()`), and the F1 overlay's mode line shows only the size.
@@ -490,6 +717,12 @@ queued until audio unlocks.
 Audio also consumes `gameStart` (stops a menu track, clears ducks, unlocks with sticky user
 activation) and `pause` / `unpause` (duck + sfx), and AI RACE's `darkMode`, `lightning` and
 `meltdown` (see "Meltdown"; `audio.setMeltdown(levels)` drives its inferno ambience).
+Areas: `'areaChange' { audio }` calls `audio.setArea({ music, ambience, reverb })`, which
+switches the ambience to the area's profile (`ambience.js` `PROFILES`, `setProfile(name,
+fade)`: `'grounds'` has everything; indoors, `'hall'`, the pastoral bed fades out over 1.2 s and
+the birds, the distant chorus, the waterfall and the lapping water stop). The pastoral bed plays
+only where the profile has it and not in AI RACE. A profile set before the context exists is
+applied when it is made. The music does not change with the area (the grounds keep none).
 
 ## HUD / title (`src/ui/*`)
 
@@ -498,6 +731,8 @@ const hud = new HUD(uiRootElement, { events })  // subscribes to 'coin' (red-coi
                                                 //   and 'cannonView' (the cannon's reticle)
 hud.update({ lives, coins, stars, health, showPower, breath, paused }); hud.setPaused(bool)
 hud.setVisible(bool)          // hidden behind the title (hud.visible; hidden HUDs skip repaints)
+hud.setCourse(areaName)       // the pause screen's course name (hudLogic.js COURSE_NAMES)
+const wipe = new ScreenWipe(uiRootElement)   // before the HUD; see "Areas and transitions"
 hud.setViewport(rect | null)
 const title = new TitleScreen(uiRootElement, { events, audio }); await title.show()  // can be shown again
 title.setViewport(rect | null)
@@ -506,6 +741,10 @@ const card = new GameOverCard(uiRootElement).show()  // dark screen + gold GAME 
 new AlertBanner(uiRootElement, { events })   // AI RACE: 'darkMode' on, the meltdown's warning (30 s)
 card.setViewport(rect | null); card.remove(); card.shown   // remove() at once; show() again ok
 ```
+
+The pause screen names the course Jonas is in (`drawPauseScreen(..., { course })`, from
+`hud.setCourse`, which AreaSwitch calls on every switch): `COURSE_NAMES` = CASTLE GROUNDS, THE
+GREAT HALL, MIDSUMMER SKERRIES (all in `BIG_STRINGS`).
 
 The HUD's lives counter shows Jonas's pixel face (`ICONS.hero` in `src/ui/icons.js`: light blue
 cap, brown hair, round glasses); the title card reads "starring JONAS" (`HERO_NAME` in
@@ -992,7 +1231,7 @@ original designs). Objects own it (built when `layout.KAIJU` exists, like the be
   mode with all 30 units out: 72-75 draw calls and ≤ 172k triangles from the spawn (+3 calls,
   +10k triangles over the same view without them).
 
-## Winged hat, minions, locked castle, touch controller
+## Winged hat, minions, castle door, touch controller
 
 All original designs (no existing characters, blocks, caps or monsters are copied).
 
@@ -1037,11 +1276,24 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   may drop a coin. They leave when the mode turns off; `reset()` clears them. All of them are
   one InstancedMesh (legs and cap animated in the vertex shader) plus two eye glow sprites
   each. sfx `minion_emerge`, `minion_bite` (the ram), `minion_wreck`, `stomp`.
-* **Locked castle** (objects): walking up to the castle door (in front of it, within ~150,
-  facing it) plays sfx `evil_laugh` and shows a dialog via
-  `events.emit('signRead', { sign: { id: 'castle_locked', pages: [...] } })`; it can trigger
-  again once Jonas has walked away (> 500) and come back. Jonas is frozen while the dialog is up
-  (main); `player.endReading()` is safe when he wasn't reading.
+* **Castle door** (objects, `src/objects/Door.js`, `CastleDoor.js`): a `Door` is a trigger in
+  front of a door's face: `new Door({ id, x, z, yaw, width, floorY, to, entry, kind, locked,
+  sealedSign, laugh, events })` (x, z: the middle of the face; yaw: the way it looks, so Jonas
+  walks in facing yaw + π; `to` null: locked). Walking up to it (in front of the face within
+  `DOOR.REACH` 200, within `SIDE_MARGIN` 60 past either side, feet from 60 under its floor to
+  260 over it, facing it within 60° or pushing against it; never while flying, reading, dying
+  or dropping in) triggers it once. An **open** door plays sfx `door_open` (creak and latch) and
+  emits `'warpRequest' { to, entry, kind, from: door }` (AreaSwitch takes Jonas through it; see
+  "Areas and transitions") and re-arms once he is off its apron (`APRON` 60 past the trigger, in
+  front and at the sides), so he can walk straight back in. A **locked** one, or an open one
+  while **sealed** (AI RACE), plays sfx `evil_laugh` (when `laugh`) and shows its sign through
+  `events.emit('signRead', { sign })` (a fresh copy each time); it re-arms once he has walked more
+  than `REARM` (500) away. The castle's front door (`CastleDoor`, a Door facing +Z: its face and
+  porch come from the collision world) opens into the Great Hall (`CASTLE.enter`); sealed it says
+  `CASTLE_SEALED` ('The castle door is sealed shut...' / 'The storm has sealed it!' / 'Stop AI
+  RACE and it will open again.', the mode's name on a short page so the box never splits it);
+  without `enter` it is locked with `CASTLE_LOCKED` in both modes. Jonas is frozen while a dialog is up (main); `player.endReading()` is safe when he
+  wasn't reading. No allocation per tick (the yaw's sine and cosine are worked out once).
 * **Touch controller** (ui + input): on touch screens (`pointer: coarse`, or `?touch=1`) a
   retro game-controller UI appears (`src/ui/TouchController.js`, its own root appended to
   `document.body`, outside `#game`/`#ui`). Portrait: the game picture takes the top of the
@@ -1175,7 +1427,8 @@ build has no relay, so every phone feature stays hidden there.
 ## Objects (`src/objects/ObjectManager.js`)
 
 ```js
-new ObjectManager({ scene, collision, events, layout, player, fx, level })  // fx/level: AI RACE fireballs
+new ObjectManager({ scene, collision, events, layout, player, fx, level, area? })  // fx/level: AI RACE fireballs
+                                            // area: the area's name for 'starCollected' (default 'grounds')
 objects.update({ player, frame, camera })   // 30 Hz: collection, AI
 objects.animate(time, alpha, threeCamera)   // render: spin, billboards
 objects.reset()                             // new game: every pickup back (see below)
@@ -1183,12 +1436,25 @@ objects.ambient(time) -> alpha              // title backdrop clock (animate() c
 objects.started                             // an update() ran since construction / reset()
 objects.setAiRaceButton(on)                 // the title's game choice: false = no AI RACE button
                                             // (AiButton.setPresent: 'gone', colliders parked; kept by reset())
+objects.enter(player)                       // the hero was just placed in this area (see below)
+objects.door, objects.doors                 // the castle door (or null); every door (Door.js)
 ```
 
+`enter(player)` (an arrival): the hero's remembered last tick is dropped (`hero.valid`, so no
+stomp or box bump is read from a tick in another place), a dialog flag left up is cleared, and
+every door he stands within the re-arm range of (`Door.near`: its apron, or REARM after a
+message) is disarmed (`disarm()`), so it waits until he has walked away instead of going off
+where he arrives.
+
+Doors (`objects.doors`: the castle's `objects.door` first, then one `Door` per `layout.DOORS`
+entry, see "Castle door"): every tick `door.update(player, sealed)` with `sealed = modeOn ||
+darkT > 0` (AI RACE on or still fading out); `reset()` re-arms them all.
+
 `reset()` (always present; main calls it after GAME OVER, before the title): all yellow and
-red coins come back (red count 0), the star is hidden until the next full red set, the 1-up
-gem returns, live sparkles vanish, and the star it awarded is taken back off `player.stars`
-(so is Rustmaw's reward star, `BossStar.js`, which can then be won again).
+red coins come back (red count 0), the star is hidden until the next full red set (a placed
+one is back on its spot), the 1-up gem returns, live sparkles vanish, and the star it awarded
+is taken back off `player.stars` (so is Rustmaw's reward star, `BossStar.js`, which can then be
+won again).
 The tick clock keeps running (birds and butterflies carry on where they are).
 
 `ambient(time)`: until the first `update()` (and again after `reset()`), `animate()` drives the
@@ -1199,11 +1465,13 @@ alpha into the latest tick. Play then carries on from that clock without a jump.
 loop just calls `objects.animate(t, 1, camera)`; no stand-in hero is needed in main.
 
 Yellow coins (1), red coins (2, collect all 8 → star appears at `STAR` with a jingle),
-the star (touch → `player.collectStar()`), the hidden 1-up gem (`layout.ONE_UP`, emits
-`oneUp`), butterflies (`new Butterflies(BUTTERFLY_SPOTS, { collision, groundAt, rng,
-waterTop })`; optional `waterTop` (default `Infinity`) is the highest water surface anywhere,
-so the water query is skipped over floors above it; ObjectManager passes
-`layout.WATER_LEVEL`) and
+the star (touch → `player.collectStar()`; `STAR.placed: true` puts it idle on its spot from the
+start instead, `Star.place(target)`, with no red coins needed: a course's star; `reset()` puts a
+placed star back there, taking it off `player.stars` as usual; `STAR.id` names it in
+`'starCollected'`), the hidden 1-up gem (`layout.ONE_UP`, emits `oneUp`), butterflies
+(`new Butterflies(BUTTERFLY_SPOTS, { collision, groundAt, rng, waterTop })`; optional
+`waterTop` (default `Infinity`) is the highest water surface anywhere, so the water query is
+skipped over floors above it; ObjectManager passes `layout.WATER_LEVEL`) and
 circling birds (`new Birds(BIRD_CIRCLES, { collision, rng })`, circles `{ x, z, y, radius }`).
 A second star, Rustmaw's reward (`new BossStar({ events, collision, sparkles, shadows,
 shadowSlot, envMap })`, a `Star` instance of its own: `new Star(envMap, { color, emissive })`),
@@ -1222,7 +1490,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `hurt` | `{ pos, amount }` | player |
 | `coin` | `{ value, pos, red, index? }` (`index` 1..8 on red coins) | objects |
 | `redCoinsComplete` | `{ pos }` (where the star appears) | objects |
-| `starCollected` | `{ pos }` | objects |
+| `starCollected` | `{ pos, id, area }` (`id`: `layout.STAR.id` or `null`; `area`: the ObjectManager's `area`, `'grounds'` by default); Rustmaw's reward star sends `{ pos, boss: true }` | objects |
 | `lifeLost` / `oneUp` | `{}` | player / objects (main counts lives; audio plays sfx) |
 | `pause` / `unpause` / `gameStart` / `gameOver` | `{}` | main (audio consumes all four: ducks, menu-track stop, unlock, `game_over` jingle) |
 | `signRead` | `{ sign }` (a `layout.SIGNS` entry) | player (B in front of a sign); the dialog box opens |
@@ -1241,6 +1509,8 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `dialogClosed` | `{ sign, cancelled? }` (`cancelled` when `close()` took it down) | dialog box; main releases Jonas |
 | `cannonFire` | `{ pos, yaw, pitch, dir }` (`pos`: the muzzle's mouth, `dir`: along the barrel) | player (fired out of the cannon); the cannon recoils and puts the muzzle blast (fx), main's camera shake jolts the view |
 | `cannonView` | `{ on }` | camera (the cannon's aiming view went up / down); the HUD shows its reticle |
+| `warpRequest` | `{ to, entry, kind, from }` (`kind`: the Door's, `'door'` or `'bottle'`; `from`: the Door) | objects (an open door was walked into); AreaSwitch runs the transition (or refuses it). AreaSwitch's own transitions emit nothing: they show as `areas.warp.kind` / `snapshot().warp.kind` `'leave'` (`leave()`) and `'star'` (the star exit) |
+| `areaChange` | `{ from, to, entry, audio }` (area names, the entry id, the new area's `def.audio`) | AreaSwitch (the switch, see "Areas and transitions"); audio changes the ambience |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,
 wallkick, dive, ground_pound, ground_pound_land, punch1, punch2, kick, jump_kick, land,
@@ -1251,7 +1521,8 @@ camera_buzz`, the title's `menu_move` (its game choice moved), and the dialog bo
 `dialog_open, text_blip, dialog_next, dialog_close`, and
 AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
-cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, and Rustmaw's tail grab's
+cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, the doors' `door_open,
+door_close` (both sent into the shared hall reverb, `SFX_INFO` `hall`), and Rustmaw's tail grab's
 `tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
 (`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), AI RACE's meltdown's
 `meltdown_klaxon, meltdown_ignite, meltdown_flash, meltdown_blast, meltdown_ring`, and the face screen's

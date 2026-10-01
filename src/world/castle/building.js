@@ -402,8 +402,10 @@ function steps(kit, C, d) {
   );
 }
 
-// Grand closed double door of planks with iron bands, under a stone voussoir arch.
-function door(kit, frame, width, height) {
+// Grand closed double door of planks with iron bands, under a stone voussoir arch (also the
+// inside of the front door in the Great Hall, world/hall/hall.js). `frame` (wallFrame) stands
+// on the threshold: the stone surround's collider fills the arch, 56 deep out of the wall.
+export function door(kit, frame, width, height) {
   const hw = width / 2;
   const spring = height - hw;
   const inner = archContour(hw, spring, 8);

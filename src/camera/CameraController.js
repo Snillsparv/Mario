@@ -33,6 +33,9 @@
 // just behind and above its breech and looks along the barrel (the HUD's reticle marks where it
 // points: 'cannonView' { on } events), with the hero hidden; firing (or climbing out) glides
 // back to the orbit behind the barrel, the flight camera for a shot ('cannon_shot').
+// Areas (places with a collision world of their own): setCollision(world) points every probe at
+// another area's world, and reset(player, { yaw }) snaps to a given orbit yaw instead of behind
+// the hero.
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
@@ -164,8 +167,23 @@ export class CameraController {
     return this.lookYaw;
   }
 
+  // Collide with another world from now on (the hero moved to another area): every part that
+  // probes the level follows (the rotation probe is made again when next needed). A
+  // reset(player) should follow, as the old pose belongs to the old world.
+  setCollision(collision) {
+    this.collision = collision;
+    this.collider.setCollision(collision);
+    this.cover.collision = collision;
+    this.sight.collision = collision;
+    this.flight.collision = collision;
+    this.bossCam.collision = collision;
+    this._probe = null;
+  }
+
   // Snap behind the hero (level start, respawn), or to the nearest open side if walled in.
-  reset(player) {
+  // `yaw`: the orbit yaw to snap to instead (the direction from the hero to the camera; an
+  // area entry that places the camera in front of him, with the doorway behind his back).
+  reset(player, { yaw } = {}) {
     if (this.mode === 'cannon') this.events?.emit('cannonView', { on: false });
     this.heroInCannon = cannonInside(player);
     this.hero.submerged = false;
@@ -202,14 +220,15 @@ export class CameraController {
     this.restTicks = K.REST_DELAY; // a hero placed standing starts in the resting view
     this.restAim = this._resting(hero) ? K.REST_AIM : 0;
     this.focusY = hero.y;
-    // AI RACE look-up set outright (a reset is a cut), for the view behind him.
-    this.lookUp.update(hero, hero.faceYaw + Math.PI, this.dist, this.dist, this.focusY, this.flight.w);
+    const prefer = Number.isFinite(yaw) ? yaw : hero.faceYaw + Math.PI;
+    // AI RACE look-up set outright (a reset is a cut), for the view it snaps to.
+    this.lookUp.update(hero, prefer, this.dist, this.dist, this.focusY, this.flight.w);
     this.dist += this.lookUp.dist;
     this.fov = this.prevFov = this.lookUp.fov;
     this._snapToHero(hero);
     this.cover.updateCap(hero, this.look.y, this.dist);
     this.collider.reset();
-    this._setOrbitYaw(this.collider.openYaw(this.look, hero.faceYaw + Math.PI, this._orbitPitch(), this.dist));
+    this._setOrbitYaw(this.collider.openYaw(this.look, prefer, this._orbitPitch(), this.dist));
     this._updateOrbit(NEUTRAL, hero);
     this._finishTick(true);
   }

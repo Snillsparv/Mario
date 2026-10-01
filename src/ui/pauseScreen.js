@@ -1,6 +1,7 @@
-// Pause overlay: dimmed screen, course name with the collected coins/stars, a big PAUSE
-// and a controls legend (the touch controller's while it is shown, else gamepad bindings
-// while a pad is connected, else keyboard). Drawn into the HUD canvas (logical coords × s).
+// Pause overlay: dimmed screen, the course name (the area Jonas is in: `course`, default
+// CASTLE GROUNDS) with the collected coins/stars, a big PAUSE and a controls legend (the touch
+// controller's while it is shown, else gamepad bindings while a pad is connected, else
+// keyboard). Drawn into the HUD canvas (logical coords × s).
 
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
@@ -73,7 +74,7 @@ export function pauseItemRect(W, H, kind, item) {
   return null;
 }
 
-export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys' }) {
+export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys', course = COURSE_NAME }) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   ctx.fillStyle = 'rgba(0,0,12,0.5)';
@@ -82,7 +83,7 @@ export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = f
   const lay = pauseLayout(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls));
   const { top, pauseY, panel, padX, padY, headerH, lineH, legend } = lay;
 
-  drawText(ctx, cache, BIG_FONT, COURSE_NAME, cx, top * s, { px: s, align: 'center' });
+  drawText(ctx, cache, BIG_FONT, course, cx, top * s, { px: s, align: 'center' });
   const gw1 = counterGroup(ctx, cache, ICONS.coin, 'coin', coins, 0, 0, s, false);
   const gw2 = counterGroup(ctx, cache, ICONS.star, 'star', stars, 0, 0, s, false);
   const spacing = 16 * s;

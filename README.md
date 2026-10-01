@@ -33,6 +33,11 @@ browser once with `npx playwright install chromium`.
 ## How to play
 
 * **Jonas's stretchy face**: open the game with `?face=1` for a start screen with Jonas's big face: grab and pull his cheeks, nose, glasses, ears or cap (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start to play.
+* **Into the castle**: walk up the steps to the big front door and keep walking into it. The
+  door creaks open, the picture closes in a circle around Jonas and opens again inside the
+  **Great Hall**, a long stone hall behind the castle's front. The same door, inside, takes him
+  back out onto the porch. While AI RACE is on (or its storm is still clearing) the storm keeps
+  the door sealed.
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and
   grab it.
@@ -115,7 +120,8 @@ WebM (VP9 + Opus, e.g. Firefox). Portrait files end in `-portrait`
 that blocks downloads) V and 9 only explain this.
 
 URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-time loop;
-driven through `window.__game`, see the docs).
+driven through `window.__game`, see the docs), `?area=hall` (with `?skipTitle=1` or `?test=1`:
+start inside the Great Hall).
 
 ## Play with your phone as a controller
 
