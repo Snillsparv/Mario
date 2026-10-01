@@ -17,9 +17,11 @@
 // into its widest band, so neither leaves a ledge under it.
 // Inside lies a putty sea with a model of the first course (kit.paint): pink granite islets, a
 // red cottage, a red-sailed boat and a white lighthouse with a red band, whose lamp (kit.lamp,
-// its own mesh) is lit once that course's star is won. The mouth (the lip's end face) is the
-// door Jonas walks into from the landing. The stairs are a smooth ramp collider (not slippery)
-// under 11 drawn steps between two sloping stringers.
+// its own mesh, turning about kit.lampAt: hall.js) is lit once that course's star is won: its
+// lantern glowing warm gold, and two hazy beams sweeping round inside the glass, as the
+// course's own lighthouse has (the beams' fade is their faces' glow). The mouth (the lip's end
+// face) is the door Jonas walks into from the landing. The stairs are a smooth ramp collider
+// (not slippery) under 11 drawn steps between two sloping stringers.
 
 const TINT = {
   glass: 0xbfe3d6,
@@ -40,7 +42,8 @@ const TINT = {
   white: 0xf4f0e6,
   red: 0xc8282c,
   lantern: 0x2a2c34,
-  lamp: 0xffe08a,
+  lamp: 0xffa828, // (lit: a warm, deep gold that stands out from the cream wall behind)
+  beam: 0xffb848,
   cork: 0xc89a62,
   corkRing: 0xa87a48,
   pages: 0xf0e6cc,
@@ -57,6 +60,9 @@ const RAIL = 40; // the lighter rail along the top of its sides
 const CORK_TAPER = 30; // the cork narrows by this much from its foot to its top
 const SEA_Y = 420; // the putty sea's surface inside the body (the cradles' top)
 const PUTTY_R = 512; // the putty's curved underside, just inside the glass
+// The little lighthouse's beams (lit): from `near` the lamp out to `length` (inside the glass
+// whichever way they point), `near` to `far` across, `glow` their opacity at the lamp.
+const LAMP_BEAM = { near: 40, length: 380, far: 64, glow: 0.8 };
 // Corners (degrees round the axis, 0 straight up, 90 east) of the colliders' cross-sections:
 // one straight up and one straight down, and a vertical face across the widest band. With a
 // corner at the widest point the faces either side would be a steep floor and a steep ceiling,
@@ -357,8 +363,23 @@ function world(kit, B) {
   paint.lathe(lx, lz, [[0, foot + 240], [56, foot + 240], [56, foot + 250], [26, foot + 250], [26, foot + 292]], 8, { flat: true });
   paint.color(TINT.red);
   paint.lathe(lx, lz, [[26, foot + 292], [34, foot + 292], [0, foot + 334]], 8, { flat: true });
+  // Lit: a glowing lamp swelling out of the lantern's dark frame, and the two beams, each a
+  // horizontal and a vertical fan, thickest at the lamp and fading out (glow: the opacity).
+  const ly = foot + 271;
+  kit.lampAt = [lx, ly, lz];
   lamp.color(TINT.lamp);
-  lamp.lathe(lx, lz, [[28, foot + 252], [28, foot + 290]], 8, { flat: true });
+  lamp.glow = 1;
+  lamp.lathe(lx, lz, [[0, foot + 244], [32, foot + 250], [38, foot + 271], [32, foot + 292], [0, foot + 298]], 8, { flat: true });
+  const { near, length, far, glow } = LAMP_BEAM;
+  lamp.color(TINT.beam);
+  lamp.glow = (x) => glow * (1 - Math.abs(x - lx) / length);
+  for (const s of [1, -1]) {
+    for (const up of [false, true]) {
+      const at = (d, w) => (up ? [lx + s * d, ly + w, lz] : [lx + s * d, ly, lz + w]);
+      lamp.poly([at(near, -near / 3), at(length, -far), at(length, far), at(near, near / 3)], { facing: up ? [0, 0, 1] : [0, 1, 0] });
+    }
+  }
+  lamp.glow = 0;
 }
 
 // The landing in front of the bottle's mouth and the stairs up to it.

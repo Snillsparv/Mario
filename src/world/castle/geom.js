@@ -81,6 +81,26 @@ export function towerFrame(cx, cz, r, sides, angle, y) {
   return wallFrame([cx + Math.sin(a) * ap, y, cz + Math.cos(a) * ap], [Math.sin(a), 0, Math.cos(a)]);
 }
 
+// A flat wall in a wall frame (u0..u1 across, v0..v1 up, at w = 0) with an opening cut out of
+// it along an archContour (its foot at v = 0), as convex polys: the wall either side of the
+// opening, under its foot and over its arch (one slice over each arch segment). The wall's top
+// must clear the arch, or stay under its spring (a base course beside a door).
+export function openingPolys(frame, u0, u1, v0, v1, contour) {
+  const f = frame.at;
+  const hw = contour[contour.length - 1][0];
+  const rect = (ua, ub, va, vb) => [f(ua, va), f(ub, va), f(ub, vb), f(ua, vb)];
+  const polys = [];
+  if (u0 < -hw) polys.push(rect(u0, -hw, v0, v1));
+  if (u1 > hw) polys.push(rect(hw, u1, v0, v1));
+  if (v0 < 0) polys.push(rect(-hw, hw, v0, Math.min(0, v1)));
+  for (let i = 1; i + 2 < contour.length; i++) {
+    const [ua, va] = contour[i];
+    const [ub, vb] = contour[i + 1];
+    if (v1 > Math.max(va, vb)) polys.push([f(ua, va), f(ub, vb), f(ub, v1), f(ua, v1)]);
+  }
+  return polys;
+}
+
 // ---------------------------------------------------------------- convex solids as polys
 
 // Corner signs walking once around a rectangle, for building hexahedra.

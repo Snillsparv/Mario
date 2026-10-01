@@ -7,9 +7,12 @@
 //   centre      square keep with a round upper tower, conical roof and banner
 //   back (-Z)   rear block with two rear corner towers
 //
-// All sizes derive from the CASTLE anchors so the silhouette scales with the layout.
+// All sizes derive from the CASTLE anchors so the silhouette scales with the layout. The front
+// door swings (its leaves in kit.leaves, the passage behind them in kit.passage: castle.js
+// makes their meshes); door(), doorContour() and doorLeaves() are shared with the Great Hall.
 
-import { archContour, hexaPolys, localBoxPolys, wallFrame } from './geom.js';
+import * as THREE from 'three';
+import { GeoBuilder, archContour, boxPolys, hexaPolys, localBoxPolys, openingPolys, wallFrame } from './geom.js';
 import { TINT, archWindow, flagpole, merlonRow, roundTower, roundWindow, stringCourse } from './parts.js';
 
 const PLINTH_H = 140; // stone base course; the door threshold sits on top of it
@@ -26,6 +29,10 @@ const WIN = {
   slit: { w: 50, h: 180, border: 16 },
 };
 const SLIT = WIN.slit;
+// A swinging door (door() with a passage): how far its leaves turn into the wall standing open
+// (radians), and the dark passage behind them (deeper than a leaf is wide, darker inside).
+const SWING = 1.4;
+const PASSAGE = { depth: 260, tint: 0x4a3828, fade: 0.7 };
 
 export function buildCastleBody(kit, C) {
   const B = C.baseY;
@@ -90,10 +97,12 @@ function cornice(kit, x0, x1, z0, z1, y, { walkway = true, o = 18 } = {}) {
   );
 }
 
-// Cream wall block (no top/bottom faces) plus its collider.
-function wallBlock(kit, x0, x1, y0, y1, z0, z1) {
+// Cream wall block (no top/bottom faces) plus its collider; without `front` its front face
+// (+Z) is left to the caller (the hall's, cut round the front door: entrance()).
+function wallBlock(kit, x0, x1, y0, y1, z0, z1, { front = true } = {}) {
   kit.wall.color(TINT.wall);
-  kit.wall.box(x0, x1, y0, y1, z0, z1, { bottom: false, top: false });
+  const faces = boxPolys(x0, x1, y0, y1, z0, z1, { bottom: false, top: false });
+  kit.wall.solid(front ? faces : faces.filter((p) => p.some((q) => q[2] !== z1)));
   kit.solids.box(x0, x1, y0, y1, z0, z1, 'stone', { bottom: false, top: true });
 }
 
@@ -117,8 +126,9 @@ function blocks(kit, C, d) {
   plinth(kit, X - d.cornerX, X + d.cornerX, d.wingBackZ, F, B);
   stringCourse(kit, X - d.cornerX, X + d.cornerX, d.wingBackZ, F, B + COURSE_1);
 
-  // Hall: taller central block with a steep gable roof running back into the keep.
-  wallBlock(kit, X - d.hallHW, X + d.hallHW, B, d.hallTop, d.hallBackZ, F);
+  // Hall: taller central block with a steep gable roof running back into the keep (its front
+  // face, round the door, is entrance()'s).
+  wallBlock(kit, X - d.hallHW, X + d.hallHW, B, d.hallTop, d.hallBackZ, F, { front: false });
   cornice(kit, X - d.hallHW, X + d.hallHW, d.hallBackZ, F, d.hallTop, { walkway: false });
   gableRoof(kit, C, d);
 
@@ -347,7 +357,13 @@ function entrance(kit, C, d) {
   const facade = wallFrame([X, B, F], [0, 0, 1]);
   const doorSill = PLINTH_H;
   steps(kit, C, d);
-  door(kit, wallFrame([X, B + doorSill, F], [0, 0, 1]), C.doorWidth, C.doorHeight);
+  // The front door swings in (kit.leaves, kit.passage: castle.js makes their meshes), so the
+  // hall's front face leaves its opening.
+  const doorFrame = wallFrame([X, B + doorSill, F], [0, 0, 1]);
+  kit.leaves = door(kit, doorFrame, C.doorWidth, C.doorHeight, { passage: kit.passage });
+  kit.wall.color(TINT.wall);
+  const opening = doorContour(C.doorWidth, C.doorHeight);
+  for (const p of openingPolys(doorFrame, -d.hallHW, d.hallHW, -doorSill, d.hallTop - B - doorSill, opening)) kit.wall.poly(p, { facing: [0, 0, 1] });
   const balconyY = doorSill + C.doorHeight + 100;
   balcony(kit, facade, balconyY, 360, 170);
   // Rose window centred between the balcony parapet and the gable.
@@ -402,36 +418,126 @@ function steps(kit, C, d) {
   );
 }
 
-// Grand closed double door of planks with iron bands, under a stone voussoir arch (also the
-// inside of the front door in the Great Hall, world/hall/hall.js). `frame` (wallFrame) stands
-// on the threshold: the stone surround's collider fills the arch, 56 deep out of the wall.
-export function door(kit, frame, width, height) {
+// Grand double door of planks with iron bands, under a stone voussoir arch (also the inside of
+// the front door in the Great Hall, world/hall/hall.js, and the hall's doors still being built).
+// `frame` (wallFrame) stands on the threshold: the stone surround's collider fills the arch, 56
+// deep out of the wall, so the door is solid however its leaves stand.
+//   door(kit, frame, width, height) -> null     the leaves drawn shut into kit.wood
+//   door(kit, frame, width, height, { passage }) -> [left, right]
+//     the two leaves built apart, to swing in on their hinges: each { builder (a GeoBuilder of
+//     its own, in world coordinates), hinge (the world point it turns about), turn (+1 / -1:
+//     its way round +y, into the wall) }, for doorLeaves() to make their meshes. Behind them a
+//     dark passage, deeper than a leaf is wide, goes into `passage` (a GeoBuilder); the wall the
+//     door stands in needs the opening cut to match (geom.js openingPolys with doorContour()).
+export function door(kit, frame, width, height, { passage = null } = {}) {
   const hw = width / 2;
   const spring = height - hw;
-  const inner = archContour(hw, spring, 8);
+  const inner = doorContour(width, height);
   const outer = archContour(hw + 70, spring, 8);
   const { trim, wood, solids } = kit;
   trim.color(TINT.stone);
   const voussoirs = inner.slice(0, -1).map((_, i) => (i % 2 ? 0.9 : 1.04));
   trim.moulding(frame, inner, outer, 56, { w0: -4, revealShade: 0.45, frontShade: voussoirs });
   trim.solid(localBoxPolys(frame, -36, 36, height - 10, height + 84, -4, 66, { bottom: true }));
+  // The recessed door is solid: the collider fills the arch surround.
+  solids.solid(localBoxPolys(frame, -hw - 70, hw + 70, 0, height + 70, 0, 56, { bottom: false }), 'stone');
+  if (!passage) {
+    leaf(wood, frame, inner, height, 0, false);
+    return null;
+  }
+  doorway(passage, frame, hw, height);
+  // Left of the seam (s -1) and right of it: each turns about its outer edge, into the wall.
+  return [-1, 1].map((s) => {
+    const builder = new GeoBuilder(wood.repeat);
+    leaf(builder, frame, inner, height, s, true);
+    return { builder, hinge: frame.at(s * hw, 0, 0), turn: -s };
+  });
+}
 
-  // Leaves: darker toward the top where the arch and balcony shade them.
-  wood.color(TINT.door);
-  wood.panel(frame, inner, 6, { shade: inner.map(([, v]) => 0.95 - 0.35 * (v / height)) });
-  wood.color(TINT.iron);
-  wood.solid(localBoxPolys(frame, -5, 5, 0, height - 3, 6, 12, { bottom: false }));
-  for (const v of [70, 300]) wood.solid(localBoxPolys(frame, -hw + 3, hw - 3, v, v + 26, 6, 12, { bottom: false }));
+// The door's opening: an arch of `width` and `height` (foot at the threshold), the leaves'
+// outline and the hole a swinging door's wall needs (openingPolys).
+export function doorContour(width, height) {
+  return archContour(width / 2, height - width / 2, 8);
+}
+
+// Planks of the door's leaves within `contour` (`side` -1: the left one up to the seam, 1: the
+// right one, 0: both, drawn shut as one), darker toward the top where the arch and balcony
+// shade them, the iron seam strip and bands, a ring handle either side of the seam. A leaf
+// built apart (`slab`) is a slab 6 thick with its back and edges, to be seen swung open.
+function leaf(b, frame, contour, height, side, slab) {
+  const top = (contour.length - 1) / 2; // the arch's crown
+  const outline = side < 0 ? [...contour.slice(0, top + 1), [0, 0]] : side > 0 ? [[0, 0], ...contour.slice(top)] : contour;
+  const hw = contour[contour.length - 1][0];
+  const [u0, u1] = side < 0 ? [-hw, 0] : side > 0 ? [0, hw] : [-hw, hw];
+  b.color(TINT.door);
+  b.panel(frame, outline, 6, { shade: outline.map(([, v]) => 0.95 - 0.35 * (v / height)) });
+  if (slab) {
+    const f = frame.at;
+    b.poly(outline.map(([u, v]) => f(u, v, 0)), { facing: frame.dir(0, 0, -1), shade: 0.6 });
+    // Edges: the left normal of each clockwise outline edge points out of it.
+    for (let i = 0; i < outline.length; i++) {
+      const [ua, va] = outline[i];
+      const [ub, vb] = outline[(i + 1) % outline.length];
+      b.poly([f(ua, va, 0), f(ub, vb, 0), f(ub, vb, 6), f(ua, va, 6)], { facing: frame.dir(-(vb - va), ub - ua, 0), shade: 0.75 });
+    }
+  }
+  b.color(TINT.iron);
+  b.solid(localBoxPolys(frame, Math.max(u0, -5), Math.min(u1, 5), 0, height - 3, 6, 12, { bottom: false }));
+  for (const v of [70, 300]) b.solid(localBoxPolys(frame, Math.max(u0, -hw + 3), Math.min(u1, hw - 3), v, v + 26, 6, 12, { bottom: false }));
   // Ring handles either side of the seam.
   for (const s of [-1, 1]) {
+    if (s * side < 0) continue;
     const ring = (r) => Array.from({ length: 8 }, (_, i) => {
       const a = Math.PI / 2 - (i / 8) * Math.PI * 2;
       return [s * 40 + r * Math.cos(a), 220 + r * Math.sin(a)];
     });
-    wood.moulding(frame, ring(13), ring(22), 16, { w0: 6, closed: true, revealShade: 0.8 });
+    b.moulding(frame, ring(13), ring(22), 16, { w0: 6, closed: true, revealShade: 0.8 });
   }
-  // The recessed door is solid: the collider fills the arch surround.
-  solids.solid(localBoxPolys(frame, -hw - 70, hw + 70, 0, height + 70, 0, 56, { bottom: false }), 'stone');
+}
+
+// A swinging door's meshes (door()'s leaves): one per leaf, its geometry baked by `bake` (the
+// light of the wood it stands among) where it stands shut, then set about its hinge; all share
+// `material`.
+//   doorLeaves(leaves, material, bake, name) -> { meshes, setOpen(t) }   // t: 0 shut .. 1 open
+// setOpen eases the swing (it runs every frame while the door moves: no allocation).
+export function doorLeaves(leaves, material, bake, name) {
+  const meshes = leaves.map(({ builder, hinge, turn }) => {
+    const geo = bake(builder.toGeometry());
+    geo.translate(-hinge[0], -hinge[1], -hinge[2]);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.name = `${name}-${turn > 0 ? 'left' : 'right'}`;
+    mesh.position.set(hinge[0], hinge[1], hinge[2]);
+    mesh.userData.turn = turn;
+    return mesh;
+  });
+  return {
+    meshes,
+    setOpen(t) {
+      const k = t > 0 ? (t < 1 ? t * t * (3 - 2 * t) : 1) : 0;
+      for (let i = 0; i < meshes.length; i++) meshes[i].rotation.y = meshes[i].userData.turn * SWING * k;
+    },
+  };
+}
+
+// The dark passage behind a swinging door's leaves (seen only while they stand open): its
+// sides, ceiling, back and floor facing in, darker the deeper in. Its sides and ceiling start
+// where the surround's reveal ends (4 into the wall), its floor at the threshold.
+function doorway(b, frame, hw, height) {
+  const f = frame.at;
+  const { depth } = PASSAGE;
+  const back = -depth;
+  const top = height + 10;
+  const o = f(0, 0, 0);
+  const out = frame.out;
+  b.color(PASSAGE.tint);
+  b.shade = (x, y, z) => 1 - PASSAGE.fade * ((o[0] - x) * out[0] + (o[2] - z) * out[2]) / depth;
+  const quad = (a, c, d, e, facing) => b.poly([f(...a), f(...c), f(...d), f(...e)], { facing });
+  quad([-hw, 1, -4], [-hw, 1, back], [-hw, top, back], [-hw, top, -4], frame.dir(1, 0, 0));
+  quad([hw, 1, -4], [hw, 1, back], [hw, top, back], [hw, top, -4], frame.dir(-1, 0, 0));
+  quad([-hw, top, -4], [hw, top, -4], [hw, top, back], [-hw, top, back], [0, -1, 0]);
+  quad([-hw, 1, 0], [hw, 1, 0], [hw, 1, back], [-hw, 1, back], [0, 1, 0]);
+  quad([-hw, 1, back], [hw, 1, back], [hw, top, back], [-hw, top, back], out);
+  b.shade = null;
 }
 
 // Small balcony over the door: stone slab on stepped corbels with a balustrade.

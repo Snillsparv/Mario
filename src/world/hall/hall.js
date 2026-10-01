@@ -1,30 +1,39 @@
 // The Great Hall's building (area 'hall', see hall/layout.js): a WorldPart built in the hall's
 // local frame, which world/area.js places at the hall's origin.
 //
+//   buildHall(layout) -> { object3D, colliders, update(time), setDoorOpen(t), setLit(on) }
+//     setDoorOpen   the front door's leaves, 0 shut .. 1 standing open (core/AreaSwitch.js)
+//     setLit        the lamp of the little lighthouse in the bottle
+//
 // A long stone room under an open timber roof: cream plaster walls over a stone base course,
 // stone pilasters, a flagstone floor, and above the collision ceiling (out of the camera's
 // reach) oak tie beams carrying king-post trusses, purlins and a ridge beam under plaster
 // panels. South wall: the inside of the castle's front door (castle/building.js door(), the
 // same door the grounds see: its collider fills the surround, so the face stands at
-// FRONT_DOOR.faceZ) under a stained-glass rose window, between two crimson banners. Side and
-// north walls: tall arched windows glowing pale gold. West wall: the chimney breast (its top
-// is the mantel, with the 1-up) with a burning hearth and Jonas's pi crest, a buttress beside
-// it with the wall-kick slot between them, and a climbable banner pole. East wall: two arched
-// alcoves with doors still being built (a snowflake and a cog on their plaques) and, out in
-// the room, a round chart table painted with a chart of the first course. Two iron candle
-// rings hang from the tie beams. The north end, the ship in the bottle with its landing,
-// stairs, cork and books, is hall/bottle.js. The signposts are props/decor.js addSignpost's.
+// FRONT_DOOR.faceZ; its leaves swing into the wall onto a dark passage, setDoorOpen(t)) under a
+// stained-glass rose window, between two crimson banners. Side and north walls: tall arched
+// windows glowing pale gold. West wall: the chimney breast (its top is the mantel, with the
+// 1-up) with a burning hearth and Jonas's pi crest, a buttress beside it with the wall-kick
+// slot between them, and a climbable banner pole. East wall: two arched alcoves with doors
+// still being built (a snowflake and a cog on their plaques) and, out in the room, a round
+// chart table painted with a chart of the first course. Two iron candle rings hang from the tie
+// beams. The north end, the ship in the bottle with its landing, stairs, cork and books, is
+// hall/bottle.js. The signposts are props/decor.js addSignpost's.
 //
 // Unlit worldMaterial meshes with the lighting baked into vertex colours (castle-style flat
 // faces under HALL_SUN; the floor darker along the walls, brighter in pools under the windows
-// and the candle rings, faintly coloured under the rose window), one mesh per material, ten in
-// all: hall-floor, hall-wall, hall-trim, hall-wood, hall-paint (untextured vertex colours: the
-// model in the bottle, the crest, plaques, chart, candles, cork and books), hall-glow
-// (full-bright: the rose window's glass, from the rose texture, and the window panes, embers
-// and flames, which all sample the rose's pale gold middle), hall-cloth (the banners),
-// hall-bottle (the glass: transparent, front faces only, no depth write, paler and more opaque
-// where the view grazes it, so its outline reads), hall-signs and hall-lamp (the lamp of the
-// lighthouse in the bottle, hidden until that course's star is won).
+// and the candle rings, faintly coloured under the rose window), one mesh per material, and the
+// front door's two leaves, twelve in all: hall-floor, hall-wall, hall-trim, hall-wood (with the
+// front door's passage), hall-door-left and hall-door-right (the leaves, the wood's material,
+// each turning about its hinge), hall-paint (untextured vertex colours: the model in the
+// bottle, the crest, plaques, chart, candles, cork and books), hall-glow (full-bright: the rose
+// window's glass, from the rose texture, and the window panes, embers and flames, which all
+// sample the rose's pale gold middle), hall-cloth (the banners), hall-bottle (the glass:
+// transparent, front faces only, no depth write, paler and more opaque where the view grazes
+// it, so its outline reads), hall-signs and hall-lamp (the lamp of the lighthouse in the bottle
+// and its two hazy beams, hidden until that course's star is won: setLit(on); see-through like
+// the course's beams, the beams fading out, drawn before the glass round them, and turning
+// about the lighthouse's axis with update(time) while lit).
 // The flames flicker: the glow mesh's 'flame' attribute (0 steady, else the flame's phase)
 // scales their colour by a wobble of the time set in update(time) (one uniform, no allocation).
 //
@@ -35,8 +44,8 @@
 
 import * as THREE from 'three';
 import { worldMaterial, bakeLighting } from '../../render/materials.js';
-import { GeoBuilder, SolidBuilder, archContour, beamPolys, boxPolys, circleContour, localBoxPolys, prismPolys, wallFrame } from '../castle/geom.js';
-import { door } from '../castle/building.js';
+import { GeoBuilder, SolidBuilder, archContour, beamPolys, boxPolys, circleContour, localBoxPolys, openingPolys, prismPolys, wallFrame } from '../castle/geom.js';
+import { door, doorContour, doorLeaves } from '../castle/building.js';
 import { archWindow, roundWindow } from '../castle/parts.js';
 import { roseTexture, stoneTexture, wallTexture, woodTexture } from '../castle/textures.js';
 import { flagstoneTexture } from '../terrainTextures.js';
@@ -89,6 +98,7 @@ const FULL_BRIGHT = { ambient: 1, diffuse: 0 };
 const GLASS = { opacity: 0.22, rimOpacity: 0.62, rimWhite: 0.45 };
 const HEARTH_DEPTH = 120; // the hearth's recess behind the breast's face (drawn only)
 const FLICKER = { fast: 9, slow: 23 }; // the flames' wobble (rad/s)
+const LAMP_SWEEP = 0.55; // the lit lamp's beams turning round (rad/s, as the course's)
 
 export function buildHall(layout) {
   const kit = { solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} } };
@@ -124,9 +134,13 @@ function assemble(kit, layout) {
   tintRosePool(floor, layout);
   bakeLighting(floor, { ...lit, occlusion: floorLight(layout) });
   add('floor', floor, worldMaterial({ map: flagstoneTexture() }));
+  const materials = {};
   for (const [name, map] of [['wall', wallTexture], ['trim', stoneTexture], ['wood', woodTexture], ['paint', null]]) {
-    add(name, bakeLighting(kit[name].toGeometry(), lit), worldMaterial({ map: map ? map() : null }));
+    materials[name] = add(name, bakeLighting(kit[name].toGeometry(), lit), worldMaterial({ map: map ? map() : null })).material;
   }
+  // The front door's leaves, swinging on their hinges (setDoorOpen) with the wood's look.
+  const leaves = doorLeaves(kit.leaves, materials.wood, (geo) => bakeLighting(geo, lit), 'hall-door');
+  for (const mesh of leaves.meshes) group.add(mesh);
   add('cloth', bakeLighting(kit.cloth.toGeometry(), lit), worldMaterial({ map: bannerTexture() }));
 
   // The glow: every face but the rose window's samples the rose texture's pale gold middle.
@@ -141,7 +155,22 @@ function assemble(kit, layout) {
 
   add('bottle', kit.bottle.toGeometry(), glassMaterial());
   group.add(bakedMesh('hall-signs', kit.signs.wood, worldMaterial({ map: signWoodTexture() }), lit));
-  add('lamp', bakeLighting(kit.lamp.toGeometry(), FULL_BRIGHT), worldMaterial()).visible = false;
+  // The lamp: its faces' glow (bottle.js: 1 on the lantern, fading out along the beams) is its
+  // vertex colours' alpha. The beams' material is the course's (skerries/lighthouse.js: one
+  // shader for both). Set about the lighthouse's axis to turn round it.
+  const lampGeo = bakeLighting(kit.lamp.toGeometry(), FULL_BRIGHT);
+  const rgb = lampGeo.attributes.color;
+  const fade = lampGeo.attributes.darkGlow;
+  const rgba = new Float32Array(rgb.count * 4);
+  for (let i = 0; i < rgb.count; i++) rgba.set([rgb.getX(i), rgb.getY(i), rgb.getZ(i), fade.getX(i)], i * 4);
+  lampGeo.setAttribute('color', new THREE.BufferAttribute(rgba, 4));
+  lampGeo.deleteAttribute('darkGlow');
+  const [lx, ly, lz] = kit.lampAt;
+  lampGeo.translate(-lx, -ly, -lz);
+  const lamp = add('lamp', lampGeo, worldMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  lamp.position.set(lx, ly, lz);
+  lamp.renderOrder = -1; // (inside the bottle: drawn before its glass)
+  lamp.visible = false;
 
   const colliders = kit.solids.colliders();
   colliders.push({ positions: kit.signs.colliders.wood, terrain: 'wood' });
@@ -150,6 +179,17 @@ function assemble(kit, layout) {
     colliders,
     update(time) {
       flicker.time.value = time;
+      if (lamp.visible) lamp.rotation.y = time * LAMP_SWEEP;
+    },
+    // The front door, 0 shut .. 1 standing open (core/AreaSwitch.js swings it as Jonas goes out
+    // through it and comes in).
+    setDoorOpen(t) {
+      leaves.setOpen(t);
+    },
+    // The lamp of the lighthouse in the bottle: lit once the course's star is won (AreaSwitch,
+    // AREA_DEFS.hall.lamp).
+    setLit(on) {
+      lamp.visible = !!on;
     },
   };
 }
@@ -245,7 +285,7 @@ function tintRosePool(geo, { FRONT_DOOR }) {
 // The faces toward the room: the floor on a grid, plaster walls over a stone base course up to
 // the eaves (the end walls up into the gables), stone pilasters; and the thick slabs round it
 // as colliders (their faces toward the room are the boxes' outward faces).
-function shell(kit, { HALL, ROOF, PILASTERS }) {
+function shell(kit, { HALL, ROOF, PILASTERS, FRONT_DOOR }) {
   const { floor, wall, trim, solids } = kit;
   const { halfX: X, northZ: N, southZ: S, ceilingY: H, thick: T, baseCourse: B } = HALL;
   const { eaveY: E, ridgeY: R } = ROOF;
@@ -257,22 +297,37 @@ function shell(kit, { HALL, ROOF, PILASTERS }) {
       floor.poly([[x, 0, z], [x1, 0, z], [x1, 0, z1], [x, 0, z1]], { facing: [0, 1, 0] });
     }
   }
-  // Walls: [corner a, corner b (x, z), facing, gable].
+  // Walls: [corner a, corner b (x, z), facing, gable, door]. The south wall leaves the front
+  // door's opening (its leaves swing into it: southWall()); `door` is that door's wall frame.
+  const doorFrame = frontDoorFrame(FRONT_DOOR);
   const walls = [
-    [[-X, S], [-X, N], [1, 0, 0], false],
-    [[X, N], [X, S], [-1, 0, 0], false],
-    [[-X, N], [X, N], [0, 0, 1], true],
-    [[X, S], [-X, S], [0, 0, -1], true],
+    [[-X, S], [-X, N], [1, 0, 0], false, null],
+    [[X, N], [X, S], [-1, 0, 0], false, null],
+    [[-X, N], [X, N], [0, 0, 1], true, null],
+    [[X, S], [-X, S], [0, 0, -1], true, doorFrame],
   ];
-  for (const [[ax, az], [bx, bz], facing, gable] of walls) {
+  const opening = doorContour(FRONT_DOOR.width, FRONT_DOOR.height);
+  for (const [[ax, az], [bx, bz], facing, gable, door] of walls) {
+    // The wall from height y0 to y1: one face, or the faces round the door's opening (u: across
+    // the door's frame).
+    const band = (builder, y0, y1) => {
+      if (!door) {
+        builder.poly([[ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az]], { facing });
+        return;
+      }
+      const o = door.at(0, 0, 0);
+      const u = (x, z) => (x - o[0]) * door.right[0] + (z - o[2]) * door.right[2];
+      const [u0, u1] = [u(ax, az), u(bx, bz)].sort((p, q) => p - q);
+      for (const p of openingPolys(door, u0, u1, y0 - o[1], y1 - o[1], opening)) builder.poly(p, { facing });
+    };
     trim.color(TINT.stone);
     trim.shade = (px, py) => 0.72 + 0.28 * Math.min(1, py / B); // darker where it meets the floor
-    trim.poly([[ax, 0, az], [bx, 0, bz], [bx, B, bz], [ax, B, az]], { facing });
+    band(trim, 0, B);
     trim.shade = null;
     wall.color(TINT.plaster);
     wall.shade = (px, py) => 1 - 0.24 * (py / R); // the light falls off toward the roof
-    const top = gable ? [[bx, E, bz], [(ax + bx) / 2, R, (az + bz) / 2], [ax, E, az]] : [[bx, E, bz], [ax, E, az]];
-    wall.poly([[ax, B, az], [bx, B, bz], ...top], { facing });
+    band(wall, B, E);
+    if (gable) wall.poly([[bx, E, bz], [(ax + bx) / 2, R, (az + bz) / 2], [ax, E, az]], { facing });
     wall.shade = null;
   }
   // Stone pilasters up the side walls.
@@ -325,10 +380,17 @@ function roof(kit, { HALL, ROOF }) {
 
 // ---------------------------------------------------------------- walls
 
-// South wall: the front door's inside under the rose window, a banner either side.
+// The front door's wall frame in the south wall, on its threshold, looking into the room.
+function frontDoorFrame(FRONT_DOOR) {
+  return wallFrame([FRONT_DOOR.x, 0, FRONT_DOOR.wallZ], [0, 0, -1]);
+}
+
+// South wall: the front door's inside under the rose window, a banner either side. The door
+// swings (kit.leaves: assemble() makes their meshes) onto a dark passage drawn in with the wood
+// (behind the shut leaves it never shows), in the opening shell() leaves in the wall.
 function southWall(kit, { FRONT_DOOR, ROSE_WINDOW, BANNERS }) {
-  const frame = wallFrame([FRONT_DOOR.x, 0, FRONT_DOOR.wallZ], [0, 0, -1]);
-  door(kit, frame, FRONT_DOOR.width, FRONT_DOOR.height);
+  const frame = frontDoorFrame(FRONT_DOOR);
+  kit.leaves = door(kit, frame, FRONT_DOOR.width, FRONT_DOOR.height, { passage: kit.wood });
   roundWindow(kit, frame, ROSE_WINDOW.y, ROSE_WINDOW.r, { glass: true });
   for (const x of BANNERS.xs) {
     banner(kit, wallFrame([x, 0, FRONT_DOOR.wallZ], [0, 0, -1]), 300, BANNERS.top, BANNERS.bottom);

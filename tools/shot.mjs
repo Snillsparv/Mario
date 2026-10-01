@@ -7,6 +7,9 @@
 //   node tools/shot.mjs --url "/preview.html?m=world" --out shots/world.png
 //   node tools/shot.mjs --url "/?test=1" --actions actions.json
 //   node tools/shot.mjs --url "/?test=1" --actions '[{"step":30,"input":{"stickY":1}},{"shot":"shots/a.png"}]'
+//   node tools/shot.mjs --url "/?test=1&mute=1&area=hall&entry=bottle" --actions '[{"step":20},{"shot":"shots/bottle.png"}]'
+//   node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'
+//        (?area= starts play in the Great Hall or Midsummer Skerries, &entry= at another entry)
 // Options: --width 960 --height 540 --wait 500 (ms after __ready before the first action)
 //
 // Actions (array, run in order):

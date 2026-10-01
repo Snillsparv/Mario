@@ -4,6 +4,7 @@
 //   &col=1  overlay collider triangles (front faces only: floors green, walls blue,
 //           ceilings red) to check winding - a wrongly wound face disappears from outside.
 //   &t=secs freeze the flag animation at a given time.
+//   &door=0..1  the front door's leaves standing that far open (shut by default).
 import * as layout from '../../world/layout.js';
 import { buildCastle } from '../../world/castle.js';
 import { worldMaterial, bakeLighting } from '../../render/materials.js';
@@ -16,6 +17,7 @@ export async function setup({ THREE, scene, params }) {
   const castle = buildCastle(layout);
   scene.add(castle.object3D);
   if (params.get('col')) scene.add(colliderOverlay(THREE, castle.colliders));
+  if (params.get('door')) castle.setDoorOpen(Number(params.get('door')));
 
   const frozen = params.get('t');
   return {

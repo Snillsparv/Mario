@@ -1,7 +1,11 @@
 // Castle + drawbridge: builds in node, colliders are outward-wound and solid, the bridge is
-// walkable end to end, the entrance steps are walkable and the door is closed.
+// walkable end to end, the entrance steps are walkable and the door is closed. The front door
+// swings (setDoorOpen): shut, its leaves fill the facade's opening; open, they stand turned
+// into the wall on their hinges and the dark passage behind them shows; the collider never
+// changes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as THREE from 'three';
 import * as layout from '../src/world/layout.js';
 import { buildCastle } from '../src/world/castle.js';
 import { CollisionWorld } from '../src/collision/CollisionWorld.js';
@@ -23,6 +27,7 @@ test('castle builds in node with few merged meshes and tagged colliders', () => 
   const meshes = [];
   part.object3D.traverse((n) => n.isMesh && meshes.push(n));
   assert.ok(meshes.length >= 5 && meshes.length <= 12, `mesh count ${meshes.length}`);
+  for (const name of ['castle-door-left', 'castle-door-right', 'castle-doorway']) assert.ok(meshes.some((m) => m.name === name), name);
   for (const m of meshes) {
     assert.ok(m.geometry.attributes.position.count > 0, `${m.name} has vertices`);
     assert.ok(m.geometry.attributes.color, `${m.name} has baked vertex colours`);
@@ -252,4 +257,60 @@ test('flags wave over time', () => {
   const b = flags.geometry.attributes.position.array;
   const moved = a.some((v, i) => Math.abs(v - b[i]) > 1);
   assert.ok(moved, 'flag vertices move');
+});
+
+test('the front door swings: shut, its leaves fill the opening; open, they turn into the wall on their hinges onto the dark passage; the collider never changes', () => {
+  const meshes = [];
+  part.object3D.traverse((n) => n.isMesh && meshes.push(n));
+  const byName = (n) => meshes.find((m) => m.name === n);
+  const left = byName('castle-door-left');
+  const right = byName('castle-door-right');
+  const passage = byName('castle-doorway');
+  const wood = byName('castle-wood');
+  assert.ok(left.material === wood.material && passage.material === wood.material, 'the wood\'s look and storm grade');
+  const colliders = JSON.stringify(part.colliders);
+  // Rays from the porch toward the door at points of its opening (and beside it): what they
+  // hit first among the meshes drawn.
+  const sill = C.baseY + 140;
+  const ray = new THREE.Raycaster();
+  const hit = (x, y) => {
+    part.object3D.updateMatrixWorld(true);
+    ray.set(new THREE.Vector3(C.x + x, sill + y, C.frontZ + 600), new THREE.Vector3(0, 0, -1));
+    const h = ray.intersectObjects(meshes.filter((m) => m.visible), false)[0];
+    return h && { name: h.object.name, z: h.point.z };
+  };
+  const opening = [];
+  for (const x of [-170, -90, -30, 30, 90, 170]) for (const y of [40, 200, 380, 500]) opening.push([x, y]);
+  assert.equal(passage.visible, false, 'no passage drawn while it is shut');
+  for (const [x, y] of opening) {
+    const h = hit(x, y);
+    assert.ok(/^castle-door-/.test(h?.name) && h.z > C.frontZ && h.z < C.frontZ + 14, `shut: ${x},${y} -> ${JSON.stringify(h)}`);
+  }
+  // Beside it and over it, the facade (the hall's wall) is still there.
+  for (const [x, y] of [[-400, 300], [400, 300]]) assert.equal(hit(x, y)?.name, 'castle-wall', `${x},${y}`);
+  part.setDoorOpen(1);
+  assert.equal(passage.visible, true);
+  assert.ok(left.rotation.y > 1.2 && right.rotation.y < -1.2, `turned in: ${left.rotation.y}, ${right.rotation.y}`);
+  for (const [x, y] of opening.filter(([x]) => Math.abs(x) < 100)) {
+    const h = hit(x, y);
+    assert.ok(h?.name === 'castle-doorway' && h.z < C.frontZ - 100, `open: ${x},${y} -> ${JSON.stringify(h)}`);
+  }
+  // Each leaf turned about its hinge, at the opening's side: none of it out of the wall or
+  // past the opening's sides.
+  part.object3D.updateMatrixWorld(true);
+  for (const leaf of [left, right]) {
+    const box = new THREE.Box3().setFromObject(leaf);
+    assert.ok(box.max.z <= C.frontZ + 13 && box.min.z < C.frontZ - 150, `${leaf.name} in the wall: z ${box.min.z.toFixed(0)}..${box.max.z.toFixed(0)}`);
+    assert.ok(box.min.x >= C.x - C.doorWidth / 2 - 1 && box.max.x <= C.x + C.doorWidth / 2 + 1, `${leaf.name} within the opening's sides`);
+  }
+  // On the way the swing eases in and out (smoothstep of t), the leaves turning alike.
+  const full = left.rotation.y;
+  for (const t of [0.25, 0.5, 0.8]) {
+    part.setDoorOpen(t);
+    assert.ok(Math.abs(left.rotation.y - full * t * t * (3 - 2 * t)) < 1e-9 && right.rotation.y === -left.rotation.y, `eased at ${t}: ${left.rotation.y}`);
+    assert.equal(passage.visible, true);
+  }
+  part.setDoorOpen(0);
+  assert.ok(left.rotation.y === 0 && right.rotation.y === 0 && passage.visible === false, 'shut again');
+  assert.equal(JSON.stringify(part.colliders), colliders, 'the collider is the same');
 });

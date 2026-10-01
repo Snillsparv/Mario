@@ -6,6 +6,12 @@
 // lighting baked into vertex colours), plus one animated flag mesh. Colliders are simplified
 // convex solids tagged 'stone' (castle, abutments) and 'wood' (bridge deck, rails, trestles).
 //
+// The front door (castle/building.js door()) swings: its two leaves are meshes of their own
+// ('castle-door-left' / '-right', the wood's material) turning on their hinges into the wall,
+// onto a dark passage ('castle-doorway', drawn only while they stand open), through
+// setDoorOpen(t) (0 shut .. 1 open; core/AreaSwitch.js swings it as Jonas goes in and comes
+// out). The door's collider is solid however the leaves stand.
+//
 // AI RACE mode (setDarkness(t)): every material crossfades to its storm grade (DARK_GRADES,
 // ../terrain/darkGrade.js): dark grey stone, dark crimson roofs, the window panes (the
 // 'darkGlow' vertex attribute) and the rose window glowing a pulsing sick red / magenta, the
@@ -15,7 +21,7 @@
 import * as THREE from 'three';
 import { worldMaterial, bakeLighting } from '../render/materials.js';
 import { GeoBuilder, SolidBuilder } from './castle/geom.js';
-import { buildCastleBody } from './castle/building.js';
+import { buildCastleBody, doorLeaves } from './castle/building.js';
 import { buildBridge } from './castle/bridge.js';
 import { buildFlags } from './castle/flags.js';
 import { buildCircuits } from './castle/circuits.js';
@@ -58,7 +64,8 @@ export const DARK_GRADES = {
 };
 
 export function buildCastle(layout) {
-  const kit = { solids: new SolidBuilder(), flags: [], towers: [] };
+  // (leaves: the front door's two, built apart; passage: the dark way in behind them.)
+  const kit = { solids: new SolidBuilder(), flags: [], towers: [], leaves: null, passage: new GeoBuilder(REPEAT.wood) };
   for (const name of Object.keys(REPEAT)) kit[name] = new GeoBuilder(REPEAT[name]);
 
   buildCastleBody(kit, layout.CASTLE);
@@ -74,6 +81,16 @@ export function buildCastle(layout) {
     mesh.name = `castle-${name}`;
     group.add(mesh);
   }
+  // The front door's leaves swing in on their hinges (setDoorOpen) with the wood's look and storm
+  // grade (its material), opening on the dark passage, which is only drawn while they stand open.
+  const wood = group.getObjectByName('castle-wood').material;
+  const bakeWood = (geo) => bakeLighting(geo, LIGHT.wood);
+  const leaves = doorLeaves(kit.leaves, wood, bakeWood, 'castle-door');
+  for (const mesh of leaves.meshes) group.add(mesh);
+  const passage = new THREE.Mesh(bakeWood(kit.passage.toGeometry()), wood);
+  passage.name = 'castle-doorway';
+  passage.visible = false;
+  group.add(passage);
   const flags = buildFlags(kit.flags, grade.patch(worldMaterial({ map: flagTexture(), side: THREE.DoubleSide }), DARK_GRADES.flags));
   group.add(flags.mesh);
   const C = layout.CASTLE;
@@ -96,6 +113,12 @@ export function buildCastle(layout) {
         glass.darkMul.value.copy(glassMul).multiplyScalar(pulse);
         glass.darkAdd.value.copy(glassAdd).multiplyScalar(pulse);
       }
+    },
+    // The front door, 0 shut .. 1 standing open (core/AreaSwitch.js swings it as Jonas goes in
+    // and comes out; the door's collider stays solid either way).
+    setDoorOpen(t) {
+      leaves.setOpen(t);
+      passage.visible = t > 0;
     },
     // AI RACE mode crossfade: 0 = sunny grounds .. 1 = storm.
     setDarkness(t) {

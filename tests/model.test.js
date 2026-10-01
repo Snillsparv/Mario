@@ -1,5 +1,6 @@
 // Hero model: every AnimName poses without throwing and yields finite transforms, unknown
-// anims fall back to idle, the blob shadow follows the floor, and the budget holds.
+// anims fall back to idle, the blob shadow follows the floor (also with the model scaled down,
+// shrinking into the bottle, in the air), and the budget holds.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PlayerModel } from '../src/player/PlayerModel.js';
@@ -103,6 +104,32 @@ test('shadow hides without a floor and shrinks with height', () => {
   const far = at(1200, 0).scale.x;
   assert.equal(model.shadow.mesh.visible, true);
   assert.ok(far < near);
+});
+
+test('a shrunken hero (into the bottle) keeps his shadow on the floor, also in the air', () => {
+  const model = new PlayerModel();
+  const o = model.object3D;
+  const s = model.shadow.mesh;
+  const p = o.position.clone();
+  // The shadow's world height and its world size for feet at y over a floor at 550.
+  const at = (y, scale) => {
+    o.scale.setScalar(scale);
+    model.update({ pos: { x: 30, y, z: -900 }, yaw: 0.4, anim: 'jump', animTime: 0.2, floorY: 550, floorNormal: { x: 0, y: 1, z: 0 } }, 1 / 60);
+    o.updateMatrixWorld(true);
+    s.getWorldPosition(p);
+    return { y: p.y, x: p.x, z: p.z, size: s.matrixWorld.getMaxScaleOnAxis() };
+  };
+  for (const feet of [550, 608, 810]) {
+    const full = at(feet, 1);
+    for (const scale of [0.61, 0.35]) {
+      const small = at(feet, scale);
+      assert.ok(Math.abs(small.y - 552) < 1e-6, `feet ${feet}, scale ${scale}: shadow at ${small.y}`);
+      assert.ok(Math.abs(small.x - 30) < 1e-6 && Math.abs(small.z + 900) < 1e-6, 'straight under him');
+      // The disc shrinks with him.
+      assert.ok(Math.abs(small.size - full.size * scale) < 1e-6, `feet ${feet}, scale ${scale}: size ${small.size}`);
+    }
+  }
+  o.scale.setScalar(1);
 });
 
 test('invincibility blinks the body, not the shadow', () => {

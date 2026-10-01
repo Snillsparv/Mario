@@ -19,7 +19,14 @@
 // is let go or turned). A small course of our own (a placed star, a star exit, a way out from
 // the pause screen) shows the star exit waiting out the dance and fading to gold-white,
 // leave(), refused requests, and resetCourses() taking the star back; another, whose arrival
-// stands in a door, shows every switch keeping that door quiet (objects.enter). The hall's
+// stands in a door, shows every switch keeping that door quiet (objects.enter). The doors swing
+// as he goes through them, smoothly between ticks (the one he walks into opening as the wipe
+// closes, the one he comes out of standing open at the switch, then shutting behind him once
+// the iris has opened out, meeting as door_close plays; shut again with a warp called off or a
+// switch at once), and his model steps into the opening once the leaves are aside (clear of
+// them; the door stays solid); Jonas shrinks into the bottle (his size again from the switch;
+// his shadow on the landing under a jump), and a course's star lights its lighthouse and the
+// one in the hall's bottle (an area built later comes lit; GAME OVER puts them out). The hall's
 // east doors (not open yet) show their sign, without a laugh or a warp. Midsummer Skerries, the
 // first course: up the stairs into the bottle's neck (its own sound, the iris) he drops in onto
 // the jetty from the sky with the camera behind him and the course's look, and its card shows
@@ -46,6 +53,7 @@ import { CameraController } from '../src/camera/CameraController.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { DOOR } from '../src/objects/Door.js';
 import { AreaSwitch, WARP } from '../src/core/AreaSwitch.js';
+import { PlayerModel } from '../src/player/PlayerModel.js';
 import { readFileSync } from 'node:fs';
 import { AREA_DEFS, HALL_ATMOSPHERE, SKERRIES_ATMOSPHERE } from '../src/world/areas.js';
 import { buildArea, shiftPositions } from '../src/world/area.js';
@@ -497,6 +505,219 @@ test('a warp no longer allowed once the screen is covered (AI RACE came on durin
   assert.deepEqual(worldsIn(g.player, g.cam), [g.level.collision]);
 });
 
+// Jonas standing on the hall's landing in front of the bottle's mouth, facing it.
+const onLanding = (g) => g.place(0, hall.LANDING.top, HALL_Z - 1100, Math.PI);
+
+// The doors' leaves as a frame drawn after each tick shows them (main's draw: areas.update with
+// the frame's alpha, 1 by default): how far the castle door's left leaf and the hall's front
+// door's stand turned, and whether the castle's dark passage shows. full: each one's turn
+// standing open; turn(t): the turn for t (0 shut .. 1 open), eased.
+function doorLeaves(g) {
+  const castle = g.level.parts.find((p) => p.name === 'castle');
+  const castleLeaf = castle.object3D.getObjectByName('castle-door-left');
+  const passage = castle.object3D.getObjectByName('castle-doorway');
+  const hallLeaf = () => g.areas.built.hall?.root.getObjectByName('hall-door-left');
+  castle.setDoorOpen(1);
+  const full = castleLeaf.rotation.y;
+  castle.setDoorOpen(0);
+  const turn = (t) => full * t * t * (3 - 2 * t);
+  const now = (alpha = 1) => {
+    g.areas.update(0, g.cam.camera, alpha);
+    return { castle: castleLeaf.rotation.y, passage: passage.visible, hall: hallLeaf()?.rotation.y ?? 0 };
+  };
+  // Ticks until the transition is over: each tick's phase and the tick into it, area, leaves
+  // (and a frame half way from the tick before: half) and whether door_close has played by then.
+  const through = () => {
+    const seen = [];
+    while (g.areas.phase !== null && seen.length < 60) {
+      g.tick();
+      const half = now(0.5);
+      seen.push({ phase: g.phases.at(-1), t: g.areas.t, area: g.areas.name, half, ...now(), shut: g.log.includes('door_close') });
+    }
+    return seen;
+  };
+  return { full, turn, now, through };
+}
+
+const rising = (list) => list.every((v, i) => i === 0 || v > list[i - 1]);
+const falling = (list) => list.every((v, i) => i === 0 || v < list[i - 1]);
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+
+test('the doors swing as he goes through: the castle door opens as the wipe closes on him and is shut at the switch; the hall\'s stands open then and, once the iris has opened out, shuts behind him as door_close plays; the same the way back out, the castle door shutting behind him in view on the porch; frames between ticks swing them smoothly', () => {
+  const g = game();
+  const leaves = doorLeaves(g);
+  assert.ok(leaves.full > 1.2, `standing open: ${leaves.full}`);
+  g.place(0, 300, -300, Math.PI);
+  assert.deepEqual(leaves.now(), { castle: 0, passage: false, hall: 0 });
+  g.until(() => g.log.includes('warp:hall'), 90, { stickY: 1 });
+  g.log.length = 0;
+  let seen = leaves.through();
+  const at = (phase) => seen.filter((s) => s.phase === phase);
+  // In: the castle door opens over the close, all the way, on its dark passage; a frame half way
+  // between two ticks shows it half way between them (from shut on the first).
+  assert.equal(at('close').length, WARP.CLOSE);
+  assert.ok(rising(at('close').map((s) => s.castle)), JSON.stringify(at('close').map((s) => s.castle)));
+  assert.ok(near(at('close').at(-1).castle, leaves.full));
+  at('close').forEach((s, i) => assert.ok(near(s.half.castle, leaves.turn((i + 0.5) / WARP.CLOSE)), `close tick ${i + 1}: ${s.half.castle}`));
+  assert.ok(at('close').every((s) => s.passage && s.area === 'grounds'));
+  // The switch: the castle door shut (the grounds hidden), the hall's front door open.
+  assert.ok(at('hold').every((s) => s.castle === 0 && !s.passage && s.area === 'hall' && near(s.hall, leaves.full) && near(s.half.hall, leaves.full)), JSON.stringify(at('hold')));
+  // It stands open while the iris is still small on him (SHUT_FROM ticks into the open), then
+  // shuts, meeting on the open's last tick but one as door_close plays, and stays shut.
+  const shutting = (open) => {
+    const span = WARP.OPEN - 1 - WARP.SHUT_FROM;
+    assert.ok(open.slice(0, WARP.SHUT_FROM).every((s) => near(s.leaf, leaves.full) && near(s.halfLeaf, leaves.full)), JSON.stringify(open));
+    const meet = open.findIndex((s) => s.shut);
+    assert.equal(open[meet].t, WARP.OPEN - 1, 'door_close on the open\'s last tick but one');
+    assert.ok(falling(open.slice(WARP.SHUT_FROM - 1, meet + 1).map((s) => s.leaf)));
+    assert.ok(open.slice(meet).every((s) => s.leaf === 0));
+    // Between ticks: half way from the tick before.
+    for (const s of open.slice(WARP.SHUT_FROM, meet + 1)) assert.ok(near(s.halfLeaf, leaves.turn((WARP.OPEN - 1 - s.t + 0.5) / span)), `open tick ${s.t}: ${s.halfLeaf}`);
+    // Half shut by the time the iris has opened over half the screen.
+    const mid = open.find((s) => s.leaf < leaves.full / 2);
+    assert.ok(mid.t > WARP.OPEN / 2, `half shut on open tick ${mid.t}`);
+  };
+  shutting(at('open').map((s) => ({ ...s, leaf: s.hall, halfLeaf: s.half.hall })));
+  assert.equal(count(g.log, 'door_close'), 1);
+  assert.deepEqual(leaves.now(), { castle: 0, passage: false, hall: 0 });
+
+  // Out: the hall's door opens as the wipe closes; on the porch the castle door stands open at
+  // the switch and shuts behind him in view (the camera in front of him, facing it).
+  g.until(() => g.log.includes('warp:grounds'), 200, g.toward(0));
+  g.log.length = 0;
+  seen = leaves.through();
+  assert.ok(rising(at('close').map((s) => s.hall)) && near(at('close').at(-1).hall, leaves.full));
+  at('close').forEach((s, i) => assert.ok(near(s.half.hall, leaves.turn((i + 0.5) / WARP.CLOSE)), `close tick ${i + 1}: ${s.half.hall}`));
+  assert.ok(at('close').every((s) => s.castle === 0 && !s.passage));
+  assert.ok(at('hold').every((s) => s.hall === 0 && near(s.castle, leaves.full) && s.passage && s.area === 'grounds'));
+  shutting(at('open').map((s) => ({ ...s, leaf: s.castle, halfLeaf: s.half.castle })));
+  assert.ok(at('open').every((s) => s.passage === s.castle > 0), 'the passage shows while it stands open');
+  assert.deepEqual(leaves.now(), { castle: 0, passage: false, hall: 0 });
+});
+
+test('a door warp called off shuts the door again with the wipe; a switch at once (enter) shuts a door still swinging; a dive into the bottle swings no door', () => {
+  const g = game();
+  const leaves = doorLeaves(g);
+  g.place(0, 300, -300, Math.PI);
+  g.until(() => g.areas.phase === 'close', 90, { stickY: 1 });
+  g.until(() => false, 6);
+  const half = leaves.now().castle;
+  assert.ok(half > 0.2 && half < leaves.full - 0.2, `opening: ${half}`);
+  g.player.loseHealth(8);
+  const seen = leaves.through();
+  assert.ok(seen.every((s) => s.area === 'grounds'), 'no switch');
+  assert.ok(Math.abs(seen[0].castle - half) < 0.3, `shutting from where it was: ${seen[0].castle} after ${half}`);
+  assert.ok(falling(seen.map((s) => s.castle).filter((v) => v > 0)));
+  assert.deepEqual(leaves.now(), { castle: 0, passage: false, hall: 0 });
+  // Opening, then GAME OVER's switch at once: shut.
+  g.until(() => g.player.action !== 'death' && g.player.action !== 'spawn', 200);
+  g.place(0, 300, -300, Math.PI);
+  g.until(() => g.areas.phase === 'close', 90, { stickY: 1 });
+  g.until(() => false, 6);
+  assert.ok(leaves.now().passage);
+  g.areas.enter('grounds', 'start');
+  assert.deepEqual(leaves.now(), { castle: 0, passage: false, hall: 0 });
+  // The bottle: no door swings.
+  g.areas.enter('hall');
+  onLanding(g);
+  g.until(() => g.areas.phase === 'close', 60, { stickY: 1 });
+  assert.ok(leaves.through().every((s) => s.castle === 0 && s.hall === 0 && !s.passage));
+});
+
+test('walking into a door, once its leaves have swung aside he steps on into its opening as the wipe closes (his model only, clear of the leaves; the door stays solid); a warp called off steps him back out; never at the switch or into the bottle', () => {
+  const g = game();
+  const castle = g.level.parts.find((p) => p.name === 'castle');
+  const leafMeshes = ['castle-door-left', 'castle-door-right'].map((n) => castle.object3D.getObjectByName(n));
+  const ray = new THREE.Raycaster();
+  // His model drawn at the frame `alpha` of the way into the next tick: the leaves as drawn then,
+  // where he is drawn, and whether any leaf cuts his body (a box 90 across and deep round him,
+  // from his knees to his cap: rays from his back to his front).
+  const frame = (alpha) => {
+    g.areas.update(0, g.cam.camera, alpha);
+    const rs = g.player.getRenderState(alpha);
+    const step = g.areas.heroOffset(alpha);
+    const x = rs.pos.x + step.x;
+    const z = rs.pos.z + step.z;
+    castle.object3D.updateMatrixWorld(true);
+    let cut = false;
+    for (const dx of [-45, 0, 45]) {
+      for (const dy of [40, 100, 160]) {
+        ray.set(new THREE.Vector3(x + dx, rs.pos.y + dy, z + 45), new THREE.Vector3(0, 0, -1));
+        ray.far = 90;
+        if (ray.intersectObjects(leafMeshes, false).length) cut = true;
+      }
+    }
+    return { step: -step.z, side: step.x, z, feet: rs.pos.z, cut };
+  };
+  const D = g.level.layout.CASTLE;
+  g.place(0, 300, -300, Math.PI);
+  assert.deepEqual([g.areas.heroOffset(1).x, g.areas.heroOffset(1).z], [0, 0]);
+  g.until(() => g.areas.phase === 'close', 90, { stickY: 1 });
+  const seen = [];
+  while (g.areas.phase === 'close') {
+    g.tick();
+    seen.push({ half: frame(0.5), ...frame(1) });
+  }
+  assert.equal(seen.length, WARP.CLOSE);
+  assert.ok(seen.every((s) => Math.abs(s.side) < 1e-9 && Math.abs(s.half.side) < 1e-9), 'straight in');
+  // Still at first, then in, eased with the wipe, all the way by its end; a frame between two
+  // ticks between them.
+  const still = seen.filter((s) => s.step === 0).length;
+  assert.equal(still, Math.floor(WARP.STEP_AT * WARP.CLOSE), 'standing still until the leaves are aside');
+  assert.ok(rising(seen.slice(still - 1).map((s) => s.step)));
+  assert.ok(near(seen.at(-1).step, WARP.STEP));
+  // (On the first tick he moves the frames between start out still: the step starts in it.)
+  seen.slice(still, -1).forEach((s, i) => {
+    const before = seen[still + i - 1].step;
+    assert.ok((i ? s.half.step > before : s.half.step >= before) && s.half.step < s.step, `close tick ${still + i + 1}: ${s.half.step}`);
+  });
+  // Where he stands, the door stops him (its collider is solid); drawn, he stands in its opening,
+  // in the passage behind its face, never cut by a leaf.
+  const face = D.frontZ + 56; // (the surround's face; the leaves hang in the wall's)
+  assert.ok(seen.every((s) => s.feet > face + 40), `stopped at the door: ${seen.map((s) => s.feet.toFixed(0))}`);
+  assert.ok(seen.at(-1).z < D.frontZ && seen.at(-1).z > D.frontZ - 260 + 45, `in the opening: ${seen.at(-1).z}`);
+  assert.ok(seen.every((s) => !s.cut && !s.half.cut), JSON.stringify(seen.map((s) => [s.step.toFixed(0), s.cut, s.half.cut])));
+  // At the switch: where he stands, through the opening and the walk in.
+  const after = [];
+  while (g.areas.phase !== null) {
+    g.tick();
+    after.push(frame(0.5).step, frame(1).step);
+  }
+  assert.equal(g.areas.name, 'hall');
+  assert.ok(after.every((d) => d === 0));
+  // The inner door, south into the wall: the same, the other way.
+  g.until(() => g.areas.phase === 'close', 200, g.toward(0));
+  g.until(() => g.areas.phase !== 'close', 20);
+  const inner = g.areas.heroOffset(1);
+  assert.ok(Math.abs(inner.x) < 1e-9 && near(inner.z, WARP.STEP), JSON.stringify(inner));
+  g.until(() => g.areas.phase === null, 40);
+  // Called off: he steps back out with the wipe.
+  g.place(0, 300, -300, Math.PI);
+  g.until(() => g.areas.phase === 'close', 90, { stickY: 1 });
+  g.until(() => false, 11);
+  const inStep = frame(1).step;
+  assert.ok(inStep > 20 && inStep < WARP.STEP, `${inStep}`);
+  g.player.loseHealth(8);
+  const back = [];
+  while (g.areas.phase !== null) {
+    g.tick();
+    back.push(frame(1));
+  }
+  assert.equal(g.areas.name, 'grounds', 'no switch');
+  assert.ok(Math.abs(back[0].step - inStep) < 15 && falling(back.map((s) => s.step).filter((d) => d > 0)) && back.at(-1).step === 0, JSON.stringify(back.map((s) => s.step)));
+  assert.ok(back.every((s) => !s.cut));
+  // Into the bottle: no step.
+  g.until(() => g.player.action !== 'death' && g.player.action !== 'spawn', 200);
+  g.areas.enter('hall');
+  onLanding(g);
+  g.until(() => g.areas.phase === 'close', 60, { stickY: 1 });
+  while (g.areas.phase !== null) {
+    g.tick();
+    const o = g.areas.heroOffset(0.5);
+    assert.ok(o.x === 0 && o.z === 0);
+  }
+});
+
 test('a stick held through the inner door walks him on out across the camera cut, not back in; let go (or turned) it is the new camera\'s', () => {
   const g = game();
   g.areas.enter('hall', 'front');
@@ -745,9 +966,6 @@ test('every switch makes the new area\'s objects forget his last tick and keeps 
 
 // ---------------------------------------------------------------- Midsummer Skerries
 
-// Jonas standing on the hall's landing in front of the bottle's mouth, facing it.
-const onLanding = (g) => g.place(0, hall.LANDING.top, HALL_Z - 1100, Math.PI);
-
 test("into the bottle's neck: its own sound and the iris, then Midsummer Skerries: he drops in onto the jetty with the camera behind him, the course's look and sky, its card on the first entry of a game", () => {
   const g = game();
   g.areas.enter('hall');
@@ -864,6 +1082,140 @@ test("the course's star on the lighthouse gallery: the exit waits out his dance 
   assert.equal(g.areas.phase, null);
 });
 
+test('into the bottle he shrinks as the wipe closes on him, to WARP.SHRINK, and is his own size again from the switch; a dive called off grows him back with the wipe; a door never shrinks him', () => {
+  const g = game();
+  g.areas.enter('hall');
+  onLanding(g);
+  assert.equal(g.areas.heroScale(1), 1);
+  g.until(() => g.areas.phase === 'close', 60, { stickY: 1 });
+  assert.equal(g.areas.heroScale(1), 1, 'the wipe not started yet');
+  // After each tick of the close, and as a frame drawn half way from the tick before shows it.
+  const after = [];
+  const between = [];
+  while (g.areas.phase === 'close') {
+    g.tick();
+    after.push(g.areas.heroScale(1));
+    between.push(g.areas.heroScale(0.5));
+  }
+  assert.equal(after.length, WARP.CLOSE);
+  assert.ok(falling([1, ...after]), JSON.stringify(after));
+  assert.ok(Math.abs(after.at(-1) - WARP.SHRINK) < 1e-9, `${after.at(-1)}`);
+  // Between two ticks, between their sizes (covered once the close is over: the last frames
+  // already show him at SHRINK).
+  between.forEach((b, i) => {
+    if (i === between.length - 1) assert.equal(b, after[i]);
+    else assert.ok(b < (i ? after[i - 1] : 1) && b > after[i], `between ticks ${i}: ${b} (${i ? after[i - 1] : 1} .. ${after[i]})`);
+  });
+  // The switch: his size again, all the way through the opening.
+  const rest = [];
+  while (g.areas.phase !== null) {
+    g.tick();
+    rest.push(g.areas.heroScale(0.5));
+  }
+  assert.equal(g.areas.name, 'skerries');
+  assert.ok(rest.every((k) => k === 1), JSON.stringify(rest));
+  // Called off: he grows back with the wipe.
+  g.areas.enter('hall');
+  onLanding(g);
+  g.until(() => g.areas.phase === 'close', 60, { stickY: 1 });
+  g.until(() => false, 7);
+  const small = g.areas.heroScale(1);
+  assert.ok(small < 0.9 && small > WARP.SHRINK, `${small}`);
+  g.player.loseHealth(8);
+  const back = [];
+  while (g.areas.phase !== null) {
+    g.tick();
+    back.push(g.areas.heroScale(1));
+  }
+  assert.equal(g.areas.name, 'hall', 'no switch');
+  assert.ok(Math.abs(back[0] - small) < 0.15 && rising(back.filter((k) => k < 1)) && back.at(-1) === 1, JSON.stringify(back));
+  // Through a door: his own size throughout.
+  g.areas.enter('grounds', 'start');
+  g.place(0, 300, -300, Math.PI);
+  g.until(() => g.areas.phase === 'close', 90, { stickY: 1 });
+  const door = [];
+  while (g.areas.phase !== null) {
+    g.tick();
+    door.push(g.areas.heroScale(0.5));
+  }
+  assert.equal(g.areas.name, 'hall');
+  assert.ok(door.every((k) => k === 1));
+});
+
+test('a jump into the bottle\'s mouth: shrinking in the air, his model\'s shadow stays on the landing (the model scaled as main does)', () => {
+  const g = game();
+  const model = new PlayerModel();
+  const o = model.object3D;
+  const shadow = model.shadow.mesh;
+  const at = new THREE.Vector3();
+  let airborne = 0;
+  // Running at the mouth, jumping this far short of it.
+  for (const short of [1130, 1160, 1190]) {
+    g.areas.enter('hall');
+    g.place(0, hall.LANDING.top, HALL_Z - 1100, Math.PI);
+    let jumped = false;
+    g.until(() => g.areas.phase !== null, 60, () => {
+      const go = g.player.pos.z < HALL_Z - short && !jumped;
+      if (go) jumped = true;
+      return { stickY: 1, A: go };
+    });
+    assert.equal(g.areas.warp?.kind, 'bottle', `jumping ${short} short`);
+    while (g.areas.phase === 'close') {
+      g.tick();
+      for (const alpha of [0.5, 1]) {
+        o.scale.setScalar(g.areas.heroScale(alpha));
+        const rs = g.player.getRenderState(alpha);
+        model.update(rs, 1 / 60);
+        o.updateMatrixWorld(true);
+        shadow.getWorldPosition(at);
+        if (rs.pos.y - rs.floorY > 20 && o.scale.y < 0.95) airborne++;
+        assert.equal(shadow.visible, true);
+        assert.ok(Math.abs(at.y - (rs.floorY + 2)) < 1e-6, `jumping ${short} short, at ${o.scale.y.toFixed(2)} his size, feet ${rs.pos.y.toFixed(0)}: shadow at ${at.y} over the floor at ${rs.floorY}`);
+      }
+    }
+  }
+  assert.ok(airborne > 4, `${airborne} frames shrinking in the air`);
+});
+
+test("the course's star lights its lighthouse at once, and the little one in the hall's bottle (a hall built after it comes lit); GAME OVER's resetCourses puts both out; Rustmaw's star or another area's lights nothing", () => {
+  const take = (g) => {
+    g.player.teleport(sk.STAR.x + SK.x, sk.LIGHTHOUSE.gallery + SK.y, sk.STAR.z + SK.z, Math.PI);
+    g.player.setAction('idle');
+    g.tick();
+    assert.equal(g.player.stars, 1);
+  };
+  let g = game();
+  g.areas.enter('hall');
+  const hallLamp = g.areas.current.root.getObjectByName('hall-lamp');
+  g.areas.enter('skerries');
+  g.until(() => g.player.grounded, 80);
+  const course = g.areas.current;
+  const lighthouse = course.parts.find((p) => p.name === 'skerries');
+  assert.deepEqual([lighthouse.lit, hallLamp.visible], [false, false]);
+  // Not by a boss's star, nor by one of another area.
+  g.events.emit('starCollected', { pos: { x: 0, y: 0, z: 0 }, boss: true });
+  g.events.emit('starCollected', { pos: { x: 0, y: 0, z: 0 }, id: null, area: 'grounds' });
+  assert.deepEqual([lighthouse.lit, hallLamp.visible, g.areas.won.size], [false, false, 0]);
+  take(g);
+  assert.deepEqual([lighthouse.lit, hallLamp.visible], [true, true], 'both lit as the star is taken');
+  assert.deepEqual([...g.areas.won], ['skerries']);
+  // Lit for the rest of the game, through the exit and back.
+  g.until(() => g.areas.phase === null && g.areas.name === 'hall', 400);
+  g.areas.enter('skerries');
+  assert.deepEqual([lighthouse.lit, hallLamp.visible], [true, true]);
+  // GAME OVER: both out.
+  g.areas.enter('grounds', 'start');
+  g.areas.resetCourses();
+  assert.deepEqual([lighthouse.lit, hallLamp.visible, g.areas.won.size], [false, false, 0]);
+  // Won before the hall was ever built: the hall comes with its lamp lit.
+  g = game();
+  g.areas.enter('skerries');
+  g.until(() => g.player.grounded, 80);
+  take(g);
+  assert.equal(g.areas.built.hall, undefined);
+  assert.equal(g.areas.get('hall').root.getObjectByName('hall-lamp').visible, true);
+});
+
 test("leave(), the pause screen's way out: back out of the bottle onto the hall's landing (an iris, the pop); open while he reads a sign (it closes), not while he drops in or dies", () => {
   const g = game();
   g.areas.enter('skerries');
@@ -952,7 +1304,7 @@ test("GAME OVER from the course: main brings the grounds back before the resets 
   const order = ["areas.enter('grounds', 'start')", 'areas.resetCourses()', 'objects.reset()', 'meltdown.reset()', 'player.coins = 0', 'await runTitle()'].map((x) => body.indexOf(x));
   assert.ok(order.every((i) => i >= 0), JSON.stringify(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
-  // The flow: a coin and the star taken, the lamp lit, then GAME OVER's two calls.
+  // The flow: a coin and the star taken (it lights the lamp), then GAME OVER's two calls.
   const g = game();
   g.areas.enter('skerries');
   const course = g.areas.current;
@@ -966,7 +1318,7 @@ test("GAME OVER from the course: main brings the grounds back before the resets 
   g.player.setAction('idle');
   g.tick();
   assert.equal(g.player.stars, 1);
-  lighthouse.setLit(true);
+  assert.equal(lighthouse.lit, true, 'the star lit the lamp');
   g.areas.enter('grounds', 'start');
   g.areas.resetCourses();
   assert.equal(g.areas.name, 'grounds');

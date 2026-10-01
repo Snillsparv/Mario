@@ -112,11 +112,14 @@ tick (30 Hz, only in 'play'):
   audio.setListener(cam.camera.position, cam.getYaw())
 render (rAF):
   input.sample()                          (latches gamepad flicks between ticks)
+  model.object3D.scale = areas.heroScale(alpha)   (1, but as he shrinks into the bottle's neck)
   rs = player.getRenderState(alpha); model.update(rs, paused ? 0 : dt)
+  model.object3D.position += areas.heroOffset(alpha)   (0, but as he steps into a door's opening)
   model.object3D.visible = play && !dropHold && !cam.hideHero
-  cam.apply(alpha); areas.update(state.time, threeCamera)   (the current area's parts: level.update
-  on the grounds); areas.objects.animate(state.time, alpha, threeCamera)
-  audio.update(dt); wipe.draw(areas.wipe(alpha), hero feet, threeCamera); view.render()
+  cam.apply(alpha); areas.update(state.time, threeCamera, alpha)   (the current area's parts:
+  level.update on the grounds; a door swinging through a warp); areas.objects.animate(state.time,
+  alpha, threeCamera)
+  audio.update(dt); wipe.draw(areas.wipe(alpha), hero feet, threeCamera, his scale); view.render()
 ```
 
 While paused (or on the game-over card) `alpha` is held and `state.time` does not advance,
@@ -229,6 +232,10 @@ Each builder is `build*(layout) -> WorldPart`:
   colliders: [{ object3D?, positions?, surface?, terrain? }],
   poles?: [{ x, z, y0, y1, radius }],          // climbable tree trunks
   update?(timeSeconds, threeCamera),           // per render frame (scrolling water, billboards)
+  setDoorOpen?(t),                             // its swinging door, 0 shut .. 1 open (the castle's
+                                               // front door, its inside in the hall: "Areas")
+  setLit?(on),                                 // its lamp (a course's lighthouse, the one in the
+                                               // hall's bottle): lit once the course's star is won
 }
 ```
 
@@ -308,10 +315,14 @@ while he is in it, so hidden areas cost no draw calls, and only the current area
                                        // [{ x, y, z }], gulls [{ x, y, z, radius }], seaLevel)
   leave: null, starExit: null,         // { to, entry }: the pause screen's way out, the star's
   card,                                // a course: its name as a title card on its first entry
+  lamp: 'skerries',                    // the course whose star, once won, lights this area's lamp
+                                       // too (the lighthouse in the bottle; a course's own star
+                                       // lights its own)
 }
 groundsArea(level, objects) -> Area    // the grounds as an Area: entries 'start' (the spawn) and
                                        // 'porch' (174 in front of the door face, facing out, camYaw 0,
-                                       // walkIn 8); setVisible toggles every part but the sky
+                                       // walkIn 8); setVisible toggles every part but the sky;
+                                       // setDoorOpen swings the castle part's front door
 buildArea(scene, def) -> Area          // world/area.js; shiftPositions(positions, origin);
                                        // worldAudio(def.audio, origin) (Area.audio)
 ```
@@ -321,7 +332,8 @@ the origin, hidden), and fills a new CollisionWorld with every collider's `posit
 pole shifted by the origin (an `{ object3D }` collider is refused: it would stay where the
 builder left it), with the water from `def.waterLevelAt` shifted likewise. The Area is `{ name,
 def, root, collision, parts, entries, audio, respawn, signs, groundAt, objectsLayout, waterFn,
-objects, update(time, camera), reset(), setVisible(on) }`, everything in world coordinates
+objects, update(time, camera), reset(), setVisible(on), setDoorOpen(t), setLit(on) }` (the last
+two hand on to its parts' own, see "World parts"), everything in world coordinates
 (`audio`: `def.audio` with its sound spots shifted and its `seaLevel` raised by the origin,
 plus `isWater(x, z)`, whether there is open water there (the water's surface above the floor,
 so not on a rock, the jetty or a beach above the waterline: the sea's laps); the grounds' is
@@ -362,11 +374,16 @@ areas.step(controller) -> controller   // 30 Hz, in play after the dialog block 
 areas.wipe(alpha) -> { amount, kind, color }            // for ui/ScreenWipe.js
 areas.leave(); areas.canLeave() // def.leave: the pause screen's way out of a course, and
                                 // whether it can be taken now (main offers it only then)
-areas.onStar(e)                 // 'starCollected' of the current area (def.starExit)
-areas.resetCourses()            // GAME OVER: every built area's reset() and objects.reset(); the
-                                // course cards show again
-areas.update(time, camera)      // per frame: the current area (and the sky where def.sky)
-areas.busy, .name, .current, .objects, .phase, .warp, .buildMs[name], .carry, .still
+areas.onStar(e)                 // 'starCollected' of the current area: its lamps (below), and
+                                // def.starExit
+areas.resetCourses()            // GAME OVER: every built area's reset() and objects.reset(), its
+                                // lamps out; the course cards show again
+areas.update(time, camera, alpha)   // per frame: the current area (and the sky where def.sky), and
+                                // a door swinging (drawn alpha of the way into the next tick)
+areas.heroScale(alpha) -> scale // per frame: Jonas's size (1, but diving into the bottle)
+areas.heroOffset(alpha) -> { x, z }   // per frame: his model off where he stands (0, but
+                                // stepping into a door's opening); reused
+areas.busy, .name, .current, .objects, .phase, .warp, .buildMs[name], .carry, .still, .won
 ```
 
 **The switch** (`_swap`, the one place that points the game at another area), in this order:
@@ -388,9 +405,9 @@ them, START is ignored while `busy`):
 
 | Phase | Ticks | Stick | Wipe |
 |---|---|---|---|
-| `close` | 14 (the star exit 18) | through a door, pushing on toward it (world yaw = the door's yaw + π); else neutral. A camera still between him and the door (he backed into it) cuts to the room side behind him as the door opens (`cam.reset(player, { yaw: door.yaw })`), so the wipe closes on him at the door, not on his cap | 0 → 1 |
-| `hold` | 4 | neutral; the **first** tick switches (building a new area there, behind the covered frame) | 1 |
-| `open` | 14 | with `entry.walkIn: n`, walking on along `entry.yaw` for n ticks (then `sfx door_close` after a door); then his own (carried or held still, below). An entry with `sfx` plays it as this phase starts (popping out of the bottle: `bottle_pop`; the listener is there by then) | 1 → 0 |
+| `close` | 14 (the star exit 18) | through a door, pushing on toward it (world yaw = the door's yaw + π) as its leaves swing open, his model stepping on into the opening once they are aside; into the bottle, shrinking; else neutral. A camera still between him and the door (he backed into it) cuts to the room side behind him as the door opens (`cam.reset(player, { yaw: door.yaw })`), so the wipe closes on him at the door, not on his cap | 0 → 1 |
+| `hold` | 4 | neutral; the **first** tick switches (building a new area there, behind the covered frame): the door he went through shuts, the one he comes out of stands open, he is his own size again | 1 |
+| `open` | 14 | with `entry.walkIn: n`, walking on along `entry.yaw` for n ticks; then his own. The door behind him (after a door) stands open for the first `WARP.SHUT_FROM` (4) ticks, then shuts, its leaves meeting on tick 13 as `sfx door_close` plays (carried or held still, below). An entry with `sfx` plays it as this phase starts (popping out of the bottle: `bottle_pop`; the listener is there by then) | 1 → 0 |
 
 The scripted stick for world yaw W is `a = wrap(cameraYaw − W)`, `(sin a, cos a)` (the inverse of
 `stickToWorldYaw`), in one reused controller. **A stick held through a door is carried** across
@@ -430,14 +447,41 @@ the read) and requests `def.leave`. Main offers the way out (the pause screen's 
 B kept bright) only while `canLeave()` holds as the game pauses, so the line and the button
 always agree (nothing changes while paused).
 
+**Doors swing, Jonas shrinks.** Through a door (`kind 'door'`) its two leaves swing
+(`Area.setDoorOpen(t)`, 0 shut .. 1 open, eased by the part; each area has one swinging door: the
+castle's front door on the grounds, its inside in the hall, `castle/building.js` `door()` with a
+passage, see "Castle door"): the door he walks into opens from shut as the wipe closes (`t /
+closeTicks`) and, if the warp is called off, shuts again with the wipe. Its collider stays solid,
+so where he stands he stops at the surround's face, about 106 short of the leaves; once they have
+swung aside (`WARP.STEP_AT`, 0.4 of the close) his model steps on into the opening as the iris
+closes on him (`heroOffset`: up to `WARP.STEP`, 120, eased, along the door's way in; main moves
+the model by it after posing it, so the iris follows him), and back out with a warp called off.
+At the switch that door shuts (its area is hidden now) and the door he comes out of stands open;
+it stays open while the iris is still small on him (`WARP.SHUT_FROM`, 4 ticks into the open),
+then shuts behind him in view as the picture opens out, its leaves meeting on the open's last tick
+but one as `door_close` plays (on the porch the camera faces it; in the hall it is behind the
+camera, heard only). Into the bottle (`kind 'bottle'`) Jonas shrinks to `WARP.SHRINK` (0.35) of
+his size as the wipe closes on him (`heroScale`, eased; main scales his model by it about his
+feet, the shadow staying on the floor), and is his own size again from the switch (or grows back
+with the wipe if the dive is called off). All of it is worked out per tick (`_swing`) and drawn
+between ticks by `alpha`; a switch at once (`enter()`) shuts a door still swinging. Nothing is
+allocated per tick or frame (`tests/objects-door.test.js` guards the source).
+
+**Lamps.** A course's own star, the moment it is won (`onStar`), lights its lamp (`Area.setLit`:
+Midsummer Skerries' lighthouse, its lamp glowing and its beams sweeping round) and that of every
+area whose `def.lamp` names the course (the hall: the little lighthouse in the bottle, its lamp
+glowing deep gold and two little beams sweeping round inside the glass), for the
+rest of the game (`.won`, the courses won; an area built later comes lit). Rustmaw's star and a
+star of another area light nothing. `resetCourses()` (GAME OVER) puts them all out.
+
 **The wipe** (`src/ui/ScreenWipe.js`): `new ScreenWipe(uiRoot)` before the HUD (its canvas lies
 under the HUD's counters and pause screen); main calls `wipe.draw(areas.wipe(alpha),
-model.object3D.position, camera)` every frame before `view.render()` (so the recorder's
-composite has it). A black circle iris centred on Jonas's chest (100 above his feet, projected
-with the world camera; off screen or behind it: the middle), from the farthest corner at 0 to
-nothing at 1, drawn at the HUD's logical resolution (240 lines, `image-rendering: pixelated`)
-as two solid spans per row, so its edge steps like the pixel art; `'fade'` fills with the
-colour at `amount` opacity; `display: none` at 0.
+model.object3D.position, camera, model.object3D.scale.y)` every frame before `view.render()` (so
+the recorder's composite has it). A black circle iris centred on Jonas's chest (100 above his
+feet, times his scale, projected with the world camera; off screen or behind it: the middle),
+from the farthest corner at 0 to nothing at 1, drawn at the HUD's logical resolution (240 lines,
+`image-rendering: pixelated`) as two solid spans per row, so its edge steps like the pixel art;
+`'fade'` fills with the colour at `amount` opacity; `display: none` at 0.
 
 **AI RACE stays on the grounds.** Its button and beast are the grounds' objects; the castle door
 is sealed while `modeOn || darkT > 0` (ObjectManager passes it to every door: the laugh and the
@@ -457,44 +501,69 @@ tick: the walk in, the phases and the stick each gives, the graph walk that find
 collision world on Jonas or the camera, the arrival framing, the way back (and the approach cut
 when he walks toward the camera into the inner door: never close over him, one cut, walked on
 into the door and out on the porch; none at a locked door or with the camera already behind
-him), the stick held through the inner door carried out across the
-porch until let go or turned, AI RACE's seal, refusals (also once the screen is covered), a
-death mid-close, GAME OVER's return, a test course's star exit, leave and resetCourses, one
-whose arrival stands in a door: objects.enter on every switch; and Midsummer Skerries: into the
-bottle's neck (its sound, the iris) to the drop-in onto the jetty with the camera behind him,
-the course's look and sky, its card once a game; the real star's exit back out of the bottle
-onto the hall's landing exactly 20 ticks after the dance, one star up, popping out with
-`bottle_pop` as the fade opens, a stick held on from the course waiting to be let go and a
-fresh push then walking him straight back into the armed bottle, the star staying taken; the
-pause screen's leave (open while he reads a sign, which it closes; not while he drops in or
-dies; main's pause toggle and paused branch in order); a life lost there; GAME OVER from it
-(main's order, the star, the coins and the lamp back));
-`tests/areas-browser.test.js` (E2E=1: the iris over the picture and under the HUD, setDark
-ignored mid-warp and in the hall, the hall's picture and draw calls (also from the landing), the
-hall's textures at most 128 px, the pause course name, the way out, `?area=hall`, forward held
-through the inner door; `?area=skerries`: the drop-in (paused then, no way out offered and B
-does nothing), the card, the sky, its draw calls, build time and textures, the star's exit into
-the hall, paused while reading the welcome sign the way out offered (the touch B kept bright)
-and B closing the sign and leaving, GAME OVER there back to the grounds' title);
+him), the stick held through the inner door carried out across the porch until let go or turned,
+AI RACE's seal, refusals (also once the screen is covered), a death mid-close, GAME OVER's
+return, a test course's star exit, leave and resetCourses, one whose arrival stands in a door:
+objects.enter on every switch; the doors swinging as a frame after each tick draws them, and
+one half way between ticks (the castle door opening over the close from shut, eased, to standing
+open, shut at the switch; the hall's open then, still open `SHUT_FROM` ticks into the open, then
+shutting, meeting on the open's tick 13 as `door_close` plays; the same way back out, the castle
+door shutting behind him on the porch; a warp called off shutting it with the wipe, `enter()`
+shutting one mid-swing, none for the bottle); his step into the door (none until the leaves are
+aside, then eased in to `STEP` with the frames between ticks between, straight in, the door's
+collider still stopping him while his model stands in the opening, no leaf ever cutting his body;
+back out with a warp called off; none at the switch, into the inner door the other way, none into
+the bottle); Jonas shrinking into the bottle (falling every tick to `SHRINK`, the frames between
+ticks strictly between them, his size again from the switch, growing back with a dive called off,
+never through a door; jumping at the mouth, the real model's shadow staying on the landing as he
+shrinks in the air); the lamps (the course's star
+lighting its lighthouse and the hall's at once, an area built later coming lit, GAME OVER
+putting them out, nothing lit by Rustmaw's star or another area's); and Midsummer Skerries: into
+the bottle's neck (its sound, the iris) to the drop-in onto the jetty with the camera behind
+him, the course's look and sky, its card once a game; the real star's exit back out of the
+bottle onto the hall's landing exactly 20 ticks after the dance, one star up, popping out with
+`bottle_pop` as the fade opens, a stick held on from the course waiting to be let go and a fresh
+push then walking him straight back into the armed bottle, the star staying taken; the pause
+screen's leave (open while he reads a sign, which it closes; not while he drops in or dies;
+main's pause toggle and paused branch in order); a life lost there; GAME OVER from it (main's
+order, the star, the coins and the lamp back)); `tests/areas-browser.test.js` (E2E=1: the iris
+over the picture and under the HUD, setDark ignored mid-warp and in the hall, the hall's picture
+and draw calls (also from the landing), the hall's textures at most 128 px, the pause course
+name, the way out; the full walk: in through the castle door (its leaves swinging in onto the
+passage, his model stepping into the opening), north up the hall into the bottle (Jonas
+shrinking, the iris centred on his chest as it comes down), the course, out of it from the
+pause screen, south down the hall and out of the inner door (the castle door standing open, then
+shut behind him), no page errors; `?area=hall`, forward held through the inner door;
+`?area=skerries`: the drop-in (paused then, no way out offered and B does nothing), the card,
+the sky, its draw calls, build time and textures, the star's exit into the hall with both lamps
+lit (out again after GAME OVER), paused while reading the welcome sign the way out offered (the
+touch B kept bright) and B closing the sign and leaving, GAME OVER there back to the grounds'
+title); `tests/castle.test.js` (the front door shut fills its opening, open its leaves stand
+turned into the wall within the opening's sides onto the passage, on the way eased, the collider
+unchanged);
 `tests/ui-touch.test.js` (E2E=1: in a course on a landscape phone, paused, B stays bright over
 the faded overlays and a tap on it leaves); `tests/skerries.test.js` and
-`tests/skerries-routes.test.js` (see "Midsummer
-Skerries"); `tests/hall.test.js` (node, the hall as `buildArea` places it with the
-real Player, camera and objects: the budgets (the hall's own objects at most 8 meshes too), a
-closed room (sampled with 12 seeds, outside the furniture), no floor under less than `HEADROOM`,
-spam runs that never leave it, the entries' footing and framing, walks round the bottle's end
-and into its flanks that never trap the camera, C-button swings by the bottle and the furniture
-that never take it into a solid, the routes (stairs, cork, books, wall kicks up the slot with
-its coins, the banner pole onto the buttress for aims up to 15° off, staying up there, the hop
-onto the mantel to the 1-up), signs read from the front only, every coin over a floor, the
-doors' triggers on their faces, the glass and its rim, the flicker (its shader hook too) and the
-lamp). `tests/ui.test.js` checks the pause screen draws the HUD's course name and the leave line
-only while the HUD offers it (`setLeave`; a switch takes it away; in the legend's bindings,
-between PAUSE and the panel at every screen size), and the course card (its ticks, its slide,
-waiting while paused, exactly double size on the 320-wide screen); `tests/ui-dialog.test.js` that
-every hall and course sign and door page draws in the dialog font, fits one screen of the box
-and is its own (no trademark), and that "AI RACE" never wraps apart. `tests/areas.test.js` also
-walks Jonas up to the hall's east doors: their sign, no laugh, no warp.
+`tests/skerries-routes.test.js` (see "Midsummer Skerries"); `tests/hall.test.js` (node, the hall
+as `buildArea` places it with the real Player, camera and objects: the budgets (the hall's own
+objects at most 8 meshes too), a closed room (sampled with 12 seeds, outside the furniture), no
+floor under less than `HEADROOM`, spam runs that never leave it, the entries' footing and
+framing, walks round the bottle's end and into its flanks that never trap the camera, C-button
+swings by the bottle and the furniture that never take it into a solid, the routes (stairs,
+cork, books, wall kicks up the slot with its coins, the banner pole onto the buttress for aims
+up to 15° off, staying up there, the hop onto the mantel to the 1-up), signs read from the front
+only, every coin over a floor, the doors' triggers on their faces, the glass and its rim, the
+flicker (its shader hook too), the lamp (lit: a deep gold far from the wall's cream, its beams
+turning round inside the glass, drawn before it), the front door's leaves filling its opening
+shut and swinging aside onto the passage, eased). `tests/ui.test.js` checks the pause screen draws the HUD's
+course name and the leave line only while the HUD offers it (`setLeave`; a switch takes it away;
+in the legend's bindings, between PAUSE and the panel at every screen size), and the course card
+(its ticks, its slide, waiting while paused, exactly double size on the 320-wide screen);
+`tests/ui-wipe.test.js` (node, a stand-in canvas) that the iris is a hole round his chest as the
+camera sees it, smaller the further it closes, lower with his size (into the bottle), centred
+for a hero behind the camera, and the fade even; `tests/ui-dialog.test.js` that every hall and course sign and door page draws in the dialog
+font, fits one screen of the box and is its own (no trademark), and that "AI RACE" never wraps
+apart. `tests/areas.test.js` also walks Jonas up to the hall's east doors: their sign, no laugh,
+no warp.
 
 ### The Great Hall (`src/world/hall/*`)
 
@@ -525,9 +594,13 @@ of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and t
   truss (principal rafters, struts) to the ridge at 3800, a ridge beam and a purlin down each
   slope, plaster panels under the slopes, the end walls rising into gables.
 * **South wall**: the inside of the castle's front door (`castle/building.js` `door()`; its
-  collider puts the face at z 2944) under the stained-glass rose window (`castle/parts.js`
-  `roundWindow`, the castle's rose texture, full-bright), two crimson-and-gold banners (the
-  castle's golden sun) at x ±700 from 2400 down to 1200, pleated, cut to a point.
+  collider puts the face at z 2944), its two leaves swinging into the wall on their hinges
+  (`setDoorOpen(t)`, as Jonas goes out through it and comes in, see "Areas and transitions")
+  through the opening `shell()` leaves in the wall's faces, onto a dark passage drawn in with
+  the wood (behind the shut leaves it never shows), under the stained-glass rose window
+  (`castle/parts.js` `roundWindow`, the castle's rose texture, full-bright), two
+  crimson-and-gold banners (the castle's golden sun) at x ±700 from 2400 down to 1200, pleated,
+  cut to a point.
 * **Windows**: two tall arched windows in each side wall (z 1900, 700) and two in the north wall
   (x ±1500): `castle/parts.js` `archWindow`, 320 × 1000 from a 600 sill, panes glowing pale gold
   behind iron bars.
@@ -557,38 +630,47 @@ of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and t
   runs its length from its end to the landing, rising round the glass to 45° either side of
   straight down (its half-width follows the glass: 368 under the body, narrowing under the
   shoulder to 170 under the neck; a lighter rail along its top), with two lighter carved
-  **cradles** across it (z −3600 and −2600, tops 420, level with the putty sea) whose cheeks rise
-  round the glass from there into its widest band (to 640, their outer sides sloping in from
-  650 to 580). So no spot under the glass is lower than `HEADROOM` (400) under it: beside the
-  stand the glass is 440 or more over the floor, the stand's own top lies inside the glass (its
-  colliders flat-topped boxes; at worst a sliver under it, far too low to stand in), and no
+  **cradles** across it (z −3600 and −2600, tops 420, level with the putty sea) whose cheeks
+  rise round the glass from there into its widest band (to 640, their outer sides sloping in
+  from 650 to 580). So no spot under the glass is lower than `HEADROOM` (400) under it: beside
+  the stand the glass is 440 or more over the floor, the stand's own top lies inside the glass
+  (its colliders flat-topped boxes; at worst a sliver under it, far too low to stand in), and no
   cradle leaves a ledge under it. Inside, a putty sea (420) with a model of the first course:
   pink granite islets, a red cottage on the green home island, a boat with a red sail and a
   white jib, a white lighthouse with a red band whose lamp is the `hall-lamp` mesh, hidden until
-  that course's star is won. The **landing** (wood, x ±450, z −1400 … −900, top 550: the neck's
-  inner floor) at its mouth; the **stairs** up to it a smooth ramp collider (`not_slippery`,
-  28.8°, from z 100) under 11 drawn steps (each tread's middle on the ramp; dark risers, light
-  treads) between two dark stringers 40 wide, their tops along the ramp (the collider runs on
-  under them); a giant **cork** (octagonal, r 190 at its foot narrowing to 160 at its top, 380,
-  90 from the landing; a darker ring round its foot) and three giant **books** stacked like
-  stairs against the landing's west side (tops 150, 300, 450).
+  that course's star is won (`setLit(on)`; `AREA_DEFS.hall.lamp` names the course, and
+  AreaSwitch lights it with the course's own lighthouse): a deep gold lamp (`0xffa828`) swelling
+  out of the dark lantern, so it stands out from the cream wall behind the glass, and two hazy
+  beams like the course's (a horizontal and a vertical fan each, 380 long, fading out) turning
+  round it at the course's 0.55 rad/s, inside the glass whichever way they point. The **landing** (wood, x ±450, z −1400
+  … −900, top 550: the neck's inner floor) at its mouth; the **stairs** up to it a smooth ramp
+  collider (`not_slippery`, 28.8°, from z 100) under 11 drawn steps (each tread's middle on the
+  ramp; dark risers, light treads) between two dark stringers 40 wide, their tops along the ramp
+  (the collider runs on under them); a giant **cork** (octagonal, r 190 at its foot narrowing to
+  160 at its top, 380, 90 from the landing; a darker ring round its foot) and three giant
+  **books** stacked like stairs against the landing's west side (tops 150, 300, 450).
 * **Two candle rings** (iron, r 380, 8 candles each, at 2050) hang on chains from the tie beams
   over (0, 1500) and (0, −300).
-* **Meshes** (10): `hall-floor` (flagstones on a 200 grid), `hall-wall` (plaster), `hall-trim`
-  (stone), `hall-wood` (oak and iron), `hall-paint` (untextured vertex colours: the model, the
-  crest, plaques, chart, candles, cork and books), `hall-glow` (full-bright: the rose window's
+* **Meshes** (12): `hall-floor` (flagstones on a 200 grid), `hall-wall` (plaster), `hall-trim`
+  (stone), `hall-wood` (oak and iron; the front door's passage), `hall-door-left` and
+  `hall-door-right` (the front door's leaves, the wood's material, each turning about its
+  hinge), `hall-paint` (untextured vertex colours: the model, the crest, plaques, chart, candles,
+  cork and books), `hall-glow` (full-bright: the rose window's
   glass from the rose texture, and the window panes, embers and flames, which all sample the rose
   texture's pale gold middle), `hall-cloth` (the banners), `hall-bottle` (the glass: one
   transparent surface, front faces only, no depth write, a highlight stripe in its vertex
   colours; outer faces only, so it never lies over itself; opacity 0.22 face on, rising to 0.62
   and paler where the view grazes it, from the angle between each face and the view in its
-  shader, so its outline reads against the cream walls and the dark stand), `hall-signs` (signposts:
-  `props/decor.js` `addSignpost`, exported for it), `hall-lamp`. Lighting baked from `HALL_SUN`
+  shader, so its outline reads against the cream walls and the dark stand), `hall-signs`
+  (signposts: `props/decor.js` `addSignpost`, exported for it), `hall-lamp` (full-bright, its
+  faces' glow its vertex colours' alpha: 1 on the lamp, fading along the beams; the course's beam
+  material, so one shader for both; set about the lighthouse's axis to turn round it in
+  `update(time)` while lit; drawn before the glass round it). Lighting baked from `HALL_SUN`
   (0.1, 0.8, 0.6; ambient 0.55, diffuse 0.45); the floor 25 % darker within 400 of a wall, 15 %
   brighter in pools under the windows, a little under the candle rings, and faintly coloured
   under the rose window. The flames flicker: the glow mesh's `'flame'` attribute (0 steady, else
   the flame's phase) scales their colour by a wobble of the uniform `update(time)` sets
-  (`material.userData.flameTime`). ~7.3k triangles, ~580 collider triangles (stone and wood; the
+  (`material.userData.flameTime`). ~7.4k triangles, ~580 collider triangles (stone and wood; the
   glass `slippery`, the stairs `not_slippery`: `castle/geom.js` `SolidBuilder.solid(polys,
   terrain, surface?)`), built in ~40–80 ms in node, ~45 ms in the browser; 32 draw calls in the
   hall (the E2E budget is 45).
@@ -618,7 +700,8 @@ of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and t
   reverb (`reverb: true`).
 * **Preview**: `/preview.html?m=hall` (`src/dev/previews/hall.js`: the hall alone under its fog;
   `&col=1` the collider overlay, whose every face shows from inside the room; `&lamp=1` the
-  lamp lit; `&view=entry|bottle|fire|roof`; `&t=` freezes the flicker).
+  lamp lit; `&door=0..1` the front door that far open; `&view=entry|bottle|fire|roof`; `&t=`
+  freezes the flicker).
 
 ### Midsummer Skerries (`src/world/skerries/*`)
 
@@ -821,8 +904,8 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   (~60 ms in the browser); the course's objects 7 meshes (coins, sparkles, shadows, star, 1-up,
   butterflies, gulls); 37 draw calls from the arrival (the E2E budget is 55).
   The `'skerries'` part's `setLit(on)` / `lit` lights the lamp (both its meshes hidden until
-  then; its beams sweep round by game time) and `reset()` puts it out (GAME OVER's
-  `resetCourses()`).
+  then; its beams sweep round by game time): AreaSwitch lights it the moment the course's star
+  is won, for the rest of the game, and `reset()` puts it out (GAME OVER's `resetCourses()`).
 * **Entries and exits**: `arrival` (−830, 150, 1700) on the jetty facing north, in the lane up
   its east side that the welcome sign leaves free (a straight push runs him up the jetty past the
   sign through its coins), dropping in from 1600 under open sky, the camera behind him (the
@@ -975,6 +1058,13 @@ const model = new PlayerModel()
 model.object3D            // THREE.Group, origin at the feet, front faces +Z, ~160 units tall
 model.update(renderState, dtSeconds)   // positions/rotates the group, poses limbs, blob shadow at floorY
 ```
+
+The group's own scale and an offset on its position are left to main: 1 and none, but as
+Jonas shrinks into the ship in the bottle (`areas.heroScale`) about his feet, and as he steps
+into a door's opening (`areas.heroOffset`, see "Areas and transitions"). The blob shadow, a
+child of the group, shrinks with him but keeps to the floor: `BlobShadow.update(rs, parentQuat,
+parentScale)` divides its drop to the floor by the group's world scale, so a jump into the
+bottle's mouth leaves it on the landing, not hanging under him (`tests/model.test.js`).
 
 Hero design ("Jonas", a cartoon avatar of the player): a cheerful chibi guy — big round
 head (~40% of height), large friendly oval eyes behind thin dark round glasses (real
@@ -1667,8 +1757,10 @@ levelsAt(seconds), lightAnchor(x, y, z, yaw), placeOrb(light, anchor, out)   // 
 * **Audio**: `'meltdown'` events drive the one-shots and the inferno's collapse;
   `audio.setMeltdown(levels)` its level (fire) and swell (light); no music starts until it ends.
 * **Cost**: no draw call of its own before the light (uniforms on the sky, the passes and the
-  rain); +2 draw calls and ~200 triangles while the light shows. Measured from the spawn: 72
-  draw calls at 38 s, 76 at 48 s (more server halls out by then).
+  rain); +2 draw calls and ~200 triangles while the light shows. Measured from the spawn in a
+  run from the mode's start: 73 draw calls at 38 s (12 server halls out), 76 and ~175k
+  triangles at 48 s (17 out, the light showing); two of those calls are the castle door's
+  leaves (71 and 74 with them hidden).
 * **Preview**: `/preview.html?m=fx&melt=48` holds the look at 48 s (renderer, sky and effects).
 
 ## Tech takeover (AI RACE mode's server halls)
@@ -1735,8 +1827,9 @@ original designs). Objects own it (built when `layout.KAIJU` exists, like the be
   under the kicks (the meltdown).
 * **Cost**: one instanced draw per unit type showing (three at most) plus one for the warning
   markers while a drop is coming; ~10k triangles with all units out. Measured in the dark
-  mode with all 30 units out: 72-75 draw calls and ≤ 172k triangles from the spawn (+3 calls,
-  +10k triangles over the same view without them).
+  mode from the spawn with all 29 planned units out (sent in at once, 10 s into the race): 72
+  draw calls and ~163k triangles, against 67 and ~153k in the same view 3 s in with none out
+  yet; two of those calls are the castle door's leaves (70 with them hidden).
 
 ## Winged hat, minions, castle door, touch controller
 
@@ -1804,6 +1897,18 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   never splits it); without `enter` it is locked with `CASTLE_LOCKED` in both modes. Jonas is
   frozen while a dialog is up (main); `player.endReading()` is safe when he wasn't reading. No
   allocation per tick (the yaw's sine and cosine are worked out once).
+  **Its leaves swing** (the castle's look, `castle/building.js` `door(kit, frame, width, height,
+  { passage })`): the two leaves are built apart, each a plank slab with its iron and ring, and
+  `doorLeaves()` makes them meshes of their own (`castle-door-left` / `-right`, sharing the
+  castle wood's material and storm grade, the geometry baked where it stands shut and set about
+  its hinge) that turn into the wall (1.4 rad standing open, eased) onto a dark passage behind the
+  opening (`castle-doorway`, 260 deep, drawn only while the door stands open); the hall's front
+  face is cut round the opening (`castle/geom.js` `openingPolys` with `doorContour()`), and the
+  collider still fills the arch, so the door is solid however its leaves stand. The castle part's
+  `setDoorOpen(t)` (0 shut .. 1 open) swings them; AreaSwitch drives it through a warp (see
+  "Areas and transitions"). The castle now has 10 meshes: +2 draw calls wherever the door is in
+  view (56 from the spawn, 54 before), the passage one more while it stands open. The hall's
+  unbuilt doors stay one with the wall (`door()` without a passage).
 * **Touch controller** (ui + input): on touch screens (`pointer: coarse`, or `?touch=1`) a
   retro game-controller UI appears (`src/ui/TouchController.js`, its own root appended to
   `document.body`, outside `#game`/`#ui`). Portrait: the game picture takes the top of the
@@ -2002,7 +2107,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `hurt` | `{ pos, amount }` | player |
 | `coin` | `{ value, pos, red, index? }` (`index` 1..8 on red coins) | objects |
 | `redCoinsComplete` | `{ pos }` (where the star appears) | objects |
-| `starCollected` | `{ pos, id, area }` (`id`: `layout.STAR.id` or `null`; `area`: the ObjectManager's `area`, `'grounds'` by default); Rustmaw's reward star sends `{ pos, boss: true }` | objects |
+| `starCollected` | `{ pos, id, area }` (`id`: `layout.STAR.id` or `null`; `area`: the ObjectManager's `area`, `'grounds'` by default); Rustmaw's reward star sends `{ pos, boss: true }` | objects (audio plays the fanfare; AreaSwitch lights a course's lamps and takes him out through its star exit) |
 | `lifeLost` / `oneUp` | `{}` | player / objects (main counts lives; audio plays sfx) |
 | `pause` / `unpause` / `gameStart` / `gameOver` | `{}` (`pause`: `{ leave }`, the course's way out is offered) | main (audio consumes all four: ducks, menu-track stop, unlock, `game_over` jingle; the touch controller keeps B bright on `pause` `{ leave: true }`) |
 | `signRead` | `{ sign }` (a `layout.SIGNS` entry) | player (B in front of a sign); the dialog box opens |
@@ -2033,8 +2138,9 @@ camera_buzz`, the title's `menu_move` (its game choice moved), and the dialog bo
 `dialog_open, text_blip, dialog_next, dialog_close`, and
 AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
-cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, the doors' `door_open,
-door_close` and the hall's unbuilt doors' `door_rattle` (all sent into the shared hall reverb,
+cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, the doors' `door_open` (as
+their leaves start to swing) and `door_close` (AreaSwitch, as the leaves meet behind him) and the
+hall's unbuilt doors' `door_rattle` (all sent into the shared hall reverb,
 `SFX_INFO` `hall`), the bottle mouth's `bottle_dive` and the hall's `bottle` entry's
 `bottle_pop` (AreaSwitch, as the wipe opens on it), the skerries' `gull` (played by the `'sea'`
 ambience itself, not through `'sfx'`), and Rustmaw's tail grab's
@@ -2047,22 +2153,35 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (~1.2 MB,
-  ~370 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1400 kB), then
-  the phone's `pad.html` built separately into the same folder (~85 kB, its own copy of the
-  touch controller and protocol). `npm run preview` serves it with the phone relay.
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,498,506
+  bytes, ~480 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1500 kB,
+  `GAME_CHUNK_LIMIT_KB` in `vite.config.js`), then the phone's `pad.html` built separately into
+  the same folder (~85 kB, its own copy of the touch controller and protocol). `npm run
+  preview` serves it with the phone relay.
 * `node tools/shot.mjs --url "/preview.html?m=<area>&cam=x,y,z&look=x,y,z" --out shots/x.png`
   — headless screenshot of a preview page (prints browser errors).
 * `node tools/shot.mjs --url "/?test=1" --actions '[{"step":30,"input":{"stickY":1}},{"shot":"shots/a.png"},{"eval":"__game.snapshot()"}]'`
   — scripted full-game run. Actions: `{step, input}`, `{eval}`, `{shot}`, `{wait: ms}` (for
   real-time runs such as `/?skipTitle=1`).
-* `/preview.html?m=world` shows the whole level without the player; `/preview.html?m=hall` the
-  Great Hall alone (`&col=1` its colliders, `&view=entry|bottle|fire|roof`, `&lamp=1`);
-  `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
+* `/preview.html?m=world` shows the whole level without the player; `/preview.html?m=castle`
+  the castle alone (`&col=1`, `&door=0..1` its front door that far open); `/preview.html?m=hall`
+  the Great Hall alone (`&col=1` its colliders, `&view=entry|bottle|fire|roof`, `&lamp=1`,
+  `&door=0..1`); `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
   `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`).
 * `node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'`
   — the game straight in an area (`&entry=` for another of its entries; `__game.enterArea(name,
-  entry)` switches at once mid-run).
+  entry)` switches at once mid-run). More recipes:
+  * the castle door swinging open as the iris closes: `--url "/?test=1&mute=1" --actions
+    '[{"eval":"__game.player.teleport(0,300,-460,Math.PI);__game.player.setAction(\"idle\");__game.camera.reset(__game.player)"},{"step":10,"input":{"stickY":1}},{"shot":"shots/door.png"}]'`
+    (and standing open behind him on the porch: `?area=hall`, walk south into the inner door,
+    shoot a few ticks after the switch);
+  * the hall from its landing, the bottle and its model behind him: `--url
+    "/?test=1&mute=1&area=hall&entry=bottle" --actions '[{"step":20},{"shot":"shots/bottle.png"}]'`;
+  * Jonas shrinking into the bottle: `--url "/?test=1&mute=1&area=hall" --actions
+    '[{"eval":"__game.player.teleport(0,550,-61100,Math.PI);__game.player.setAction(\"idle\");__game.camera.reset(__game.player)"},{"step":20,"input":{"stickY":1}},{"shot":"shots/shrink.png"}]'`;
+  * the lit lighthouse: `--url "/?test=1&mute=1&area=skerries" --actions
+    '[{"step":60},{"eval":"__game.areas.current.setLit(true)"},{"step":30},{"shot":"shots/lit.png"}]'`
+    (or win the star: teleport onto the gallery beside it, see `tests/areas-browser.test.js`).
 * V in the game (run locally) records a 1920x1080 video with sound, 9 a 1080x1920 portrait one
   (see "Recorder"); `E2E=1 REC_OUT=<dir> node --test tests/recorder-browser.test.js` keeps the
   test recordings and PNGs of their frames.

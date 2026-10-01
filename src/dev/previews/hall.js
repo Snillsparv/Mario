@@ -3,6 +3,7 @@
 //   &col=1   overlay collider triangles (front faces only: floors green, walls blue, ceilings
 //            red) to check winding: from inside the room every face of it shows.
 //   &lamp=1  the lighthouse lamp in the bottle lit (hidden until that course's star is won)
+//   &door=0..1  the front door's leaves standing that far open (shut by default)
 //   &view=entry|bottle|fire|roof   camera presets (default: from over the front door)
 //   &t=secs  freeze the flames' flicker at a given time
 import * as layout from '../../world/hall/layout.js';
@@ -24,7 +25,8 @@ export async function setup({ THREE, scene, params }) {
   const hall = buildHall(layout);
   scene.add(hall.object3D);
   if (params.get('col')) scene.add(colliderOverlay(THREE, hall.colliders));
-  if (params.get('lamp')) hall.object3D.getObjectByName('hall-lamp').visible = true;
+  if (params.get('lamp')) hall.setLit(true);
+  if (params.get('door')) hall.setDoorOpen(Number(params.get('door')));
   const frozen = params.get('t');
   return {
     camera: VIEWS[params.get('view')] ?? VIEWS.overview,

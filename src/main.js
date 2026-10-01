@@ -26,10 +26,11 @@
 //   * AI RACE not stopped within 40 s (fx/Meltdown.js): the sky catches fire, the world burns
 //     white and it is GAME OVER the same way, whatever the lives left.
 //   * pause freezes everything drawn from the simulation clock (world, objects, hero).
-//   * areas (core/AreaSwitch.js): walking into the castle door wipes to the Great Hall and its
-//     inner door back out; the ship in the bottle's mouth takes Pip to Midsummer Skerries, the
-//     first course, which he leaves with its star or from the pause screen (B); GAME OVER
-//     always returns to the grounds.
+//   * areas (core/AreaSwitch.js): walking into the castle door swings it open and wipes to the
+//     Great Hall, and its inner door back out; the ship in the bottle's mouth shrinks Pip into
+//     Midsummer Skerries, the first course, which he leaves with its star (it lights the
+//     lighthouse there and the little one in the bottle) or from the pause screen (B); GAME
+//     OVER always returns to the grounds.
 
 import { FRAME_DT, MAX_STEPS_PER_FRAME, GAME_OVER_SECONDS } from './core/constants.js';
 import { Events } from './core/events.js';
@@ -404,15 +405,19 @@ async function start() {
     model.update(player.getRenderState(renderAlpha), running ? dt : 0); // pause freezes them too
   }
   function draw(dt) {
+    model.object3D.scale.setScalar(areas.heroScale(renderAlpha)); // (shrinking into the bottle)
     poseHero(dt);
+    const step = areas.heroOffset(renderAlpha); // (stepping into a door's opening)
+    model.object3D.position.x += step.x;
+    model.object3D.position.z += step.z;
     model.object3D.visible = state.mode === 'play' && state.dropHold === 0 && !cam.hideHero;
     cam.apply(renderAlpha);
     shake.apply(camera, state.mode === 'play' && !state.paused ? dt : 0);
-    areas.update(state.time, camera); // the current area's world...
+    areas.update(state.time, camera, renderAlpha); // the current area's world (a door swinging)...
     areas.objects.animate(state.time, renderAlpha, camera); // ...and objects
     fx.update(state.mode === 'play' && !state.paused ? dt : 0, state.time, camera);
     audio.update?.(dt);
-    wipe.draw(areas.wipe(renderAlpha), model.object3D.position, camera);
+    wipe.draw(areas.wipe(renderAlpha), model.object3D.position, camera, model.object3D.scale.y);
     view.render();
   }
 

@@ -1,22 +1,26 @@
-// Areas in the real game (Vite dev server, headless Chromium), opt-in: E2E=1. With ?test=1:
-// walking up to the castle door starts the warp (AI RACE switched on while it closes is
-// ignored); the iris (a canvas under the HUD) closes on Jonas, black at the corners and clear on
-// him; 40 steps later he is in the Great Hall: the picture is the hall's warm fog and walls, not
-// the sky, in fewer than 45 draw calls, and the pause screen names the course; setDark(true) in
-// the hall is ignored; the inner door takes him back out onto the porch with the camera in front
-// of him; ?area=hall boots straight into the hall (its furnished picture, and the bottle's end
-// from the landing, each in fewer than 45 draw calls; the hall's own textures at most 128 px),
-// and a stick held forward through the inner door walks him on out across the porch instead of
-// back in. ?area=skerries boots into Midsummer Skerries (its course card over the picture, the
-// sky and the sea, fewer than 55 draw calls, its textures at most 128 px, its build time
-// logged); paused while he drops in, the pause screen offers no way out and B does nothing; the
-// star on the lighthouse gallery takes him back out of the bottle into the hall, one star up;
-// paused while reading the welcome sign, the pause screen offers the way out (the touch B kept
-// bright) and B closes the sign and leaves the course; and a life lost at x0 there ends in the
-// GAME OVER card, then the title over the grounds. With sound (a real AudioContext, unlocked by
-// a key press): the hall plays its waltz under its room tone and hearth with every sound in its
-// reverb, the course its polska with the sea's laps and gulls, the grounds none of that again;
-// the new sounds all play, and the audio never gives up on an error. No page errors anywhere.
+// Areas in the real game (Vite dev server, headless Chromium), opt-in: E2E=1. With ?test=1: walking
+// up to the castle door starts the warp (AI RACE switched on while it closes is ignored); the iris
+// (a canvas under the HUD) closes on Jonas, black at the corners and clear on him; 40 steps later
+// he is in the Great Hall: the picture is the hall's warm fog and walls, not the sky, in fewer than
+// 45 draw calls, and the pause screen names the course; setDark(true) in the hall is ignored; the
+// inner door takes him back out onto the porch with the camera in front of him. The full walk: in
+// through the castle door (its leaves swing in onto the dark passage), north up the hall into the
+// bottle (Jonas shrinks into it), the course, out of it from the pause screen, south down the hall
+// and out of the inner door onto the porch, the castle door standing open and shutting behind him.
+// ?area=hall boots straight into the hall (its furnished picture, and the bottle's end from the
+// landing, each in fewer than 45 draw calls; the hall's own textures at most 128 px), and a stick
+// held forward through the inner door walks him on out across the porch instead of back in.
+// ?area=skerries boots into Midsummer Skerries (its course card over the picture, the sky and the
+// sea, fewer than 55 draw calls, its textures at most 128 px, its build time logged); paused while
+// he drops in, the pause screen offers no way out and B does nothing; the star on the lighthouse
+// gallery takes him back out of the bottle into the hall, one star up, the lighthouse and the
+// little one in the bottle lit (out again after GAME OVER); paused while reading the welcome sign,
+// the pause screen offers the way out (the touch B kept bright) and B closes the sign and leaves
+// the course; and a life lost at x0 there ends in the GAME OVER card, then the title over the
+// grounds. With sound (a real AudioContext, unlocked by a key press): the hall plays its waltz
+// under its room tone and hearth with every sound in its reverb, the course its polska with the
+// sea's laps and gulls, the grounds none of that again; the new sounds all play, and the audio
+// never gives up on an error. No page errors anywhere.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -161,6 +165,102 @@ test('through the castle door into the Great Hall and back out onto the porch', 
   }
 });
 
+test('the full walk: in through the castle door (its leaves swing in), up the hall into the bottle (he shrinks into it), the course, out from the pause screen, down the hall and out of the inner door (the castle door shutting behind him on the porch)', { skip, timeout: 600000 }, async () => {
+  const { page, errors, step, snap } = await open();
+  // How far the castle door's left leaf stands turned, whether its passage shows, Jonas's size.
+  const looks = () =>
+    page.evaluate(() => {
+      const g = window.__game;
+      const castle = g.level.parts.find((p) => p.name === 'castle').object3D;
+      return { leaf: castle.getObjectByName('castle-door-left').rotation.y, passage: castle.getObjectByName('castle-doorway').visible, scale: g.model.object3D.scale.y };
+    });
+  try {
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.player.teleport(0, 300, -460, Math.PI); // on the porch, facing the door
+      g.player.setAction('idle');
+      g.camera.reset(g.player);
+    });
+    assert.deepEqual(await looks(), { leaf: 0, passage: false, scale: 1 });
+    let warp = await page.evaluate(() => window.__walkTo(Math.PI, 30));
+    assert.deepEqual(warp, { phase: 'close', to: 'hall', entry: 'front', kind: 'door' });
+    await step(7);
+    let l = await looks();
+    assert.ok(l.leaf > 0.2 && l.leaf < 1.3 && l.passage && l.scale === 1, `the door swinging in: ${JSON.stringify(l)}`);
+    // Near the end of the close he is drawn stepping on into its opening (where he stands, the
+    // door's collider stops him).
+    await step(6);
+    const into = await page.evaluate(() => {
+      const g = window.__game;
+      return { drawn: g.model.object3D.position.z, stands: g.player.pos.z };
+    });
+    assert.ok(into.stands > -650 && into.drawn < into.stands - 80, `stepping in: ${JSON.stringify(into)}`);
+    await step(34);
+    assert.equal((await snap()).area, 'hall');
+    assert.deepEqual(await looks(), { leaf: 0, passage: false, scale: 1 }, 'the castle door shut behind him');
+    // North up the hall, up the stairs, into the bottle's neck: he shrinks as the iris closes.
+    warp = await page.evaluate(() => window.__walkTo(Math.PI, 400));
+    assert.deepEqual(warp, { phase: 'close', to: 'skerries', entry: 'arrival', kind: 'bottle' });
+    await step(9);
+    l = await looks();
+    assert.ok(l.scale < 0.8 && l.scale > 0.35, `shrinking: ${l.scale}`);
+    // The iris closes on his chest as it is now, lower with his size: the hole's middle (its
+    // widest rows; it may run off the bottom of the screen) where his chest is drawn, not where
+    // it stood at his full size.
+    const hole = await page.evaluate(() => {
+      const g = window.__game;
+      const c = document.querySelector('.cg-wipe');
+      const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const onScreen = (k) => {
+        const v = g.model.object3D.position.clone();
+        v.y += 100 * k;
+        v.project(g.view.camera);
+        return { x: ((v.x + 1) / 2) * c.width, y: ((1 - v.y) / 2) * c.height };
+      };
+      const now = onScreen(g.model.object3D.scale.y);
+      const full = onScreen(1);
+      const widths = [];
+      for (let y = 0; y < c.height; y++) {
+        let n = 0;
+        for (let x = 0; x < c.width; x++) if (data[(y * c.width + x) * 4 + 3] === 0) n++;
+        widths.push(n);
+      }
+      const most = Math.max(...widths);
+      const widest = widths.map((n, y) => (n === most ? y + 0.5 : -1)).filter((y) => y >= 0);
+      return { middle: widest.reduce((a, b) => a + b, 0) / widest.length, width: most, now: now.y, full: full.y };
+    });
+    assert.ok(hole.width > 8 && Math.abs(hole.middle - hole.now) <= 2, `the hole at ${hole.middle}, his chest at ${hole.now}`);
+    assert.ok(hole.now - hole.full > 3, `his chest ${hole.now - hole.full} px lower than at his full size`);
+    await step(40);
+    let s = await snap();
+    assert.equal(s.area, 'skerries');
+    assert.equal((await looks()).scale, 1, 'his own size again');
+    await step(60); // dropped in onto the jetty
+    // Paused, B: back out of the bottle onto the hall's landing.
+    await step(1, { START: true });
+    await step(1, { B: true });
+    assert.equal((await snap()).warp?.kind, 'leave');
+    await step(60);
+    s = await snap();
+    assert.deepEqual([s.area, s.warp], ['hall', null]);
+    // South down the stairs and the hall to the inner door, and out onto the porch: the castle
+    // door stands open as the picture opens and shuts behind him as he walks out.
+    warp = await page.evaluate(() => window.__walkTo(0, 400));
+    assert.deepEqual(warp, { phase: 'close', to: 'grounds', entry: 'porch', kind: 'door' });
+    await step(18);
+    l = await looks();
+    assert.ok(l.leaf > 1.3 && l.passage, `standing open at the switch: ${JSON.stringify(l)}`);
+    await step(30);
+    s = await snap();
+    assert.equal(s.area, 'grounds');
+    assert.ok(Math.abs(s.pos.x) < 5 && s.pos.z > -470 && s.pos.y > 200, JSON.stringify(s.pos));
+    assert.deepEqual(await looks(), { leaf: 0, passage: false, scale: 1 }, 'shut behind him');
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
 test('?area=hall boots straight into the Great Hall; forward held through the inner door walks him on out', { skip, timeout: 300000 }, async () => {
   const { page, errors, snap } = await open('&area=hall');
   try {
@@ -263,12 +363,15 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
         g.step(1, n < 20 ? { stickX: Math.sin(a), stickY: Math.cos(a) } : null);
       }
       g.step(20);
-      return { n, area: g.area, stars: g.player.stars, warp: g.snapshot().warp };
+      const course = g.areas.built.skerries.parts.find((p) => p.name === 'skerries');
+      const lamp = g.areas.current.root.getObjectByName('hall-lamp');
+      return { n, area: g.area, stars: g.player.stars, warp: g.snapshot().warp, lit: course.lit, lamp: lamp.visible };
     });
     assert.equal(star.area, 'hall', JSON.stringify(star));
     assert.ok(star.n < 300);
     assert.equal(star.stars, 1);
     assert.equal(star.warp, null);
+    assert.deepEqual([star.lit, star.lamp], [true, true], 'the lighthouse and the one in the bottle lit');
 
     // Back in, then out from the pause screen, paused while reading the welcome sign (whose
     // last page says to): the way out is offered, and B closes the sign and leaves.
@@ -308,6 +411,7 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     assert.equal(s.area, 'grounds');
     assert.equal(s.mode, 'title');
     assert.equal(s.stars, 0, 'the star taken back');
+    assert.equal(await page.evaluate(() => window.__game.areas.built.skerries.parts.find((p) => p.name === 'skerries').lit), false, 'the lamp out');
     assert.deepEqual(errors, []);
   } finally {
     await page.close();

@@ -6,10 +6,11 @@
 //   model.update(renderState, dtSeconds);   // every render frame
 //
 // object3D sits at the feet (rs.pos) and is yawed to rs.yaw (front faces +Z); during
-// pole_handstand rs.pos is the pole tip under his hands. Everything else (poses, flips,
-// squash, attack swells, physical pitch/roll, blinking, invincibility flicker, the shadow,
-// the hot-foot smoke, the winged cap's flapping wings) is handled inside. No lights are
-// added: the renderer's sun + ambient shade him.
+// pole_handstand rs.pos is the pole tip under his hands. Its scale is the caller's (main
+// shrinks him into the bottle about his feet; the shadow keeps to the floor). Everything else
+// (poses, flips, squash, attack swells, physical pitch/roll, blinking, invincibility flicker,
+// the shadow, the hot-foot smoke, the winged cap's flapping wings) is handled inside. No
+// lights are added: the renderer's sun + ambient shade him.
 
 import * as THREE from 'three';
 import { angleDiff, clamp } from '../core/math.js';
@@ -80,7 +81,7 @@ export class PlayerModel {
 
     o.updateMatrixWorld(true);
     o.matrixWorld.decompose(this.worldPos, this.worldQuat, this.worldScale); // matrices are current
-    this.shadow.update(rs, this.worldQuat);
+    this.shadow.update(rs, this.worldQuat, this.worldScale.y);
     this.smoke.update(dt, rs, this.rig.hips, o);
     this.wings.update(rs, dt, this.animator.time);
 

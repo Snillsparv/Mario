@@ -35,6 +35,8 @@
 //                                // him ({ to, entry }; null: nowhere)
 //   card,                        // a course: its name shows as a title card on its first
 //                                // entry in a game (HUD.showCourse)
+//   lamp,                        // the course whose star, once won, lights this area's lamp
+//                                // too (a course's own star lights its own: Area.setLit)
 // }
 //
 // Entries rule: every entry has at least 1300 of clear floor behind him for the camera's orbit
@@ -102,6 +104,8 @@ export const AREA_DEFS = {
     audio: { music: 'castle_hall', ambience: 'hall', reverb: true, fires: [hallLayout.HEARTH_FIRE] },
     leave: null,
     starExit: null,
+    // The little lighthouse in the bottle lights up with the course's own once its star is won.
+    lamp: 'skerries',
   },
   skerries: {
     name: 'skerries',
@@ -127,8 +131,10 @@ export const AREA_DEFS = {
 // ObjectManager). Entries: 'start' (the spawn, falling in from the sky) and 'porch' (in front of
 // the castle door, his back to it and the camera in front of him, walking out 8 ticks). Showing
 // or hiding them toggles every part but the sky (areas share the one sky dome) and the objects.
+// Their swinging door is the castle's front door (the castle part's setDoorOpen).
 export function groundsArea(level, objects) {
   const sky = level.parts.find((p) => p.name === 'sky') ?? null;
+  const castle = level.parts.find((p) => p.name === 'castle') ?? null;
   const shown = level.parts.filter((p) => p !== sky && p.object3D);
   const door = objects.door;
   const entries = { start: { ...level.spawn } };
@@ -155,6 +161,9 @@ export function groundsArea(level, objects) {
     setVisible(on) {
       for (const p of shown) p.object3D.visible = !!on;
       objects.group.visible = !!on;
+    },
+    setDoorOpen(t) {
+      castle?.setDoorOpen?.(t);
     },
   };
 }

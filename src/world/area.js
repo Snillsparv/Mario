@@ -21,8 +21,12 @@
 //   collision,             // its own CollisionWorld (water from def.waterLevelAt)
 //   parts,                 // the builders' WorldParts
 //   update(time, camera),  // per render frame, while it is the current area
-//   reset(),               // a new game (nothing to undo yet: the pickups live in its objects)
+//   reset(),               // a new game (its parts': the lighthouse's lamp out again; the
+//                          // pickups live in its objects)
 //   setVisible(on),
+//   setDoorOpen(t),        // its swinging door (the hall's front door): 0 shut .. 1 open
+//   setLit(on),            // its lamp: a course's lighthouse, the hall's lighthouse in the
+//                          // bottle (core/AreaSwitch.js lights them as a course's star is won)
 //   entries,               // { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx? } } (world)
 //   audio,                 // def.audio with its sound spots (fires, gulls, seaLevel) in world
 //                          // coordinates, plus isWater(x, z) (open water there: its surface
@@ -151,6 +155,13 @@ export function buildArea(scene, def) {
     setVisible(on) {
       root.visible = !!on;
       if (this.objects) this.objects.group.visible = !!on;
+    },
+    // (Every frame while the door moves: an index loop.)
+    setDoorOpen(t) {
+      for (let i = 0; i < parts.length; i++) parts[i].setDoorOpen?.(t);
+    },
+    setLit(on) {
+      for (const p of parts) p.setLit?.(on);
     },
   };
 }

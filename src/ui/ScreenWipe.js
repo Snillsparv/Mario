@@ -4,10 +4,11 @@
 // and the pause screen stay on top of it.
 //
 //   const wipe = new ScreenWipe(uiRoot)
-//   wipe.draw({ amount, kind, color }, heroPos, camera)   // every render frame (areas.wipe())
+//   wipe.draw({ amount, kind, color }, heroPos, camera, scale = 1)   // every render frame
 //     amount   0 (nothing: the canvas is display: none) .. 1 (the screen covered)
 //     kind     'iris' (a hole round the hero's chest, shrinking to nothing) | 'fade'
-//     heroPos  the hero model's feet (world); camera: the world camera it is projected with
+//     heroPos  the hero model's feet (world); camera: the world camera it is projected with;
+//     scale    the hero model's size (shrinking into the bottle: his chest comes down with it)
 //
 // The iris is drawn at the HUD's logical resolution (hudLogic.js hudMetrics: 240 lines) and
 // scaled up pixelated, so its edge steps like the rest of the pixel art; each row is two solid
@@ -33,7 +34,7 @@ export class ScreenWipe {
     this.ctx = this.canvas.getContext('2d');
   }
 
-  draw({ amount, kind, color }, heroPos, camera) {
+  draw({ amount, kind, color }, heroPos, camera, scale = 1) {
     const canvas = this.canvas;
     if (!canvas) return;
     if (!(amount > 0)) {
@@ -60,7 +61,7 @@ export class ScreenWipe {
     let cy = h / 2;
     if (heroPos && camera) {
       camera.updateMatrixWorld();
-      const v = this.v.set(heroPos.x, heroPos.y + CHEST, heroPos.z).project(camera);
+      const v = this.v.set(heroPos.x, heroPos.y + CHEST * scale, heroPos.z).project(camera);
       if (v.z < 1 && Number.isFinite(v.x) && Number.isFinite(v.y)) {
         cx = Math.min(w, Math.max(0, ((v.x + 1) / 2) * w));
         cy = Math.min(h, Math.max(0, ((1 - v.y) / 2) * h));

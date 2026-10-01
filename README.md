@@ -63,21 +63,23 @@ browser once with `npx playwright install chromium`.
 ### The castle and Midsummer Skerries
 
 **Into the castle**: walk up the steps to the big front door and keep walking into it. The door
-creaks open, the picture closes in a circle around Jonas and opens again inside the **Great
-Hall**, a long candle-lit hall under an open timber roof. A **1-up** waits on the fireplace's
-mantel: wall-kick up the narrow gap beside it, or climb the banner pole and jump from its top.
-The doors in the east wall are still being built (they only rattle). The front door, inside,
-takes him back out onto the porch. While AI RACE is on (or its storm is still clearing) the
-storm keeps the door sealed. The hall has its own music, a music-box waltz, over the crackle of
-the fire in its hearth, and every step and jump rings in the big room.
+creaks and its two big leaves swing open onto the dark passage behind, Jonas steps into it as
+the picture closes in a circle around him, and it opens again inside the **Great Hall**, a long
+candle-lit hall under an open timber roof. A **1-up** waits on the fireplace's mantel: wall-kick
+up the narrow gap beside it, or climb the banner pole and jump from its top. The doors in the
+east wall are still being built (they only rattle). The front door, inside, swings open the same
+way and takes him back out onto the porch, where it swings shut behind him with a thud as the
+picture opens. While AI RACE is on (or its storm is still clearing) the storm keeps the door
+sealed. The hall has its own music, a music-box waltz, over the crackle of the fire in its
+hearth, and every step and jump rings in the big room.
 
 **The ship in the bottle** lies on its stand at the far end of the hall, with a tiny sea, a
-red-sailed boat and a lighthouse inside it. Climb the stairs (or hop up the cork or the stack of
-books) to its mouth and walk into the neck: Jonas dives in and drops out of the sky onto a jetty
-in **Midsummer Skerries**, the first course: a bay of pink granite rocks in the midsummer
-evening, with the bottle's red-sailed boat moored at the jetty. Far out on the last rock stands
-a white lighthouse with a red band, and the course's **star** sits on its lamp gallery. A brisk
-polska plays over the wind, the lapping waves and the gulls.
+red-sailed boat and a lighthouse inside it. Climb the stairs (or hop up the cork or the stack
+of books) to its mouth and walk into the neck: Jonas shrinks to fit, dives in and drops out of
+the sky onto a jetty in **Midsummer Skerries**, the first course: a bay of pink granite rocks
+in the midsummer evening, with the bottle's red-sailed boat moored at the jetty. Far out on the
+last rock stands a white lighthouse with a red band, and the course's **star** sits on its lamp
+gallery. A brisk polska plays over the wind, the lapping waves and the gulls.
 
 * Three ways out to the lighthouse's rock: **hop across the skerries** to the west (one gap is
   too wide for a normal jump: a sign there teaches the **long jump**, and a row of coins shows
@@ -93,12 +95,14 @@ polska plays over the wind, the lapping waves and the gulls.
   the wooden stair, then the tall **signal mast** in front of the lighthouse: climb all the way
   up (the camera turns round to show the lighthouse ahead), stand on your hands on its top, push
   up toward the lighthouse and jump onto the gallery. Walk round to the star.
-* The star takes Jonas back out of the bottle into the Great Hall (one more star on the
-  counter), popping out onto the landing; walk straight back into the neck to go again. To
-  leave without it, pause and press **J** (B on a gamepad or the touch controls): the pause
-  screen shows "Leave course" (not while Jonas is still dropping in). A life lost in the course
-  drops him back onto the jetty; GAME OVER, wherever it happens, goes back to the castle
-  grounds and puts every coin and star back.
+* The star lights the lighthouse: its lamp glows and two beams sweep round the bay for the rest
+  of the game, and the tiny lighthouse in the bottle lights up too (a gold lamp with little beams
+  turning round inside the glass). Then it takes Jonas back out of the bottle into the Great
+  Hall (one more star on the counter), popping out onto the landing; walk straight back into the
+  neck to go again. To leave without it, pause and press **J** (B on a gamepad or the touch
+  controls): the pause screen shows "Leave course" (not while Jonas is still dropping in). A life
+  lost in the course drops him back onto the jetty; GAME OVER, wherever it happens, goes back to
+  the castle grounds and puts every coin and star back.
 * 58 coins wait in the course: along the jetty, on the skerries, in the air over the long
   jump's gap, up the signal mast, round the gallery, along the boardwalk, up the wall-kick gap,
   down the plank bridge, in the sunken boat, and round and up the **maypole** on Home Island's

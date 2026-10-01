@@ -11,7 +11,8 @@
 // buttress for any aim near the wall's, the hop over the slot onto the mantel to the 1-up),
 // signs read from the front only, every coin over a floor, the doors' triggers on their faces
 // (the bottle's mouth into the first course), and the look's promises (the transparent glass
-// with its rim, the flickering flames, the lamp hidden until lit).
+// with its rim, the flickering flames, the lamp hidden until lit); the front door's leaves
+// fill its opening shut and swing aside onto a dark passage, and the lamp lights with setLit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -105,8 +106,8 @@ const meshes = [];
 area.root.traverse((o) => o.isMesh && meshes.push(o));
 const mesh = (name) => meshes.find((m) => m.name === name);
 
-test('budgets: at most 10 meshes with baked colours, under 12k triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
-  assert.ok(meshes.length <= 10, `${meshes.length} meshes`);
+test('budgets: at most 12 meshes with baked colours, under 12k triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
+  assert.ok(meshes.length <= 12, `${meshes.length} meshes`);
   let tris = 0;
   for (const m of meshes) {
     const g = m.geometry;
@@ -493,6 +494,96 @@ test('the look: the glass is see-through (front faces, no depth write) with a ri
   assert.notEqual(glow.material.customProgramCacheKey(), glass.customProgramCacheKey());
   assert.equal(mesh('hall-lamp').visible, false);
   assert.equal(area.root.getObjectByName('hall').children.length, meshes.length);
+});
+
+test('the front door swings: its leaves turn into the south wall on their hinges onto a dark passage (shut, they fill the opening); the lamp in the bottle lights with setLit', () => {
+  const { FRONT_DOOR: D } = hall;
+  const left = mesh('hall-door-left');
+  const right = mesh('hall-door-right');
+  assert.ok(left && right, 'two leaves of their own');
+  assert.equal(left.material, mesh('hall-wood').material, 'the wood\'s look');
+  // Rays from the room toward the door (north of it, looking south) at points of its opening:
+  // what they hit first.
+  const ray = new THREE.Raycaster();
+  const hit = (x, y) => {
+    area.root.updateMatrixWorld(true);
+    ray.set(new THREE.Vector3(x + O.x, y + O.y, D.wallZ - 600 + O.z), new THREE.Vector3(0, 0, 1));
+    const h = ray.intersectObjects(meshes.filter((m) => m.visible), false)[0];
+    return h && { name: h.object.name, z: h.point.z - O.z };
+  };
+  const opening = [];
+  for (const x of [-170, -90, -30, 30, 90, 170]) for (const y of [40, 200, 380, 500]) opening.push([x, y]);
+  area.setDoorOpen(0);
+  for (const [x, y] of opening) {
+    const h = hit(x, y);
+    assert.ok(/^hall-door-/.test(h?.name) && h.z < D.wallZ && h.z > D.wallZ - 14, `shut: ${x},${y} -> ${JSON.stringify(h)}`);
+  }
+  // Beside it, the wall.
+  for (const [x, y] of [[-400, 300], [400, 300], [0, 900]]) assert.equal(hit(x, y)?.name, 'hall-wall', `${x},${y}`);
+  area.setDoorOpen(1);
+  assert.ok(left.rotation.y > 1.2 && right.rotation.y < -1.2, `${left.rotation.y}, ${right.rotation.y}`);
+  for (const [x, y] of opening.filter(([x]) => Math.abs(x) < 100)) {
+    const h = hit(x, y);
+    assert.ok(h?.name === 'hall-wood' && h.z > D.wallZ + 100, `open: ${x},${y} -> ${JSON.stringify(h)}`);
+  }
+  // On the way the swing eases in and out (smoothstep of t), the leaves turning alike.
+  const full = left.rotation.y;
+  for (const t of [0.25, 0.5, 0.8]) {
+    area.setDoorOpen(t);
+    assert.ok(Math.abs(left.rotation.y - full * t * t * (3 - 2 * t)) < 1e-9 && right.rotation.y === -left.rotation.y, `eased at ${t}: ${left.rotation.y}`);
+  }
+  area.setDoorOpen(0);
+  assert.ok(left.rotation.y === 0 && right.rotation.y === 0, 'shut again');
+  // The lamp of the little lighthouse.
+  area.setLit(true);
+  assert.equal(mesh('hall-lamp').visible, true);
+  area.setLit(false);
+  assert.equal(mesh('hall-lamp').visible, false);
+});
+
+test('the lit lamp in the bottle shows from the room: a warm deep gold lantern (not the cream of the wall behind it) and two hazy beams turning round it, inside the glass whichever way they point, drawn before it', () => {
+  const lamp = mesh('hall-lamp');
+  const glass = mesh('hall-bottle');
+  const { BOTTLE: B } = hall;
+  const g = lamp.geometry;
+  const col = g.attributes.color;
+  assert.equal(col.itemSize, 4, 'see-through: the beams fade out');
+  assert.ok(lamp.material.transparent && lamp.material.depthWrite === false && lamp.renderOrder < glass.renderOrder, 'before the glass round it');
+  // The lantern (opaque): saturated gold, far from the plaster's cream (linear colours).
+  const wall = new THREE.Color(0xfff0d6);
+  let lantern = 0;
+  let beams = 0;
+  for (let i = 0; i < col.count; i++) {
+    const [r, gr, b, a] = [col.getX(i), col.getY(i), col.getZ(i), col.getW(i)];
+    if (a === 1) {
+      lantern++;
+      assert.ok(r > 0.9 && gr < 0.6 * r && b < 0.1 * r, `lantern ${[r, gr, b].map((v) => v.toFixed(2))}`);
+      assert.ok(gr < wall.g - 0.3 && b < wall.b - 0.4, 'not the wall\'s cream');
+    } else {
+      beams++;
+      assert.ok(a >= 0 && a < 0.9, `beam ${a}`);
+    }
+  }
+  assert.ok(lantern >= 8 * 6 && beams >= 4 * 4, `${lantern} lantern and ${beams} beam vertices`);
+  // Lit, the beams turn with the time; wherever they point, inside the bottle's glass.
+  area.setLit(true);
+  const p = new THREE.Vector3();
+  const pos = g.attributes.position;
+  let reach = 0;
+  for (let k = 0; k < 16; k++) {
+    area.update(k * 0.7);
+    assert.ok(Math.abs(lamp.rotation.y - k * 0.7 * 0.55) < 1e-9, 'turning');
+    area.root.updateMatrixWorld(true);
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i).applyMatrix4(lamp.matrixWorld);
+      const q = local(p);
+      const r = Math.hypot(q.x, q.y - B.axisY);
+      reach = Math.max(reach, Math.hypot(q.x - lamp.position.x, q.z - lamp.position.z));
+      assert.ok(r < B.bodyR - 40 && q.z > B.body[0] + 40 && q.z < B.body[1], `inside the glass: ${JSON.stringify(q)} (${r.toFixed(0)} off its axis)`);
+    }
+  }
+  assert.ok(reach > 300, `the beams reach out ${reach.toFixed(0)}`);
+  area.setLit(false);
 });
 
 test("the hall's objects (its coins, the 1-up, their shadows and sparkles) stay within an area's 8 meshes", () => {

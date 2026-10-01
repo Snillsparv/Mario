@@ -1,8 +1,9 @@
 // N64-style blob shadow: a soft dark disc laid on the floor under the hero. It lives inside
 // the hero's object3D (so the scene only needs one object) but cancels the hero's yaw and
-// ignores pitch/roll/flips: it is oriented to the floor normal only. Its local matrix is
-// composed directly (matrixAutoUpdate off), so the per-frame update runs no Object3D
-// quaternion/euler change callbacks.
+// ignores pitch/roll/flips: it is oriented to the floor normal only, and stays on the floor
+// however the object3D is scaled (it shrinks with him). Its local matrix is composed directly
+// (matrixAutoUpdate off), so the per-frame update runs no Object3D quaternion/euler change
+// callbacks.
 
 import * as THREE from 'three';
 import { canvasTexture, HAS_CANVAS } from '../../render/texgen.js';
@@ -47,9 +48,10 @@ export class BlobShadow {
     this.mesh.matrixAutoUpdate = false;
   }
 
-  // rs: RenderState; parentQuat: world rotation of the object3D that holds the shadow.
-  // Hidden when there is no floor, and faded/shrunk as the hero rises above it.
-  update(rs, parentQuat) {
+  // rs: RenderState; parentQuat, parentScale: world rotation and (uniform) scale of the
+  // object3D that holds the shadow. Hidden when there is no floor, and faded/shrunk as the hero
+  // rises above it.
+  update(rs, parentQuat, parentScale = 1) {
     const m = this.mesh;
     const height = rs.pos.y - rs.floorY;
     m.visible = rs.floorY > NO_FLOOR && height > -40;
@@ -65,8 +67,12 @@ export class BlobShadow {
     // round, so its twist about the normal does not matter.)
     tmpN.applyQuaternion(tmpQ.copy(parentQuat).invert());
     alignQ.setFromUnitVectors(UP, tmpN);
-    // Straight down to the floor (the vertical axis is unaffected by yaw), lifted 2 units.
-    m.position.set(0, rs.floorY - rs.pos.y, 0).addScaledVector(tmpN, 2);
+    // Straight down to the floor (the vertical axis is unaffected by yaw), lifted 2 units. The
+    // parent's scale (Jonas shrinking into the bottle) would shrink that drop with him and
+    // leave the shadow hanging in the air under a jump, so the offset undoes it; the disc
+    // itself shrinks with him.
+    const s = parentScale > 0 ? parentScale : 1;
+    m.position.set(0, rs.floorY - rs.pos.y, 0).addScaledVector(tmpN, 2).divideScalar(s);
     m.matrix.compose(m.position, alignQ, m.scale);
     m.matrixWorldNeedsUpdate = true;
   }

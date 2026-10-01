@@ -21,14 +21,23 @@
 //                                      // and whether it can be taken now (main offers it
 //                                      // only then; a sign he is reading closes first)
 //   areas.onStar(e)                    // 'starCollected': the current course's own star
-//                                      // (def.starExit) takes him out once his dance is over
+//                                      // lights its lamps (below) and (def.starExit) takes
+//                                      // him out once his dance is over
 //   areas.resetCourses()               // GAME OVER: every area built so far gets its pickups
 //                                      // and its star back (and takes the star off his count),
-//                                      // and its course card shows again on the next entry
-//   areas.update(time, camera)         // per render frame: the current area's animation
+//                                      // its lamps go out, and its course card shows again on
+//                                      // the next entry
+//   areas.update(time, camera, alpha)  // per render frame: the current area's animation, and
+//                                      // the door leaves swinging (alpha: the frame's way into
+//                                      // the next tick)
+//   areas.heroScale(alpha) -> scale    // per render frame: Jonas's size (main scales his model
+//                                      // by it): 1, but for the dive into the bottle (below)
+//   areas.heroOffset(alpha) -> { x, z }   // per render frame: how far his model is drawn off
+//                                      // where he stands (main moves it by that): nothing, but
+//                                      // for his step into a door's opening (below); reused
 //   areas.busy, .name, .current, .objects (the current area's), .phase, .warp,
 //   .buildMs ({ name: ms of its first build }), .carry (a stick held through a door, below),
-//   .still (one held out of a course, below)
+//   .still (one held out of a course, below), .won (the courses whose star he has won)
 //
 // Switching (_swap, the only place that points the game at another area), in this order: an
 // open dialog closes; the old area hides and the new one shows (the grounds' sky dome only
@@ -50,7 +59,22 @@
 //         it is new, so the build hides behind the covered frame); the stick is neutral
 //   open  (OPEN ticks): the wipe opens (an entry with a sound of its own plays it now: entry.sfx,
 //         popping out of the bottle); with entry.walkIn he walks on along entry.yaw for that
-//         many ticks (then a door shuts behind him: sfx 'door_close'), then the stick is his
+//         many ticks, then the stick is his
+// Through a door (kind 'door') its leaves swing (Area.setDoorOpen: the castle's front door on
+// the grounds, its inside in the hall): the door he walks into opens as the wipe closes (and
+// shuts again with the wipe if the warp is called off), and once its leaves have swung aside
+// he steps on into its opening (heroOffset: WARP.STEP, his model only, the door's collider
+// stays solid; back out with a warp called off). At the switch that door is shut (its area
+// hidden) and the one he comes out of stands open; it stays open while the iris is still small
+// on him (SHUT_FROM ticks into the open), then shuts behind him in view, the leaves meeting on
+// the open's last tick but one as 'door_close' plays. Into the bottle (kind 'bottle') Jonas
+// shrinks to WARP.SHRINK of his size as the wipe closes on him (heroScale), full size again at
+// the switch. All of it is worked out per tick and drawn between ticks (the frame's alpha).
+//
+// Lamps: a course's own star, once won, lights its lamp (Area.setLit: the lighthouse) and that
+// of every area whose def.lamp names the course (the lighthouse in the hall's bottle), at once
+// and for the rest of the game: an area built later comes lit. resetCourses() puts them out.
+//
 // A request is refused while a transition runs, while canWarp() says no (main: not playing,
 // AI RACE on or fading, the meltdown running) or a dialog is up, while Jonas dies, respawns,
 // reads or sits in the cannon, and for an unknown area or entry. Dying (or a respawn) during
@@ -80,7 +104,8 @@
 // out of it on the other side the way he was going).
 //
 // Allocation: the timeline allocates nothing per tick (one reused scripted controller, one
-// reused carried (or stilled) one, one reused neutral one, one reused wipe state).
+// reused carried (or stilled) one, one reused neutral one, one reused wipe state), nor do the
+// per-frame update, heroScale and heroOffset (one reused offset).
 
 import { wrapAngle } from './math.js';
 import { neutralController } from './input.js';
@@ -98,7 +123,14 @@ export const WARP = {
   STAR_AFTER: 20, // ...and this long after the dance before the fade
   CARRY_TURN: 0.77, // a carried stick is let go once turned further than this cos (~40 deg)
   APPROACH: 800, // walking toward the camera into a door: cut round to the room side this far out
+  SHRINK: 0.35, // Jonas's size by the time the wipe has closed on him diving into the bottle
+  STEP: 120, // walking into a door, he steps this far on into its opening as the wipe closes...
+  STEP_AT: 0.4, // ...from this far into the close (its leaves swung aside by then) to its end
+  SHUT_FROM: 4, // ticks into the open the door he comes out of stands open, then it shuts
 };
+// The open's tick the leaves of the door he comes out of meet on, as 'door_close' plays (the
+// last but one: the transition is over on the last).
+const SHUT_AT = WARP.OPEN - 1;
 
 // Actions a warp never starts from (the door ignores most of them already).
 const REFUSE = new Set(['death', 'spawn', 'reading', 'cannon']);
@@ -141,6 +173,13 @@ export class AreaSwitch {
     this.carried = neutralController(); // the carried or stilled stick (his buttons), reused
     this.neutral = neutralController();
     this.wipeState = { amount: 0, kind: 'iris', color: IRIS_COLOR };
+    // The door leaves swinging (a door's warp): the area whose door they are, and how far open
+    // they stand after this tick and after the one before (frames are drawn between the two).
+    this.leafArea = null;
+    this.leaf = 0;
+    this.leafWas = 0;
+    this.offset = { x: 0, z: 0 }; // heroOffset's, reused
+    this.won = new Set(); // courses whose own star he has won this game (their lamps lit)
     events.on('warpRequest', (w) => this.request(w));
     events.on('starCollected', (e) => this.onStar(e));
   }
@@ -172,6 +211,7 @@ export class AreaSwitch {
     this.view.prewarm?.(area.objects.group);
     this.buildMs[name] = performance.now() - t0;
     this.built[name] = area;
+    this._light(area);
     return area;
   }
 
@@ -208,10 +248,16 @@ export class AreaSwitch {
     return this.request({ to: l.to, entry: l.entry, kind: 'leave' });
   }
 
-  // Only the current area's own star (not Rustmaw's) ends a course with a star exit.
+  // Only the current area's own star (not Rustmaw's) lights its lamps and ends a course with a
+  // star exit.
   onStar(e) {
+    if (e?.boss || e?.area !== this.current.name) return false;
+    if (!this.won.has(e.area)) {
+      this.won.add(e.area);
+      for (const name of Object.keys(this.built)) this._light(this.built[name]);
+    }
     const exit = this.current.def.starExit;
-    if (!exit || e?.boss || e?.area !== this.current.name || this.phase !== null || !this._hasEntry(exit.to, exit.entry)) return false;
+    if (!exit || this.phase !== null || !this._hasEntry(exit.to, exit.entry)) return false;
     this.warp = { to: exit.to, entry: exit.entry, kind: 'star', from: null };
     this.phase = 'star';
     this.t = 0;
@@ -221,6 +267,12 @@ export class AreaSwitch {
   }
 
   step(controller) {
+    const c = this._step(controller);
+    this._swing();
+    return c;
+  }
+
+  _step(controller) {
     if (this.carry) this._keepCarry(controller);
     if (this.still && controller.stickMag === 0) this.still = false;
     if (this.phase === null) {
@@ -276,10 +328,11 @@ export class AreaSwitch {
         }
         return this.neutral;
       default: // 'open'
+        // The door he came out of shuts behind him (_swing).
+        if (this.t === SHUT_AT && w.kind === 'door' && this.arrival !== null) this.events.emit('sfx', { name: 'door_close' });
         if (this.t >= WARP.OPEN) this._stop();
         if (this.walk > 0) {
           this.walk--;
-          if (this.walk === 0 && w.kind === 'door') this.events.emit('sfx', { name: 'door_close' });
           return this._toward(this.walkYaw);
         }
         return this._his(controller);
@@ -289,29 +342,100 @@ export class AreaSwitch {
   // The wipe for a frame `alpha` of the way into the next tick.
   wipe(alpha = 1) {
     const s = this.wipeState;
-    const k = this.t - 1 + alpha;
-    let a = 0;
-    if (this.phase === 'close') a = k / this.closeTicks;
-    else if (this.phase === 'hold') a = 1;
-    else if (this.phase === 'open') a = 1 - k / WARP.OPEN;
-    s.amount = a > 1 ? 1 : a > 0 ? a : 0;
+    s.amount = this._amount(alpha);
     return s;
   }
 
+  // Jonas's size for a frame `alpha` of the way into the next tick: diving into the bottle he
+  // shrinks to SHRINK as the wipe closes (eased), and grows back with it if the dive is called
+  // off; from the switch on he is his full size.
+  heroScale(alpha = 1) {
+    const w = this.warp;
+    if (w === null || w.kind !== 'bottle' || this.arrival !== null) return 1;
+    const k = this._amount(alpha);
+    return 1 - (1 - WARP.SHRINK) * k * k * (3 - 2 * k);
+  }
+
+  // Where Jonas's model is drawn, a frame `alpha` of the way into the next tick, off where he
+  // stands: walking into a door, once its leaves have swung aside (STEP_AT of the close), he
+  // steps on into its opening as the wipe closes on him (STEP, eased; the door stays solid, so
+  // only his model goes), and back out with the wipe if the warp is called off; from the switch
+  // on, nothing. { x, z } (reused).
+  heroOffset(alpha = 1) {
+    const o = this.offset;
+    o.x = o.z = 0;
+    const w = this.warp;
+    if (w === null || w.kind !== 'door' || !w.from || this.arrival !== null) return o;
+    const k = (this._amount(alpha) - WARP.STEP_AT) / (1 - WARP.STEP_AT);
+    if (k <= 0) return o;
+    const d = k < 1 ? WARP.STEP * k * k * (3 - 2 * k) : WARP.STEP;
+    // Into the door: against its face's outward direction.
+    o.x = -w.from.sin * d;
+    o.z = -w.from.cos * d;
+    return o;
+  }
+
   resetCourses() {
+    this.won.clear();
     for (const name of Object.keys(this.built)) {
       const area = this.built[name];
       if (area === this.grounds) continue;
       area.reset();
       area.objects.reset();
+      this._light(area);
     }
     this.carded.clear();
   }
 
-  update(time, camera) {
+  update(time, camera, alpha = 1) {
     const a = this.current;
     a.update(time, camera);
     if (a !== this.grounds && a.def.sky) this.sky?.update(time, camera); // (the grounds update it themselves)
+    const leaves = this.leafArea;
+    if (leaves !== null) leaves.setDoorOpen?.(this.leafWas + (this.leaf - this.leafWas) * alpha);
+  }
+
+  // How far the wipe covers the screen a frame `alpha` of the way into the next tick.
+  _amount(alpha) {
+    const k = this.t - 1 + alpha;
+    let a = 0;
+    if (this.phase === 'close') a = k / this.closeTicks;
+    else if (this.phase === 'hold') a = 1;
+    else if (this.phase === 'open') a = 1 - k / WARP.OPEN;
+    return a > 1 ? 1 : a > 0 ? a : 0;
+  }
+
+  // The door leaves after this tick (see the header): open with the wipe closing through a
+  // door, shut with it if the warp was called off; standing open at the switch in the area he
+  // arrives in, and SHUT_FROM ticks into the open shutting behind him, to meet on SHUT_AT (as
+  // 'door_close' plays).
+  _swing() {
+    const w = this.warp;
+    let area = null;
+    let open = 0;
+    if (w !== null && w.kind === 'door') {
+      area = this.current;
+      if (this.phase === 'close') open = this.t / this.closeTicks;
+      else if (this.arrival === null) open = 1 - this.t / WARP.OPEN; // (no switch: covered, or called off)
+      else if (this.phase === 'hold') open = 1;
+      else {
+        open = (SHUT_AT - this.t) / (SHUT_AT - WARP.SHUT_FROM);
+        open = open < 1 ? (open > 0 ? open : 0) : 1;
+      }
+    }
+    if (area !== this.leafArea) {
+      // A new door: the last one shuts (its area hidden now); the one he walks into opens from
+      // shut, the one he comes out of stands open from the switch (the screen covered).
+      if (this.leafArea !== null) this.leafArea.setDoorOpen?.(0);
+      this.leafArea = area;
+      this.leafWas = this.phase === 'close' ? 0 : open;
+    } else this.leafWas = this.leaf;
+    this.leaf = open;
+  }
+
+  // An area's lamp: lit if its own star is won, or that of the course its def.lamp names.
+  _light(area) {
+    area.setLit?.(this.won.has(area.name) || (!!area.def.lamp && this.won.has(area.def.lamp)));
   }
 
   // Play allows a warp (canWarp) and no dialog is up.
@@ -328,6 +452,7 @@ export class AreaSwitch {
   _close(ticks, kind, color) {
     this.phase = 'close';
     this.t = 0;
+    this.arrival = null; // (set at the switch)
     this.closeTicks = ticks;
     this.wipeState.kind = kind;
     this.wipeState.color = color;
@@ -349,6 +474,10 @@ export class AreaSwitch {
     this.warp = null;
     this.t = 0;
     this.walk = 0;
+    // A door still swinging (a switch at once, enter()) shuts.
+    if (this.leafArea !== null) this.leafArea.setDoorOpen?.(0);
+    this.leafArea = null;
+    this.leaf = this.leafWas = 0;
   }
 
   // The scripted stick: full push toward world yaw `yaw` (the inverse of stickToWorldYaw for

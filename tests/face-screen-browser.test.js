@@ -171,10 +171,16 @@ test('?face=1 opens the face screen alone; two touch points pull two handles; Sp
       f.pointer('move', a.x + 0.2, a.y, { id: 11, pointerType: 'touch' });
       f.pointer('move', b.x - 0.2, b.y, { id: 12, pointerType: 'touch' });
     });
-    await page.waitForTimeout(500);
+    // The handles follow the pull over a few frames (slower under load): wait for it, then check.
+    await page
+      .waitForFunction(() => {
+        const handles = window.__game.face.state().handles;
+        return handles.length === 2 && handles.every((h) => h.held && h.offset > 20);
+      }, null, { timeout: 20000 })
+      .catch(() => {});
     const s = await state(page);
     assert.equal(s.handles.filter((h) => h.held).length, 2, 'two held handles');
-    assert.ok(s.handles.every((h) => h.offset > 20), 'both pulled');
+    assert.ok(s.handles.every((h) => h.offset > 20), `both pulled: ${s.handles.map((h) => h.offset.toFixed(1))}`);
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.cg-face-cursor')).display), 'none', 'no mitten on touch');
     await page.evaluate(() => {
       window.__game.face.pointer('up', 0, 0, { id: 11, pointerType: 'touch' });

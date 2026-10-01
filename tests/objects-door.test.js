@@ -9,7 +9,8 @@
 // until he is off its apron; sealed (AI RACE on or fading out: ObjectManager) it shows its
 // sealed sign with the laugh and waits for REARM instead; a locked one shows its locked sign,
 // sealed or not, laughing if it should and otherwise rattling in its frame; disarm() and
-// near(); nothing allocated per tick.
+// near(); nothing allocated per tick, nor by the warp's timeline (core/AreaSwitch.js) and the
+// door leaves it swings every frame.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -18,6 +19,10 @@ import { Events } from '../src/core/events.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { CastleDoor, DOOR, CASTLE_LOCKED, CASTLE_SEALED } from '../src/objects/CastleDoor.js';
 import { Door } from '../src/objects/Door.js';
+import { AreaSwitch } from '../src/core/AreaSwitch.js';
+import { doorLeaves } from '../src/world/castle/building.js';
+import { buildArea } from '../src/world/area.js';
+import { NO_WATER } from '../src/core/constants.js';
 
 const CASTLE = { x: 0, frontZ: -700, baseY: 160, doorWidth: 420, doorHeight: 620 };
 const PORCH = 300;
@@ -408,6 +413,33 @@ test('door check allocates nothing per tick while nothing happens', () => {
     'Door.atDoor': Door.prototype.atDoor,
     'Door.near': Door.prototype.near,
   };
+  for (const [name, fn] of Object.entries(hot)) {
+    const src = fn.toString();
+    assert.doesNotMatch(src, /Math\.(hypot|max|min)\(/, name);
+    assert.doesNotMatch(src, /for \((const|let|var) [^;]* of /, name);
+  }
+});
+
+test('the warp timeline and the swinging door leaves allocate nothing per tick or frame', () => {
+  // A bare area (no builders) for its setDoorOpen, and a door with no leaves for doorLeaves'.
+  const area = buildArea(new THREE.Scene(), {
+    name: 'bare',
+    origin: { x: 0, y: 0, z: 0 },
+    builders: [],
+    layout: {},
+    entries: { in: { x: 0, y: 0, z: 0 } },
+    respawn: { entry: 'in', drop: 0 },
+    waterLevelAt: () => NO_WATER,
+    probeY: 100,
+  });
+  const hot = {
+    'Area.setDoorOpen': area.setDoorOpen,
+    'doorLeaves().setOpen': doorLeaves([], null, (g) => g, 'none').setOpen,
+  };
+  for (const name of ['step', '_step', '_swing', '_amount', 'wipe', 'heroScale', 'heroOffset', 'update', '_toward', '_approach', '_keepCarry', '_his', '_carried']) {
+    assert.equal(typeof AreaSwitch.prototype[name], 'function', name);
+    hot[`AreaSwitch.${name}`] = AreaSwitch.prototype[name];
+  }
   for (const [name, fn] of Object.entries(hot)) {
     const src = fn.toString();
     assert.doesNotMatch(src, /Math\.(hypot|max|min)\(/, name);
