@@ -23,6 +23,7 @@ import { Events } from '../src/core/events.js';
 import { SIGNS } from '../src/world/layout.js';
 import { CASTLE_LOCKED, CASTLE_SEALED } from '../src/objects/CastleDoor.js';
 import * as hall from '../src/world/hall/layout.js';
+import * as skerries from '../src/world/skerries/layout.js';
 
 const measure = (t) => measureText(DIALOG_FONT, t);
 const WRAP = dialogMetrics(960, 540).wrap;
@@ -70,11 +71,12 @@ describe('dialog text', () => {
     }
   });
 
-  test("every page of the Great Hall's signs and doors can be drawn in full with the dialog font, and is its own", () => {
+  test("every page of the Great Hall's and Midsummer Skerries' signs and doors can be drawn in full with the dialog font, and is its own", () => {
     const letters = (t) => (t.match(/[\p{L}\p{N}]/gu) ?? []).length;
     const shut = hall.DOORS.filter((d) => d.locked).map((d) => d.locked);
-    assert.ok(shut.length >= 3, 'the east doors and the bottle');
-    for (const sign of [...hall.SIGNS, ...shut]) {
+    assert.ok(shut.length >= 2, 'the east doors');
+    assert.equal(skerries.SIGNS.length, 3);
+    for (const sign of [...hall.SIGNS, ...shut, ...skerries.SIGNS]) {
       assert.ok(sign.pages.length >= 2, sign.id);
       for (const page of sign.pages) {
         const text = normalizeText(page);
@@ -201,8 +203,8 @@ describe('dialog box metrics', () => {
     const wraps = new Set(SIZES.filter(([w, h]) => w >= h).map(([w, h, d]) => dialogMetrics(w, h, d).wrap));
     assert.equal(wraps.size, 1, [...wraps].join());
     // On a desktop picture every sign page fits one screen of the box (the grounds' signs, the
-    // Great Hall's and its doors' that do not open yet).
-    for (const sign of [...SIGNS, ...hall.SIGNS, hall.HALL_DOOR_SOON, hall.BOTTLE_SOON]) {
+    // Great Hall's and its doors' that do not open yet, Midsummer Skerries').
+    for (const sign of [...SIGNS, ...hall.SIGNS, hall.HALL_DOOR_SOON, ...skerries.SIGNS]) {
       const screens = paginate(sign.pages, { wrap: WRAP });
       assert.equal(screens.length, sign.pages.length, sign.id);
     }
@@ -211,7 +213,7 @@ describe('dialog box metrics', () => {
   // A dialog page that names AI RACE keeps the two words on one line at every size (the
   // castle door's sealed sign: "Stop the AI" / "RACE and..." read as two things).
   test('AI RACE is never split over two lines, at any size', () => {
-    const pages = [...SIGNS, ...hall.SIGNS, CASTLE_LOCKED, CASTLE_SEALED, hall.HALL_DOOR_SOON, hall.BOTTLE_SOON].flatMap((s) => s.pages).filter((p) => p.includes('AI RACE'));
+    const pages = [...SIGNS, ...hall.SIGNS, CASTLE_LOCKED, CASTLE_SEALED, hall.HALL_DOOR_SOON, ...skerries.SIGNS].flatMap((s) => s.pages).filter((p) => p.includes('AI RACE'));
     assert.ok(pages.length > 0);
     for (const [w, h, dpr] of [...SIZES, [320, 240, 1], [480, 270, 1]]) {
       const m = dialogMetrics(w, h, dpr);

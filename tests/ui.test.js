@@ -24,11 +24,19 @@ import {
   GAME_OVER_SCALE,
   COURSE_NAME,
   COURSE_NAMES,
+  COURSE_CARD,
+  courseCardOffset,
+  courseCardScale,
+  LEAVE_COURSE,
+  LEAVE_KEYS,
+  LEAVE_HEIGHT,
+  leaveLine,
+  pauseLeaveRect,
   TITLE_HINT,
 } from '../src/ui/hudLogic.js';
 import { watchPixelRatio, pixelRatio } from '../src/ui/pixelRatio.js';
 import { HUD } from '../src/ui/HUD.js';
-import { drawPauseScreen } from '../src/ui/pauseScreen.js';
+import { drawPauseScreen, controlsLegend } from '../src/ui/pauseScreen.js';
 import { GameOverCard } from '../src/ui/GameOverCard.js';
 import { Events } from '../src/core/events.js';
 
@@ -379,22 +387,23 @@ test('course names: one per area, big-font glyphs, fit the 320-wide pause screen
 });
 
 // A 2D context that keeps only the glyph sprites drawn and where (everything else does nothing),
-// with a sprite cache whose glyphs name their character: what the rows of text on it spell.
+// with a sprite cache whose glyphs name their character and size: what the rows of text on it
+// spell, and how big.
 function recordingCanvas(width, height) {
-  const glyphs = []; // { ch, x, y }
+  const glyphs = []; // { ch, x, y, px }
   const ctx = new Proxy(
-    { canvas: { width, height }, drawImage: (img, x, y) => img.ch && glyphs.push({ ch: img.ch, x, y }) },
+    { canvas: { width, height }, drawImage: (img, x, y) => img.ch && glyphs.push({ ch: img.ch, x, y, px: img.px }) },
     { get: (t, k) => (k in t ? t[k] : () => {}), set: () => true },
   );
-  const sprite = (ch) => ({ back: {}, front: { ch }, ox: 0, oy: 0 });
-  const cache = { glyph: (font, ch) => sprite(ch), icon: () => sprite(null), clear() {} };
+  const sprite = (ch, px) => ({ back: {}, front: { ch, px }, ox: 0, oy: 0 });
+  const cache = { glyph: (font, ch, style, px) => sprite(ch, px), icon: () => sprite(null), clear() {} };
   // Each row of glyphs (one y), left to right (spaces are not drawn).
   const rows = () => {
     const by = new Map();
     for (const g of [...glyphs].sort((a, b) => a.x - b.x)) by.set(g.y, (by.get(g.y) ?? '') + g.ch);
     return [...by.values()];
   };
-  return { ctx, cache, rows };
+  return { ctx, cache, rows, glyphs };
 }
 
 test('the pause screen draws the course name the HUD was given (the area Jonas is in)', () => {
@@ -414,6 +423,113 @@ test('the pause screen draws the course name the HUD was given (the area Jonas i
     hud._draw(16);
     assert.ok(h.rows().includes(name), `${area}: ${h.rows().join(' | ')}`);
   }
+});
+
+test("a course's way out on its pause screen: the leave line's glyphs, in each legend's bindings, between PAUSE and the controls panel at every screen", () => {
+  assert.equal(LEAVE_COURSE, 'Leave course');
+  assert.deepEqual(LEAVE_KEYS, { keys: 'J', pad: 'B', switch: 'B', touch: 'B' });
+  const measure = (t) => measureText(SMALL_FONT, t);
+  for (const kind of Object.keys(LEAVE_KEYS)) {
+    const line = leaveLine(kind);
+    assert.ok(SMALL_STRINGS.includes(line), `glyph coverage checks "${line}"`);
+    assert.deepEqual(missingGlyphs(SMALL_FONT, line), [], line);
+    // The key is the one that attacks in that legend (the game's B button).
+    assert.ok(controlsLegend(kind).some(([k, action]) => /Attack/.test(action) && k.split(' / ').includes(LEAVE_KEYS[kind])), `${kind}: ${LEAVE_KEYS[kind]}`);
+    for (const [W, H] of [[320, 240], [427, 240], [512, 160]]) {
+      const lay = pauseLayout(W, H, measure, controlsLegend(kind));
+      const r = pauseLeaveRect(W, H, measure, controlsLegend(kind), kind);
+      const label = `${kind} ${W}x${H}`;
+      assert.ok(r.y >= lay.pauseY + BIG_FONT.height * 2 + 1, `${label}: under PAUSE (${r.y - lay.pauseY})`);
+      assert.ok(r.y + LEAVE_HEIGHT <= lay.panel.y, `${label}: over the panel`);
+      assert.ok(r.x >= 0 && r.x + r.w <= W && Math.abs(r.x + r.w / 2 - W / 2) < 1e-9, `${label}: centred on the screen`);
+      assert.equal(r.w, measure(leaveLine(kind)));
+    }
+  }
+});
+
+test('the pause screen draws the leave line only while the HUD offers the way out, in the legend\'s bindings', () => {
+  const [W, H, s] = [320, 240, 2];
+  for (const [controls, row] of [['keys', 'JLeavecourse'], ['pad', 'BLeavecourse'], ['touch', 'BLeavecourse']]) {
+    const r = recordingCanvas(W * s, H * s);
+    drawPauseScreen(r.ctx, r.cache, { W, H, s, coins: 0, stars: 0, controls, course: COURSE_NAMES.skerries, leave: true });
+    assert.ok(r.rows().includes(row), `${controls}: ${r.rows().join(' | ')}`);
+    assert.ok(r.rows().includes('MIDSUMMERSKERRIES'));
+    const off = recordingCanvas(W * s, H * s);
+    drawPauseScreen(off.ctx, off.cache, { W, H, s, coins: 0, stars: 0, controls, course: COURSE_NAMES.hall });
+    assert.ok(!off.rows().some((t) => t.includes('Leavecourse')), `${controls}: none in the hall`);
+  }
+  // Through the HUD: setLeave's flag (main: as the game pauses, while the way out can be taken)
+  // reaches it, and a switch (setCourse) takes the last one away.
+  const hud = new HUD(null);
+  hud.update({ coins: 0 });
+  hud.setPaused(true);
+  const shown = () => {
+    const h = recordingCanvas(W * s, H * s);
+    Object.assign(hud, { ctx: h.ctx, cache: h.cache, canvas: h.ctx.canvas, W, H, s, _dpr: pixelRatio(), _last: 0 });
+    hud._draw(16);
+    return h.rows().some((t) => t.includes('Leavecourse'));
+  };
+  hud.setCourse('skerries');
+  assert.equal(shown(), false, 'not until offered');
+  hud.setLeave(true);
+  assert.equal(shown(), true, 'offered');
+  hud.setLeave(false);
+  assert.equal(shown(), false, 'not while it cannot be taken (dropping in, dying)');
+  hud.setLeave(true);
+  hud.setCourse('hall');
+  assert.equal(shown(), false, 'gone with the switch');
+});
+
+test("the course card: a course's name big in gold for COURSE_CARD.ticks game ticks, sliding in and out, waiting while paused", () => {
+  assert.equal(COURSE_CARD.ticks, 75);
+  assert.equal(COURSE_CARD.scale, 2);
+  // Every name fits at double size on the narrowest screen (320 wide: 4:3, portrait phones),
+  // with the margin the HUD keeps.
+  for (const name of Object.values(COURSE_NAMES)) {
+    const w = measureText(BIG_FONT, name);
+    assert.ok(w * COURSE_CARD.scale <= 320 - COURSE_CARD.margin, `${name} fits at double size: ${w * 2} px`);
+    assert.equal(courseCardScale(320, w), COURSE_CARD.scale, name);
+  }
+  assert.equal(courseCardScale(320, 300), (320 - COURSE_CARD.margin) / 300, 'a longer one would shrink');
+  // In from the right, still in the middle, out to the left.
+  const W = 320;
+  assert.equal(courseCardOffset(COURSE_CARD.ticks, W), W);
+  assert.equal(courseCardOffset(COURSE_CARD.ticks / 2, W), 0);
+  assert.ok(courseCardOffset(1, W) < 0);
+  for (let left = COURSE_CARD.ticks; left > COURSE_CARD.ticks - COURSE_CARD.inTicks; left--) assert.ok(courseCardOffset(left, W) >= courseCardOffset(left - 1, W));
+  const [H, s] = [240, 2];
+  const hud = new HUD(null);
+  hud.update({ coins: 0 });
+  let glyphs = [];
+  const frame = () => {
+    const h = recordingCanvas(W * s, H * s);
+    Object.assign(hud, { ctx: h.ctx, cache: h.cache, canvas: h.ctx.canvas, W, H, s, _dpr: pixelRatio(), _last: 0 });
+    hud.dirty = true;
+    hud._draw(16);
+    glyphs = h.glyphs;
+    return h.rows();
+  };
+  assert.ok(!frame().includes('MIDSUMMERSKERRIES'));
+  hud.showCourse('skerries');
+  for (let i = 0; i < 20; i++) hud.update({ coins: 0 });
+  assert.ok(frame().includes('MIDSUMMERSKERRIES'), 'shown');
+  // At exactly double size on the 320 x 240 screen (every glyph of the card's row).
+  const cardY = glyphs.find((g) => g.ch === 'K').y;
+  const card = glyphs.filter((g) => g.y === cardY);
+  assert.equal(card.map((g) => g.ch).join(''), 'MIDSUMMERSKERRIES');
+  assert.ok(card.every((g) => g.px === s * COURSE_CARD.scale), JSON.stringify(card.map((g) => g.px)));
+  for (let i = 0; i < 10; i++) hud.update({ coins: 0, paused: true });
+  assert.ok(!frame().includes('MIDSUMMERSKERRIES'), 'not over the pause screen');
+  for (let i = 0; i < COURSE_CARD.ticks - 20 - 1; i++) hud.update({ coins: 0, paused: false });
+  assert.ok(hud.card && frame().includes('MIDSUMMERSKERRIES'), 'still up: the paused ticks did not count');
+  hud.update({ coins: 0 });
+  assert.equal(hud.card, null, `gone after ${COURSE_CARD.ticks} ticks of play`);
+  assert.ok(!frame().includes('MIDSUMMERSKERRIES'));
+  // Leaving the course (or GAME OVER's return to the grounds) takes a card still up with it.
+  hud.setCourse('skerries');
+  hud.showCourse('skerries');
+  hud.setCourse('grounds');
+  assert.equal(hud.card, null);
 });
 
 test('HUD setVisible hides it without losing state; showing again repaints', () => {

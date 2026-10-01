@@ -68,7 +68,8 @@ const ledgeClimb = {
 };
 
 // Holding a tree trunk / pole (arg: the pole). Stick up climbs, down slides, sideways orbits.
-// Climbing on at the top of the climb (hands at the tip) goes up into the handstand on it.
+// Climbing on at the top of the climb (hands at the tip) goes up into the handstand on it. On a
+// pole with a side of its own (camYaw) he works his way round to it by himself (toPoleSide).
 const pole = {
   group: 'automatic',
   anim: 'pole_hold',
@@ -103,6 +104,7 @@ const pole = {
       p.poleY += T.POLE_SLIDE_SPEED * sy;
     }
     p.faceYaw = wrapAngle(p.faceYaw - p.rawStickX * 0.08);
+    toPoleSide(p, 0.08);
     placeOnPole(p);
     p.setAnim(anim);
     if (p.floor.surface && p.poleY <= p.floor.y) standAtPoleFoot(p);
@@ -164,9 +166,21 @@ const poleTopAction = {
     if (p.actionTimer >= T.POLE_TOP_SETTLE_TICKS && p.rawStickY <= T.POLE_TOP_DOWN_STICK) return p.setAction('pole', p.pole);
     // Stick left/right spins the handstand round on the tip (the jump off follows the facing).
     p.faceYaw = wrapAngle(p.faceYaw - p.rawStickX * T.POLE_TOP_TURN_RATE);
+    toPoleSide(p, T.POLE_TOP_TURN_RATE);
     return false;
   },
 };
+
+// A pole with a side to be held from (its camYaw: a course's key pole, the one he jumps off
+// toward a landmark) turns him round the trunk to that side while the stick leaves him be, at
+// the rate the stick would: facing camYaw + pi, his back to the camera, which swings round there
+// too (CameraController). So the trunk never stands between them, and on the tip he faces the
+// way the camera looks.
+function toPoleSide(p, rate) {
+  const side = p.pole.camYaw;
+  if (!Number.isFinite(side) || p.rawStickX > 0.2 || p.rawStickX < -0.2) return;
+  p.faceYaw = wrapAngle(p.faceYaw + clamp(wrapAngle(side + Math.PI - p.faceYaw), -rate, rate));
+}
 
 function placeOnTip(p) {
   const pole = p.pole;

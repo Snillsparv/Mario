@@ -7,8 +7,9 @@
 //   ?mute=1        no audio
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
-//   ?area=hall     start in another area (world/areas.js), at &entry=<id> (default: its
-//                  respawn entry); only where play starts at once (?test, ?skipTitle)
+//   ?area=hall     start in another area (world/areas.js: hall, skerries), at &entry=<id>
+//                  (default: its respawn entry); only where play starts at once (?test,
+//                  ?skipTitle)
 //
 // Game flow (state.mode 'title' -> 'play' -> 'gameover' -> 'title' ...; 'face' with ?face=1):
 //   * title: the camera orbits the grounds behind the title card. On a first visit the card
@@ -26,7 +27,9 @@
 //     white and it is GAME OVER the same way, whatever the lives left.
 //   * pause freezes everything drawn from the simulation clock (world, objects, hero).
 //   * areas (core/AreaSwitch.js): walking into the castle door wipes to the Great Hall and its
-//     inner door back out; GAME OVER always returns to the grounds.
+//     inner door back out; the ship in the bottle's mouth takes Pip to Midsummer Skerries, the
+//     first course, which he leaves with its star or from the pause screen (B); GAME OVER
+//     always returns to the grounds.
 
 import { FRAME_DT, MAX_STEPS_PER_FRAME, GAME_OVER_SECONDS } from './core/constants.js';
 import { Events } from './core/events.js';
@@ -142,9 +145,9 @@ async function start() {
     darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
   let lastAction = player.action;
-  // The areas (the grounds, the Great Hall): walking through a door, GAME OVER's way back.
-  // A warp waits for plain play: not in AI RACE (the storm stays on the grounds), nor while the
-  // meltdown runs or a dialog is up.
+  // The areas (the grounds, the Great Hall, the courses): walking through a door, GAME OVER's
+  // way back. A warp waits for plain play: not in AI RACE (the storm stays on the grounds), nor
+  // while the meltdown runs (nor while a dialog is up: AreaSwitch sees to that itself).
   const areas = new AreaSwitch({
     scene,
     view,
@@ -156,7 +159,7 @@ async function start() {
     dialog,
     defs: AREA_DEFS,
     grounds: { level, objects },
-    canWarp: () => state.mode === 'play' && !state.dark && state.darkT === 0 && !meltdown.running && !dialog.isOpen,
+    canWarp: () => state.mode === 'play' && !state.dark && state.darkT === 0 && !meltdown.running,
     onSwap: () => {
       lastAction = player.action; // an arrival (even one dropping in) is no respawn
     },
@@ -331,10 +334,24 @@ async function start() {
     }
     if (controller.START.pressed && !areas.busy) {
       state.paused = !state.paused;
+      // A course's way out is offered (the pause screen's line, the touch B kept bright) only
+      // while it can be taken: not while Jonas dies or drops in (nothing changes while paused).
+      const leave = state.paused && areas.canLeave();
+      hud.setLeave?.(leave);
       hud.setPaused?.(state.paused);
-      events.emit(state.paused ? 'pause' : 'unpause');
+      events.emit(state.paused ? 'pause' : 'unpause', { leave });
     }
-    if (state.paused) return;
+    // Paused in a course, B leaves it (the pause screen's "Leave course" line; a sign he was
+    // reading closes first): play goes on under the wipe back out of the bottle.
+    if (state.paused) {
+      if (controller.B.pressed && areas.canLeave()) {
+        state.paused = false;
+        hud.setPaused?.(false);
+        events.emit('unpause');
+        areas.leave();
+      }
+      return;
+    }
     state.time += FRAME_DT;
     const darkGoal = state.dark ? 1 : 0;
     if (state.darkT !== darkGoal) {
@@ -426,7 +443,7 @@ async function start() {
       return face; // the FaceScreen while it shows (test hooks: see ui/FaceScreen.js), else null
     },
     get area() {
-      return areas.name; // the area Jonas is in: 'grounds' | 'hall'
+      return areas.name; // the area Jonas is in: 'grounds' | 'hall' | 'skerries'
     },
     // Switch area at once (no wipe), at an entry (default: its respawn entry), then draw.
     enterArea(name, entry) {

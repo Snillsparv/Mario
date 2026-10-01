@@ -7,7 +7,13 @@
 // of him; ?area=hall boots straight into the hall (its furnished picture, and the bottle's end
 // from the landing, each in fewer than 45 draw calls; the hall's own textures at most 128 px),
 // and a stick held forward through the inner door walks him on out across the porch instead of
-// back in. No page errors anywhere.
+// back in. ?area=skerries boots into Midsummer Skerries (its course card over the picture, the
+// sky and the sea, fewer than 55 draw calls, its textures at most 128 px, its build time
+// logged); paused while he drops in, the pause screen offers no way out and B does nothing; the
+// star on the lighthouse gallery takes him back out of the bottle into the hall, one star up;
+// paused while reading the welcome sign, the pause screen offers the way out (the touch B kept
+// bright) and B closes the sign and leaves the course; and a life lost at x0 there ends in the
+// GAME OVER card, then the title over the grounds. No page errors anywhere.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -193,6 +199,112 @@ test('?area=hall boots straight into the Great Hall; forward held through the in
     assert.deepEqual(run.areas, ['grounds']);
     assert.equal(run.area, 'grounds');
     assert.ok(run.z > 0, `walked out across the courtyard: z ${Math.round(run.z)}`);
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him back out of the bottle; pause and B leave it (not while he drops in, also while he reads); GAME OVER there returns to the grounds', { skip, timeout: 600000 }, async (t) => {
+  const { page, errors, step, snap } = await open('&area=skerries');
+  // The pause state: paused, the pause screen's leave line, the touch controller's bright B.
+  const pause = () =>
+    page.evaluate(() => ({
+      paused: window.__game.state.paused,
+      leave: window.__game.hud.leave,
+      touchB: document.querySelector('.cg-touch').classList.contains('cg-leave'),
+    }));
+  try {
+    let s = await snap();
+    assert.equal(s.area, 'skerries');
+    assert.equal(s.action, 'spawn', 'dropping in onto the jetty');
+    // Paused while he drops in: no way out offered, and B does nothing.
+    await step(1, { START: true });
+    assert.deepEqual(await pause(), { paused: true, leave: false, touchB: false });
+    await step(1, { B: true });
+    assert.deepEqual(await pause(), { paused: true, leave: false, touchB: false });
+    assert.equal((await snap()).warp, null);
+    await step(1);
+    await step(1, { START: true });
+    assert.equal((await pause()).paused, false);
+    await step(60);
+    s = await snap();
+    assert.ok(Math.abs(s.pos.x - 60000 + 830) < 1 && Math.abs(s.pos.y - 150) < 1 && Math.abs(s.pos.z - 1700) < 1, JSON.stringify(s.pos));
+    assert.ok(s.cameraPos[2] > s.pos.z + 800, 'the camera behind him');
+    assert.equal(await page.evaluate(() => window.__game.hud.card?.text), 'MIDSUMMER SKERRIES', 'the course card');
+    const f = await frame(page);
+    const built = await page.evaluate(() => window.__game.areas.buildMs.skerries);
+    t.diagnostic(`skerries: ${f.calls} draw calls, ${f.triangles} triangles, built in ${built.toFixed(1)} ms`);
+    assert.ok(f.calls < 55, `${f.calls} draw calls`);
+    assert.ok(built < 450, `the first entry's hitch: built in ${built} ms`);
+    assert.ok(skyBlue(f.pixels[0]) || f.pixels.some(skyBlue), `sky over the bay: ${JSON.stringify(f.pixels)}`);
+    const sizes = await page.evaluate(async () => {
+      const textures = await import('/src/world/skerries/textures.js');
+      return Object.entries(textures).map(([name, make]) => {
+        const { image } = make();
+        return [name, image.width, image.height];
+      });
+    });
+    assert.ok(sizes.length >= 3);
+    for (const [name, w, h] of sizes) assert.ok(w <= 128 && h <= 128, `${name}: ${w} x ${h}`);
+
+    // The star: on the gallery just south of it, walking north into it.
+    const star = await page.evaluate(() => {
+      const g = window.__game;
+      g.player.teleport(60000 + 440, 2750, -4600 + 250, Math.PI);
+      g.player.setAction('idle');
+      g.camera.reset(g.player);
+      let n = 0;
+      for (; n < 300 && g.area !== 'hall'; n++) {
+        const a = Math.atan2(Math.sin(g.camera.getYaw() - Math.PI), Math.cos(g.camera.getYaw() - Math.PI));
+        g.step(1, n < 20 ? { stickX: Math.sin(a), stickY: Math.cos(a) } : null);
+      }
+      g.step(20);
+      return { n, area: g.area, stars: g.player.stars, warp: g.snapshot().warp };
+    });
+    assert.equal(star.area, 'hall', JSON.stringify(star));
+    assert.ok(star.n < 300);
+    assert.equal(star.stars, 1);
+    assert.equal(star.warp, null);
+
+    // Back in, then out from the pause screen, paused while reading the welcome sign (whose
+    // last page says to): the way out is offered, and B closes the sign and leaves.
+    await page.evaluate(() => window.__game.enterArea('skerries'));
+    await step(60);
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.player.teleport(60000 - 990, 150, 1330, Math.PI); // in front of the welcome sign
+      g.player.setAction('idle');
+      g.camera.reset(g.player);
+    });
+    await step(1, { B: true });
+    assert.deepEqual(await page.evaluate(() => [window.__game.player.action, window.__game.dialog.isOpen]), ['reading', true]);
+    await step(1, { START: true });
+    assert.deepEqual(await pause(), { paused: true, leave: true, touchB: true });
+    await step(1, { B: true });
+    assert.equal((await pause()).paused, false, 'B unpaused...');
+    assert.equal((await snap()).warp?.kind, 'leave', '...and leaves');
+    assert.equal(await page.evaluate(() => window.__game.dialog.isOpen), false, 'the sign closed');
+    await step(60);
+    s = await snap();
+    assert.equal(s.area, 'hall');
+    assert.equal(s.warp, null);
+
+    // GAME OVER in the course: the card, then the grounds behind the title.
+    await page.evaluate(() => window.__game.enterArea('skerries'));
+    await step(60);
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.state.lives = 0;
+      g.player.loseLife();
+      g.step(2);
+    });
+    assert.equal((await snap()).mode, 'gameover');
+    await page.waitForTimeout(4500);
+    s = await snap();
+    assert.equal(s.area, 'grounds');
+    assert.equal(s.mode, 'title');
+    assert.equal(s.stars, 0, 'the star taken back');
     assert.deepEqual(errors, []);
   } finally {
     await page.close();

@@ -33,15 +33,8 @@ browser once with `npx playwright install chromium`.
 ## How to play
 
 * **Jonas's stretchy face**: open the game with `?face=1` for a start screen with Jonas's big face: grab and pull his cheeks, nose, glasses, ears or cap (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start to play.
-* **Into the castle**: walk up the steps to the big front door and keep walking into it. The
-  door creaks open, the picture closes in a circle around Jonas and opens again inside the
-  **Great Hall**, a long candle-lit hall under an open timber roof. At its far end a giant
-  **ship in a bottle** lies on its stand (climb the stairs, or hop up the cork or the stack of
-  books, to its mouth: the little boat's course is still being rigged). A **1-up** waits on the
-  fireplace's mantel: wall-kick up the narrow gap beside it, or climb the banner pole and jump
-  from its top. The doors in the east wall are still being built. The front door, inside, takes
-  him back out onto the porch. While AI RACE is on (or its storm is still clearing) the storm
-  keeps the door sealed.
+* **Into the castle and on to the first course**: walk into the castle's big front door; see
+  "The castle and Midsummer Skerries" below.
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and
   grab it.
@@ -66,6 +59,40 @@ browser once with `npx playwright install chromium`.
   Start AI RACE again for a rematch (the star is only won once per game).
 * **The cannon** on the east lawn shoots Jonas onto the castle's roofs, all the way up to the top
   of the keep, where a ring of coins and a sign wait. Step onto its glowing pad to climb in.
+
+### The castle and Midsummer Skerries
+
+**Into the castle**: walk up the steps to the big front door and keep walking into it. The door
+creaks open, the picture closes in a circle around Jonas and opens again inside the **Great
+Hall**, a long candle-lit hall under an open timber roof. A **1-up** waits on the fireplace's
+mantel: wall-kick up the narrow gap beside it, or climb the banner pole and jump from its top.
+The doors in the east wall are still being built. The front door, inside, takes him back out
+onto the porch. While AI RACE is on (or its storm is still clearing) the storm keeps the door
+sealed.
+
+**The ship in the bottle** lies on its stand at the far end of the hall, with a tiny sea, a
+red-sailed boat and a lighthouse inside it. Climb the stairs (or hop up the cork or the stack of
+books) to its mouth and walk into the neck: Jonas dives in and drops out of the sky onto a jetty
+in **Midsummer Skerries**, the first course: a bay of pink granite rocks in the midsummer
+evening, with the bottle's red-sailed boat moored at the jetty. Far out on the last rock stands
+a white lighthouse with a red band, and the course's **star** sits on its lamp gallery.
+
+* Two ways out to the lighthouse's rock: **hop across the skerries** to the west (one gap is too
+  wide for a normal jump: a sign there teaches the **long jump**, and a row of coins shows the
+  way), or **swim across the sound** to the sandy beach. Missed a jump? The water is friendly:
+  swim to a rock and jump out (pull back and press jump at the surface).
+* On the lighthouse's rock, hop up the two stone blocks (or double jump up the rock face), climb
+  the wooden stair, then the tall **signal mast** in front of the lighthouse: climb all the way
+  up (the camera turns round to show the lighthouse ahead), stand on your hands on its top, push
+  up toward the lighthouse and jump onto the gallery. Walk round to the star.
+* The star takes Jonas back out of the bottle into the Great Hall (one more star on the
+  counter), popping out onto the landing; walk straight back into the neck to go again. To
+  leave without it, pause and press **J** (B on a gamepad or the touch controls): the pause
+  screen shows "Leave course" (not while Jonas is still dropping in). A life lost in the course
+  drops him back onto the jetty; GAME OVER, wherever it happens, goes back to the castle
+  grounds and puts every coin and star back.
+* 31 coins wait in the course: along the jetty, on the skerries, in the air over the long
+  jump's gap, up the signal mast, round the gallery.
 
 ### Moves
 
@@ -98,6 +125,7 @@ browser once with `npx playwright install chromium`.
 | arrow keys, mouse drag | right stick, d-pad | camera (up from close: first-person look) |
 | C | RB | camera mode |
 | Enter / Esc | Start | pause (shows the controls) |
+| J (while paused in a course) | B (while paused in a course) | leave the course (back out of the ship in the bottle) |
 | R (or F2) | | retro filter (the low-resolution N64 look on/off) |
 | 4 (or F3) | | 4:3 screen |
 | V | | record video, landscape: V starts, V again stops and saves a Full HD (1920x1080) MP4 or WebM with sound (works when the game runs on your own computer, `npm run dev` / `npm run preview`) |
@@ -124,8 +152,8 @@ WebM (VP9 + Opus, e.g. Firefox). Portrait files end in `-portrait`
 that blocks downloads) V and 9 only explain this.
 
 URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-time loop;
-driven through `window.__game`, see the docs), `?area=hall` (with `?skipTitle=1` or `?test=1`:
-start inside the Great Hall).
+driven through `window.__game`, see the docs), `?area=hall` or `?area=skerries` (with
+`?skipTitle=1` or `?test=1`: start inside the Great Hall, or in Midsummer Skerries).
 
 ## Play with your phone as a controller
 

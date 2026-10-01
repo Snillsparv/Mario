@@ -21,7 +21,7 @@
 //   update(time, camera),  // per render frame, while it is the current area
 //   reset(),               // a new game (nothing to undo yet: the pickups live in its objects)
 //   setVisible(on),
-//   entries,               // { id: { x, y, z, yaw, drop?, camYaw?, walkIn? } } (world)
+//   entries,               // { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx? } } (world)
 //   respawn,               // the entry def.respawn names, with its drop: player.setWorld's spawn
 //   signs,                 // layout.SIGNS (world), for player.setWorld
 //   groundAt(x, z),        // the floor under (x, z), probed from def.probeY (under the ceiling)

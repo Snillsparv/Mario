@@ -196,6 +196,46 @@ export function pauseLayout(W, H, measure, controls = KEY_CONTROLS) {
 export const COURSE_NAME = 'CASTLE GROUNDS';
 // The pause screen's course name in each area (world/areas.js; HUD.setCourse).
 export const COURSE_NAMES = Object.freeze({ grounds: COURSE_NAME, hall: 'THE GREAT HALL', skerries: 'MIDSUMMER SKERRIES' });
+
+// A course's way out on its pause screen (world/areas.js `leave`; main: B while paused): a gold
+// line, the button in the bindings of the legend shown, in the gap between PAUSE (BIG_FONT at
+// double size: 20 px tall from pauseY) and the controls panel (pauseY + 34).
+export const LEAVE_COURSE = 'Leave course';
+export const LEAVE_KEYS = Object.freeze({ keys: 'J', pad: 'B', switch: 'B', touch: 'B' });
+export const LEAVE_Y = 23; // the line's top, below pauseY
+export const LEAVE_HEIGHT = 9; // SMALL_FONT's rows
+export const leaveLine = (kind) => `${LEAVE_KEYS[kind] ?? LEAVE_KEYS.keys}  ${LEAVE_COURSE}`;
+
+// Logical rect { x, y, w, h } of the leave line on the pause screen of a W x H logical screen
+// (pauseLayout's stack for the `controls` legend; `kind` names its bindings, as
+// controlsLegend's kinds: 'keys' | 'pad' | 'switch' | 'touch'), centred.
+export function pauseLeaveRect(W, H, measure, controls, kind) {
+  const lay = pauseLayout(W, H, measure, controls);
+  const w = measure(leaveLine(kind));
+  return { x: W / 2 - w / 2, y: lay.pauseY + LEAVE_Y, w, h: LEAVE_HEIGHT };
+}
+
+// The course card (HUD.showCourse, on a course's first entry in a game): its name in gold
+// BIG_FONT at `scale` times the HUD's size (less if it would not fit with `margin` to spare:
+// courseCardScale) across the upper middle of the picture (`y` of its height) for `ticks` game
+// ticks, sliding in from the right over inTicks and out to the left over outTicks (it waits
+// while the game is paused).
+export const COURSE_CARD = Object.freeze({ ticks: 75, scale: 2, margin: 6, y: 0.28, inTicks: 8, outTicks: 8 });
+
+// The card's scale for a name `width` logical px wide (BIG_FONT at 1x) on a W-wide screen.
+export function courseCardScale(W, width) {
+  return Math.min(COURSE_CARD.scale, (W - COURSE_CARD.margin) / width);
+}
+
+// The card's horizontal offset (logical px) with `left` of its ticks to go on a W-wide screen.
+export function courseCardOffset(left, W) {
+  const { ticks, inTicks, outTicks } = COURSE_CARD;
+  const ease = (t) => 1 - (1 - t) * (1 - t);
+  const shown = ticks - left;
+  if (shown < inTicks) return Math.round((1 - ease(shown / inTicks)) * W);
+  if (left < outTicks) return -Math.round((1 - ease(left / outTicks)) * W);
+  return 0;
+}
 // The hero's name on the title card ('starring JONAS', BIG_FONT logo letters).
 export const HERO_NAME = 'JONAS';
 
@@ -254,6 +294,7 @@ export const SMALL_STRINGS = [
   ...PHONE_SMALL_STRINGS,
   ...REC_SMALL_STRINGS,
   ...RACE_SMALL_STRINGS,
+  ...Object.keys(LEAVE_KEYS).map(leaveLine),
   'starring',
   'CONTROLS',
   START_PROMPT,

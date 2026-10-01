@@ -129,10 +129,13 @@ export const CHANDELIERS = { spots: [{ x: 0, z: 1500 }, { x: 0, z: -300 }], y: 2
 
 // Where Jonas arrives (see world/area.js): through the front door he is put well inside it,
 // facing north with the room behind him for the camera, and walks on for walkIn ticks; out of
-// the bottle he pops out onto the landing facing south, the camera in front of him (camYaw).
+// the bottle he pops out onto the landing facing south (with its sound: sfx, played by
+// core/AreaSwitch.js as the wipe opens), the camera in front of him (camYaw), 280 out from the
+// mouth's face: just off its re-arm apron (objects/Door.js REACH + APRON, 260), so the mouth is
+// armed again and turning round walks him straight back in.
 export const ENTRIES = {
   front: { x: 0, y: 0, z: 1550, yaw: Math.PI, walkIn: 10 },
-  bottle: { x: 0, y: LANDING.top, z: -1230, yaw: 0, drop: 250, camYaw: 0 },
+  bottle: { x: 0, y: LANDING.top, z: -1120, yaw: 0, drop: 250, camYaw: 0, sfx: 'bottle_pop' },
 };
 // A respawn drops him in at the front entry from `drop` above (under the 2600 ceiling).
 export const RESPAWN = { entry: 'front', drop: 400 };
@@ -144,14 +147,10 @@ export const HALL_DOOR_SOON = Object.freeze({
   id: 'hall_door_soon',
   pages: Object.freeze(['This door is still being built.', 'Come back after the next update!']),
 });
-export const BOTTLE_SOON = Object.freeze({
-  id: 'bottle_soon',
-  pages: Object.freeze(['The little boat is still being rigged.', 'Come back soon!']),
-});
 
 // The doors (objects/Door.js): the front door's inside leads back out onto the porch; the two
 // east doors are still being built; the bottle's mouth (walked into from the landing, facing
-// north) will take him to the first course once it is rigged.
+// north) takes him to the first course, Midsummer Skerries (world/skerries/*).
 export const DOORS = [
   { id: 'hall_front', x: FRONT_DOOR.x, z: FRONT_DOOR.faceZ, yaw: Math.PI, width: FRONT_DOOR.width, floorY: 0, to: 'grounds', entry: 'porch' },
   ...EAST_DOORS.zs.map((z, i) => ({
@@ -165,7 +164,7 @@ export const DOORS = [
     locked: HALL_DOOR_SOON,
     laugh: false,
   })),
-  { id: 'bottle', x: 0, z: BOTTLE.lip[1], yaw: 0, width: 400, floorY: LANDING.top, kind: 'bottle', to: null, locked: BOTTLE_SOON, laugh: false },
+  { id: 'bottle', x: 0, z: BOTTLE.lip[1], yaw: 0, width: 400, floorY: LANDING.top, kind: 'bottle', to: 'skerries', entry: 'arrival' },
 ];
 
 // ---------------------------------------------------------------- pickups, signs, poles

@@ -35,7 +35,10 @@
 // back to the orbit behind the barrel, the flight camera for a shot ('cannon_shot').
 // Areas (places with a collision world of their own): setCollision(world) points every probe at
 // another area's world, and reset(player, { yaw }) snaps to a given orbit yaw instead of behind
-// the hero.
+// the hero. A pole with a camYaw of its own (CollisionWorld.addPole: a course's key pole, the
+// one he jumps off toward a landmark) swings the orbit round to that yaw while he holds it,
+// instead of round to his back (he works his way round to that side too), so the landmark is
+// ahead on screen however he grabbed the pole.
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
@@ -119,7 +122,7 @@ export class CameraController {
 
     this.hero = {
       x: 0, y: 0, z: 0, velX: 0, velY: 0, velZ: 0, speed: 0, faceYaw: 0, pitch: 0, action: '',
-      grounded: true, onPole: false, inWater: false, submerged: false, covered: false,
+      grounded: true, onPole: false, poleYaw: NaN, inWater: false, submerged: false, covered: false,
     };
     // Hero feet last tick and this tick (the published focus is interpolated between them).
     this._heroPrev = { x: 0, y: 0, z: 0 };
@@ -629,15 +632,16 @@ export class CameraController {
     if (falling) this.focusY = Math.min(this.focusY, hero.y + K.FALL_MAX_LAG);
   }
 
-  // Ease the orbit toward the hero's back while it moves (or holds a pole); `scale` fades it out
-  // for the flight camera.
+  // Ease the orbit toward the hero's back while it moves (or holds a pole: toward the pole's own
+  // camYaw where it has one); `scale` fades it out for the flight camera.
   _swingBehind(cfg, hero, scale = 1) {
     if (scale <= 0) return;
-    const d = angleDiff(this.yaw, hero.faceYaw + Math.PI);
     if (hero.onPole) {
-      this.yaw += clamp(d * K.POLE_SWING_GAIN, -K.POLE_SWING_MAX, K.POLE_SWING_MAX) * scale;
+      const off = angleDiff(this.yaw, Number.isFinite(hero.poleYaw) ? hero.poleYaw : hero.faceYaw + Math.PI);
+      this.yaw += clamp(off * K.POLE_SWING_GAIN, -K.POLE_SWING_MAX, K.POLE_SWING_MAX) * scale;
       return;
     }
+    const d = angleDiff(this.yaw, hero.faceYaw + Math.PI);
     if (hero.speed < K.MOVING_SPEED) return;
     const facing = 1 - smoothstep(cfg.faceCamera[0], cfg.faceCamera[1], Math.abs(d));
     const speed = Math.min(hero.speed / K.RUN_SPEED, 1.2);
@@ -834,6 +838,7 @@ export class CameraController {
 
     const floorY = player.floor?.y ?? p.y;
     h.onPole = K.POLE_ACTION.test(player.action || '');
+    h.poleYaw = h.onPole && Number.isFinite(player.pole?.camYaw) ? player.pole.camYaw : NaN;
     const anchored = K.ANCHORED_ACTION.test(player.action || '');
     h.grounded = anchored || (!h.inWater && p.y - floorY < 10 && !((vel.y || 0) > 0));
     return h;

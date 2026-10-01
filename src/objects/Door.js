@@ -8,7 +8,7 @@
 //     width        the doorway (the trigger reaches SIDE_MARGIN past either side of it)
 //     floorY       the floor in front of it (his feet from BELOW under it to ABOVE over it)
 //     to, entry    the area and the entry in it that the door leads to; to null: locked
-//     kind         'door' (default) or 'bottle', handed on with the warp
+//     kind         'door' (default) or 'bottle', handed on with the warp (and its sound)
 //     locked       the sign ({ id, pages }, like a layout sign) a locked door shows
 //     sealedSign   the sign an open door shows while it is sealed (null: it stays quiet)
 //     laugh        the evil laugh plays with those signs (default true)
@@ -18,7 +18,8 @@
 //   disarm()        quiet until the hero has left its re-arm range
 //   reset()         armed again
 //
-// An open door emits sfx 'door_open' and 'warpRequest' { to, entry, kind, from } (from: the door
+// An open door emits its sound (OPEN_SFX by kind: 'door_open', the creak and latch; the ship in
+// the bottle's mouth 'bottle_dive') and 'warpRequest' { to, entry, kind, from } (from: the door
 // itself; core/AreaSwitch.js walks him through it) and re-arms once he is off its apron (APRON
 // past its trigger, in front and at either side), so he can come straight back through it. A
 // locked one, or an open one while sealed, plays sfx 'evil_laugh' (if `laugh`) and opens the
@@ -44,6 +45,8 @@ export const DOOR = {
 
 // Actions in which walking up to a door means nothing (flying past it, among others).
 const IGNORED = new Set(['death', 'spawn', 'reading', 'flying']);
+// The sound an open door makes as he goes through it, by kind.
+export const OPEN_SFX = Object.freeze({ door: 'door_open', bottle: 'bottle_dive' });
 
 export class Door {
   constructor({ id = 'door', x, z, yaw = 0, width = 420, floorY = 0, to = null, entry = null, kind = 'door', locked = null, sealedSign = null, laugh = true, events }) {
@@ -123,7 +126,7 @@ export class Door {
     const pos = this.pos;
     if (this.to !== null && !sealed) {
       this.far = false;
-      this.events.emit('sfx', { name: 'door_open', pos: { x: pos.x, y: pos.y, z: pos.z } });
+      this.events.emit('sfx', { name: OPEN_SFX[this.kind] ?? OPEN_SFX.door, pos: { x: pos.x, y: pos.y, z: pos.z } });
       this.events.emit('warpRequest', { to: this.to, entry: this.entry, kind: this.kind, from: this });
       return true;
     }

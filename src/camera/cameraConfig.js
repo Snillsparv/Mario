@@ -61,7 +61,8 @@ export const RUN_SPEED = 32; // hero run speed used to normalise the swing (unit
 export const MOVING_SPEED = 2; // below this the hero counts as standing still
 export const AIR_SWING_SCALE = 0.35; // the camera barely swings while the hero is airborne
 // While the hero holds a pole the orbit swings round to its back (so the trunk it hugs is not
-// between them), even though it barely moves and faces the camera.
+// between them), even though it barely moves and faces the camera; to the pole's own camYaw
+// where it has one (a course's key pole).
 export const POLE_ACTION = /^pole(_top)?$/; // on the trunk, or in the handstand on its top
 export const POLE_SWING_GAIN = 0.04;
 export const POLE_SWING_MAX = 2 * DEG;

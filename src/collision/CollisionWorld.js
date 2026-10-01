@@ -119,9 +119,14 @@ export class CollisionWorld {
     if (desc.positions) this.addTriangles(desc.positions, opts);
   }
 
-  // Vertical climbable pole (tree trunks etc).
-  addPole({ x, z, y0, y1, radius = 40, kind = 'tree' }) {
-    this.poles.push({ x, z, y0, y1, radius, kind });
+  // Vertical climbable pole (tree trunks etc). camYaw (optional): a side of its own, for a
+  // course's key pole that he jumps off toward a landmark: while he holds it the follow camera's
+  // orbit yaw (CameraController) instead of behind him, and he works his way round to that side
+  // (player/actions/automatic.js), his back to the camera.
+  addPole({ x, z, y0, y1, radius = 40, kind = 'tree', camYaw }) {
+    const pole = { x, z, y0, y1, radius, kind };
+    if (Number.isFinite(camYaw)) pole.camYaw = camYaw;
+    this.poles.push(pole);
   }
 
   // fn(x, z) -> water surface height, or NO_WATER.

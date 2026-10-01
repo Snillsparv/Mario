@@ -423,22 +423,25 @@ export class SolidBuilder {
   // optionally, a surface kind (CollisionWorld's: 'slippery', 'not_slippery', ...; without
   // one the collider leaves it to the default).
   solid(polys, terrain = 'stone', surface = null) {
+    const c = centroid(polys.flat());
+    for (const p of polys) this.face(p, sub(centroid(p), c), terrain, surface);
+  }
+
+  // One convex planar polygon wound to face `facing` (a direction): a face on its own, such as
+  // a floor of another terrain laid over a solid's top.
+  face(p, facing, terrain = 'stone', surface = null) {
     const key = surface ? `${terrain}|${surface}` : terrain;
     let kind = this.byKind.get(key);
     if (!kind) this.byKind.set(key, (kind = { terrain, surface, positions: [] }));
     const out = kind.positions;
-    const c = centroid(polys.flat());
-    for (const p of polys) {
-      const facing = sub(centroid(p), c);
-      for (let i = 1; i + 1 < p.length; i++) {
-        let a = p[0];
-        let b = p[i];
-        let d = p[i + 1];
-        const n = cross(sub(b, a), sub(d, a));
-        if (Math.hypot(n[0], n[1], n[2]) < 1e-9) continue;
-        if (dot(n, facing) < 0) [b, d] = [d, b];
-        out.push(...a, ...b, ...d);
-      }
+    for (let i = 1; i + 1 < p.length; i++) {
+      let a = p[0];
+      let b = p[i];
+      let d = p[i + 1];
+      const n = cross(sub(b, a), sub(d, a));
+      if (Math.hypot(n[0], n[1], n[2]) < 1e-9) continue;
+      if (dot(n, facing) < 0) [b, d] = [d, b];
+      out.push(...a, ...b, ...d);
     }
   }
 

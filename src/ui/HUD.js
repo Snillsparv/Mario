@@ -1,6 +1,6 @@
 // N64-style HUD: lives (Jonas's face × n) top-left, coins and stars top-right, the power
-// meter top-centre, a red-coin number pop-up and the pause screen. Everything is drawn into
-// one canvas at device resolution from a 320x240 logical grid.
+// meter top-centre, a red-coin number pop-up, a course's title card and the pause screen.
+// Everything is drawn into one canvas at device resolution from a 320x240 logical grid.
 // While the cannon's aiming view is up ('cannonView' { on }, camera/cannon.js) a reticle marks
 // the middle of the picture (where the barrel points) with a hint line under it (fire / climb
 // out, in the bindings of the controls in use).
@@ -9,6 +9,10 @@
 //   hud.update({ lives, coins, stars, health, showPower, breath, paused })   // 30 Hz
 //   hud.setPaused(bool)
 //   hud.setCourse(areaName)                     // the pause screen's course name (COURSE_NAMES)
+//   hud.setLeave(bool)                          // its "Leave course" line (main: as the game
+//                                               // pauses in a course whose way out is open)
+//   hud.showCourse(areaName)                    // the course card: its name big in gold for
+//                                               // COURSE_CARD.ticks ticks (a course's arrival)
 //   hud.setVisible(bool)                        // e.g. hidden behind the title card
 //   hud.setViewport({ x, y, width, height })   // picture rect in the root (4:3 pillarbox)
 //
@@ -17,11 +21,11 @@
 // and the red-coin number age by frame time only while not paused, so they freeze with
 // the game instead of running out behind the pause screen.
 
-import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
+import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { SpriteCache, drawText, drawIcon, textCanvas, textWidth } from './raster.js';
 import { PowerMeterLogic, drawPowerMeter, isLowHealth } from './powerMeter.js';
-import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME, COURSE_NAME, COURSE_NAMES } from './hudLogic.js';
+import { hudMetrics, boxStyle, RollingCounter, MeterSlide, bumpCurve, redCoinCurve, BUMP_TIME, COURSE_NAME, COURSE_NAMES, COURSE_CARD, courseCardOffset, courseCardScale } from './hudLogic.js';
 import { drawPauseScreen, gamepadConnected, gamepadLegend } from './pauseScreen.js';
 import { pixelRatio } from './pixelRatio.js';
 import { touchUi } from './touchLogic.js';
@@ -52,6 +56,8 @@ export class HUD {
     this.gamepad = false; // pause legend shows pad bindings
     this.controls = 'keys'; // pause legend: 'touch' (the touch controller is shown) | 'pad' | 'keys'
     this.course = COURSE_NAME; // the pause screen's course name (setCourse)
+    this.leave = false; // the pause screen offers the course's way out (setLeave)
+    this.card = null; // the course card while it shows: { text, left (ticks) } (showCourse)
     this.slide = new MeterSlide();
     this.active = false; // nothing is drawn until the game first feeds state (not over the title)
     this.visible = true; // setVisible(): hidden HUDs skip their repaints
@@ -95,8 +101,10 @@ export class HUD {
     if (this.state.stars > prev.stars) this.bumps.stars = 0;
     if (this.coinCounter.tick(this.state.coins)) this.bumps.coins = 0;
     this.meter.tick(this.state, TICK);
+    // The course card counts down in game ticks (it waits while the game is paused).
+    if (this.card && !this.paused && --this.card.left <= 0) this.card = null;
     // Repaint only when something on screen changes, not on every tick.
-    const shown = [this.state.lives, this.coinCounter.shown, this.state.stars, this.meter.visible, this.meter.displayHealth].join();
+    const shown = [this.state.lives, this.coinCounter.shown, this.state.stars, this.meter.visible, this.meter.displayHealth, this.card?.left].join();
     if (shown !== this._shown || !this.active) this.dirty = true;
     this._shown = shown;
     this.active = true;
@@ -111,9 +119,25 @@ export class HUD {
     this.dirty = true;
   }
 
-  // The area Jonas is in (world/areas.js): the pause screen names its course.
+  // The area Jonas is in (world/areas.js): the pause screen names its course. A course card
+  // still up from the last area goes, and so does the last pause's offer of a way out.
   setCourse(area) {
     this.course = Object.hasOwn(COURSE_NAMES, area) ? COURSE_NAMES[area] : COURSE_NAME;
+    this.leave = false;
+    this.card = null;
+    this.dirty = true;
+  }
+
+  // Whether the pause screen offers the course's way out ("Leave course"): main sets it as the
+  // game pauses, true only while the way out can be taken (core/AreaSwitch.js canLeave).
+  setLeave(on) {
+    this.leave = !!on;
+    this.dirty = true;
+  }
+
+  // The course card: the course's name big in gold across the picture for a few seconds.
+  showCourse(area) {
+    this.card = { text: Object.hasOwn(COURSE_NAMES, area) ? COURSE_NAMES[area] : COURSE_NAME, left: COURSE_CARD.ticks };
     this.dirty = true;
   }
 
@@ -201,10 +225,11 @@ export class HUD {
     ctx.imageSmoothingEnabled = false;
     if (this.paused) {
       const { coins, stars } = this.state;
-      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course });
+      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course, leave: this.leave });
     }
     this._drawCounters();
     if (!this.paused) this._drawMeter(now);
+    if (this.card && !this.paused) this._drawCard();
     if (this.redPopup && !this.paused) this._drawRedCoin();
     if (this.cannonView && !this.paused) this._drawReticle();
   }
@@ -254,6 +279,16 @@ export class HUD {
       drawText(ctx, cache, SMALL_FONT, action, x + textWidth(SMALL_FONT, key, s) + gap, y, { px: s, style: 'white' });
       x += widths[i] + spacing;
     });
+  }
+
+  // The course card: the name centred across the upper middle (scaled down if it would not
+  // fit: courseCardScale), sliding in and out (courseCardOffset).
+  _drawCard() {
+    const { ctx, cache, s, W, H } = this;
+    const { text, left } = this.card;
+    const scale = courseCardScale(W, measureText(BIG_FONT, text));
+    const x = W / 2 + courseCardOffset(left, W);
+    drawText(ctx, cache, BIG_FONT, text, x * s, Math.round(H * COURSE_CARD.y) * s, { px: s * scale, align: 'center', style: 'gold' });
   }
 
   // Icon × number, with an optional bump (hop + scale) on the number.

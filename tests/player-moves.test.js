@@ -1,6 +1,7 @@
 // Round-3 feedback moves: the handstand on top of a climbed tree, the keyboard long jump
 // (Z and A together or in either order), fire damage's hot-foot hop, footstep speeds and
-// running jumps into trunk colliders at speed.
+// running jumps into trunk colliders at speed; and a course's key pole, held from a side of
+// its own (its camYaw).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -32,6 +33,48 @@ const toward = (yaw, extra = {}) => ({ stickX: -Math.sin(yaw), stickY: Math.cos(
 test('the new anims are part of the documented AnimName list', () => {
   assert.ok(ANIM_NAMES.has('pole_handstand'));
   assert.ok(ANIM_NAMES.has('burn'));
+});
+
+test("a pole with a side of its own (camYaw, a course's key pole): he works his way round to it by himself, on the trunk and on the tip, at the stick's rate, the stick still his; a plain pole leaves his facing be", () => {
+  const near = (a, b) => Math.abs(angleDiff(a, b)) < 0.02;
+  for (const camYaw of [0, undefined]) {
+    const s = sim(flat, { x: -42, y: 300, z: -42, yaw: Math.PI / 4 });
+    s.world.addPole({ x: 0, z: 0, y0: 0, y1: 1300, radius: 30, camYaw });
+    const pole = s.world.poles.at(-1);
+    // Grabbed from the north-west, facing south-east (into it).
+    s.p.setAction('pole', pole);
+    assert.ok(near(s.p.faceYaw, Math.PI / 4));
+    s.run(5, {});
+    if (camYaw === undefined) {
+      s.run(40, {});
+      assert.ok(near(s.p.faceYaw, Math.PI / 4), `a plain pole: still facing ${s.p.faceYaw}`);
+      continue;
+    }
+    // Round the trunk toward its side at the stick's own rate (0.08 a tick)...
+    assert.ok(near(s.p.faceYaw, Math.PI / 4 + 5 * 0.08), `turning: ${s.p.faceYaw}`);
+    s.run(40, {});
+    // ...until he holds it from there: facing camYaw + pi, on the camYaw side of the trunk.
+    assert.ok(near(s.p.faceYaw, Math.PI), `facing ${s.p.faceYaw}`);
+    assert.ok(s.p.pos.z > pole.z + 50 && Math.abs(s.p.pos.x - pole.x) < 1, `on its south side: ${s.p.pos.x}, ${s.p.pos.z}`);
+    // The stick still turns him; let go, he goes back round.
+    s.run(10, { stickX: 1 });
+    assert.ok(!near(s.p.faceYaw, Math.PI), 'the stick turns him');
+    s.run(30, {});
+    assert.ok(near(s.p.faceYaw, Math.PI));
+    // On the tip the same, at the handstand's turn rate; A (no stick) jumps off along his facing.
+    s.until(300, { stickY: 1 }, (p) => p.action === 'pole_top');
+    assert.equal(s.p.action, 'pole_top');
+    s.run(10, { stickX: -1 });
+    assert.ok(!near(s.p.faceYaw, Math.PI), 'the stick spins the handstand');
+    s.run(1, {});
+    assert.equal(s.p.action, 'pole_top');
+    s.run(40, {});
+    assert.ok(near(s.p.faceYaw, Math.PI), `back round: ${s.p.faceYaw}`);
+    s.run(1, { A: true });
+    assert.equal(s.p.action, 'pole_top_jump');
+    s.run(15, {});
+    assert.ok(s.p.pos.z < pole.z - 150 && Math.abs(s.p.pos.x - pole.x) < 20, `off the way the camera looks: ${s.p.pos.x}, ${s.p.pos.z}`);
+  }
 });
 
 describe('handstand on top of a tree', () => {

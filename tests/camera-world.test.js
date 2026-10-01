@@ -1,7 +1,10 @@
 // Camera side of areas: setCollision points every probe the camera owns at another collision
 // world (and drops the C-button probe made for the old one), so a wall of the old world no
 // longer moves the camera; reset(player, { yaw }) snaps the orbit to a given yaw, which on the
-// real castle porch puts the camera in front of Jonas instead of beside him.
+// real castle porch puts the camera in front of Jonas instead of beside him; and a pole with a
+// camYaw of its own (a course's key pole) swings the orbit round to that yaw while he holds it,
+// however he grabbed it (he works his way round to that side), where any other pole swings it
+// round behind him.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -135,4 +138,41 @@ test('reset(player, { yaw }) on the real porch: the camera in front of Jonas, no
   }
   assert.equal(occluded, 0);
   assert.ok(cam.pos.z > -470 + 1000, 'it stays there');
+});
+
+test("a pole's own camYaw: holding it (climbing, on its tip) the orbit swings round to that yaw; a plain pole's, behind him", () => {
+  for (const camYaw of [undefined, 0]) {
+    const b = new CourseBuilder();
+    b.ground(8000);
+    const world = b.build();
+    world.addPole({ x: 0, z: 0, y0: 0, y1: 1600, radius: 30, camYaw });
+    const pole = world.poles[0];
+    assert.equal('camYaw' in pole, camYaw !== undefined, 'kept only when given');
+    // Grabbed from the north-west, facing south-east (as up the stair to the course's mast).
+    const player = new Player({ collision: world, events: null, spawn: { x: -42, y: 0, z: -42, yaw: Math.PI / 4 } });
+    player.teleport(-42, 300, -42, Math.PI / 4);
+    player.setAction('pole', pole);
+    const cam = makeCam(world);
+    cam.reset(player);
+    const behind = Math.PI / 4 + Math.PI;
+    assert.ok(Math.abs(Math.atan2(Math.sin(cam.yaw - behind), Math.cos(cam.yaw - behind))) < 0.1, 'starts behind him');
+    let ticks = 0;
+    for (; ticks < 400 && player.action !== 'pole_top'; ticks++) {
+      const c = ctrl();
+      c.stickY = c.rawStickY = c.stickMag = c.rawStickMag = 1;
+      player.update(c, cam.getYaw());
+      cam.update(c, player);
+    }
+    assert.equal(player.action, 'pole_top');
+    for (let i = 0; i < 20; i++) {
+      player.update(ctrl(), cam.getYaw());
+      cam.update(ctrl(), player);
+    }
+    const goal = camYaw ?? behind;
+    const off = Math.atan2(Math.sin(cam.yaw - goal), Math.cos(cam.yaw - goal));
+    assert.ok(Math.abs(off) < 0.05, `${camYaw === undefined ? 'behind him' : 'its camYaw'}: orbit yaw ${cam.yaw.toFixed(2)} (${ticks} ticks up)`);
+    // (He holds it from that side too, his back to the camera: player-moves.test.js.)
+    const facing = camYaw === undefined ? Math.PI / 4 : camYaw + Math.PI;
+    assert.ok(Math.abs(Math.atan2(Math.sin(player.faceYaw - facing), Math.cos(player.faceYaw - facing))) < 0.05, `facing ${player.faceYaw}`);
+  }
 });

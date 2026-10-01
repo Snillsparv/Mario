@@ -20,7 +20,17 @@
 // the pause screen) shows the star exit waiting out the dance and fading to gold-white,
 // leave(), refused requests, and resetCourses() taking the star back; another, whose arrival
 // stands in a door, shows every switch keeping that door quiet (objects.enter). The hall's
-// east doors and the bottle's mouth (not open yet) show their sign, without a laugh or a warp.
+// east doors (not open yet) show their sign, without a laugh or a warp. Midsummer Skerries, the
+// first course: up the stairs into the bottle's neck (its own sound, the iris) he drops in onto
+// the jetty from the sky with the camera behind him and the course's look, and its card shows
+// on the first entry of a game only; the star (on the lighthouse gallery) takes him back out of
+// the bottle exactly 20 ticks after his dance (popping out with its sound), stays taken when he
+// comes back, and a stick held on through the exit waits to be let go (then a fresh push walks
+// him straight back into the armed bottle); so does the pause screen's leave (main's paused
+// branch: B, then unpause, then leave()), which is open while he reads a sign (it closes) but
+// not while he drops in or dies, so the pause screen offers it only then; a life lost there
+// drops him back in at the arrival; GAME OVER (main's order: the grounds back before the
+// resets and the title) gives the course its star, its coins and its dark lamp back.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -36,12 +46,15 @@ import { CameraController } from '../src/camera/CameraController.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { DOOR } from '../src/objects/Door.js';
 import { AreaSwitch, WARP } from '../src/core/AreaSwitch.js';
-import { AREA_DEFS, HALL_ATMOSPHERE } from '../src/world/areas.js';
+import { readFileSync } from 'node:fs';
+import { AREA_DEFS, HALL_ATMOSPHERE, SKERRIES_ATMOSPHERE } from '../src/world/areas.js';
 import { buildArea, shiftPositions } from '../src/world/area.js';
 import { SolidBuilder } from '../src/world/castle/geom.js';
 import * as hall from '../src/world/hall/layout.js';
+import * as sk from '../src/world/skerries/layout.js';
 
 const HALL_Z = AREA_DEFS.hall.origin.z;
+const SK = AREA_DEFS.skerries.origin; // Midsummer Skerries: world = local + SK
 const PORCH = { x: 0, y: 300, z: -470 }; // the grounds' porch entry, measured on the real level
 
 // The game as main wires it: the real grounds and their objects, Jonas, the camera, and
@@ -57,8 +70,17 @@ function game(defs = AREA_DEFS) {
   view.setAtmosphere = (preset) => view.looks.push(preset);
   view.setWaterLevelFn = (fn) => (view.water = fn);
   view.prewarm = (o) => view.warm.push(o);
-  const hud = { course: 'grounds', setCourse: (name) => (hud.course = name) };
-  const dialog = { isOpen: false, close: () => (dialog.isOpen = false) };
+  const hud = { course: 'grounds', cards: [] };
+  hud.setCourse = (name) => (hud.course = name);
+  hud.showCourse = (name) => hud.cards.push(name);
+  // The dialog box: open on a sign, its close() ending the read as main's 'dialogClosed' does.
+  const dialog = { isOpen: false };
+  dialog.close = () => {
+    if (!dialog.isOpen) return;
+    dialog.isOpen = false;
+    events.emit('dialogClosed', { cancelled: true });
+  };
+  events.on('dialogClosed', () => player.endReading());
   const input = { flushes: 0, flush: () => input.flushes++ };
   const state = { ok: true };
   const log = [];
@@ -81,7 +103,7 @@ function game(defs = AREA_DEFS) {
     dialog,
     defs,
     grounds: { level, objects },
-    canWarp: () => state.ok && !dialog.isOpen,
+    canWarp: () => state.ok,
     onSwap: () => (lastAction = player.action),
   });
   events.on('areaChange', (e) => {
@@ -160,6 +182,18 @@ function runs(list) {
 }
 
 const count = (log, name) => log.filter((n) => n === name).length;
+
+// A star just taken: ticks until the star exit's fade starts. Returns the tick Jonas first went
+// into out of his dance (star_dance / star_fall) and the tick the fade started on.
+function danceThenFade(g, n = 200) {
+  let out = -1;
+  let i = 0;
+  for (; i < n && g.areas.phase !== 'close'; i++) {
+    if (out < 0 && !['star_dance', 'star_fall'].includes(g.player.action)) out = i;
+    g.tick();
+  }
+  return { out, fade: i - 1 };
+}
 
 // The sticks given while the wipe closed all push fully toward world yaw `yaw`.
 function pushedToward(g, yaw) {
@@ -383,11 +417,11 @@ test('AI RACE seals the castle door, also while it fades out: the laugh and the 
   assert.ok(log.includes('warp:hall') && log.includes('door_open') && !log.includes('evil_laugh'), log.join());
 });
 
-test("the hall's doors still being built and the bottle's mouth say so: their sign, no laugh, no warp", () => {
+test("the hall's doors still being built say so: their sign, no laugh, no warp", () => {
   const g = game();
   g.areas.enter('hall');
   const doors = g.areas.objects.doors;
-  for (const [id, sign] of [['hall_east_1', 'hall_door_soon'], ['hall_east_2', 'hall_door_soon'], ['bottle', 'bottle_soon']]) {
+  for (const [id, sign] of [['hall_east_1', 'hall_door_soon'], ['hall_east_2', 'hall_door_soon']]) {
     const d = doors.find((door) => door.id === id);
     const yaw = d.yaw + Math.PI;
     g.dialog.isOpen = false;
@@ -611,9 +645,10 @@ test("a course's own star: the exit waits out the dance, then fades to gold-whit
   assert.deepEqual([stars[0].id, stars[0].area], ['course_star', 'course']);
   assert.equal(g.areas.phase, 'star');
   assert.equal(g.areas.busy, true);
-  const n = g.until(() => g.areas.phase === 'close', 200);
-  assert.ok(g.player.action !== 'star_dance');
-  assert.ok(n > 60 && n < 140, `the dance, then ${WARP.STAR_AFTER} more: ${n} ticks`);
+  const { out, fade } = danceThenFade(g);
+  assert.ok(out > 60, `his dance: ${out} ticks`);
+  assert.equal(WARP.STAR_AFTER, 20);
+  assert.equal(fade - out, 20, `the fade 20 ticks after the dance: ${out} -> ${fade}`);
   assert.deepEqual({ ...g.areas.wipe(1), amount: 0 }, { amount: 0, kind: 'fade', color: '#fff4d0' });
   g.phases.length = 0;
   g.until(() => g.areas.phase === null, 60);
@@ -685,4 +720,232 @@ test('every switch makes the new area\'s objects forget his last tick and keeps 
   assert.equal(door.armed, true);
   g.until(() => g.log.includes('warp:grounds'), 30, g.toward(Math.PI));
   assert.ok(g.log.includes('warp:grounds') && g.log.includes('door_open'));
+});
+
+// ---------------------------------------------------------------- Midsummer Skerries
+
+// Jonas standing on the hall's landing in front of the bottle's mouth, facing it.
+const onLanding = (g) => g.place(0, hall.LANDING.top, HALL_Z - 1100, Math.PI);
+
+test("into the bottle's neck: its own sound and the iris, then Midsummer Skerries: he drops in onto the jetty with the camera behind him, the course's look and sky, its card on the first entry of a game", () => {
+  const g = game();
+  g.areas.enter('hall');
+  onLanding(g);
+  g.log.length = 0;
+  g.until(() => g.log.includes('warp:skerries'), 60, { stickY: 1 });
+  assert.ok(g.log.includes('bottle_dive') && !g.log.includes('door_open'), g.log.join());
+  assert.equal(g.areas.wipe(1).kind, 'iris');
+  g.phases.length = 0;
+  g.until(() => g.areas.phase === null, 40);
+  assert.deepEqual(runs(g.phases), [['close', WARP.CLOSE], ['hold', WARP.HOLD], ['open', WARP.OPEN]]);
+  const a = g.areas.current;
+  assert.equal(g.areas.name, 'skerries');
+  const arrive = g.arrivals.at(-1);
+  const e = sk.ENTRIES.arrival;
+  assert.equal(arrive.entry, 'arrival');
+  assert.equal(arrive.action, 'spawn', 'dropping in from the sky');
+  assert.deepEqual([arrive.pos.x, arrive.pos.y, arrive.pos.z], [e.x + SK.x, e.y + e.drop + SK.y, e.z + SK.z]);
+  assert.equal(arrive.faceYaw, Math.PI, 'facing north, up the Sound');
+  assert.ok(arrive.cam.z > arrive.pos.z + 800, `the camera behind him: ${arrive.cam.toArray().map(Math.round)}`);
+  assert.equal(arrive.occluded, false);
+  // The course: its look, its water, the sky dome, its own world on Jonas and the camera.
+  assert.equal(g.view.looks.at(-1), SKERRIES_ATMOSPHERE);
+  assert.equal(g.view.water(SK.x, SK.z), SK.y + sk.SEA_LEVEL);
+  assert.equal(g.level.parts.find((p) => p.name === 'sky').object3D.visible, true);
+  assert.deepEqual(worldsIn(g.player, g.cam), [a.collision]);
+  assert.equal(g.hud.course, 'skerries');
+  assert.equal(g.areas.canLeave(), false, 'no way out while he drops in');
+  assert.deepEqual(g.hud.cards, ['skerries']);
+  assert.deepEqual(g.player.spawn, { x: e.x + SK.x, y: e.y + SK.y, z: e.z + SK.z, yaw: e.yaw, drop: sk.RESPAWN.drop });
+  // He lands on the jetty, the camera still behind him (south), looking up the Sound.
+  g.until(() => g.player.grounded, 80);
+  assert.ok(Math.abs(g.player.pos.y - SK.y - sk.JETTY.top) < 1 && Math.abs(g.player.pos.z - SK.z - e.z) < 1);
+  assert.ok(g.cam.pos.z > g.player.pos.z + 800 && !g.cam.collider.occluded);
+  assert.equal(g.areas.canLeave(), true, 'standing there, the pause screen offers the way out');
+  // The card once a game: not on a second entry, again after GAME OVER's resetCourses().
+  g.areas.enter('hall');
+  g.areas.enter('skerries');
+  assert.deepEqual(g.hud.cards, ['skerries']);
+  g.areas.resetCourses();
+  g.areas.enter('grounds', 'start');
+  assert.equal(g.areas.canLeave(), false, 'no way out of the grounds');
+  g.areas.enter('skerries');
+  assert.deepEqual(g.hud.cards, ['skerries', 'skerries']);
+});
+
+test("the course's star on the lighthouse gallery: the exit waits out his dance and 20 ticks more, then fades to gold-white and he pops out of the bottle onto the hall's landing, one star up; a stick held on waits to be let go; the star stays taken", () => {
+  const g = game();
+  g.areas.enter('skerries');
+  const L = sk.LIGHTHOUSE;
+  const S = sk.STAR;
+  // On the gallery just south of the star, walking north into it.
+  g.player.teleport(S.x + SK.x, L.gallery + SK.y, S.z + 250 + SK.z, Math.PI);
+  g.player.setAction('idle');
+  g.cam.reset(g.player);
+  const stars = [];
+  g.events.on('starCollected', (e) => stars.push(e));
+  g.until(() => stars.length > 0, 60, g.toward(Math.PI));
+  assert.deepEqual([stars[0].id, stars[0].area], ['skerries_star', 'skerries']);
+  assert.equal(g.player.stars, 1);
+  assert.equal(g.areas.phase, 'star');
+  const { out, fade } = danceThenFade(g);
+  assert.ok(out > 60, `his dance: ${out} ticks`);
+  assert.equal(fade - out, 20, `the fade 20 ticks after the dance: ${out} -> ${fade}`);
+  assert.equal(g.areas.wipe(1).kind, 'fade');
+  // Out of the bottle, the stick still pushed forward as it was on the gallery (with the camera
+  // south of him, toward the bottle's mouth): he pops out with its sound as the fade opens.
+  const pops = [];
+  g.events.on('sfx', (e) => e.name === 'bottle_pop' && pops.push({ phase: g.areas.phase, t: g.areas.t, pos: e.pos }));
+  g.log.length = 0;
+  g.until(() => g.areas.phase === null, 60, { stickY: 1 });
+  assert.equal(g.areas.name, 'hall');
+  const arrive = g.arrivals.at(-1);
+  const b = hall.ENTRIES.bottle;
+  assert.equal(arrive.entry, 'bottle');
+  assert.deepEqual([arrive.pos.x, arrive.pos.y, arrive.pos.z], [b.x, b.y + b.drop, b.z + HALL_Z]);
+  assert.ok(arrive.cam.z > arrive.pos.z + 800, 'the camera south of him, the bottle behind him');
+  assert.equal(g.player.stars, 1);
+  assert.equal(g.areas.canLeave(), false, 'the hall is no course');
+  assert.deepEqual(pops, [{ phase: 'open', t: 0, pos: { x: b.x, y: b.y, z: b.z + HALL_Z } }], 'once, as the fade opens');
+  assert.ok(g.log.indexOf('area:hall') < g.log.indexOf('bottle_pop'));
+  // The mouth is armed (he stands off its apron), but the stick held on from the course waits
+  // to be let go: he stays put instead of walking straight back in.
+  const mouth = g.areas.objects.doors.find((d) => d.id === 'bottle');
+  assert.equal(mouth.near(g.player), false, 'off the apron');
+  g.until(() => false, 60, { stickY: 1 });
+  assert.equal(mouth.armed, true);
+  assert.ok(!g.log.includes('warp:skerries'), g.log.join());
+  assert.ok(g.player.grounded && Math.abs(g.player.pos.z - HALL_Z - b.z) < 1, `still where he popped out: ${g.player.pos.z - HALL_Z}`);
+  assert.equal(g.areas.still, true);
+  // Let go, then a fresh push toward the bottle walks him straight back in (no stepping back).
+  g.tick();
+  assert.equal(g.areas.still, false);
+  const z0 = g.player.pos.z;
+  g.until(() => g.log.includes('warp:skerries'), 30, g.toward(Math.PI));
+  assert.ok(g.log.includes('warp:skerries') && g.log.includes('bottle_dive'), g.log.join());
+  assert.ok(z0 - g.player.pos.z < 200, `in at once: ${Math.round(z0 - g.player.pos.z)} walked`);
+  g.until(() => g.areas.phase === null, 40);
+  assert.equal(g.areas.name, 'skerries');
+  // Back in the course the gallery is empty: standing where the star was takes nothing.
+  g.until(() => g.player.grounded, 80);
+  g.player.teleport(S.x + SK.x, L.gallery + SK.y, S.z + SK.z, Math.PI);
+  g.player.setAction('idle');
+  g.until(() => false, 10);
+  assert.equal(stars.length, 1, 'no second starCollected');
+  assert.equal(g.player.stars, 1);
+  assert.notEqual(g.areas.objects.star.state, 'idle');
+  assert.equal(g.areas.phase, null);
+});
+
+test("leave(), the pause screen's way out: back out of the bottle onto the hall's landing (an iris, the pop); open while he reads a sign (it closes), not while he drops in or dies", () => {
+  const g = game();
+  g.areas.enter('skerries');
+  assert.equal(g.player.action, 'spawn');
+  assert.equal(g.areas.canLeave(), false, 'not while he drops in (the close would call it off)');
+  assert.equal(g.areas.leave(), false);
+  assert.equal(g.areas.phase, null);
+  g.until(() => g.player.grounded, 80);
+  assert.equal(g.areas.canLeave(), true);
+  // Reading the welcome sign (its last page: "Press pause if you want to leave the course."):
+  // the way out is open, and taking it closes the sign first.
+  const sign = sk.SIGNS.find((e) => e.id === 'skerries_welcome');
+  g.place(sign.x + SK.x, sign.y + SK.y, sign.z + 130 + SK.z, Math.PI);
+  g.tick({ B: true });
+  assert.ok(g.log.includes('sign:skerries_welcome'), g.log.join());
+  assert.equal(g.player.action, 'reading');
+  assert.equal(g.dialog.isOpen, true);
+  assert.equal(g.areas.canLeave(), true, 'reading is no bar');
+  const pops = [];
+  g.events.on('sfx', (e) => e.name === 'bottle_pop' && pops.push(g.areas.phase));
+  assert.equal(g.areas.leave(), true);
+  assert.equal(g.dialog.isOpen, false, 'the sign closed');
+  assert.notEqual(g.player.action, 'reading');
+  assert.equal(g.areas.warp.kind, 'leave');
+  assert.equal(g.areas.canLeave(), false, 'not twice');
+  assert.deepEqual({ ...g.areas.wipe(1), amount: 0 }, { amount: 0, kind: 'iris', color: '#000000' });
+  g.until(() => g.areas.phase === null, 40);
+  assert.equal(g.areas.name, 'hall');
+  assert.equal(g.arrivals.at(-1).entry, 'bottle');
+  assert.deepEqual(pops, ['open'], 'popping out of the bottle');
+  assert.equal(g.areas.canLeave(), false, 'the hall is no course');
+  // Dying in the course: no way out offered.
+  g.areas.enter('skerries');
+  g.until(() => g.player.grounded, 80);
+  g.player.loseHealth(8);
+  g.until(() => g.player.action === 'death', 30);
+  assert.equal(g.player.action, 'death');
+  assert.equal(g.areas.canLeave(), false, 'not while he dies');
+  assert.equal(g.areas.leave(), false);
+});
+
+test("main's pause: the way out is offered as the game pauses only while it can be taken; paused, B takes it (unpause, then leave)", () => {
+  const MAIN = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const tick = MAIN.slice(MAIN.indexOf('function tick('), MAIN.indexOf('state.time += FRAME_DT', MAIN.indexOf('function tick(')));
+  // Each piece after the one before it.
+  let at = 0;
+  for (const x of [
+    'controller.START.pressed && !areas.busy',
+    'const leave = state.paused && areas.canLeave()',
+    'hud.setLeave?.(leave)',
+    "events.emit(state.paused ? 'pause' : 'unpause', { leave })",
+    'if (state.paused) {',
+    'controller.B.pressed && areas.canLeave()',
+    'state.paused = false',
+    'hud.setPaused?.(false)',
+    "events.emit('unpause')",
+    'areas.leave()',
+    'return;',
+  ]) {
+    const i = tick.indexOf(x, at);
+    assert.ok(i >= 0, `"${x}" after the step before it`);
+    at = i + x.length;
+  }
+});
+
+test('a life lost in the course drops him back in at the arrival, from the sky onto the jetty', () => {
+  const g = game();
+  g.areas.enter('skerries');
+  g.until(() => g.player.grounded, 80);
+  // Out in the Sound, then he runs out of health.
+  g.player.teleport(SK.x, SK.y - 200, SK.z - 500, Math.PI);
+  g.player.loseHealth(8);
+  g.until(() => g.player.action === 'spawn', 200);
+  assert.equal(g.player.action, 'spawn');
+  const e = sk.ENTRIES.arrival;
+  assert.ok(Math.abs(g.player.pos.x - SK.x - e.x) < 1 && Math.abs(g.player.pos.z - SK.z - e.z) < 1 && g.player.pos.y - SK.y > e.y + 1000, JSON.stringify(g.player.pos));
+  g.until(() => g.player.grounded, 120);
+  assert.ok(Math.abs(g.player.pos.y - SK.y - sk.JETTY.top) < 1, 'on the jetty');
+  assert.equal(g.areas.name, 'skerries');
+});
+
+test("GAME OVER from the course: main brings the grounds back before the resets and the title; the course's star, coins and lamp are all back", () => {
+  // main.js's order (gameOver's setTimeout body).
+  const MAIN = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const body = MAIN.slice(MAIN.indexOf('function gameOver('), MAIN.indexOf('\n  }\n', MAIN.indexOf('function gameOver(')));
+  const order = ["areas.enter('grounds', 'start')", 'areas.resetCourses()', 'objects.reset()', 'meltdown.reset()', 'player.coins = 0', 'await runTitle()'].map((x) => body.indexOf(x));
+  assert.ok(order.every((i) => i >= 0), JSON.stringify(order));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
+  // The flow: a coin and the star taken, the lamp lit, then GAME OVER's two calls.
+  const g = game();
+  g.areas.enter('skerries');
+  const course = g.areas.current;
+  const lighthouse = course.parts.find((p) => p.name === 'skerries');
+  const c = sk.COINS[0];
+  g.player.teleport(c.x + SK.x, sk.JETTY.top + SK.y, c.z + SK.z, Math.PI);
+  g.player.setAction('idle');
+  g.tick();
+  assert.equal(course.objects.coins.coins[0].alive, false, 'a coin taken');
+  g.player.teleport(sk.STAR.x + SK.x, sk.LIGHTHOUSE.gallery + SK.y, sk.STAR.z + SK.z, 0);
+  g.player.setAction('idle');
+  g.tick();
+  assert.equal(g.player.stars, 1);
+  lighthouse.setLit(true);
+  g.areas.enter('grounds', 'start');
+  g.areas.resetCourses();
+  assert.equal(g.areas.name, 'grounds');
+  assert.deepEqual(worldsIn(g.player, g.cam), [g.level.collision]);
+  assert.equal(g.player.stars, 0, 'the star taken back off his count');
+  assert.equal(course.objects.star.state, 'idle', 'and back on its spot');
+  assert.equal(course.objects.coins.coins[0].alive, true, 'the coin back');
+  assert.equal(lighthouse.lit, false, 'the lamp out');
 });

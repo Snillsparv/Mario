@@ -1,7 +1,8 @@
 // Touch controller (src/ui/touchLogic.js, src/ui/TouchController.js): stick and D-pad math,
 // the portrait / landscape layouts, hit-testing, the touch-to-controller logic, and the
-// title / pause texts for touch screens. The browser part (real touch events moving Pip) runs
-// with E2E=1 (Vite + headless Chromium, ~1-2 min).
+// title / pause texts for touch screens. The browser part (real touch events moving Pip; in a
+// course, paused, the B button stays bright and leaves it) runs with E2E=1 (Vite + headless
+// Chromium, ~1-2 min).
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -519,12 +520,12 @@ after(async () => {
 
 // A phone-sized page (touch, coarse pointer) of the game in step mode; `touch(type, points)`
 // sends trusted touch events through the DevTools protocol.
-async function phone(width, height) {
+async function phone(width, height, query = '') {
   const context = await browser.newContext({ viewport: { width, height }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`${base}/?test=1&mute=1`, { waitUntil: 'load', timeout: 180000 });
+  await page.goto(`${base}/?test=1&mute=1${query}`, { waitUntil: 'load', timeout: 180000 });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
   const cdp = await context.newCDPSession(page);
   const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y, id]) => ({ x, y, id })) });
@@ -601,6 +602,37 @@ test('landscape phone: a floating stick in the lower left; START pauses', { skip
   await touch('touchEnd', []);
   await step(1);
   assert.equal(await page.evaluate(() => window.__game.state.paused), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('landscape phone in a course: paused, B stays bright over the faded overlays and taps out of the course', { skip, timeout: 300000 }, async () => {
+  const { context, page, touch, step, errors } = await phone(844, 390, '&area=skerries');
+  const L = await page.evaluate(() => window.__game.touch.layout);
+  assert.equal(L.mode, 'landscape');
+  await step(60); // dropped in onto the jetty
+  await page.addStyleTag({ content: '.cg-touch * { transition: none !important; }' }); // (no fade to wait for)
+  const tap = async (b) => {
+    await touch('touchStart', [[L.buttons[b].x, L.buttons[b].y, 1]]);
+    await touch('touchEnd', []);
+    await step(1);
+  };
+  await tap('START');
+  const looks = await page.evaluate(() => {
+    const op = (b) => +getComputedStyle(document.querySelector(`.cg-tc-${b}`)).opacity;
+    return { paused: window.__game.state.paused, leave: window.__game.hud.leave, A: op('A'), B: op('B'), START: op('START') };
+  });
+  assert.equal(looks.paused, true);
+  assert.equal(looks.leave, true, 'the pause screen offers "B  Leave course"');
+  assert.ok(looks.A < 0.2, `the rest fade: A ${looks.A}`);
+  assert.ok(looks.B >= 0.6, `B stays bright: ${looks.B}`);
+  await tap('B');
+  const after = await page.evaluate(() => ({ paused: window.__game.state.paused, warp: window.__game.snapshot().warp }));
+  assert.equal(after.paused, false);
+  assert.equal(after.warp?.kind, 'leave');
+  await step(40);
+  assert.equal(await page.evaluate(() => window.__game.area), 'hall');
+  assert.equal(await page.evaluate(() => document.querySelector('.cg-touch').classList.contains('cg-leave')), false);
   assert.deepEqual(errors, []);
   await context.close();
 });

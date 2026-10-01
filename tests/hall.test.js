@@ -9,9 +9,9 @@
 // trap the camera or take it into a solid, the routes (the stairs, the cork and the books up
 // to the landing, wall kicks up the slot collecting its coins, the banner pole's top onto the
 // buttress for any aim near the wall's, the hop over the slot onto the mantel to the 1-up),
-// signs read from the front only, every coin over a floor, the doors' triggers on their faces,
-// and the look's promises (the transparent glass with its rim, the flickering flames, the lamp
-// hidden until lit).
+// signs read from the front only, every coin over a floor, the doors' triggers on their faces
+// (the bottle's mouth into the first course), and the look's promises (the transparent glass
+// with its rim, the flickering flames, the lamp hidden until lit).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -456,7 +456,11 @@ test('every door\'s trigger stands on its face: the inner front door, the two ea
     assert.equal(col.findFloor(from.x, from.y, from.z).y - O.y, d.floorY, `${d.id}: its floor`);
   }
   const shut = hall.DOORS.filter((d) => d.to === null);
-  assert.deepEqual(shut.map((d) => [d.id, d.locked.id, d.laugh]), [['hall_east_1', 'hall_door_soon', false], ['hall_east_2', 'hall_door_soon', false], ['bottle', 'bottle_soon', false]]);
+  assert.deepEqual(shut.map((d) => [d.id, d.locked.id, d.laugh]), [['hall_east_1', 'hall_door_soon', false], ['hall_east_2', 'hall_door_soon', false]]);
+  // The bottle's mouth leads to the first course, out of the bottle's own kind.
+  const mouth = hall.DOORS.find((d) => d.id === 'bottle');
+  assert.deepEqual([mouth.to, mouth.entry, mouth.kind], ['skerries', 'arrival', 'bottle']);
+  assert.ok(AREA_DEFS.skerries.entries[mouth.entry], 'a real entry of the course');
 });
 
 test('the look: the glass is see-through (front faces, no depth write) with a rim, the flames flicker with update(time), the lamp waits unlit', () => {

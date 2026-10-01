@@ -16,7 +16,9 @@
 // on the left grip, JUMP (A), ATTACK (B) and the CROUCH (Z) trigger on the right, the four
 // camera buttons (C) top right, CAM (R) and START in the middle. Landscape: the picture fills
 // the screen and the same controls float over its corners, translucent; a touch anywhere in
-// the lower left starts the stick there.
+// the lower left starts the stick there. While the game is paused ('pause' / 'unpause') the
+// landscape overlays fade back but for START, and B where it leaves a course ('pause'
+// { leave: true }: the pause screen's "B  Leave course").
 //
 // Touch handling: every touch keeps its identifier's role from where it started (stick,
 // D-pad or a button). A button touch holds the button it started on and also the one it slides
@@ -177,8 +179,10 @@ html.cg-touch-on #game { touch-action:none; }
 .cg-touch.cg-land .cg-tc-rock.cg-active { opacity:0.9; }
 .cg-tc-rock.cg-active { box-shadow: 0 2px 0 #6e6550, 0 0 12px 3px rgba(120,240,225,0.5), inset 0 2px 2px rgba(255,255,255,0.6), inset 0 -3px 4px rgba(0,0,0,0.18); }
 .cg-touch.cg-land .cg-tc-btn.cg-tc-C { opacity:1; }
-/* Paused (landscape): the overlays fade back so the pause screen's legend reads; START stays. */
+/* Paused (landscape): the overlays fade back so the pause screen's legend reads; START stays,
+   and so does B where it leaves the course (the pause screen's "B  Leave course"). */
 .cg-touch.cg-land.cg-paused > :not(.cg-tc-START):not(.cg-tc-zone) { opacity:0.14; transition: opacity 150ms; }
+.cg-touch.cg-land.cg-paused.cg-leave > .cg-tc-B { opacity:0.7; }
 `;
 
 function injectStyles() {
@@ -327,7 +331,11 @@ export class TouchController {
     this._build();
     this._listen();
     if (events) {
-      const paused = (on) => () => this.root.classList.toggle('cg-paused', on);
+      // 'pause' { leave }: the course's way out is open (B takes it).
+      const paused = (on) => (e) => {
+        this.root.classList.toggle('cg-paused', on);
+        this.root.classList.toggle('cg-leave', on && !!e?.leave);
+      };
       (this._offs ??= []).push(events.on('pause', paused(true)), events.on('unpause', paused(false)), events.on('gameStart', paused(false)));
     }
     if (this.wanted()) this.setVisible(true);

@@ -1,12 +1,13 @@
 // The places Jonas can be in, each with a collision world of its own (core/AreaSwitch.js moves
-// him between them): 'grounds', the castle grounds (world/level.js, built at boot), and
-// 'hall', the Great Hall inside the castle (world/hall/*, built by world/area.js the first time
-// he goes in). Data and builder references only.
+// him between them): 'grounds', the castle grounds (world/level.js, built at boot), 'hall', the
+// Great Hall inside the castle (world/hall/*), and 'skerries', Midsummer Skerries, the first
+// course, through the ship in the bottle (world/skerries/*); world/area.js builds the hall and
+// the course the first time he goes in. Data and builder references only.
 //
 //   AREA_DEFS[name] = AreaDef
 //   groundsArea(level, objects) -> Area   // the grounds as an Area (world/area.js), wrapping
 //                                         // what boot already built
-//   HALL_ATMOSPHERE                       // the Great Hall's look (view.setAtmosphere)
+//   HALL_ATMOSPHERE, SKERRIES_ATMOSPHERE  // their looks (view.setAtmosphere)
 //
 // AreaDef = {
 //   name,
@@ -14,10 +15,11 @@
 //   builders: [build(layout)],   // WorldParts (level.js); colliders must be { positions }
 //   layout,                      // local anchors: ENTRIES, DOORS, COINS, ONE_UP, SIGNS, POLES
 //                                // (and later STAR, ...)
-//   entries: { id: { x, y, z, yaw, drop?, camYaw?, walkIn? } }   // local
+//   entries: { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx? } }   // local
 //                                //   drop: he falls in from that high (action 'spawn');
 //                                //   camYaw: the camera's orbit yaw (default: behind him);
-//                                //   walkIn: ticks he walks on along yaw as the picture opens
+//                                //   walkIn: ticks he walks on along yaw as the picture opens;
+//                                //   sfx: the sound of arriving there, as the picture opens
 //   respawn: { entry, drop },    // where a lost life drops him back in
 //   waterLevelAt(x, z),          // local water surface, or NO_WATER
 //   probeY,                      // local height the ground probe starts from (under the ceiling)
@@ -26,6 +28,8 @@
 //   audio: { music, ambience, reverb },   // AudioEngine.setArea (on 'areaChange')
 //   leave, starExit,             // where the pause screen's leave and the course's star take
 //                                // him ({ to, entry }; null: nowhere)
+//   card,                        // a course: its name shows as a title card on its first
+//                                // entry in a game (HUD.showCourse)
 // }
 //
 // Entries rule: every entry has at least 1300 of clear floor behind him for the camera's orbit
@@ -34,6 +38,9 @@
 import { NO_WATER } from '../core/constants.js';
 import * as hallLayout from './hall/layout.js';
 import { buildHall } from './hall/hall.js';
+import * as skerriesLayout from './skerries/layout.js';
+import { buildSkerries } from './skerries/build.js';
+import { buildSea } from './skerries/sea.js';
 
 // The warm hall: brown-amber fog (and clear colour: the hall has no sky), the actors lit by a
 // soft warm key from high up and a warm hemisphere.
@@ -47,6 +54,17 @@ export const HALL_ATMOSPHERE = Object.freeze({
   sky: 0xfff0da,
   ground: 0x6e5038,
   ambientIntensity: 0.55 * Math.PI,
+});
+
+// Midsummer evening on the skerries: the grounds' sky and fog colour (the shared sky dome
+// shows), the fog pushed out a little for the open sea, the actors lit by a low golden sun
+// from the west-south-west (the bake's SKERRIES_SUN) under the grounds' hemisphere.
+export const SKERRIES_ATMOSPHERE = Object.freeze({
+  near: 7000,
+  far: 28000,
+  sun: 0xffe2b4,
+  sunIntensity: 0.66 * Math.PI,
+  sunDir: skerriesLayout.SKERRIES_SUN,
 });
 
 // Arriving on the porch from the hall: this far in front of the door's face, on the landing
@@ -77,6 +95,23 @@ export const AREA_DEFS = {
     audio: { music: 'castle_hall', ambience: 'hall', reverb: true },
     leave: null,
     starExit: null,
+  },
+  skerries: {
+    name: 'skerries',
+    origin: { x: 60000, y: 0, z: 0 },
+    builders: [buildSkerries, buildSea],
+    layout: skerriesLayout,
+    entries: skerriesLayout.ENTRIES,
+    respawn: skerriesLayout.RESPAWN,
+    waterLevelAt: skerriesLayout.waterLevelAt,
+    probeY: skerriesLayout.PROBE_Y,
+    sky: true,
+    atmosphere: SKERRIES_ATMOSPHERE,
+    audio: { music: 'skerries', ambience: 'sea', reverb: false },
+    // Out of the course (the pause screen's leave, or the star): back out of the bottle.
+    leave: { to: 'hall', entry: 'bottle' },
+    starExit: { to: 'hall', entry: 'bottle' },
+    card: true,
   },
 };
 
