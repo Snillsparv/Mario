@@ -129,7 +129,9 @@ test('the Enter that plays the choice starts the title music; a second Start pre
 });
 
 test('a gamepad picks the game and begins from the locked card (pad presses cannot unlock audio)', { skip, timeout: 240000 }, async () => {
-  const { page, title } = await openChoice('', { padPresses: [['choice', 1500, 2000], ['title', 3000, 4000]] });
+  // The title press is held until play (a long hold is harmless: the card starts once it is let
+  // go or after its 2 s release timeout), so a stall of a few seconds under load cannot miss it.
+  const { page, title } = await openChoice('', { padPresses: [['choice', 1500, 2500], ['title', 3000, 60000]] });
   // No page.evaluate before the second pad press (it would unlock): play is reported in the console.
   const playing = page.waitForEvent('console', { predicate: (m) => m.text() === 'PLAYING', timeout: 90000 });
   assert.equal(await title, 'locked', 'no gesture yet: the card asks for any key');
