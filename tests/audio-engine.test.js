@@ -13,9 +13,15 @@
 // the first minion of a storm brings the minions' stinger. A hat grabbed again while its
 // theme is still fading out brings that same theme back (no second copy starts over it).
 // The locked castle's laugh shares one hall reverb, made ahead at idle time.
-// Areas: 'areaChange' into the Great Hall fades the pastoral bed out and stops the birds, the
-// distant chorus, the waterfall and the lapping water; back on the grounds they return (and
-// the grounds still have no music); an area entered before audio exists applies on attach.
+// Areas: 'areaChange' into the Great Hall fades the pastoral bed out under the room tone, stops
+// the birds, the distant chorus, the waterfall and the lapping water and crackles the hearth's
+// fire; back on the grounds they return (and the grounds still have no music). The hall's and
+// the course's own loops start on entering them and crossfade into each other; back on the
+// grounds only an area's loop stops (never the arrival cue, the title or the jingle); the
+// winged hat's theme and the storm's track hand the slot back to the area's loop. Indoors every
+// sound effect also sends into the shared hall reverb. An area entered before audio exists
+// applies on attach. The area Jonas is already in changes nothing (GAME OVER's switch back to
+// the grounds after a storm leaves the storm's fade at its own pace).
 // AI RACE's meltdown: the sky catching fire whoomphs, fades the rain and the dark track and
 // raises the inferno (a roaring blaze, crackles, a rumble) with the levels; the light booms and
 // the roar swells; the shockwave blasts; the white-out collapses the roar into a ring; no music
@@ -23,7 +29,7 @@
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Events } from '../src/core/events.js';
-import { AudioEngine } from '../src/audio/AudioEngine.js';
+import { AudioEngine, AREA_TRACKS } from '../src/audio/AudioEngine.js';
 import { SFX } from '../src/audio/sfx.js';
 import { SONGS } from '../src/audio/songs.js';
 import { compileSong } from '../src/audio/compile.js';
@@ -35,6 +41,7 @@ import { Inferno, INFERNO_MIX } from '../src/audio/inferno.js';
 import { smoothRamp } from '../src/audio/synth.js';
 import { PROFILES } from '../src/audio/ambience.js';
 import { AREA_DEFS } from '../src/world/areas.js';
+import { worldAudio } from '../src/world/area.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.
@@ -569,41 +576,59 @@ test('darkMode: the storm replaces the birds and pastoral bed, the dark track fa
   }
 });
 
-test('areaChange: indoors the pastoral bed fades out, no birds, chorus, waterfall or laps; back outside they return, no music', async () => {
+// An area's def.audio as 'areaChange' carries it (world/area.js: its sound spots in world
+// coordinates), one object per area as in the game (each Area keeps its own).
+const AREA_AUDIO = {};
+const areaAudio = (name) => (AREA_AUDIO[name] ??= worldAudio(AREA_DEFS[name].audio, AREA_DEFS[name].origin));
+const enterArea = (events, from, to, entry) => events.emit('areaChange', { from, to, entry, audio: areaAudio(to) });
+
+test('areaChange: indoors the pastoral bed fades out under the room tone and the fire crackles at the hearth, no birds, chorus, waterfall or laps; back outside they return', async () => {
   const events = new Events();
   const audio = new AudioEngine(events);
   await audio.unlock();
-  const calls = []; // everything the ambience plays (bird calls, the chorus, laps)
+  const calls = []; // everything the ambience plays (bird calls, the chorus, laps, the fire)
   const playAt = audio.ambience.playAt;
   audio.ambience.playAt = (recipe, pos, volume) => {
-    calls.push(volume);
+    calls.push({ recipe, pos, volume });
     playAt(recipe, pos, volume);
   };
   const fall = () => audio.ambience.fallGain.gain.calls.findLast(([m]) => m === 'setTargetAtTime')[1];
+  const fire = (c) => c.recipe === SFX.fire_crackle;
   try {
     audio.ctx.currentTime = 20; // the arrival cue has long ended: the grounds have no music
     // By the moat near the waterfall: birds, the chorus, laps and the falls all sound.
     audio.setListener({ x: -6000, y: 200, z: -800 }, 0);
     run(audio, 5);
-    assert.ok(calls.length > 3, 'the grounds\' ambience plays');
+    assert.ok(calls.length > 3 && !calls.some(fire), 'the grounds\' ambience plays');
     assert.ok(fall() > 0.01, 'the waterfall roars');
     const t0 = audio.ctx.currentTime;
-    events.emit('areaChange', { from: 'grounds', to: 'hall', entry: 'front', audio: AREA_DEFS.hall.audio });
+    enterArea(events, 'grounds', 'hall', 'front');
     assert.equal(audio.ambience.profile, PROFILES.hall);
     assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [0, t0 + 1.2]);
+    assert.ok(lastRamp(audio.ambience.room.gain)[1] > 0, 'the room tone fades in');
     run(audio, 2);
     calls.length = 0;
     run(audio, 20); // (still standing where the grounds would be loud)
-    assert.equal(calls.length, 0, 'no birds, chorus or laps indoors');
+    assert.ok(calls.length > 20 && calls.every(fire), 'nothing but the fire indoors: no birds, chorus or laps');
+    assert.ok(calls.every((c) => c.pos === audio.ambience.spots.fires[0]));
+    assert.deepEqual(audio.ambience.spots.fires, areaAudio('hall').fires, 'at the hearth, in world coordinates');
     assert.equal(fall(), 0, 'no waterfall');
-    assert.equal(audio.wantMusic, null);
-    // The same area again changes nothing; back outside everything returns.
-    events.emit('areaChange', { from: 'hall', to: 'hall', audio: AREA_DEFS.hall.audio });
+    // The same area again changes nothing (no fade starts over); back outside everything returns.
+    const amb = audio.ambience;
+    const automation = () => [amb.pastoral.gain, amb.leaves.gain, amb.room.gain].map((p) => p.calls.length);
+    const before = automation();
+    audio.ctx.currentTime += 0.5;
+    enterArea(events, 'hall', 'hall', 'front');
+    assert.equal(amb.profile, PROFILES.hall);
+    assert.deepEqual(automation(), before, 'nothing scheduled on the bed, the leaves or the room tone');
+    assert.equal(audio.track?.name, 'castle_hall');
     const t1 = audio.ctx.currentTime;
-    events.emit('areaChange', { from: 'hall', to: 'grounds', entry: 'porch', audio: AREA_DEFS.grounds.audio });
+    enterArea(events, 'hall', 'grounds', 'porch');
     assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [1, t1 + 1.2]);
+    assert.equal(lastRamp(audio.ambience.room.gain)[1], 0, 'the room tone fades out');
+    calls.length = 0;
     run(audio, 10);
-    assert.ok(calls.length > 3, 'the birds are back');
+    assert.ok(calls.length > 3 && !calls.some(fire), 'the birds are back, the fire left behind');
     assert.ok(fall() > 0.01);
     assert.equal(audio.track, null, 'the grounds stay without music');
     // AI RACE on the grounds still silences the pastoral bed.
@@ -617,13 +642,166 @@ test('areaChange: indoors the pastoral bed fades out, no birds, chorus, waterfal
   }
 });
 
-test('an area entered before audio exists applies its ambience when the context is made', async () => {
+test("areas' own music: the hall's and the course's loops start on areaChange (over the arrival cue) and crossfade into each other; back on the grounds they stop, and nothing else does", async () => {
+  // Every area's own track is a plain loop of its own, one that going back to the grounds stops.
+  const tracks = Object.values(AREA_DEFS).map((d) => d.audio.music).filter(Boolean);
+  assert.deepEqual([...AREA_TRACKS].sort(), [...tracks].sort());
+  for (const name of tracks) assert.ok(SONGS[name] && !SONGS[name].finalBar && !SONGS[name].menu && !SONGS[name].jingle, name);
   const events = new Events();
   const audio = new AudioEngine(events);
-  events.emit('areaChange', { from: 'grounds', to: 'hall', entry: 'front', audio: AREA_DEFS.hall.audio });
+  await audio.unlock();
+  try {
+    audio.ctx.currentTime = 1;
+    events.emit('gameStart');
+    audio.playMusic('castle_grounds'); // main's arrival cue
+    run(audio, 4);
+    const cue = audio.track;
+    enterArea(events, 'grounds', 'hall', 'front');
+    assert.equal(audio.track?.name, 'castle_hall', 'the hall\'s waltz');
+    assert.equal(audio.baseMusic, 'castle_hall');
+    assert.equal(lastRamp(cue.gain.gain)[1], 0, 'the cue fades out under it');
+    run(audio, 5);
+    const hallTrack = audio.track;
+    let t = audio.ctx.currentTime;
+    enterArea(events, 'hall', 'skerries', 'arrival');
+    assert.equal(audio.track?.name, 'skerries', 'the course\'s polska');
+    assert.deepEqual(lastRamp(hallTrack.gain.gain).slice(1), [0, t + 1.2], 'crossfaded');
+    run(audio, 5);
+    enterArea(events, 'skerries', 'hall', 'bottle');
+    assert.equal(audio.track?.name, 'castle_hall');
+    run(audio, 5);
+    // Out onto the porch: the area's loop fades out and the grounds have no music again.
+    const back = audio.track;
+    t = audio.ctx.currentTime;
+    enterArea(events, 'hall', 'grounds', 'porch');
+    assert.equal(audio.track, null);
+    assert.equal(audio.wantMusic, null);
+    assert.equal(audio.baseMusic, null);
+    assert.deepEqual(lastRamp(back.gain.gain).slice(1), [0, t + 1.2]);
+    // The grounds never cut anything but an area's loop: the arrival cue, the title, the
+    // game-over jingle play on through a switch back to them.
+    for (const name of ['castle_grounds', 'title', 'game_over']) {
+      enterArea(events, 'grounds', 'hall', 'front');
+      run(audio, 3);
+      if (name === 'game_over') events.emit('gameOver');
+      else audio.playMusic(name);
+      assert.equal(audio.track?.name, name);
+      enterArea(events, 'hall', 'grounds', 'start');
+      assert.equal(audio.wantMusic, name, `${name} kept`);
+      assert.equal(audio.track?.name, name);
+      run(audio, 4);
+      mock.timers.tick(4000);
+      audio.stopMusic();
+      run(audio, 2);
+    }
+  } finally {
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test("in an area the winged hat's theme (or the storm's track) hands the music slot back to the area's own loop; on the grounds to silence, as ever", async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  try {
+    audio.ctx.currentTime = 20;
+    enterArea(events, 'grounds', 'hall', 'front');
+    run(audio, 3);
+    events.emit('wingHat', { on: true });
+    assert.equal(audio.track?.name, 'fly');
+    run(audio, 3);
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track?.name, 'castle_hall', 'the hall\'s loop back');
+    assert.equal(audio.wantMusic, 'castle_hall');
+    run(audio, 3);
+    // An area arrived at while the hat is still on: its loop waits for the hat to come off.
+    events.emit('wingHat', { on: true });
+    enterArea(events, 'hall', 'skerries', 'arrival');
+    assert.equal(audio.track?.name, 'fly');
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track?.name, 'skerries');
+    run(audio, 3);
+    // The storm's track hands back the same way (it never leaves the grounds in game).
+    events.emit('darkMode', { on: true });
+    assert.equal(audio.track?.name, 'dark');
+    run(audio, 3);
+    events.emit('darkMode', { on: false });
+    assert.equal(audio.track?.name, 'skerries');
+    run(audio, 4);
+    // On the grounds the hat's end still fades to silence.
+    enterArea(events, 'skerries', 'grounds', 'start');
+    run(audio, 3);
+    events.emit('wingHat', { on: true });
+    run(audio, 3);
+    events.emit('wingHat', { on: false });
+    assert.equal(audio.track, null);
+    assert.equal(audio.wantMusic, null);
+  } finally {
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('indoors every sound effect also rings in the shared hall reverb (one send, made once); outdoors none does; the doors keep their own send', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  const sends = []; // what each new voice's panner was connected to
+  const make = audio.ctx.createStereoPanner.bind(audio.ctx);
+  audio.ctx.createStereoPanner = () => {
+    const panner = make();
+    const outs = [];
+    panner.connect = (dest) => (outs.push(dest), dest);
+    sends.push(outs);
+    return panner;
+  };
+  const play = (name) => {
+    audio.ctx.currentTime += 1;
+    sends.length = 0;
+    assert.equal(audio.play(name, { pos: { ...audio.listener } }), true, name);
+    return sends.at(-1);
+  };
+  try {
+    audio.ctx.currentTime = 10;
+    assert.deepEqual(play('jump'), [audio.mix.sfx], 'outdoors: the sfx bus only');
+    enterArea(events, 'grounds', 'hall', 'front');
+    assert.equal(audio.reverb, true);
+    const jump = play('jump');
+    assert.ok(audio.room && audio.hall, 'the send into the hall reverb');
+    assert.deepEqual(jump, [audio.mix.sfx, audio.room]);
+    const room = audio.room;
+    assert.deepEqual(play('coin'), [audio.mix.sfx, room], 'one send for every sound');
+    assert.equal(audio.ctx.created.Convolver, 2, 'the mixer\'s room and the shared hall, nothing more');
+    assert.ok(room.gain.value > 0 && room.gain.value < 0.5);
+    // A door's sound sends into the hall itself (SFX_INFO hall): not twice.
+    assert.deepEqual(play('door_rattle'), [audio.mix.sfx]);
+    // The ambience's own sounds (the hearth's fire) stay on their bus.
+    sends.length = 0;
+    assert.equal(audio.voice(SFX.fire_crackle, { pos: { ...audio.listener } }, audio.mix.amb), true);
+    assert.deepEqual(sends.at(-1), [audio.mix.amb]);
+    enterArea(events, 'hall', 'skerries', 'arrival');
+    assert.equal(audio.reverb, false);
+    assert.deepEqual(play('jump'), [audio.mix.sfx], 'out on the sea: dry again');
+  } finally {
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test('an area entered before audio exists applies its ambience, its sound spots, its reverb and its music when the context is made', async () => {
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  enterArea(events, 'grounds', 'hall', 'front');
+  assert.equal(audio.wantMusic, 'castle_hall', 'the loop waits for audio');
   await audio.unlock();
   assert.equal(audio.ambience.profile, PROFILES.hall);
   assert.equal(lastRamp(audio.ambience.pastoral.gain)[1], 0);
+  assert.ok(lastRamp(audio.ambience.room.gain)[1] > 0);
+  assert.deepEqual(audio.ambience.spots.fires, areaAudio('hall').fires);
+  assert.equal(audio.reverb, true);
+  mock.timers.tick(700);
+  assert.equal(audio.track?.name, 'castle_hall');
   audio.stopMusic();
   mock.timers.tick(5000);
 });
@@ -652,8 +830,20 @@ test('a game over in the storm: the jingle cuts the dark track, the storm ends a
   assert.equal(audio.dark, true, 'the frozen dark world keeps its storm under the card');
   mock.timers.tick(3300);
   assert.equal(audio.dark, false);
-  assert.equal(lastRamp(audio.storm.graph.bus.gain)[1], 0);
+  const t = audio.ctx.currentTime;
+  assert.deepEqual(lastRamp(audio.storm.graph.bus.gain).slice(1), [0, t + 3]);
+  assert.deepEqual(lastRamp(audio.ambience.pastoral.gain).slice(1), [1, t + 3], 'the birds\' bed back with the picture');
   assert.equal(audio.track.name, 'game_over', 'the jingle is not touched');
+  // Then main puts Jonas back on the grounds he never left (areas.enter, 'areaChange' grounds
+  // to grounds): that changes nothing, so the bed and the birds keep the storm's 3 s pace.
+  const amb = audio.ambience;
+  const automation = () => [amb.pastoral.gain, amb.leaves.gain, amb.room.gain].map((p) => p.calls.length);
+  const before = automation();
+  events.emit('areaChange', { from: 'grounds', to: 'grounds', entry: 'start', audio: AREA_DEFS.grounds.audio });
+  assert.deepEqual(automation(), before);
+  assert.deepEqual(lastRamp(amb.pastoral.gain).slice(1), [1, t + 3]);
+  assert.equal(amb.birdFade, 3);
+  assert.equal(audio.track.name, 'game_over');
   // gameStart is a backstop too.
   events.emit('darkMode', { on: true });
   events.emit('gameStart');
@@ -1147,12 +1337,12 @@ test('the castle hall reverb (and the stings\' waves) are made ahead at idle tim
     assert.equal(convolvers(), 2);
     const hall = audio.hall;
     assert.ok(hall?.buffer?.length > 0, 'its impulse is loaded');
-    // Then, in a third idle moment, the waves the laugh and the minions would make on their
-    // first play.
+    // Then, in a third idle moment, the waves the laugh, the minions and the gulls would make
+    // on their first play.
     const waves = () => audio.ctx.created.PeriodicWave ?? 0;
     const before = waves();
     mock.timers.tick(1500);
-    assert.equal(waves(), before + 2, 'glottal and servo waves');
+    assert.equal(waves(), before + 3, 'glottal, servo and gull waves');
     let t = 5;
     for (let i = 0; i < 3; i++) {
       audio.ctx.currentTime = t += 5;

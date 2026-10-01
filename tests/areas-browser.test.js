@@ -13,7 +13,10 @@
 // star on the lighthouse gallery takes him back out of the bottle into the hall, one star up;
 // paused while reading the welcome sign, the pause screen offers the way out (the touch B kept
 // bright) and B closes the sign and leaves the course; and a life lost at x0 there ends in the
-// GAME OVER card, then the title over the grounds. No page errors anywhere.
+// GAME OVER card, then the title over the grounds. With sound (a real AudioContext, unlocked by
+// a key press): the hall plays its waltz under its room tone and hearth with every sound in its
+// reverb, the course its polska with the sea's laps and gulls, the grounds none of that again;
+// the new sounds all play, and the audio never gives up on an error. No page errors anywhere.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -40,12 +43,12 @@ after(async () => {
   await server?.close();
 });
 
-async function open(query = '') {
+async function open(query = '', { sound = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(`${base}/?test=1&mute=1${query}`, { waitUntil: 'load', timeout: 180000 });
+  await page.goto(`${base}/?test=1${sound ? '' : '&mute=1'}${query}`, { waitUntil: 'load', timeout: 180000 });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
   // Walk toward world yaw `yaw` (the stick worked out from the camera each tick) until a warp
   // starts, at most n ticks; returns the warp.
@@ -305,6 +308,61 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     assert.equal(s.area, 'grounds');
     assert.equal(s.mode, 'title');
     assert.equal(s.stars, 0, 'the star taken back');
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test('with sound: the hall\'s waltz, room tone, hearth and reverb; the course\'s polska, laps and gulls; none of it back on the grounds; no audio error', { skip, timeout: 300000 }, async () => {
+  const { page, errors, step } = await open('&area=hall', { sound: true });
+  try {
+    const warnings = [];
+    page.on('console', (m) => m.type() === 'warning' && warnings.push(m.text()));
+    await page.keyboard.press('Shift'); // a user gesture: audio unlocks
+    await page.waitForFunction(() => window.__game.audio.ctx?.state === 'running', null, { timeout: 30000 });
+    // The hall's loop, asked for before audio existed, starts a moment after the key is let go.
+    await page.waitForFunction(() => window.__game.audio.track?.name === 'castle_hall', null, { timeout: 10000 });
+    // What the ambience plays from now on, by recipe name.
+    await page.evaluate(() => {
+      const amb = window.__game.audio.ambience;
+      const playAt = amb.playAt;
+      window.__heard = [];
+      amb.playAt = (recipe, pos, volume) => {
+        window.__heard.push(recipe.name);
+        playAt(recipe, pos, volume);
+      };
+    });
+    const sound = () =>
+      page.evaluate(() => {
+        const a = window.__game.audio;
+        return { area: window.__game.area, track: a.track?.name ?? null, profile: a.area, reverb: a.reverb, warned: a.warned };
+      });
+    // What it played since the last call; play(n): after n steps more, a step at a time (each
+    // runs the audio's update once).
+    const heard = () => page.evaluate(() => [...new Set(window.__heard.splice(0))].sort());
+    const play = (n) => page.evaluate((k) => {
+      for (let i = 0; i < k; i++) window.__game.step(1);
+    }, n).then(heard);
+    assert.deepEqual(await sound(), { area: 'hall', track: 'castle_hall', profile: 'hall', reverb: true, warned: false });
+    await heard();
+    assert.deepEqual(await play(120), ['fire_crackle'], 'the hearth, no birds');
+    const played = await page.evaluate(() => {
+      const a = window.__game.audio;
+      return ['door_rattle', 'bottle_dive', 'bottle_pop', 'jump'].map((n) => a.play(n, { pos: { ...a.listener } }));
+    });
+    assert.deepEqual(played, [true, true, true, true]);
+    assert.equal(await page.evaluate(() => !!window.__game.audio.room), true, 'the send into the hall reverb');
+    await heard();
+    // (The gulls' first call comes at once: their clock ran on in the hall; then every 4-10 s.)
+    await page.evaluate(() => window.__game.enterArea('skerries', 'arrival'));
+    assert.deepEqual(await sound(), { area: 'skerries', track: 'skerries', profile: 'sea', reverb: false, warned: false });
+    assert.deepEqual(await play(150), ['gull', 'slosh'], 'the sea\'s laps and a gull');
+    await page.evaluate(() => window.__game.enterArea('grounds', 'start'));
+    assert.deepEqual(await sound(), { area: 'grounds', track: null, profile: 'grounds', reverb: false, warned: false });
+    await heard();
+    assert.ok(!(await play(120)).some((n) => n === 'fire_crackle' || n === 'gull'));
+    assert.deepEqual(warnings.filter((w) => w.includes('audio')), []);
     assert.deepEqual(errors, []);
   } finally {
     await page.close();

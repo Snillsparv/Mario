@@ -66,16 +66,18 @@ browser once with `npx playwright install chromium`.
 creaks open, the picture closes in a circle around Jonas and opens again inside the **Great
 Hall**, a long candle-lit hall under an open timber roof. A **1-up** waits on the fireplace's
 mantel: wall-kick up the narrow gap beside it, or climb the banner pole and jump from its top.
-The doors in the east wall are still being built. The front door, inside, takes him back out
-onto the porch. While AI RACE is on (or its storm is still clearing) the storm keeps the door
-sealed.
+The doors in the east wall are still being built (they only rattle). The front door, inside,
+takes him back out onto the porch. While AI RACE is on (or its storm is still clearing) the
+storm keeps the door sealed. The hall has its own music, a music-box waltz, over the crackle of
+the fire in its hearth, and every step and jump rings in the big room.
 
 **The ship in the bottle** lies on its stand at the far end of the hall, with a tiny sea, a
 red-sailed boat and a lighthouse inside it. Climb the stairs (or hop up the cork or the stack of
 books) to its mouth and walk into the neck: Jonas dives in and drops out of the sky onto a jetty
 in **Midsummer Skerries**, the first course: a bay of pink granite rocks in the midsummer
 evening, with the bottle's red-sailed boat moored at the jetty. Far out on the last rock stands
-a white lighthouse with a red band, and the course's **star** sits on its lamp gallery.
+a white lighthouse with a red band, and the course's **star** sits on its lamp gallery. A brisk
+polska plays over the wind, the lapping waves and the gulls.
 
 * Three ways out to the lighthouse's rock: **hop across the skerries** to the west (one gap is
   too wide for a normal jump: a sign there teaches the **long jump**, and a row of coins shows

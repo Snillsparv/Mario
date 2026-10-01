@@ -5,6 +5,8 @@
 //
 //   buildArea(scene, def) -> Area
 //   shiftPositions(positions, origin) -> a new flat [x, y, z, ...] array moved by origin
+//   worldAudio(def.audio, origin) -> a copy with its sound spots (fires, gulls) moved by the
+//                                    origin and its seaLevel raised by it (Area.audio)
 //
 // Areas are authored in local coordinates (their layout and builders never see world ones)
 // and placed at def.origin (world = local + origin), far from the grounds and from each other,
@@ -22,6 +24,10 @@
 //   reset(),               // a new game (nothing to undo yet: the pickups live in its objects)
 //   setVisible(on),
 //   entries,               // { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx? } } (world)
+//   audio,                 // def.audio with its sound spots (fires, gulls, seaLevel) in world
+//                          // coordinates, plus isWater(x, z) (open water there: its surface
+//                          // above the floor; the sea's laps): 'areaChange' hands it to
+//                          // AudioEngine.setArea
 //   respawn,               // the entry def.respawn names, with its drop: player.setWorld's spawn
 //   signs,                 // layout.SIGNS (world), for player.setWorld
 //   groundAt(x, z),        // the floor under (x, z), probed from def.probeY (under the ceiling)
@@ -42,6 +48,9 @@ const POINT_LISTS = ['COINS', 'RED_COINS', 'SIGNS', 'BUTTERFLY_SPOTS', 'BIRD_CIR
 const POINTS = ['STAR', 'ONE_UP'];
 const VALUES = ['BIRD_TINT'];
 
+// def.audio's lists of places its sounds come from (each item's x, y, z are shifted).
+const AUDIO_POINT_LISTS = ['fires', 'gulls'];
+
 // A copy of `p` moved by origin (only the coordinates it has; a door's floorY with its y).
 function shifted(p, o) {
   const q = { ...p };
@@ -55,6 +64,14 @@ function shifted(p, o) {
 // The spawn player.setWorld keeps: the entry's point and facing, and the drop-in's height.
 function respawnPoint(e, drop) {
   return { x: e.x, y: e.y, z: e.z, yaw: e.yaw ?? 0, drop };
+}
+
+// def.audio in world coordinates: its sound spots shifted, the sea's level raised by the origin.
+export function worldAudio(audio, o) {
+  const out = { ...audio };
+  for (const key of AUDIO_POINT_LISTS) if (audio[key]) out[key] = audio[key].map((p) => shifted(p, o));
+  if (Number.isFinite(audio.seaLevel)) out.seaLevel = audio.seaLevel + o.y;
+  return out;
 }
 
 export function shiftPositions(positions, o) {
@@ -98,6 +115,12 @@ export function buildArea(scene, def) {
 
   const probeY = def.probeY + o.y;
   const groundAt = (x, z) => collision.findFloor(x, probeY, z).y;
+  // Open water at (x, z): a water surface there, above the floor (not the jetty, a rock's top or
+  // a beach above the waterline). The ambience lays the sea's laps only where this holds.
+  const isWater = (x, z) => {
+    const w = collision.waterLevelAt(x, z);
+    return w !== NO_WATER && w > groundAt(x, z);
+  };
   const entries = {};
   for (const id of Object.keys(def.entries)) entries[id] = shifted(def.entries[id], o);
   const objectsLayout = { groundHeight: groundAt, DOORS: (layout.DOORS ?? []).map((d) => shifted(d, o)) };
@@ -112,6 +135,7 @@ export function buildArea(scene, def) {
     collision,
     parts,
     entries,
+    audio: { ...worldAudio(def.audio ?? {}, o), isWater },
     respawn: respawnPoint(entries[def.respawn.entry], def.respawn.drop),
     signs: objectsLayout.SIGNS ?? [],
     groundAt,

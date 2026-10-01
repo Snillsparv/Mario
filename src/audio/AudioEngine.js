@@ -28,9 +28,14 @@
 // stinger, once per storm. The castle door's laugh (locked or sealed) and the doors' creaks
 // and thuds ring in one shared hall reverb, made ahead at idle time (see prepare).
 //
-// Areas ('areaChange' { audio: { music, ambience, reverb } }, core/AreaSwitch.js): setArea()
-// switches the ambience to the area's profile (ambience.js PROFILES: indoors the birds, the
-// pastoral bed and the water fall quiet), also when the context only exists later.
+// Areas ('areaChange' { audio: { music, ambience, reverb, ... } }, core/AreaSwitch.js): setArea()
+// switches the ambience to the area's profile (ambience.js PROFILES: the hall's room tone and
+// its fire crackling in the hearth, the sea's waves and gulls; the birds, the pastoral bed and
+// the waterfall and moat only where they belong), also when the context only exists later. The
+// area's own track (music) plays and becomes the base track the winged hat's theme and the
+// storm's hand the music slot back to; the grounds have none, and going back to them stops only
+// an area's track (AREA_TRACKS: never the arrival cue, the game-over jingle or the title).
+// Indoors (reverb) every sound effect also rings in the shared hall reverb (a send per voice).
 //
 // AI RACE's meltdown (fx/Meltdown.js): the klaxon comes as 'sfx' meltdown_klaxon. On
 // 'meltdown' { phase: 'fire' } the sky catching fire whoomphs (meltdown_ignite), the storm's
@@ -76,11 +81,15 @@ const MELT_RAIN_FADE = 2.5; // the meltdown: the rain beds fade as the sky catch
 const MELT_MUSIC_FADE = 3; // ...and the dark track with them
 const FLY_TRACKS = new Set(['fly', 'fly_dark']); // the winged hat's themes (sunny, storm)
 const FLY_OUT_FADE = 2.5; // the flying theme fading out as the hat comes off in sunny weather
-const AREA_FADE = 1.2; // the ambience changing to another area's (under the covered screen)
+const AREA_FADE = 1.2; // the ambience (and an area's track) changing to another area's
+const ROOM_SEND = 0.25; // indoors: each sound effect's share sent into the hall reverb
 const PREPARE_IDLE_MS = 3000; // each step of prepare() runs within this long of the one before
 // Sounds that mark Pip leaving the ground: a landing's weight follows the air time since.
 const TAKEOFFS = new Set(['jump', 'double_jump', 'triple_jump', 'backflip', 'sideflip', 'long_jump', 'wallkick', 'water_exit']);
 const NO_INFO = {};
+// The areas' own loops (world/areas.js def.audio.music): the only music that going back to the
+// grounds stops.
+export const AREA_TRACKS = new Set(['castle_hall', 'skerries']);
 
 // Only a table's own entries count: names like 'toString' or '__proto__' are unknown.
 const own = (table, name) => (typeof name === 'string' && Object.hasOwn(table, name) ? table[name] : null);
@@ -105,6 +114,9 @@ export class AudioEngine {
     this.melt = { fire: 0, light: 0, doom: false }; // the meltdown's levels; doom: past 40 s
     this.dark = false; // AI RACE mode (kept while there is no context, applied when one is made)
     this.area = 'grounds'; // the ambience profile of the area Jonas is in (setArea; kept the same way)
+    this.areaAudio = null; // that area's def.audio (world coordinates): where its sounds come from
+    this.baseMusic = null; // that area's own track (null on the grounds: no music in free roam)
+    this.reverb = false; // indoors: every sound effect also rings in the hall reverb (setArea)
     this.flying = false; // the winged hat is on (its theme has the music slot)
     this.minionsHeard = false; // the minions' stinger has played in this storm
     this.groundedAt = -Infinity; // context time Pip was last known on the ground
@@ -113,6 +125,7 @@ export class AudioEngine {
     this.track = null; // { name, gain, seq, started, fadeEnd, stopTimer }
     this.fading = []; // tracks fading out, until their sequencer stops (see startMusic)
     this.hall = null; // the castle hall's reverb, shared by every laugh (see hallReverb)
+    this.room = null; // the send into it from every sound effect while indoors (see roomSend)
     this.wantMusic = null; // latest requested track (also before the context exists)
     this.unlockPress = null; // key code or 'pointer' of the press that created the context, while held
     this.active = []; // sounding one-shots: { end (context time), node }
@@ -202,7 +215,7 @@ export class AudioEngine {
       mix.master.gain.value = 1;
       this.attach(ctx, mix);
     } catch (err) {
-      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null, inferno: null, hall: null });
+      Object.assign(this, { ctx: null, mix: null, ambience: null, storm: null, inferno: null, hall: null, room: null });
       this.failed = true;
       this.warnOnce(err);
       Promise.resolve()
@@ -223,8 +236,8 @@ export class AudioEngine {
     });
     const storm = new Storm(ctx, mix.amb);
     const inferno = new Inferno(ctx, mix.amb);
-    Object.assign(this, { ctx, mix, ambience, storm, inferno, hall: null });
-    if (this.area !== 'grounds') ambience.setProfile(this.area, 0);
+    Object.assign(this, { ctx, mix, ambience, storm, inferno, hall: null, room: null });
+    if (this.area !== 'grounds') ambience.setProfile(this.area, 0, this.areaAudio);
     if (this.dark) {
       ambience.setDark(true, 0);
       ambience.birds = 0;
@@ -267,6 +280,20 @@ export class AudioEngine {
       }
     }
     return this.hall;
+  }
+
+  // Indoors (setArea reverb), the send every sound effect's voice feeds into the hall reverb
+  // besides its bus: one gain, made on first use. Null if the hall cannot be made.
+  roomSend() {
+    if (!this.room) {
+      const hall = this.hallReverb();
+      if (!hall) return null;
+      const room = this.ctx.createGain();
+      room.gain.value = ROOM_SEND;
+      room.connect(hall);
+      this.room = room;
+    }
+    return this.room;
   }
 
   // Play a named sound effect. opts: { pos, volume, pitch, terrain, big, index, ... }.
@@ -312,8 +339,9 @@ export class AudioEngine {
 
   // AI RACE mode on/off: the storm replaces the pastoral ambience and the dark track takes
   // the music slot, both over DARK_FADE (the picture's crossfade); an alarm stings as it
-  // starts. Off fades the dark track out (nothing replaces it: the grounds have no music)
-  // and the birds back in. In flight, the flying theme swaps to its other variant instead.
+  // starts. Off fades the dark track out (nothing replaces it: the grounds, the storm's only
+  // place, have no music; see backToBase) and the birds back in. In flight, the flying theme
+  // swaps to its other variant instead.
   setDark(on) {
     on = !!on;
     if (on === this.dark) return;
@@ -322,24 +350,43 @@ export class AudioEngine {
     if (on) {
       this.play('alarm');
       this.playMusic(this.flying ? 'fly_dark' : 'dark');
-    } else if (this.wantMusic === 'dark') this.stopMusic(DARK_FADE);
+    } else if (this.wantMusic === 'dark') this.backToBase(DARK_FADE);
     else if (this.wantMusic === 'fly_dark') this.playMusic('fly');
     this.ambience?.setDark(on, DARK_FADE);
     this.storm?.set(on, DARK_FADE);
   }
 
-  // Jonas moved to another area (world/areas.js def.audio): its ambience profile fades in.
-  setArea({ ambience = 'grounds' } = {}) {
-    const name = ambience ?? 'grounds';
-    if (name === this.area) return;
-    this.area = name;
-    this.ambience?.setProfile(name, AREA_FADE);
+  // Jonas moved to another area (world/areas.js def.audio, in world coordinates: AreaSwitch):
+  // its ambience profile fades in, with the places its sounds come from (fires, gulls, the
+  // sea's level); its own track (music) becomes the base track and plays (unless the winged
+  // hat's theme or the storm's has the slot: they hand it back to it); an area without one (the
+  // grounds) stops an area's track (AREA_TRACKS), and nothing else. With reverb (indoors) every
+  // sound effect from now on also rings in the hall reverb (see voice). The area Jonas is
+  // already in (GAME OVER puts him back on the grounds he may never have left) changes nothing:
+  // its track plays on, and the ambience keeps any fade under way (the storm lifting).
+  setArea(audio = {}) {
+    const { music = null, ambience = 'grounds', reverb = false } = audio ?? {};
+    this.reverb = !!reverb;
+    this.baseMusic = own(SONGS, music) ? music : null;
+    if (this.baseMusic) {
+      if (!this.flying && !this.dark && !this.melt.doom) this.playMusic(this.baseMusic);
+    } else if (AREA_TRACKS.has(this.wantMusic)) this.stopMusic(AREA_FADE);
+    this.area = ambience ?? 'grounds';
+    this.areaAudio = audio ?? null;
+    this.ambience?.setProfile(this.area, AREA_FADE, this.areaAudio);
+  }
+
+  // The music slot back to the area's own track once the flying theme or the storm's track
+  // lets go of it: its base track (setArea), or none on the grounds (faded out over `fade`).
+  backToBase(fade) {
+    if (this.baseMusic) this.playMusic(this.baseMusic);
+    else this.stopMusic(fade);
   }
 
   // The winged hat on/off: its flying theme (the storm variant in AI RACE mode) takes the
-  // music slot while it is on. Off gives the grounds their own music back, the dark track in
-  // the storm, or fades to none, but only if a flying theme still has the slot (a game-over
-  // jingle or the title that took over since stays).
+  // music slot while it is on. Off gives the area its own music back (backToBase: none on the
+  // grounds, faded out), the dark track in the storm, but only if a flying theme still has the
+  // slot (a game-over jingle or the title that took over since stays).
   setFlying(on) {
     on = !!on;
     if (on === this.flying) return;
@@ -348,7 +395,7 @@ export class AudioEngine {
     if (on) this.playMusic(this.dark ? 'fly_dark' : 'fly');
     else if (FLY_TRACKS.has(this.wantMusic)) {
       if (this.dark) this.playMusic('dark');
-      else this.stopMusic(FLY_OUT_FADE);
+      else this.backToBase(FLY_OUT_FADE);
     }
   }
 
@@ -538,7 +585,7 @@ export class AudioEngine {
     on('aiRaceButton', (e) => this.play('button_press', e)); // deduped with an sfx of it
     // The winged hat (emitted by the player): its flying theme while it is on.
     on('wingHat', (e) => this.setFlying(e.on));
-    // Another area (core/AreaSwitch.js): its ambience.
+    // Another area (core/AreaSwitch.js): its ambience, music and reverb.
     on('areaChange', (e) => this.setArea(e.audio));
   }
 
@@ -612,7 +659,9 @@ export class AudioEngine {
   // volume, pitch, pan (overrides the position's), delay (seconds, on the audio clock), plus
   // whatever the recipe reads; the recipe also gets `dist` from the listener and `outGain`,
   // the gain of its output (volume x distance: for sends that bypass it, like the hall's).
-  // `tag` names the voice for countActive(). Returns whether it played.
+  // Indoors a voice on the sfx bus also feeds the hall reverb (roomSend), unless its recipe
+  // has a send of its own (opts.hall). `tag` names the voice for countActive(). Returns
+  // whether it played.
   voice(recipe, opts, bus, tag = null) {
     const ctx = this.ctx;
     if (ctx?.state !== 'running' || this._muted) return false;
@@ -631,6 +680,10 @@ export class AudioEngine {
       panner = ctx.createStereoPanner();
       panner.pan.value = opts.pan ?? pan;
       out.connect(panner).connect(bus);
+      if (this.reverb && bus === this.mix.sfx && !opts.hall) {
+        const room = this.roomSend();
+        if (room) panner.connect(room);
+      }
       dur = recipe(ctx, out, ctx.currentTime + 0.005 + delay, { ...opts, p, dist, outGain: volume });
     } catch (err) {
       this.warnOnce(err);

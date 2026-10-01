@@ -38,7 +38,8 @@
 // his last tick and keep a door he arrives at quiet (objects.enter); the HUD names the course,
 // and on a course's first entry in a game (def.card) shows its name as a title card; held
 // input is flushed; then onSwap() (main: the arrival is no respawn) and 'areaChange'
-// { from, to, entry, audio } (the audio's ambience follows it).
+// { from, to, entry, audio } (Area.audio: the area's def.audio in world coordinates and its
+// water test; the audio's music, ambience and reverb follow it).
 //
 // Transitions run on the simulation clock inside play (no mode of their own; pause freezes
 // them, START is ignored while busy):
@@ -469,7 +470,7 @@ export class AreaSwitch {
     this.input?.flush();
     this.current = to;
     this.onSwap();
-    this.events.emit('areaChange', { from: from.name, to: to.name, entry: entryId, audio: to.def.audio });
+    this.events.emit('areaChange', { from: from.name, to: to.name, entry: entryId, audio: to.audio });
     return true;
   }
 }

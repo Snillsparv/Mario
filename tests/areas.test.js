@@ -260,6 +260,11 @@ test('into the castle: the door creaks, the wipe closes 14, holds 4 (one switch)
   assert.ok(g.view.warm.includes(a.root) && g.view.warm.includes(a.objects.group), 'shaders compiled ahead');
   assert.equal(g.hud.course, 'hall');
   assert.ok(g.input.flushes >= 1);
+  // The audio: the hall's music, ambience and reverb, its fire at the hearth in world coordinates.
+  const { audio } = g.arrivals[0];
+  assert.equal(audio, a.audio);
+  assert.deepEqual([audio.music, audio.ambience, audio.reverb], ['castle_hall', 'hall', true]);
+  assert.deepEqual(audio.fires, [{ x: hall.HEARTH_FIRE.x, y: hall.HEARTH_FIRE.y, z: hall.HEARTH_FIRE.z + HALL_Z }]);
   assert.equal(a.root.visible, true);
   assert.equal(a.objects.group.visible, true);
   assert.equal(g.objects.group.visible, false, 'the grounds\' objects hidden');
@@ -417,7 +422,7 @@ test('AI RACE seals the castle door, also while it fades out: the laugh and the 
   assert.ok(log.includes('warp:hall') && log.includes('door_open') && !log.includes('evil_laugh'), log.join());
 });
 
-test("the hall's doors still being built say so: their sign, no laugh, no warp", () => {
+test("the hall's doors still being built say so: their sign and a rattle of the handle, no laugh, no warp", () => {
   const g = game();
   g.areas.enter('hall');
   const doors = g.areas.objects.doors;
@@ -430,6 +435,7 @@ test("the hall's doors still being built say so: their sign, no laugh, no warp",
     g.until(() => g.dialog.isOpen, 60, g.toward(yaw));
     assert.ok(g.log.includes(`sign:${sign}`), `${id}: ${g.log.join()}`);
     assert.ok(!g.log.includes('evil_laugh'), `${id}: no laugh`);
+    assert.equal(count(g.log, 'door_rattle'), 1, `${id}: the door rattles in its frame`);
     assert.ok(!g.log.some((n) => n.startsWith('warp:')), `${id}: no warp`);
     assert.equal(g.areas.phase, null);
     assert.equal(g.areas.name, 'hall');
@@ -581,7 +587,7 @@ const COURSE = {
   starExit: { to: 'grounds', entry: 'porch' },
 };
 
-test('buildArea: a hidden root at the origin; colliders, poles, water, entries and the layout shifted into world coordinates', () => {
+test('buildArea: a hidden root at the origin; colliders, poles, water, entries, the layout and the sound spots shifted into world coordinates; its open-water test for the sea\'s laps', () => {
   const scene = new THREE.Scene();
   const part = () => {
     const solids = new SolidBuilder();
@@ -600,6 +606,7 @@ test('buildArea: a hidden root at the origin; colliders, poles, water, entries a
       DOORS: [{ id: 'd', x: 0, z: -900, yaw: 0, floorY: 0, to: 'grounds', entry: 'porch' }],
       POLES: [{ x: 500, z: -500, y0: 0, y1: 1200, radius: 40 }],
     },
+    audio: { music: null, ambience: 'sea', reverb: false, seaLevel: -50, fires: [{ x: 1, y: 2, z: 3 }], gulls: [{ x: 5, y: 900, z: 6, radius: 300 }] },
     origin: { x: 60000, y: 100, z: -2000 },
   };
   const a = buildArea(scene, def);
@@ -623,7 +630,21 @@ test('buildArea: a hidden root at the origin; colliders, poles, water, entries a
   assert.deepEqual(a.objectsLayout.DOORS[0], { id: 'd', x: o.x, z: o.z - 900, yaw: 0, floorY: o.y, to: 'grounds', entry: 'porch' });
   assert.deepEqual(a.signs, [{ id: 'hello', x: o.x, y: o.y, z: o.z + 500, yaw: 0, pages: ['Hello'] }]);
   assert.equal(a.groundAt(o.x, o.z), o.y);
+  const { isWater, ...audio } = a.audio;
+  assert.deepEqual(audio, {
+    music: null,
+    ambience: 'sea',
+    reverb: false,
+    seaLevel: o.y - 50,
+    fires: [{ x: o.x + 1, y: o.y + 2, z: o.z + 3 }],
+    gulls: [{ x: o.x + 5, y: o.y + 900, z: o.z + 6, radius: 300 }],
+  });
+  // Open water (for the sea's laps): a water surface above the floor there, in world coordinates.
+  assert.equal(isWater(o.x - 1500, o.z), true, 'water past the floor\'s edge');
+  assert.equal(isWater(o.x - 800, o.z), false, 'the floor stands above the water there');
+  assert.equal(isWater(o.x + 800, o.z), false, 'no water');
   assert.equal(def.layout.COINS[0].x, 10, 'the local layout is left as it was');
+  assert.equal(def.audio.fires[0].x, 1, 'and so are its sound spots');
   assert.deepEqual(shiftPositions([1, 2, 3, 4, 5, 6], { x: 10, y: 20, z: 30 }), [11, 22, 33, 14, 25, 36]);
   // An { object3D } collider is refused (it would stay where the builder left it).
   const bad = () => ({ object3D: new THREE.Group(), colliders: [{ object3D: new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10)) }] });
@@ -753,6 +774,12 @@ test("into the bottle's neck: its own sound and the iris, then Midsummer Skerrie
   assert.equal(g.view.water(SK.x, SK.z), SK.y + sk.SEA_LEVEL);
   assert.equal(g.level.parts.find((p) => p.name === 'sky').object3D.visible, true);
   assert.deepEqual(worldsIn(g.player, g.cam), [a.collision]);
+  // Its sound: the polska, the sea's wind, waves and gulls (over the gulls' circles, in world).
+  assert.deepEqual([arrive.audio.music, arrive.audio.ambience, arrive.audio.reverb], ['skerries', 'sea', false]);
+  assert.equal(arrive.audio.seaLevel, SK.y + sk.SEA_LEVEL);
+  assert.equal(arrive.audio.isWater(SK.x + sk.ENTRIES.arrival.x, SK.z + sk.ENTRIES.arrival.z), false, 'the jetty is no sea');
+  assert.equal(arrive.audio.isWater(SK.x + sk.WRECK.x, SK.z + sk.WRECK.z), true, 'the Sound is');
+  assert.deepEqual(arrive.audio.gulls, sk.BIRD_CIRCLES.map((c) => ({ ...c, x: c.x + SK.x, y: c.y + SK.y, z: c.z + SK.z })));
   assert.equal(g.hud.course, 'skerries');
   assert.equal(g.areas.canLeave(), false, 'no way out while he drops in');
   assert.deepEqual(g.hud.cards, ['skerries']);

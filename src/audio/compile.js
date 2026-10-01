@@ -220,9 +220,11 @@ export function compileSong(song) {
     for (const midi of pads[i]) events.push({ beat: seg.beat, dur: seg.dur, inst: roles.pad, midi, vel: sec.pad });
     events.push(...bassEvents(sec.bass, seg, next, scale, bass));
     if (sec.comp === 'stabs') {
-      // Off-beat chords on beats 2 and 4 (odd beats; bars are 4 beats long).
+      // Off-beat chords: on beats 2 and 4 of a 4-beat bar, on beats 2 and 3 of a 3-beat bar
+      // (a waltz's oom-pah-pah).
       for (let b = Math.ceil(seg.beat); b < seg.beat + seg.dur; b++) {
-        if (b % 2 === 1) for (const midi of stabs[i]) events.push({ beat: b, dur: 0.4, inst: roles.comp, midi, vel: 0.42 });
+        const inBar = b % bpb;
+        if (bpb === 3 ? inBar > 0 : inBar % 2 === 1) for (const midi of stabs[i]) events.push({ beat: b, dur: 0.4, inst: roles.comp, midi, vel: 0.42 });
       }
     } else if (sec.comp === 'arp') {
       const tones = arpTones(seg.chord);

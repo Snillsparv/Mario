@@ -222,6 +222,8 @@ const CRYSTAL = [
 
 // The minions' servo whine (the same gear timbre as the floor button's servo).
 const servoWave = (ctx) => harmonicWave(ctx, 'servo', [1, 0.5, 0.35, 0.2, 0.12]);
+// A gull's voice: nasal and reedy, its upper harmonics strong.
+const gullWave = (ctx) => harmonicWave(ctx, 'gull', [1, 0.75, 0.6, 0.45, 0.32, 0.2, 0.12, 0.07]);
 
 // Band-passed noise riding a frequency point list, its level fluttering at `rate` Hz (the
 // flutter dying away with time constant `settle`): air through feathers.
@@ -1107,6 +1109,78 @@ export const SFX = {
     return 0.8;
   },
 
+  // Trying a door that will not open yet (objects/Door.js without the laugh: the hall's doors
+  // still being built): the iron ring handle lifts with a click, then the latch rattles in its
+  // keeper three times, each clack ringing briefly as the heavy leaf knocks dully in its frame.
+  door_rattle(ctx, out, t, opts) {
+    const { p } = opts;
+    const o = inHall(ctx, out, opts, 0.4);
+    noise(ctx, o, t, { filter: 'highpass', freq: 3000, dur: 0.012, gain: 0.08, attack: 0.001 });
+    for (let i = 0; i < 3; i++) {
+      const at = t + 0.09 + i * rand(0.12, 0.15);
+      const k = 1 - i * 0.18;
+      noise(ctx, o, at, { filter: 'highpass', freq: 2200, dur: 0.02, gain: 0.15 * k, attack: 0.001 });
+      bell(ctx, o, at + 0.003, { freq: rand(700, 780) * p, dur: 0.16, gain: 0.06 * k, partials: METAL });
+      tone(ctx, o, at + 0.008, { freq: 165 * p, to: 105 * p, dur: 0.08, gain: 0.22 * k, attack: 0.002 });
+      noise(ctx, o, at + 0.008, { filter: 'lowpass', freq: 650, dur: 0.07, gain: 0.12 * k, attack: 0.002, kind: 'brown' });
+    }
+    return 0.75;
+  },
+
+  // ---- The ship in the bottle (the hall's way to Midsummer Skerries)
+
+  // Diving into the bottle's mouth (objects/Door.js kind 'bottle'): its hollow note as he
+  // rushes into the neck (a breathy resonance sinking as he shrinks), a glassy whistle sliding
+  // a long way down under a whoosh, then a bloop and a few bubbles: the little sea inside.
+  bottle_dive(ctx, out, t, { p }) {
+    noise(ctx, out, t, { freq: [[0, 540 * p], [0.75, 260 * p]], q: 9, dur: 0.8, gain: 0.3, attack: 0.12 });
+    const slide = tone(ctx, out, t + 0.04, { wave: 'triangle', freq: [[0, 1500 * p], [0.68, 330 * p]], dur: 0.7, gain: 0.12, attack: 0.03 });
+    lfo(ctx, slide.detune, t + 0.04, 0.7, { rate: 9, depth: 25 });
+    tone(ctx, out, t + 0.04, { freq: [[0, 3000 * p], [0.68, 660 * p]], dur: 0.5, gain: 0.035, attack: 0.03 });
+    whoosh(ctx, out, t, { from: 2600, to: 700, dur: 0.6, gain: 0.16 });
+    tone(ctx, out, t + 0.72, { freq: 260 * p, to: 820 * p, glide: 0.07, dur: 0.12, gain: 0.2, attack: 0.004 });
+    for (let i = 0; i < 4; i++) plip(ctx, out, t + 0.78 + i * 0.07 + rand(0, 0.03), rand(500, 1000) * p, 0.06);
+    return 1.1;
+  },
+
+  // Popping back out of the bottle onto the hall's landing (its 'bottle' entry: AreaSwitch, as
+  // the picture opens): a cork-like pop (a click and a hollow 'pok' dropping fast), an airy
+  // rush sweeping up as he grows back with a slide under it, the glass ringing, and a sparkle
+  // up a G major chord (the hall's key).
+  bottle_pop(ctx, out, t, { p }) {
+    noise(ctx, out, t, { filter: 'highpass', freq: 3000, dur: 0.012, gain: 0.2, attack: 0.0005 });
+    tone(ctx, out, t, { freq: 980 * p, to: 360 * p, glide: 0.05, dur: 0.09, gain: 0.34, attack: 0.001 });
+    noise(ctx, out, t + 0.004, { freq: 700 * p, q: 6, dur: 0.12, gain: 0.18, attack: 0.002 });
+    noise(ctx, out, t + 0.05, { freq: [[0, 500], [0.4, 3200]], q: 1.1, dur: 0.45, gain: 0.15, attack: 0.15 });
+    tone(ctx, out, t + 0.06, { wave: 'triangle', freq: [[0, 360 * p], [0.34, 1200 * p]], dur: 0.36, gain: 0.1, attack: 0.02 });
+    bell(ctx, out, t + 0.02, { freq: 1180 * p, dur: 0.7, gain: 0.05, partials: CRYSTAL });
+    [79, 83, 86, 91].forEach((m, i) => chime(ctx, out, t + 0.3 + i * 0.06, mtof(m) * p, 0.4, 0.05));
+    return 0.9;
+  },
+
+  // ---- Midsummer Skerries (its 'sea' ambience, audio/ambience.js)
+
+  // A gull wheeling over the skerries: two to four harsh, nasal 'kyow' calls, each yelping up
+  // and falling back with a fast warble and a raspy edge, a little lower each time, the last
+  // drawn out and falling further.
+  gull(ctx, out, t, { p }) {
+    const base = rand(800, 980) * p;
+    const n = 2 + Math.floor(Math.random() * 3);
+    const wave = gullWave(ctx);
+    let at = 0;
+    for (let i = 0; i < n; i++) {
+      const last = i === n - 1;
+      const len = last ? rand(0.3, 0.4) : rand(0.15, 0.21);
+      const f = base * (1 - i * 0.04);
+      const bend = [[0, f * 0.8], [len * 0.25, f * 1.35], [len, f * (last ? 0.72 : 0.95)]];
+      const call = tone(ctx, out, t + at, { wave, freq: bend, dur: len, hold: len * 0.4, gain: 0.14, attack: 0.012 });
+      lfo(ctx, call.frequency, t + at, len, { rate: 36, depth: f * 0.025 });
+      noise(ctx, out, t + at, { freq: f * 2.4, q: 3, dur: len * 0.8, gain: 0.06, attack: 0.01 });
+      at += len + rand(0.06, 0.12);
+    }
+    return at + 0.05;
+  },
+
   // ---- The cannon (objects/Cannon.js, player actions/cannon.js)
 
   // Dropping into the barrel: a hollow iron 'thunk' (a low body and a knock) with the tube
@@ -1285,12 +1359,13 @@ export const SFX = {
 
 // The cached buffers and waves the rarer sounds would otherwise make on their first play (a
 // few ms at once, as the laugh starts or the first minion surfaces): the noise buffers and
-// the glottal and servo waves. The engine calls this at an idle moment (AudioEngine.prepare);
-// the laugh's hall impulse is prepared separately.
+// the glottal, servo and gull waves. The engine calls this at an idle moment
+// (AudioEngine.prepare); the laugh's hall impulse is prepared separately.
 export function prepareSfx(ctx) {
   prepareNoise(ctx);
   harmonicWave(ctx, 'glottal', GLOTTAL);
   servoWave(ctx);
+  gullWave(ctx);
 }
 
 // Playback rules for some sounds, read by the engine:
@@ -1325,6 +1400,9 @@ export const SFX_INFO = {
   evil_laugh: { range: 2, gap: 3, max: 1, hall: true, duck: { music: 0.4, amb: 0.45, seconds: 2.4 } },
   door_open: { gap: 0.5, max: 1, hall: true },
   door_close: { gap: 0.5, max: 1, hall: true },
+  door_rattle: { gap: 0.5, max: 1, hall: true },
+  bottle_dive: { gap: 0.5, max: 1 },
+  bottle_pop: { gap: 0.5, max: 1 },
   hall_warn: { range: 2.5, gap: 0.3, max: 2 }, // heard across the grounds: a unit is coming down
   hall_impact: { range: 2.5, gap: 0.1, max: 3 },
   hall_rise: { range: 2, gap: 0.25, max: 2 },

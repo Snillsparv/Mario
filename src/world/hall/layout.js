@@ -71,6 +71,9 @@ export const NORTH_WINDOWS = { xs: [-1500, 1500] };
 // within 15 degrees of straight at the wall.
 export const CHIMNEY = { x0: -2200, x1: -1750, z0: -1260, z1: -200, top: 1700, hearth: { z: -730, width: 700, height: 600 } };
 export const CREST = { x: -1748, y: 1150, z: -730, r: 160 }; // a white pi on a red disc
+// Where the fire in the hearth is heard from (the 'hall' ambience's crackles, world/areas.js
+// def.audio.fires): the middle of the hearth's opening in the breast's face.
+export const HEARTH_FIRE = { x: CHIMNEY.x1, y: CHIMNEY.hearth.height / 2, z: CHIMNEY.hearth.z };
 export const BUTTRESS = { x0: -2200, x1: -1750, z0: -2080, z1: -1620, top: 1700 };
 export const SLOT = { z0: BUTTRESS.z1, z1: CHIMNEY.z0 }; // 360 wide
 export const BANNER_POLE = { x: BUTTRESS.x1 + 250, z: (BUTTRESS.z0 + BUTTRESS.z1) / 2, y0: 0, y1: 1550, radius: 30 };
@@ -142,7 +145,8 @@ export const RESPAWN = { entry: 'front', drop: 400 };
 // Height the ground probe starts from (below the ceiling, so it finds the floor, not the roof).
 export const PROBE_Y = 2400;
 
-// What the doors that do not open yet say (no laugh: nothing sinister, just not built yet).
+// What the doors that do not open yet say (no laugh: nothing sinister, just not built yet; the
+// door only rattles in its frame, objects/Door.js).
 export const HALL_DOOR_SOON = Object.freeze({
   id: 'hall_door_soon',
   pages: Object.freeze(['This door is still being built.', 'Come back after the next update!']),

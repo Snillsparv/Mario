@@ -54,10 +54,10 @@
 // winged hat (player.giveWingHat). Doors (Door.js): the castle's (layout.CASTLE, CastleDoor.js)
 // and layout.DOORS ([{ id, x, z, yaw, width, floorY, to, entry, kind, locked, sealedSign,
 // laugh }]). Walking up to an open one emits 'warpRequest' (core/AreaSwitch.js takes the hero
-// through it); a locked one plays 'evil_laugh' and opens the dialog ('signRead' { sign: { id:
-// 'castle_locked', ... } }). While AI RACE mode is on or fading out (modeOn || darkT > 0) every
-// door is sealed: the castle door shows its 'castle_sealed' sign instead of opening, so the
-// storm never follows the hero indoors.
+// through it); a locked one plays 'evil_laugh' (or, without the laugh, 'door_rattle') and
+// opens the dialog ('signRead' { sign: { id: 'castle_locked', ... } }). While AI RACE mode is
+// on or fading out (modeOn || darkT > 0) every door is sealed: the castle door shows its
+// 'castle_sealed' sign instead of opening, so the storm never follows the hero indoors.
 // Cannon (layout.CANNON, Cannon.js): standing on its loading pad puts Pip in the barrel
 // (player.enterCannon); the barrel follows his aim and recoils when he fires ('cannonFire').
 //

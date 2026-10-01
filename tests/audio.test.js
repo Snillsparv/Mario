@@ -63,6 +63,11 @@ test('engine is a silent no-op without an AudioContext', async () => {
     ['sfx', { name: 'powerup' }],
     ['sfx', { name: 'minion_emerge', pos: { x: 0, y: 0, z: 0 } }],
     ['wingHat', { on: false }],
+    ['areaChange', { from: 'grounds', to: 'hall', entry: 'front', audio: { music: 'castle_hall', ambience: 'hall', reverb: true, fires: [{ x: 0, y: 0, z: 0 }] } }],
+    ['sfx', { name: 'door_rattle', pos: { x: 0, y: 0, z: 0 } }],
+    ['areaChange', { from: 'hall', to: 'skerries', entry: 'arrival', audio: { music: 'skerries', ambience: 'sea', seaLevel: 0, gulls: [] } }],
+    ['areaChange', { from: 'skerries', to: 'grounds', entry: 'start', audio: {} }],
+    ['areaChange', {}],
   ]) {
     events.emit(name, data);
   }
@@ -76,7 +81,8 @@ test('every standard sfx name has a recipe', () => {
     water_exit coin red_coin star_appear star_get one_up pause menu_select menu_move camera_move camera_buzz
     footstep life_lost unpause punch1 punch2 jump_kick dialog_open text_blip dialog_next dialog_close
     button_press alarm kaiju_roar fireball_charge fireball_launch fireball_explode burn fire_crackle steam thunder
-    box_hit powerup wing_flap stomp minion_emerge minion_bite minion_wreck evil_laugh door_open door_close`;
+    box_hit powerup wing_flap stomp minion_emerge minion_bite minion_wreck evil_laugh door_open door_close
+    door_rattle bottle_dive bottle_pop gull`;
   for (const n of names.split(/\s+/)) assert.equal(typeof SFX[n], 'function', n);
 });
 
@@ -300,4 +306,74 @@ test('the flying theme: a bright, soaring D major loop of 40-60 s; its storm var
     assert.equal(chordTimeline(song)[0].chord.root, pitchClass(noteToMidi('D4')));
     assert.equal(bars(song)[1], 'D6:4');
   }
+});
+
+test("the areas' loops: the hall's music-box waltz and the course's polska, both in three, fading in, starting on the tonic", () => {
+  for (const [name, [lo, hi]] of [['castle_hall', [42, 52]], ['skerries', [50, 60]]]) {
+    const song = SONGS[name];
+    const c = compileSong(song);
+    const seconds = (c.loopBeats * 60) / c.bpm;
+    assert.ok(seconds >= lo && seconds <= hi, `${name} loop ${seconds}s`);
+    assert.equal(song.beatsPerBar, 3, `${name}: in three`);
+    assert.ok(!song.finalBar && !song.menu && !song.jingle, `${name}: a plain loop`);
+    assert.ok(c.fadeIn > 0 && c.fadeIn <= 1.5, `${name}: fades in as the picture opens`);
+    // (The sparse music box takes a higher level than the busy polska for the same loudness:
+    // rendered in the audio preview, the hall's loop sits within about a decibel of the polska
+    // and the arrival cue, its peaks under the soft clipper's knee.)
+    assert.ok(c.level <= 1.2, `${name}: level ${c.level}`);
+    for (const [inst, k] of Object.entries(c.mix)) assert.ok(c.events.some((e) => e.inst === inst) && k > 0 && k <= 2, `${name} mix ${inst}`);
+    assert.equal(chordTimeline(song)[0].chord.root, pitchClass(noteToMidi(`${song.key}4`)), `${name} starts on the tonic`);
+  }
+  // "Compass and Candle": G major, about 92 bpm, 24 bars; the glockenspiel carries the tune over
+  // harp arpeggios (one note at a time), soft strings and a waltz bass on the downbeats; no drums.
+  const hall = compileSong(SONGS.castle_hall);
+  assert.equal(SONGS.castle_hall.key, 'G');
+  assert.ok(Math.abs(hall.bpm - 92) <= 4);
+  assert.equal(SONGS.castle_hall.chords.length, 24);
+  assert.equal(hall.lead, 'glock');
+  assert.deepEqual([...new Set(hall.events.map((e) => e.inst))].sort(), ['bass', 'glock', 'harp', 'strings']);
+  const harpBeats = hall.events.filter((e) => e.inst === 'harp').map((e) => e.beat);
+  assert.equal(new Set(harpBeats).size, harpBeats.length, 'arpeggios, never a chord');
+  assert.ok(Math.max(...hall.events.filter((e) => e.inst === 'strings').map((e) => e.vel)) <= 0.35, 'soft strings');
+  // "Skerry Polska": D major, about 132 bpm; the flute's tune over a waltz bass (each chord's
+  // root as it comes) and the harp on the second and third beats (oom-pah-pah) in the A
+  // sections, harp arpeggios in B; the kick on the downbeat under a shaker; the horn answers
+  // only in B, each answer the rhythm of the call before it; the glockenspiel doubles the last A.
+  const song = SONGS.skerries;
+  const polska = compileSong(song);
+  assert.equal(song.key, 'D');
+  assert.ok(Math.abs(polska.bpm - 132) <= 6);
+  assert.equal(polska.lead, 'flute');
+  const insts = new Set(polska.events.map((e) => e.inst));
+  for (const i of ['flute', 'bass', 'harp', 'strings', 'kick', 'shaker', 'horn', 'glock']) assert.ok(insts.has(i), i);
+  const bar = (e) => Math.floor(e.beat / 3 + 1e-9) + 1;
+  const inBar = (e) => e.beat - (bar(e) - 1) * 3;
+  const isA = (e) => bar(e) <= 16 || bar(e) >= 33;
+  const stabs = polska.events.filter((e) => e.inst === 'harp' && isA(e));
+  assert.ok(stabs.every((e) => inBar(e) === 1 || inBar(e) === 2), 'harp chords on beats 2 and 3');
+  for (let b = 1; b <= 40; b++) {
+    if (b > 16 && b < 33) continue;
+    assert.equal(stabs.filter((e) => bar(e) === b).length, 6, `bar ${b}: a 3-note chord on beat 2 and on beat 3`);
+  }
+  assert.ok(polska.events.filter((e) => e.inst === 'kick').every((e) => inBar(e) === 0), 'the kick on the downbeat');
+  const changes = new Set(polska.timeline.map((seg) => seg.beat));
+  assert.ok(polska.events.filter((e) => e.inst === 'bass').every((e) => changes.has(e.beat)), 'the bass on each chord\'s first beat');
+  const horn = song.parts.find((p) => p.inst === 'horn').bars;
+  const flute = song.parts.find((p) => p.inst === 'flute').bars;
+  assert.ok(Object.keys(horn).every((b) => b >= 17 && b <= 32), 'the horn only in B');
+  const rhythm = (str) => parseBar(str).notes.map((n) => `${n.beat}:${n.dur}`).join(' ');
+  for (const [call, answer] of [[17, 19], [18, 20], [21, 23], [22, 24], [25, 27], [26, 28]]) {
+    assert.equal(rhythm(horn[answer]), rhythm(flute[call]), `bar ${answer} answers bar ${call}`);
+    assert.equal(flute[answer], undefined, `the flute rests for the answer in bar ${answer}`);
+  }
+  assert.deepEqual(song.parts.find((p) => p.inst === 'glock').copyBars, { from: 'flute', bars: [33, 34, 35, 36, 37, 38, 39, 40] });
+});
+
+test('harp stabs fall on the off-beats of the bar: beats 2 and 4 in four, beats 2 and 3 in three', () => {
+  const four = compileSong(SONGS.castle_grounds);
+  const stabsIn = (c, from, to) => c.events.filter((e) => e.inst === 'harp' && e.beat >= from * c.beatsPerBar && e.beat < to * c.beatsPerBar);
+  const inFour = stabsIn(four, 0, 8).map((e) => Math.round((e.beat % 4) * 100) / 100);
+  assert.ok(inFour.length > 0 && inFour.every((b) => b === 1 || b === 3), `in four: ${[...new Set(inFour)]}`);
+  const inThree = stabsIn(compileSong(SONGS.skerries), 0, 8).map((e) => e.beat % 3);
+  assert.deepEqual([...new Set(inThree)].sort(), [1, 2]);
 });

@@ -301,22 +301,31 @@ while he is in it, so hidden areas cost no draw calls, and only the current area
   probeY: 2400,                        // the ground probe's start (under the ceiling)
   sky: false,                          // the grounds' sky dome shows here
   atmosphere: HALL_ATMOSPHERE,         // view.setAtmosphere preset (null: the grounds' look)
-  audio: { music, ambience: 'hall', reverb },   // AudioEngine.setArea (on 'areaChange')
+  audio: { music: 'castle_hall', ambience: 'hall', reverb: true, fires: [HEARTH_FIRE] },
+                                       // AudioEngine.setArea (on 'areaChange'): its own loop, its
+                                       // ambience profile, sound effects in the hall reverb, and
+                                       // where the ambience's own sounds come from (local: fires
+                                       // [{ x, y, z }], gulls [{ x, y, z, radius }], seaLevel)
   leave: null, starExit: null,         // { to, entry }: the pause screen's way out, the star's
   card,                                // a course: its name as a title card on its first entry
 }
 groundsArea(level, objects) -> Area    // the grounds as an Area: entries 'start' (the spawn) and
                                        // 'porch' (174 in front of the door face, facing out, camYaw 0,
                                        // walkIn 8); setVisible toggles every part but the sky
-buildArea(scene, def) -> Area          // world/area.js; shiftPositions(positions, origin)
+buildArea(scene, def) -> Area          // world/area.js; shiftPositions(positions, origin);
+                                       // worldAudio(def.audio, origin) (Area.audio)
 ```
 
 `buildArea` runs the builders on the local layout, adds their objects under the root (placed at
 the origin, hidden), and fills a new CollisionWorld with every collider's `positions` and every
 pole shifted by the origin (an `{ object3D }` collider is refused: it would stay where the
 builder left it), with the water from `def.waterLevelAt` shifted likewise. The Area is `{ name,
-def, root, collision, parts, entries, respawn, signs, groundAt, objectsLayout, waterFn, objects,
-update(time, camera), reset(), setVisible(on) }`, everything in world coordinates:
+def, root, collision, parts, entries, audio, respawn, signs, groundAt, objectsLayout, waterFn,
+objects, update(time, camera), reset(), setVisible(on) }`, everything in world coordinates
+(`audio`: `def.audio` with its sound spots shifted and its `seaLevel` raised by the origin,
+plus `isWater(x, z)`, whether there is open water there (the water's surface above the floor,
+so not on a rock, the jetty or a beach above the waterline: the sea's laps); the grounds' is
+their `def.audio` as it is):
 `objectsLayout` is what an ObjectManager reads (COINS, RED_COINS, SIGNS, STAR, ONE_UP, DOORS,
 BUTTERFLY_SPOTS, BIRD_CIRCLES shifted, BIRD_TINT as it is, and `groundHeight(x, z)`, the floor
 under a point probed from `probeY`, so a coin's shadow never lands on the roof), `respawn` the
@@ -371,7 +380,8 @@ areas.busy, .name, .current, .objects, .phase, .warp, .buildMs[name], .carry, .s
    game (`def.card`; `resetCourses()` forgets them) `hud.showCourse(name)`, its title card;
 8. `input.flush()`;
 9. `onSwap()` (main: `lastAction = player.action`, so an arrival dropping in is no respawn), then
-   `'areaChange' { from, to, entry, audio }` (the audio's ambience follows it).
+   `'areaChange' { from, to, entry, audio }` (`audio`: the Area's, see above; the audio's music,
+   ambience and reverb follow it).
 
 **Transitions** run on the simulation clock inside `'play'` (no mode of their own: pause freezes
 them, START is ignored while `busy`):
@@ -591,8 +601,9 @@ of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and t
 * **Doors** (`DOORS`): `hall_front`, the inside of the front door (face z 2944, yaw π), back out
   to the grounds' `porch`; `bottle` (the lip's end face, z −1400, on the landing at 550, `kind:
   'bottle'`) into Midsummer Skerries' `arrival` (see "Midsummer Skerries"); `hall_east_1`,
-  `hall_east_2` (faces x 2144, yaw −π/2) `to: null` for now: no laugh, just their sign
-  (`HALL_DOOR_SOON` 'This door is still being built.' / 'Come back after the next update!').
+  `hall_east_2` (faces x 2144, yaw −π/2) `to: null` for now: no laugh, the handle rattling in
+  its frame (`laugh: false`: `door_rattle`) and their sign (`HALL_DOOR_SOON` 'This door is still
+  being built.' / 'Come back after the next update!').
 * **Pickups and signs**: 19 coins (`COINS`, each at its floor + 60, but the three hanging in the
   wall-kick slot at 450, 900, 1350: the ring round the chart table, the slot, up the stairs and
   onto the landing, the cork and the top two books), the 1-up on the mantel (`ONE_UP`), three
@@ -601,6 +612,10 @@ of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and t
 * **Look** (`HALL_ATMOSPHERE`): brown-amber fog 0x3b2a1d from 3500 to 16000 (also the clear
   colour: no sky), a warm actor sun 0xffe0b0 (0.5π) from (0, 0.72, 0.69), hemisphere 0xfff0da /
   0x6e5038 (0.55π).
+* **Sound** (`def.audio`, see "Audio"): its own loop, "Compass and Candle" (`castle_hall`); the
+  `'hall'` ambience, a low room tone with the fire crackling in the hearth (`HEARTH_FIRE`, the
+  middle of the hearth's opening, (−1750, 300, −730)); every sound effect ringing in the hall
+  reverb (`reverb: true`).
 * **Preview**: `/preview.html?m=hall` (`src/dev/previews/hall.js`: the hall alone under its fog;
   `&col=1` the collider overlay, whose every face shows from inside the room; `&lamp=1` the
   lamp lit; `&view=entry|bottle|fire|roof`; `&t=` freezes the flicker).
@@ -813,10 +828,11 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   sign through its coins), dropping in from 1600 under open sky, the camera behind him (the
   default reset) looking up the Sound at the lighthouse; a lost life drops him in there again
   (`RESPAWN`). `leave` (the pause screen) and `starExit` (the star) both take him to the hall's
-  `bottle` entry; `card: true` (its name as a title card on its first entry in a game). Audio:
-  `{ music: 'skerries', ambience: 'sea', reverb: false }`; neither is its own yet: the music does
-  not change with the area, and `'sea'` is no ambience profile yet (unknown names are the
-  grounds' outdoor bed; its tree birds, waterfall and moat are far off, so they stay silent).
+  `bottle` entry; `card: true` (its name as a title card on its first entry in a game). Sound
+  (`def.audio`, see "Audio"): its own loop, "Skerry Polska" (`skerries`); the `'sea'` ambience
+  (the wind, waves lapping at `SEA_LEVEL` on the open water round the listener, never on the
+  rocks or the meadow, gulls calling from over `BIRD_CIRCLES`, where the white gulls fly); no
+  reverb.
 * **Preview**: `/preview.html?m=skerries` (`src/dev/previews/skerries.js`: the course and its sea
   under its fog with the grounds' sky dome; `&col=1` the collider overlay; `&lit=1` the lamp lit;
   `&view=overview|arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`, default
@@ -1139,6 +1155,7 @@ audio.unlock()                          // only after a user gesture (else the b
 audio.play(name, { pos?, volume?, pitch?, terrain?, big?, index? }); audio.playMusic(name); audio.stopMusic()
 audio.setListener(pos, yaw); audio.update(dt); audio.muted = true|false
 audio.captureStream() -> { stream, release() } | null   // the master bus as a MediaStream (the recorder)
+audio.setArea({ music, ambience, reverb, fires?, gulls?, seaLevel?, isWater? })   // on 'areaChange' (below)
 ```
 
 All sound effects are synthesized with WebAudio. Music is an **original** composition.
@@ -1147,22 +1164,53 @@ in game is a one-shot arrival cue (`finalBar: 8` in `songs.js`), not a loop, and
 `'game_over'` ("Lanterns Out"), a jingle the engine plays **itself** on the `gameOver` event
 (main never requests it) over the GAME OVER card, cutting whatever plays; the ambience is
 ducked (to 0.3) for `GAME_OVER_SECONDS` (3.2 s, the card's length), then the title track
-crossfades in from the jingle's last chord. A one-shot cue (`castle_grounds`, `game_over`)
-requested without a running AudioContext, or while muted, is **dropped**, never queued to
-start later (so a gamepad-only start skips the arrival cue); a looping track (`title`) is
+crossfades in from the jingle's last chord. The areas' loops, which the engine plays itself on
+`'areaChange'` (main never requests them), both in 3/4 and fading in over 1 s:
+`'castle_hall'` ("Compass and Candle", the Great Hall: G major, 92 bpm, 24 bars, ~47 s; a
+glockenspiel music-box tune over harp arpeggios, soft strings and a waltz bass, no drums; its
+`level` 1.2, higher than the busier songs', puts it within about a decibel of the polska and the
+arrival cue in a render) and `'skerries'` ("Skerry Polska", Midsummer Skerries: D major, 132
+bpm, 40 bars, ~55 s; a flute over a waltz bass with harp chords on beats 2 and 3 and a soft kick
+and shaker; in B the horn answers each two-bar call of the flute over harp arpeggios; the
+glockenspiel doubles the last A). (`compile.js`: harp stabs fall on beats 2 and 4 of a bar in
+four, on beats 2 and 3 of a bar in three.) A one-shot cue (`castle_grounds`, `game_over`)
+requested without a running AudioContext, or while muted, is **dropped**, never queued to start
+later (so a gamepad-only start skips the arrival cue); a looping track (`title`, an area's) is
 queued until audio unlocks.
 Audio also consumes `gameStart` (stops a menu track, clears ducks, unlocks with sticky user
 activation) and `pause` / `unpause` (duck + sfx), and AI RACE's `darkMode`, `lightning` and
 `meltdown` (see "Meltdown"; `audio.setMeltdown(levels)` drives its inferno ambience).
-Areas: `'areaChange' { audio }` calls `audio.setArea({ music, ambience, reverb })`, which
-switches the ambience to the area's profile (`ambience.js` `PROFILES`, `setProfile(name,
-fade)`: `'grounds'` has everything; indoors, `'hall'`, the pastoral bed fades out over 1.2 s and
-the birds, the distant chorus, the waterfall and the lapping water stop). The pastoral bed plays
-only where the profile has it and not in AI RACE. A profile set before the context exists is
-applied when it is made. The music does not change with the area (the grounds keep none).
-Midsummer Skerries asks for the profile `'sea'`, not one of its own yet: unknown names are the
-grounds' (its air and leaves bed and the distant chorus round the listener play there; the
-grounds' tree birds, waterfall and moat laps are far off and silent).
+Areas: `'areaChange' { audio }` calls `audio.setArea(audio)` with the area's `Area.audio`: its
+`def.audio` in world coordinates (`world/area.js` `worldAudio`) and its water test, `{ music,
+ambience, reverb, fires?, gulls?, seaLevel?, isWater? }`. The area Jonas is already in (GAME
+OVER's switch back to the grounds he may never have left) changes nothing: its loop plays on and
+the ambience keeps any fade under way (the storm lifting over its 3 s).
+* **Music**: the area's own loop (`music`) plays (crossfading from whatever played, the arrival
+  cue too) and becomes `audio.baseMusic`, the track the winged hat's theme and the storm's track
+  hand the music slot back to when they end (`backToBase`; on the grounds, `null`, they fade to
+  silence as before). An area entered while the hat's theme plays waits for it to end. Going
+  back to the grounds (no music) stops only an area's loop (`AREA_TRACKS`: `castle_hall`,
+  `skerries`, faded out over 1.2 s), never the arrival cue, the game-over jingle or the title.
+* **Ambience**: the area's profile (`ambience.js` `PROFILES`, `setProfile(name, fade, spots)`,
+  over 1.2 s; unknown names are the grounds'). `'grounds'` has everything. `'hall'` fades the
+  pastoral bed out under a low room tone (low-passed noise), stops the birds, the distant
+  chorus, the waterfall and the moat laps, and crackles a fire (`fire_crackle`) at `fires` (the
+  hearth) every 0.15–0.55 s. `'sea'` keeps the air bed's low air layer (the wind) and fades out
+  its two leaves layers (`leaves: false`: they have a fader of their own under the bed's), laps
+  waves at `seaLevel` every 0.5–1.3 s on open water only (`isWater`; `seaLap`: the first of 8
+  random spots round the listener that is water, each tried within a wider circle, 900 out to
+  `LAP_RANGE` 3500): out on the water within 900 all round him, from over an island off its
+  shore, farther off and quieter (on Home Island's meadow about half as many), none from dry land
+  all round or from high up (beyond `LAP_RANGE`); and it calls a gull (`gull`) every 4–10 s from
+  a point on one of the `gulls` circles, nearer circles far more often (none beyond 12000: the
+  next call waits until one is in range, then comes at once); no tree birds, chorus, waterfall
+  or room tone. The pastoral bed plays only where the profile has it and not in AI RACE. The
+  profile and spots already in force change nothing (`setProfile` returns at once).
+* **Reverb**: with `reverb` (the hall) every sound effect's voice also feeds the shared hall
+  reverb (`hallReverb`) through one send (`roomSend`, 0.25 of it), except those that send into
+  it themselves (`SFX_INFO` `hall`: the doors); the ambience bus never does.
+Everything an area sets before the context exists (its profile and spots, the reverb, its loop,
+queued like any loop) applies when the context is made.
 
 ## HUD / title (`src/ui/*`)
 
@@ -1746,7 +1794,8 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   `'warpRequest' { to, entry, kind, from: door }` (AreaSwitch takes Jonas through it; see "Areas
   and transitions") and re-arms once he is off its apron (`APRON` 60 past the trigger, in front
   and at the sides), so he can walk straight back in. A **locked** one, or an open one while
-  **sealed** (AI RACE), plays sfx `evil_laugh` (when `laugh`) and shows its sign through
+  **sealed** (AI RACE), plays sfx `evil_laugh` (when `laugh`; else `door_rattle`, its handle
+  tried in its frame: the hall's unbuilt doors) and shows its sign through
   `events.emit('signRead', { sign })` (a fresh copy each time); it re-arms once he has walked
   more than `REARM` (500) away. The castle's front door (`CastleDoor`, a Door facing +Z: its
   face and porch come from the collision world) opens into the Great Hall (`CASTLE.enter`);
@@ -1973,7 +2022,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `cannonFire` | `{ pos, yaw, pitch, dir }` (`pos`: the muzzle's mouth, `dir`: along the barrel) | player (fired out of the cannon); the cannon recoils and puts the muzzle blast (fx), main's camera shake jolts the view |
 | `cannonView` | `{ on }` | camera (the cannon's aiming view went up / down); the HUD shows its reticle |
 | `warpRequest` | `{ to, entry, kind, from }` (`kind`: the Door's, `'door'` or `'bottle'`; `from`: the Door) | objects (an open door was walked into); AreaSwitch runs the transition (or refuses it). AreaSwitch's own transitions emit nothing: they show as `areas.warp.kind` / `snapshot().warp.kind` `'leave'` (`leave()`) and `'star'` (the star exit) |
-| `areaChange` | `{ from, to, entry, audio }` (area names, the entry id, the new area's `def.audio`) | AreaSwitch (the switch, see "Areas and transitions"); audio changes the ambience |
+| `areaChange` | `{ from, to, entry, audio }` (area names, the entry id, the new area's `Area.audio`: its `def.audio` in world coordinates and its water test) | AreaSwitch (the switch, see "Areas and transitions"); audio changes the music, the ambience and the reverb (`setArea`) |
 
 Standard sfx names: `jump, double_jump, triple_jump, backflip, sideflip, long_jump,
 wallkick, dive, ground_pound, ground_pound_land, punch1, punch2, kick, jump_kick, land,
@@ -1985,9 +2034,10 @@ camera_buzz`, the title's `menu_move` (its game choice moved), and the dialog bo
 AI RACE mode's `button_press, alarm, kaiju_roar, fireball_charge, fireball_launch,
 fireball_explode, fireball_fizzle, tree_ignite, burn, fire_crackle, steam, thunder`, and the
 cannon's `cannon_enter, cannon_turn, cannon_fire, cannon_whoosh`, the doors' `door_open,
-door_close` (both sent into the shared hall reverb, `SFX_INFO` `hall`), the bottle mouth's
-`bottle_dive` and the hall's `bottle` entry's `bottle_pop` (AreaSwitch, as the wipe opens on
-it; neither has a recipe of its own yet, so both are silent until M5), and Rustmaw's tail grab's
+door_close` and the hall's unbuilt doors' `door_rattle` (all sent into the shared hall reverb,
+`SFX_INFO` `hall`), the bottle mouth's `bottle_dive` and the hall's `bottle` entry's
+`bottle_pop` (AreaSwitch, as the wipe opens on it), the skerries' `gull` (played by the `'sea'`
+ambience itself, not through `'sfx'`), and Rustmaw's tail grab's
 `tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
 (`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), AI RACE's meltdown's
 `meltdown_klaxon, meltdown_ignite, meltdown_flash, meltdown_blast, meltdown_ring`, and the face screen's

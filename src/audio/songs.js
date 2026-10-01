@@ -477,4 +477,173 @@ const flyDark = {
   ],
 };
 
-export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver, dark, fly, fly_dark: flyDark };
+// "Compass and Candle" - the Great Hall's loop. G major, 3/4, 92 bpm, 24 bars (~47 s loop).
+// A music box in a warm room: a glockenspiel tune over rippling harp arpeggios, soft strings
+// and a waltz bass, no drums. A (1-8) swings out from the tonic and comes to rest on the
+// dominant; B (9-16) climbs through the relative minor to the tune's high point (a high B over
+// Em) and leans on D7; A' (17-24) brings the tune back and closes on G, the last bar's D7
+// turning the loop round. The engine plays it while Jonas is in the hall (world/areas.js
+// def.audio.music), fading it in as the picture opens. Its level is higher than the busier
+// songs' so the sparse music box sounds about as loud as they do (the polska and the arrival
+// cue are a decibel louder in a render), not a drop on the way in.
+const castleHall = {
+  title: 'Compass and Candle',
+  level: 1.2,
+  fadeIn: 1,
+  key: 'G',
+  bpm: 92,
+  beatsPerBar: 3,
+  swing: 0,
+  lead: 'glock',
+  mix: { glock: 1.6, harp: 1.6 }, // a music box's tune on the bell alone, the harp ringing round it
+  chords: [
+    // A
+    'G', 'Em', 'C', 'D', 'G', 'Bm', 'Am7:2 D7:1', 'G',
+    // B
+    'Em', 'C', 'Am', 'D', 'Em', 'C', 'Am7:2 D7:1', 'D7',
+    // A'
+    'G', 'Em', 'C', 'D', 'G/B', 'C', 'Am7:2 D7:1', 'G:2 D7:1',
+  ],
+  sections: [
+    { from: 1, to: 8, pad: 0.28, bass: 'waltz', comp: 'arp', drums: 'none' },
+    { from: 9, to: 16, pad: 0.34, bass: 'waltz', comp: 'arp', drums: 'none' },
+    { from: 17, to: 24, pad: 0.3, bass: 'waltz', comp: 'arp', drums: 'none' },
+  ],
+  parts: [
+    {
+      inst: 'glock',
+      vel: 0.9,
+      bars: {
+        1: 'B5:1.5 C6:.5 D6:1',
+        2: 'G6:2 E6:1',
+        3: 'E6:1 D6:.5 C6:.5 B5:1',
+        4: 'A5:3',
+        5: 'B5:1.5 C6:.5 D6:1',
+        6: 'F#6:2 D6:1',
+        7: 'E6:.5 D6:.5 C6:1 A5:1',
+        8: 'G5:2 D5:1',
+        9: 'E6:.5 F#6:.5 G6:1 E6:1',
+        10: 'C6:.5 D6:.5 E6:1 C6:1',
+        11: 'A5:.5 B5:.5 C6:1 E6:1',
+        12: 'F#6:1.5 E6:.5 D6:1',
+        13: 'E6:.5 F#6:.5 G6:1 B6:1',
+        14: 'A6:1.5 G6:.5 E6:1',
+        15: 'F#6:1 E6:1 D6:1',
+        16: 'C6:1 B5:.5 C6:.5 A5:1',
+        17: 'B5:1.5 C6:.5 D6:1',
+        18: 'G6:2 E6:1',
+        19: 'E6:1 D6:.5 C6:.5 B5:1',
+        20: 'A5:2 B5:.5 C6:.5',
+        21: 'D6:1 G6:1 F#6:1',
+        22: 'E6:1.5 D6:.5 C6:1',
+        23: 'B5:1 A5:1 F#5:1',
+        24: 'G5:2 D5:1',
+      },
+    },
+  ],
+};
+
+// "Skerry Polska" - Midsummer Skerries' loop. D major, 3/4, 132 bpm, 40 bars (~55 s loop).
+// A brisk dance for hopping across the rocks: a flute over a waltz bass, harp chords on the
+// second and third beats (oom-pah-pah), soft strings and a soft kick and shaker. A (1-8): the
+// tune runs up the D chord in eighths, turns on dotted figures and comes to rest on the
+// dominant; A' (9-16) ends it on the tonic. B (17-32): call and answer over harp arpeggios, two
+// bars of flute answered by two of horn (the same shape, lower), the second time building, flute
+// and horn together, into an A7 that turns back to the tune. A'' (33-40): the tune again,
+// doubled an octave up by the glockenspiel, with a lead-in to the top. The engine plays it
+// while Jonas is on the course (world/areas.js def.audio.music).
+const skerries = {
+  title: 'Skerry Polska',
+  level: 0.6,
+  fadeIn: 1,
+  key: 'D',
+  bpm: 132,
+  beatsPerBar: 3,
+  swing: 0,
+  mix: { horn: 2 }, // the answers nearly as present as the calls
+  chords: [
+    // A
+    'D', 'G', 'D', 'A', 'D', 'Bm', 'Em:2 A:1', 'A',
+    // A'
+    'D', 'G', 'D', 'A', 'D', 'G', 'Em:2 A7:1', 'D',
+    // B
+    'Bm', 'G', 'D', 'A', 'Bm', 'G', 'Em', 'A',
+    // B'
+    'Bm', 'G', 'D', 'A', 'Bm', 'G', 'Em:2 A:1', 'A7',
+    // A''
+    'D', 'G', 'D', 'A', 'D', 'G', 'Em:2 A7:1', 'D',
+  ],
+  sections: [
+    { from: 1, to: 8, pad: 0.22, bass: 'waltz', comp: 'stabs', drums: 'soft' },
+    { from: 9, to: 16, pad: 0.26, bass: 'waltz', comp: 'stabs', drums: 'soft' },
+    { from: 17, to: 32, pad: 0.32, bass: 'waltz', comp: 'arp', drums: 'soft' },
+    { from: 33, to: 40, pad: 0.28, bass: 'waltz', comp: 'stabs', drums: 'soft' },
+  ],
+  parts: [
+    {
+      inst: 'flute',
+      vel: 0.85,
+      bars: {
+        1: 'A5:.5 F#5:.5 A5:.5 D6:.5 C#6:.5 D6:.5',
+        2: 'B5:.75 A5:.25 G5:.5 B5:.5 D6:1',
+        3: 'A5:1 F#5:.5 A5:.5 D5:1',
+        4: 'E5:.5 F#5:.5 G5:.5 A5:.5 B5:.5 C#6:.5',
+        5: 'D6:1.5 C#6:.5 B5:.5 A5:.5',
+        6: 'B5:.75 C#6:.25 D6:.5 B5:.5 F#5:1',
+        7: 'G5:.5 B5:.5 E6:1 C#6:1',
+        8: 'E6:.5 D6:.5 C#6:.5 B5:.5 A5:1',
+        9: 'A5:.5 F#5:.5 A5:.5 D6:.5 C#6:.5 D6:.5',
+        10: 'B5:.75 A5:.25 G5:.5 B5:.5 D6:1',
+        11: 'A5:1 F#5:.5 A5:.5 D5:1',
+        12: 'E5:.5 F#5:.5 G5:.5 A5:.5 B5:.5 C#6:.5',
+        13: 'D6:1.5 E6:.5 F#6:.5 E6:.5',
+        14: 'D6:.75 B5:.25 G5:.5 B5:.5 D6:1',
+        15: 'E6:1 G5:.5 B5:.5 C#6:1',
+        16: 'D6:2 r:.5 F#5:.5',
+        17: 'B5:.5 C#6:.5 D6:1 B5:1',
+        18: 'G5:.75 A5:.25 B5:.5 G5:.5 D5:1',
+        21: 'D6:.5 E6:.5 F#6:1 D6:1',
+        22: 'B5:.75 C#6:.25 D6:.5 B5:.5 G5:1',
+        25: 'B5:.5 C#6:.5 D6:1 B5:1',
+        26: 'G5:.75 A5:.25 B5:.5 G5:.5 D5:1',
+        29: 'D6:.5 E6:.5 F#6:1 D6:1',
+        30: 'B5:.5 D6:.5 G6:1 B5:1',
+        31: 'A5:.5 B5:.5 G5:1 C#6:1',
+        32: 'E6:.5 D6:.5 C#6:.5 B5:.5 A5:.5 G5:.5',
+        33: 'A5:.5 F#5:.5 A5:.5 D6:.5 C#6:.5 D6:.5',
+        34: 'B5:.75 A5:.25 G5:.5 B5:.5 D6:1',
+        35: 'A5:1 F#5:.5 A5:.5 D5:1',
+        36: 'E5:.5 F#5:.5 G5:.5 A5:.5 B5:.5 C#6:.5',
+        37: 'D6:1.5 E6:.5 F#6:.5 E6:.5',
+        38: 'D6:.75 B5:.25 G5:.5 B5:.5 D6:1',
+        39: 'E6:1 G5:.5 B5:.5 C#6:1',
+        40: 'D6:1.5 A5:.5 F#5:.5 G5:.5',
+      },
+    },
+    {
+      // The horn's answers in B, each the shape of the call before it, lower; the second
+      // time it joins the flute for the last two bars.
+      inst: 'horn',
+      vel: 0.9,
+      bars: {
+        19: 'F#4:.5 G4:.5 A4:1 F#4:1',
+        20: 'E4:.75 F#4:.25 G4:.5 E4:.5 C#4:1',
+        23: 'G4:.5 A4:.5 B4:1 G4:1',
+        24: 'C#4:.75 D4:.25 E4:.5 C#4:.5 A3:1',
+        27: 'F#4:.5 G4:.5 A4:1 F#4:1',
+        28: 'E4:.75 F#4:.25 G4:.5 E4:.5 C#4:1',
+        31: 'G4:2 E4:1',
+        32: 'C#4:1.5 E4:.5 G4:1',
+      },
+    },
+    {
+      // Glockenspiel doubles the returning tune an octave up.
+      inst: 'glock',
+      vel: 0.35,
+      transpose: 12,
+      copyBars: { from: 'flute', bars: [33, 34, 35, 36, 37, 38, 39, 40] },
+    },
+  ],
+};
+
+export const SONGS = { castle_grounds: castleGrounds, title, game_over: gameOver, dark, fly, fly_dark: flyDark, castle_hall: castleHall, skerries };

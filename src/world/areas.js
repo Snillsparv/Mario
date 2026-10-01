@@ -25,7 +25,12 @@
 //   probeY,                      // local height the ground probe starts from (under the ceiling)
 //   sky,                         // the grounds' sky dome shows (else the fog colour is the sky)
 //   atmosphere,                  // view.setAtmosphere preset (null: the grounds' own look)
-//   audio: { music, ambience, reverb },   // AudioEngine.setArea (on 'areaChange')
+//   audio: { music, ambience, reverb, fires?, gulls?, seaLevel? },   // AudioEngine.setArea (on
+//                                //   'areaChange'): its own track, its ambience profile
+//                                //   (audio/ambience.js PROFILES), whether sound effects ring
+//                                //   in the hall reverb, and where the ambience's own sounds
+//                                //   come from (local; world/area.js shifts them): fires
+//                                //   [{ x, y, z }], gulls [{ x, y, z, radius }], the sea's level
 //   leave, starExit,             // where the pause screen's leave and the course's star take
 //                                // him ({ to, entry }; null: nowhere)
 //   card,                        // a course: its name shows as a title card on its first
@@ -92,7 +97,9 @@ export const AREA_DEFS = {
     probeY: hallLayout.PROBE_Y,
     sky: false,
     atmosphere: HALL_ATMOSPHERE,
-    audio: { music: 'castle_hall', ambience: 'hall', reverb: true },
+    // "Compass and Candle" (audio/songs.js), the room tone and the fire in the hearth, every
+    // sound ringing in the hall.
+    audio: { music: 'castle_hall', ambience: 'hall', reverb: true, fires: [hallLayout.HEARTH_FIRE] },
     leave: null,
     starExit: null,
   },
@@ -107,7 +114,8 @@ export const AREA_DEFS = {
     probeY: skerriesLayout.PROBE_Y,
     sky: true,
     atmosphere: SKERRIES_ATMOSPHERE,
-    audio: { music: 'skerries', ambience: 'sea', reverb: false },
+    // "Skerry Polska", the wind, waves lapping on the open sea and the gulls overhead.
+    audio: { music: 'skerries', ambience: 'sea', reverb: false, seaLevel: skerriesLayout.SEA_LEVEL, gulls: skerriesLayout.BIRD_CIRCLES },
     // Out of the course (the pause screen's leave, or the star): back out of the bottle.
     leave: { to: 'hall', entry: 'bottle' },
     starExit: { to: 'hall', entry: 'bottle' },
@@ -134,6 +142,7 @@ export function groundsArea(level, objects) {
     sky,
     objects,
     entries,
+    audio: AREA_DEFS.grounds.audio,
     respawn: level.spawn,
     signs: level.layout.SIGNS,
     groundAt: level.layout.groundHeight,

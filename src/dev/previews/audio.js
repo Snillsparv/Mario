@@ -10,7 +10,9 @@
 //                                                      through the real engine voices (and the
 //                                                      ambience at a SPOTS listener, if given)
 //   __renderCombo() / __renderDialog(spot?)         -> the punch combo / a sign being read
-//   __renderAmbience(spot, seconds = 30, music?)    -> analysis of the live ambience code
+//   __renderAmbience(spot, seconds = 30, music?)    -> analysis of the live ambience code (an
+//                                                      area's spot: its profile and sound spots,
+//                                                      the area built once for its water test)
 //   __stress(names?)                                -> peak of many sfx at once over music
 //   __loopSeam(name)                                -> analysis around the loop point
 //   __showRoll(name)                                -> draws the compiled score as a piano roll
@@ -44,6 +46,8 @@ import { createMixer } from '../../audio/mixer.js';
 import { Sequencer } from '../../audio/Sequencer.js';
 import { SFX, footstepLevel } from '../../audio/sfx.js';
 import { WATERFALL, SPAWN, POND, LAWN_BASE, BRIDGE, ISLAND_TOP, EAST_HILL } from '../../world/layout.js';
+import { AREA_DEFS } from '../../world/areas.js';
+import { buildArea } from '../../world/area.js';
 
 const SAMPLE_RATE = 44100;
 const INST_COLORS = {
@@ -354,8 +358,22 @@ function section(panel, title) {
   panel.appendChild(h);
 }
 
+// An area's sound as 'areaChange' carries it (Area.audio: its def.audio in world coordinates
+// and, for the sea's laps, the area's own water test): the area is built once, hidden, into
+// `scene` on first use; the grounds' is their def.audio.
+const builtAreas = {};
+function areaAudio(scene, name) {
+  if (name === 'grounds') return AREA_DEFS.grounds.audio;
+  builtAreas[name] ??= buildArea(scene, AREA_DEFS[name]);
+  return builtAreas[name].audio;
+}
+const HALL_Z = AREA_DEFS.hall.origin.z;
+const SKERRIES_X = AREA_DEFS.skerries.origin.x;
+
 // Camera positions for the ambience: across the lawn from the spawn point to the castle,
-// on the east hill, at the pond and near the waterfall.
+// on the east hill, at the pond and near the waterfall; then [pos, yaw, area] in the other
+// areas: the Great Hall inside its front door and across from the hearth, Midsummer Skerries
+// behind the jetty's arrival and up by the lighthouse's gallery.
 const SPOTS = {
   spawn: [{ x: SPAWN.x, y: LAWN_BASE + 400, z: SPAWN.z + 1100 }, Math.PI],
   'mid lawn': [{ x: 0, y: LAWN_BASE + 400, z: 4000 }, Math.PI],
@@ -364,6 +382,10 @@ const SPOTS = {
   'east hill': [{ x: EAST_HILL.x, y: LAWN_BASE + EAST_HILL.height + 450, z: EAST_HILL.z + 1100 }, Math.PI],
   'pond edge': [{ x: POND.x + 2000, y: LAWN_BASE + 200, z: POND.z }, -Math.PI / 2],
   waterfall: [{ x: WATERFALL.x + 1500, y: 300, z: WATERFALL.z + 600 }, -Math.PI / 2],
+  'hall door': [{ x: 0, y: 400, z: HALL_Z + 2700 }, Math.PI, 'hall'],
+  'hall hearth': [{ x: -500, y: 400, z: HALL_Z - 730 }, -Math.PI / 2, 'hall'],
+  'skerries jetty': [{ x: SKERRIES_X - 830, y: 600, z: 2900 }, Math.PI, 'skerries'],
+  'skerries gallery': [{ x: SKERRIES_X, y: 3100, z: -3400 }, Math.PI, 'skerries'],
 };
 
 // Sounds for the headroom stress test: the loudest ones, all at once.
@@ -389,8 +411,11 @@ export async function setup({ scene, THREE, ui, params }) {
   for (const name of Object.keys(SONGS)) button(panel, name, withAudio(() => audio.playMusic(name)));
   button(panel, 'stop', () => audio.stopMusic());
   section(panel, 'Listener (ambience)');
-  for (const [name, [pos, yaw]] of Object.entries(SPOTS)) {
-    button(panel, name, withAudio(() => audio.setListener(pos, yaw)));
+  for (const [name, [pos, yaw, area = 'grounds']] of Object.entries(SPOTS)) {
+    button(panel, name, withAudio(() => {
+      audio.setListener(pos, yaw);
+      audio.setArea(areaAudio(scene, area)); // (its music too)
+    }));
   }
   section(panel, 'Sound effects');
   for (const name of Object.keys(SFX)) button(panel, name, withAudio(() => audio.play(name, { index: 1 + Math.floor(Math.random() * 8) })));
@@ -515,10 +540,12 @@ export async function setup({ scene, THREE, ui, params }) {
     const buf = await renderOffline(seconds, (ctx, mix, t0) => {
       const engine = offlineEngine(ctx, mix);
       engine.setListener(...SPOTS[spot]);
+      const area = SPOTS[spot][2];
+      if (area) engine.ambience.setProfile(AREA_DEFS[area].audio.ambience, 0, areaAudio(scene, area)); // (not its music)
       const playAt = engine.ambience.playAt;
-      engine.ambience.playAt = (recipe, pos) => {
+      engine.ambience.playAt = (recipe, pos, volume) => {
         calls++;
-        playAt(recipe, pos);
+        playAt(recipe, pos, volume);
       };
       const song = music && songPlayer(ctx, mix, t0, compileSong(SONGS[music]));
       return (t) => {

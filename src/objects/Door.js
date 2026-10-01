@@ -11,7 +11,8 @@
 //     kind         'door' (default) or 'bottle', handed on with the warp (and its sound)
 //     locked       the sign ({ id, pages }, like a layout sign) a locked door shows
 //     sealedSign   the sign an open door shows while it is sealed (null: it stays quiet)
-//     laugh        the evil laugh plays with those signs (default true)
+//     laugh        the evil laugh plays with those signs (default true); without it the door
+//                  rattles in its frame instead (sfx 'door_rattle': the hall's unbuilt doors)
 //   update(player, sealed = false) -> true on the tick it triggers   (30 Hz; sealed: AI RACE)
 //   atDoor(player)  the hero is at the door and facing it (or pushing against it)
 //   near(player)    the hero is within its re-arm range (below)
@@ -22,10 +23,10 @@
 // the bottle's mouth 'bottle_dive') and 'warpRequest' { to, entry, kind, from } (from: the door
 // itself; core/AreaSwitch.js walks him through it) and re-arms once he is off its apron (APRON
 // past its trigger, in front and at either side), so he can come straight back through it. A
-// locked one, or an open one while sealed, plays sfx 'evil_laugh' (if `laugh`) and opens the
-// dialog box through 'signRead' with a fresh copy of its sign (main freezes Jonas until it is
-// closed), then stays quiet until he has walked more than REARM away, so it does not go off
-// again while he stands there.
+// locked one, or an open one while sealed, plays sfx 'evil_laugh' (if `laugh`; else
+// 'door_rattle', its handle tried) and opens the dialog box through 'signRead' with a fresh
+// copy of its sign (main freezes Jonas until it is closed), then stays quiet until he has
+// walked more than REARM away, so it does not go off again while he stands there.
 //
 // Allocation: nothing per tick while nothing happens (the facing test uses the sine and cosine
 // of the door's yaw, worked out once); no Math.hypot / max / min or iterators on this path
@@ -132,7 +133,7 @@ export class Door {
     }
     this.far = true;
     const sign = this.to === null ? this.locked : this.sealedSign;
-    if (this.laugh) this.events.emit('sfx', { name: 'evil_laugh', pos: { x: pos.x, y: pos.y, z: pos.z } });
+    this.events.emit('sfx', { name: this.laugh ? 'evil_laugh' : 'door_rattle', pos: { x: pos.x, y: pos.y, z: pos.z } });
     if (sign) this.events.emit('signRead', { sign: { id: sign.id, pages: [...sign.pages], x: this.x, z: this.z, yaw: this.yaw } });
     return true;
   }

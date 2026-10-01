@@ -8,7 +8,9 @@
 // RACE sounds exist, fit the level budget and are shaped as designed (thunder by strength);
 // so do the winged hat's, the mystery box's, the minions' and the locked castle's (the laugh
 // is formant synthesis through an echo and a hall that die out within its length, and uses
-// the engine's shared hall instead of making a convolver of its own when given one).
+// the engine's shared hall instead of making a convolver of its own when given one); and the
+// areas' (a door still being built rattling, diving into the ship in the bottle and popping
+// back out of it, a gull over the skerries).
 // Measured levels (offline renders) are in src/dev/previews/audio.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -168,10 +170,11 @@ const JUMPS = ['jump', 'double_jump', 'triple_jump'];
 const DIALOG = ['dialog_open', 'text_blip', 'dialog_next', 'dialog_close'];
 const AI_RACE = ['button_press', 'alarm', 'kaiju_roar', 'fireball_charge', 'fireball_launch', 'fireball_explode', 'burn', 'fire_crackle', 'steam', 'thunder'];
 const HAT_AND_MINIONS = ['box_hit', 'powerup', 'wing_flap', 'stomp', 'minion_emerge', 'minion_bite', 'minion_wreck', 'minions_stinger', 'evil_laugh'];
+const AREAS = ['door_rattle', 'bottle_dive', 'bottle_pop', 'gull'];
 const LONG = { thunder: 4.1, evil_laugh: 3.5 }; // the rolling thunder and the echoing laugh may run past the usual 3 s
 
-test('the combo, flying-kick, sign-dialog and AI RACE sounds exist', () => {
-  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE, ...HAT_AND_MINIONS]) assert.equal(typeof SFX[n], 'function', n);
+test('the combo, flying-kick, sign-dialog, AI RACE and area sounds exist', () => {
+  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE, ...HAT_AND_MINIONS, ...AREAS]) assert.equal(typeof SFX[n], 'function', n);
   for (const n of Object.keys(SFX_INFO)) assert.equal(typeof SFX[n], 'function', `SFX_INFO names a real sound: ${n}`);
 });
 
@@ -505,4 +508,65 @@ test('meltdown sounds: sane budgets and lengths; a rising two-whoop klaxon short
   const rush = ignite.voices.find((v) => v.noise && v.src.type === 'lowpass' && v.src.frequency.events.length === 3);
   const f = rush.src.frequency.events.map((e) => e[1]);
   assert.ok(f[1] > f[0] * 5 && f[2] < f[1], 'a rush sweeping up then settling');
+});
+
+test("the areas' sounds: sane budgets and lengths, shaped as designed", () => {
+  for (const n of AREAS) {
+    const { budget, dur } = run(n);
+    assert.ok(budget > 0.08 && budget * LEVELS.sfx < 0.95, `${n} budget ${budget.toFixed(2)}`);
+    assert.ok(dur >= 0.5 && dur <= 1.6, `${n} length ${dur}`);
+  }
+  // A door still being built: three iron clacks (the latch's ring) with a dull knock of the leaf
+  // under each, a little softer each time, sent into the shared hall when given it (SFX_INFO hall).
+  const rattle = run('door_rattle');
+  const knocks = rattle.voices.filter((v) => !v.noise && v.src.type === 'sine' && firstFreq(v.src) < 300).sort((a, b) => a.at - b.at);
+  assert.equal(knocks.length, 3, 'three tries of the handle');
+  for (let i = 1; i < 3; i++) assert.ok(knocks[i].peak < knocks[i - 1].peak && knocks[i].at - knocks[i - 1].at >= 0.1);
+  assert.ok(rattle.voices.filter((v) => !v.noise && firstFreq(v.src) > 600).length >= 9, 'ringing iron (several partials per clack)');
+  assert.equal(SFX_INFO.door_rattle.hall, true);
+  const ctx = new RecordingContext();
+  const hall = ctx.createConvolver();
+  SFX.door_rattle(ctx, ctx.createGain(), T0, { ...OPTS, hall, outGain: 0.5 });
+  assert.equal(hall.ins.length, 1, 'one send into the shared hall');
+  assert.equal(ctx.nodes.filter((n) => n.kind === 'convolver').length, 1, 'and no hall of its own');
+  // Diving into the bottle: the hollow resonance and a glassy whistle both sink a long way (he
+  // shrinks into the neck), then a bloop rises at the end (the little sea inside).
+  const dive = run('bottle_dive');
+  const hollow = dive.voices.find((v) => v.noise && v.src.type === 'bandpass' && v.src.Q.value >= 6);
+  const whistle = dive.voices.find((v) => v.src.type === 'triangle');
+  for (const [name, v] of [['hollow', hollow], ['whistle', whistle]]) {
+    const f = v.src.frequency.events.map((e) => e[1]);
+    assert.ok(f.at(-1) < f[0] * 0.55, `${name} sinks: ${f}`);
+  }
+  const bloop = dive.voices.filter((v) => !v.noise && v.src.type === 'sine' && v.at > T0 + 0.6).sort((a, b) => a.at - b.at)[0];
+  assert.ok(bloop && bloop.src.frequency.events.at(-1)[1] > firstFreq(bloop.src) * 2, 'a rising bloop');
+  // Popping out: a sharp 'pok' dropping fast right at the start, a slide up as he grows back,
+  // and a sparkle up a G major chord (the hall's key).
+  const pop = run('bottle_pop');
+  const pok = pop.voices.find((v) => !v.noise && v.src.type === 'sine' && v.at < T0 + 0.01);
+  assert.ok(pok.src.frequency.events.at(-1)[1] < firstFreq(pok.src) * 0.5, 'the pok drops');
+  const grow = pop.voices.find((v) => v.src.type === 'triangle').src.frequency.events.map((e) => e[1]);
+  assert.ok(grow.at(-1) > grow[0] * 2.5, 'the slide rises');
+  const sparkle = pop.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'square' && n.startAt > T0 + 0.25).sort((a, b) => a.startAt - b.startAt);
+  const pcs = sparkle.map((o) => Math.round(12 * Math.log2(firstFreq(o) / 440) + 69) % 12);
+  assert.ok(sparkle.length >= 3 && pcs.every((pc) => [7, 11, 2].includes(pc)), `G major sparkle: ${pcs}`);
+  for (let i = 1; i < sparkle.length; i++) assert.ok(firstFreq(sparkle[i]) > firstFreq(sparkle[i - 1]), 'climbing');
+  // A gull: two to four reedy (non-sine) yelps, each bending up then back down with a raspy
+  // edge, each a little lower than the one before, the last the longest and falling furthest;
+  // calls vary from one gull to the next.
+  const counts = new Set();
+  for (let k = 0; k < 12; k++) {
+    const gull = run('gull');
+    const yelps = gull.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'custom').sort((a, b) => a.startAt - b.startAt);
+    assert.ok(yelps.length >= 2 && yelps.length <= 4, `${yelps.length} yelps`);
+    counts.add(yelps.length);
+    const bends = yelps.map((o) => o.frequency.events.map((e) => e[1]));
+    for (const [a, b, c] of bends) assert.ok(b > a * 1.3 && c < b * 0.8, `a yelp bends up and back: ${a} ${b} ${c}`);
+    for (let i = 1; i < bends.length; i++) assert.ok(bends[i][1] < bends[i - 1][1], 'lower each time');
+    const lens = yelps.map((o) => o.stopAt - o.startAt);
+    assert.equal(Math.max(...lens), lens.at(-1), 'the last drawn out');
+    assert.ok(bends.at(-1)[2] / bends.at(-1)[1] < bends[0][2] / bends[0][1], 'and falling furthest');
+    assert.ok(gull.voices.filter((v) => v.noise && v.src.type === 'bandpass').length === yelps.length, 'a rasp on each');
+  }
+  assert.ok(counts.size > 1, 'gulls differ');
 });

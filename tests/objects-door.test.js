@@ -8,7 +8,8 @@
 // their yaw (facing -Z, facing -X), an open one creaks and asks for the warp once, then waits
 // until he is off its apron; sealed (AI RACE on or fading out: ObjectManager) it shows its
 // sealed sign with the laugh and waits for REARM instead; a locked one shows its locked sign,
-// sealed or not, laughing only if it should; disarm() and near(); nothing allocated per tick.
+// sealed or not, laughing if it should and otherwise rattling in its frame; disarm() and
+// near(); nothing allocated per tick.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -318,12 +319,14 @@ test('sealed, an open door shows its sealed sign (with the laugh) and waits for 
   p.pos = { x: 0, y: 300, z: -544 };
   d.update(p, false);
   assert.equal(log.at(-1)[0], 'warpRequest');
-  // A locked door shows its own sign, sealed or not; one without the laugh stays quiet but for it.
+  // A locked door shows its own sign, sealed or not; one without the laugh rattles in its frame
+  // instead (its handle tried), at the door.
   for (const sealed of [false, true]) {
     const locked = door({ id: 'east', x: 0, z: 0, yaw: 0, to: null, locked: SOON, laugh: false });
     locked.door.update(fakePlayer(0, 0, 100), sealed);
-    assert.deepEqual(locked.log.map(([n]) => n), ['signRead']);
-    assert.deepEqual(locked.log[0][1].sign.pages, [...SOON.pages]);
+    assert.deepEqual(locked.log.map(([n, e]) => (n === 'sfx' ? e.name : n)), ['door_rattle', 'signRead']);
+    assert.deepEqual(locked.log[0][1].pos, locked.door.pos);
+    assert.deepEqual(locked.log[1][1].sign.pages, [...SOON.pages]);
   }
 });
 
