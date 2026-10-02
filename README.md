@@ -65,14 +65,15 @@ browser once with `npx playwright install chromium`.
 **Into the castle**: walk up the steps to the big front door and keep walking into it. The door
 creaks and its two big leaves swing open onto the dark passage behind, Jonas steps into it as
 the picture closes in a circle around him, and it opens again inside the **Great Hall**, a warm
-vaulted hall with rose-marble columns, teal panelling and a polished tiled floor, where the
-ship in a bottle lies in a round apse at the top of a round stepped dais. A **1-up** waits on
-the fireplace's mantel: wall-kick up the narrow gap beside it, or climb the banner pole and
-jump from its top. The doors in the east wall are still being built (they only rattle). The
-front door, inside, swings open the same way and takes him back out onto the porch, where it
-swings shut behind him with a thud as the picture opens. While AI RACE is on (or its storm is
-still clearing) the storm keeps the door sealed. The hall has its own music, a music-box waltz,
-over the crackle of the fire in its hearth, and every step and jump rings in the big room.
+vaulted hall in a golden haze, with gleaming rose-marble columns, teal panelling and a polished
+tiled floor that mirrors the room, where the ship in a bottle lies in a round apse at the top
+of a round stepped dais. A **1-up** waits on the fireplace's mantel: wall-kick up the narrow gap
+beside it, or climb the banner pole and jump from its top. The doors in the east wall are still
+being built (they only rattle). The front door, inside, swings open the same way and takes him
+back out onto the porch, where it swings shut behind him with a thud as the picture opens.
+While AI RACE is on (or its storm is still clearing) the storm keeps the door sealed. The hall
+has its own music, a music-box waltz, over the crackle of the fire in its hearth, and every
+step and jump rings in the big room.
 
 **The ship in the bottle** lies on its stand at the far end of the hall, with a tiny sea, a
 red-sailed boat and a lighthouse inside it. Climb the round steps (the books and the cork are a

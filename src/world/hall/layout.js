@@ -74,12 +74,13 @@ export const COLUMNS = [
   onApse(150),
 ];
 
-// Key light for the bake (warm, high, from the south-east windows, so the two long walls bake
-// apart).
+// Key light for the bake (warm, from high in the south-west, as through that round's window, so
+// the two long walls bake apart: the east wall, facing it, the brighter), and the actors' sun
+// (world/areas.js HALL_ATMOSPHERE): frozen, as that look is.
 export const HALL_SUN = (() => {
   const v = { x: -0.35, y: 0.8, z: 0.48 };
   const l = Math.hypot(v.x, v.y, v.z);
-  return { x: v.x / l, y: v.y / l, z: v.z / l };
+  return Object.freeze({ x: v.x / l, y: v.y / l, z: v.z / l });
 })();
 
 // ---------------------------------------------------------------- south wall: the way out

@@ -578,10 +578,23 @@ is not clamped), the dais drawn on its collider (walking up it, straight up the 
 middle of the collider's facets and near its back, his feet stay within 30 of the drawn tread
 under him), nothing drawn only standing more than 56 out of a wall but over a collider (the
 front portal and the east doors' architraves held to it), the glass and its rim, the flicker
-(its shader hook too), the panelling's mesh and every hall texture's mean colour, the lamp
-(lit: a deep gold far from the wall's cream, its beams turning round inside the glass, drawn
-before it), the front door's leaves filling its opening shut (round the head of its arch too)
-and swinging aside onto the passage, eased); `tests/geom.test.js` the toolkit the hall is built
+(its shader hook too), the panelling's mesh and every hall texture's mean colour, the marble's
+sheen (its weights on the column and pilaster shafts and the hearth's surround and nowhere
+else, its own program, its rim (clamped) and highlight in the compiled shader, and worked out
+as the shader does with the camera at the arrival and the dais's foot: every column's shaft
+whitened by at least 0.4 in its gleam and by less than 0.3 on average), the polished floor
+(exactly when `MIRROR`: see-through, drawn before the lamp, the glass and the shadows; its
+reflection flipped under it and made of exactly the low faces of the baked meshes it mirrors,
+each in its baked colour times its source's texture mean, under 12k triangles, and the lid
+over them in the mean colour of the faces left out above it; 1500 lines of sight from all over
+the room through the open floor, every one meeting the mirror), nothing framed, lit or inlaid
+on the axis or behind the bottle (the originality rules, below: only panelling on the
+headboard, no rug near the axis and no inlay on it but the dais's apron, nothing inside the
+ring on the dais's top, no glow low on the axis), the lamp (lit: a deep gold far from the
+wall's cream, its beams turning round inside the glass, drawn before it), the front door's
+leaves filling its opening shut (round the head of its arch too) and swinging aside onto the
+passage, eased); `tests/hall-wood.test.js` (the castle wood texture painted in node through
+a stand-in canvas: its mean still `WOOD_MEAN`); `tests/geom.test.js` the toolkit the hall is built
 with (a lathe over part of a turn, and with no option exactly the full lathe every other
 builder draws, pinned to digests of its output before the options; smooth along its profile;
 its tops textured from above (`vMode: 'plan'`); sweeps with unit normals facing out and caps
@@ -761,36 +774,67 @@ so it is there in node too and no canvas is ever read back).
   red and teal covers overhanging cream page blocks with page lines at their west ends and the
   sides toward the hall (their fore-edges), rounded spines on their north sides between the
   boards' edges, with gold bands; hop up book, book, cork, a coin on each.
-* **Meshes** (13): `hall-floor` (glazed tiles on a 200 grid clipped to the plan inset 300, in a
-  rose border ring and an ivory fillet whose uvs sit on the tile's plain grout), `hall-wall`
-  (plaster: walls, vault, dome, strips, hood), `hall-dado` (teal raised panels: the wainscot, the
-  headboard, the stand's sides, the niches, the breast's and buttress's panels; explicit uvs, one
-  panel a repeat), `hall-trim` (pale marble, tinted cream or rose: skirting, cornice, ribs,
-  corbels, columns, window reveals and surrounds, the portal, the door surrounds, the
-  architraves, the dais, the breast, the mantel, the buttress, the hearthstone; its per-vertex
-  `darkGlow` holds the sheen's weight for the glossy marble still to come: 1 on the column and
-  pilaster shafts, 0.6 on the hearth's surround), `hall-wood` (oak and iron: the table, the wheel,
-  mullions, rods, chains; the front door's passage), `hall-door-left` and
-  `hall-door-right` (the front door's leaves, the wood's material, each turning about its hinge),
-  `hall-paint` (untextured vertex colours: gold work, cradles, the stand's rail and top, rugs and
-  inlays, the crest, plaques, chart, candles, cork, books, the fire's logs, the model in the
-  bottle), `hall-glow` (full-bright: the rose window's glass from the rose texture, and the panes,
-  the hearth's back, embers, the logs' ends and flames, which all sample the rose texture's pale
-  gold middle), `hall-cloth` (the
-  banners), `hall-bottle` (the glass: one transparent surface, front faces only, no depth write,
-  a highlight stripe in its vertex colours; outer faces only, so it never lies over itself;
-  opacity 0.22 face on, rising to 0.62 and paler where the view grazes it, from the angle between
-  each face and the view in its shader, so its outline reads against the walls and the stand),
-  `hall-signs` (signposts: `props/decor.js` `addSignpost`, exported for it), `hall-lamp`
-  (full-bright, its faces' glow its vertex colours' alpha: 1 on the lamp, fading along the beams;
-  the course's beam material, so one shader for both; set about the lighthouse's axis to turn
-  round it in `update(time)` while lit; drawn before the glass round it). The flames flicker:
-  the glow mesh's `'flame'` attribute (0 steady, else the flame's phase) scales their colour by a
-  wobble of the uniform `update(time)` sets (`material.userData.flameTime`). ~23.6k triangles,
-  827 collider triangles (stone 446, the dais `stone|not_slippery` 37, the glass `stone|slippery`
-  176, wood 168 with the signposts: `castle/geom.js` `SolidBuilder.solid(polys, terrain,
-  surface?)`), built in ~200 ms in node, ~150 ms in the browser; 33–34 draw calls in the hall (36
-  with the lamp lit; the E2E budget is 45).
+* **Meshes** (14; 13 drawn while the lamp is unlit): `hall-floor` (glazed tiles on a 200 grid
+  clipped to the plan inset 300, in a rose border ring and an ivory fillet whose uvs sit on the
+  tile's plain grout; see-through over its reflection, below), `hall-wall` (plaster: walls,
+  vault, dome, strips, hood), `hall-dado` (teal raised panels: the wainscot, the headboard, the
+  stand's sides, the niches, the breast's and buttress's panels; explicit uvs, one panel a
+  repeat), `hall-trim` (pale marble, tinted cream or rose: skirting, cornice, ribs, corbels,
+  columns, window reveals and surrounds, the portal, the door surrounds, the architraves, the
+  dais, the breast, the mantel, the buttress, the hearthstone; glossy, below), `hall-wood` (oak
+  and iron: the table, the wheel, mullions, rods, chains; the front door's passage),
+  `hall-door-left` and `hall-door-right` (the front door's leaves, the wood's material, each
+  turning about its hinge), `hall-paint` (untextured vertex colours: gold work, cradles, the
+  stand's rail and top, rugs and inlays, the crest, plaques, chart, candles, cork, books, the
+  fire's logs, the model in the bottle), `hall-glow` (full-bright: the rose window's glass from
+  the rose texture, and the panes, the hearth's back, embers, the logs' ends and flames, which
+  all sample the rose texture's pale gold middle), `hall-cloth` (the banners), `hall-bottle`
+  (the glass: one transparent surface, front faces only, no depth write, a highlight stripe in
+  its vertex colours; outer faces only, so it never lies over itself; opacity 0.22 face on,
+  rising to 0.62 and paler where the view grazes it, from the angle between each face and the
+  view in its shader, so its outline reads against the walls and the stand), `hall-signs`
+  (signposts: `props/decor.js` `addSignpost`, exported for it), `hall-lamp` (full-bright, its
+  faces' glow its vertex colours' alpha: 1 on the lamp, fading along the beams; the course's
+  beam material, so one shader for both; set about the lighthouse's axis to turn round it in
+  `update(time)` while lit; drawn before the glass round it) and `hall-reflect` (the floor's
+  reflection, below). The flames flicker: the glow mesh's `'flame'` attribute (0 steady, else
+  the flame's phase) scales their colour by a wobble of the uniform `update(time)` sets
+  (`material.userData.flameTime`). ~23.6k triangles in the room and ~10.6k in its reflection,
+  827 collider triangles (stone 446, the dais `stone|not_slippery` 37, the glass
+  `stone|slippery` 176, wood 168 with the signposts: `castle/geom.js` `SolidBuilder.solid(polys,
+  terrain, surface?)`), built in ~230 ms in node, ~150 ms in the browser; 33–35 draw calls in the
+  hall (35–37 with the lamp lit; the E2E budget is 45).
+* **The polished floor** (`MIRROR` in `hall.js`, on): `hall-reflect` is the room's lower part
+  mirrored under the floor (`scale.y` −1: three turns its faces round for the flip), one
+  untextured `worldMaterial` mesh made once in `assemble()` from the baked wall, dado, trim,
+  wood, paint and cloth and the glow's steady faces (not its flames, nor the rose window's
+  glass, whose colours are in its texture): every face from the floor up that reaches 8 above it
+  (so no rugs or inlays) and whose lowest corner is at most 1600 high (higher ones mirror far
+  under the floor, seen through it only near the eye). Its colours are the baked ones times the
+  mean colour of the source's texture (`userData.mean`; the castle wood's is `WOOD_MEAN`,
+  [0.166, 0.074, 0.025], measured once in the browser, nothing in the game reads a canvas back,
+  and `tests/hall-wood.test.js` keeps it true), dimmed to 0.9 (the untextured paint's by 0.9
+  alone, the glow's not at all). Over them a lid (two faces looking down at the cornice,
+  `HALL.ceilingY`, above every mirrored face, reaching 6000 past the walls every way) stands in
+  for everything higher, the upper walls, the cornice and the vault, in the mean of their
+  mirrored colours by area (a warm cream, about sRGB (191, 170, 140)): every look through the
+  floor meets the mirrored room, the steep ones near the eye and from the perches too, never
+  the dark clear colour behind it (which had greyed the floor round Jonas). The floor over it is
+  see-through (opacity 0.82, still writing depth) and drawn first of the see-through meshes
+  (renderOrder −2: before the lamp at −1, the glass, the blob shadows at 0.5 and his own shadow
+  at 1), so about a fifth of the reflection shows through the tiles. It is static: Jonas, the
+  coins, the flames, the swinging leaves, the glass, the lamp and the signs are not in it, which
+  goes unseen at that blend. One draw call (35 at the arrival). With `MIRROR = false` the floor
+  is opaque and the mesh is not made (13 meshes).
+* **The glossy marble**: `hall-trim`'s per-vertex `sheen` weight (written as its builder's
+  `glow`: 1 on the column and portal pilaster shafts, 0.6 on the hearth's surround, else 0)
+  whitens a vertex toward a warm white (by up to 0.75) with a Fresnel rim (0.35 (1 − |n·v|)³,
+  its base clamped at 0: |n·v| of two unit vectors can round past 1, and `pow` of a negative is
+  undefined) and a highlight from a light in view space near the eye, a little left of it and
+  above it, nearly level ((−0.35, 0.15, 0.92): on an upright shaft the view reflected about the
+  normal has no up in it, so a higher light could never make it shine; 1.1 (r·l)¹⁰), worked out
+  per vertex, so a rose shaft gleams in a stripe that slides round it as the camera moves. Its
+  own program (`'hall-sheen'`), no draw call.
 * **Light** (`light.js`, baked into the vertex colours: `makeHallLight(layout, windowSpots)`
   returns the two pure functions `floor` and `wall` of a vertex's position and normal,
   `bakeHall(geo, light)` multiplies a mesh's colours by one, clamped to 1.15 as one (all three
@@ -798,7 +842,7 @@ so it is there in node too and no canvas is ever read back).
   gets the floor's light, everything else but the full-bright glow and lamp and the raw glass the
   wall's;
   the signs keep `bakedMesh` under `HALL_SUN`): a base of 0.62 plus 0.38 of the key light
-  (`HALL_SUN`, (−0.351, 0.803, 0.482): from high in the south-east, so the east wall bakes about
+  (`HALL_SUN`, (−0.351, 0.803, 0.482): from high in the south-west, so the east wall bakes about
   1.2 times as bright as the west), on the walls a weak fill from the apse's side (so the south
   wall's round parts, turned from the sun, still shade round) and a warm bounce on the
   down-facing vault and dome; ambient occlusion (the floor darker within 500 of the walls, the
@@ -807,8 +851,9 @@ so it is there in node too and no canvas is ever read back).
   halo round each window and a patch of floor in front of it; off the floor each counts as much
   as the face turns toward it); the floor's light, all told, at 0.72 (it faces the key light
   square on and lies under every pool: unscaled it baked a flat clamped white, brighter than any
-  wall; now the nave's middle bakes about 0.9 … 1.0, and the arrival's floor reads about 14 luma
-  over the plaster); and a warm/cool ramp (bright parts warm, dim parts cool, the vault never
+  wall; now the nave's middle bakes about 0.9 … 1.0, and, with its reflection under the golden
+  haze, the arrival's floor reads as bright as the plaster, about 179 luma, its tiles still
+  plain to see); and a warm/cool ramp (bright parts warm, dim parts cool, the vault never
   cool). The rose window's coloured pool is tinted into the floor before the bake.
 * **Palette**: three hues plus gold. Cream and ivory (the plaster 0xfff0d6, the vault 0xfff4e2,
   the trims 0xf0e6d2 on pale marble, the floor's tiles), teal (the panels' field, 0x1f5754 on the
@@ -846,9 +891,24 @@ so it is there in node too and no canvas is ever read back).
   `hall_welcome` at (−750, 750) to the left of the way in, `bottle` at (1250, 0) behind the chart
   table ("Climb the steps, walk into the neck of the bottle and join it!"), `wallkick` at the
   slot's mouth.
-* **Look** (`HALL_ATMOSPHERE`): brown-amber fog 0x3b2a1d from 3500 to 16000 (also the clear
-  colour: no sky), a warm actor sun 0xffe0b0 (0.5π) from (0, 0.72, 0.69), hemisphere 0xfff0da /
-  0x6e5038 (0.55π).
+* **Look** (`HALL_ATMOSPHERE`): a golden haze, not a brown murk: fog 0x6a4a34 from 4500 to 20000
+  (also the clear colour: no sky), a warm actor sun 0xffe2b8 (0.55π) from the bake's own
+  `HALL_SUN`, hemisphere 0xfff2dc / 0x7a5038 (0.55π). No light is added (see "Renderer": the
+  actors' shader programs never change).
+* **Originality** (the ORIGINALITY RULE, for this room; `tests/hall.test.js` guards the axis and
+  the headboard):
+  * **The plan is this game's own:** a nave into a full-width apse with rounded entrance corners. No
+    copied room proportions.
+  * **No straight central staircase, no carpet or runner.** The climb is a half-round rose and cream
+    stepped dais.
+  * **The axis has no emblem.** The compass rose is under the chart table, off the axis. The axis
+    floor carries only the tile field, the thin apron half-ring round the dais foot and the plain
+    border ring on the dais top; no figure, emblem or light pool inside any of them.
+  * **Nothing framed, windowed or lit above the dais or behind the bottle.** The headboard is plain
+    teal panelling; the apse windows are off-axis plain glazing. No oculus, no light shaft.
+  * **The rose window stays over the entrance**, behind the arriving player.
+  * **No star-emblem doors:** snowflake and cog plaques, Jonas's π crest, a ship's wheel.
+  * **Palette and motifs** are Swedish and nautical. Textures are procedural and original.
 * **Sound** (`def.audio`, see "Audio"): its own loop, "Compass and Candle" (`castle_hall`); the
   `'hall'` ambience, a low room tone with the fire crackling in the hearth (`HEARTH_FIRE`, the
   middle of the hearth's opening, (−1750, 320, 1270)); every sound effect ringing in the hall

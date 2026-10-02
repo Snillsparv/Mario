@@ -10,7 +10,7 @@
 //   bakeHall(geo, light, max = 1.15) -> geo   multiplies geo's colours by light(...), clamped
 //                                             to max as one (so a bright pool keeps its hue)
 //
-// 1. A base of 0.62 plus 0.38 of the key light (layout HALL_SUN: from high in the south-east,
+// 1. A base of 0.62 plus 0.38 of the key light (layout HALL_SUN: from high in the south-west,
 //    so the long walls bake apart), and on the walls a weak fill from the apse's side (so the
 //    south wall, turned from the sun, still shades round) and a warm bounce on the down-facing
 //    vault and dome (else they would bake grey).

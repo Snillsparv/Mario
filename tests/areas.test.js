@@ -263,6 +263,7 @@ test('into the castle: the door creaks, the wipe closes 14, holds 4 (one switch)
   assert.notEqual(a.collision, g.level.collision);
   // The renderer, the HUD, the input, the scene.
   assert.equal(g.view.looks.at(-1), HALL_ATMOSPHERE);
+  assert.ok(HALL_ATMOSPHERE.sunDir === hall.HALL_SUN && Object.isFrozen(hall.HALL_SUN), "the actors' sun: the bake's own key light, frozen as the look is");
   assert.equal(g.view.water, a.waterFn);
   assert.equal(g.view.water(0, HALL_Z), NO_WATER);
   assert.ok(g.view.warm.includes(a.root) && g.view.warm.includes(a.objects.group), 'shaders compiled ahead');

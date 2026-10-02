@@ -18,9 +18,15 @@
 // baked too, the long walls apart, the fill on the south wall, the warm vault, the nave not
 // burnt white), the dais drawn where he stands on it, nothing drawn only standing more than 56
 // out of a wall, and the look's promises (the transparent glass with its rim, the flickering
-// flames, the panelling, the textures' mean colours, the lamp hidden until lit); the front
-// door's leaves fill its opening shut (round its arch's head too) and swing aside onto a dark
-// passage, and the lamp lights with setLit.
+// flames, the panelling, the textures' mean colours, the lamp hidden until lit); the glossy
+// marble (its sheen's weights, its shader, every column's shaft gleaming in a stripe from the
+// arrival and the dais's foot); the polished floor (exactly when MIRROR: see-through over the
+// room's lower part mirrored under it, in the mirrored faces' baked colours times their
+// textures' means, under a lid in the mean colour of what is higher, nothing that moves in it;
+// every look through the open floor meets the mirror); nothing framed, lit or inlaid on the
+// axis or behind the bottle (the originality rules); the front door's leaves fill its opening
+// shut (round its arch's head too) and swing aside onto a dark passage, and the lamp lights
+// with setLit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -31,6 +37,9 @@ import * as hallTextures from '../src/world/hall/textures.js';
 import { planPolygon, planRuns } from '../src/world/hall/plan.js';
 import { windowSpots } from '../src/world/hall/shell.js';
 import { makeHallLight } from '../src/world/hall/light.js';
+import { SHADOW_RENDER_ORDER } from '../src/objects/BlobShadows.js';
+import { BlobShadow } from '../src/player/model/shadow.js';
+import { MIRROR, WOOD_MEAN } from '../src/world/hall/hall.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { CameraController } from '../src/camera/CameraController.js';
@@ -133,6 +142,14 @@ function toward(cam, yaw) {
 const meshes = [];
 area.root.traverse((o) => o.isMesh && meshes.push(o));
 const mesh = (name) => meshes.find((m) => m.name === name);
+
+// A material's shaders as three.js compiles them (its onBeforeCompile hooks run on the basic
+// material's source, as for every worldMaterial).
+function compiled(material) {
+  const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.basic.vertexShader, fragmentShader: THREE.ShaderLib.basic.fragmentShader };
+  material.onBeforeCompile(shader);
+  return shader;
+}
 
 test('budgets: at most 14 meshes with baked colours, under 26k room triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
   assert.ok(meshes.length <= 14, `${meshes.length} meshes`);
@@ -747,11 +764,6 @@ test('the look: the glass is see-through (front faces, no depth write) with a ri
   assert.equal(glow.material.userData.flameTime.value, 1.25);
   // The hooks are in the shaders three.js compiles: the flames' wobble of that time on their
   // vertex colours, the glass's rim from the angle between its faces and the view.
-  const compiled = (material) => {
-    const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.basic.vertexShader, fragmentShader: THREE.ShaderLib.basic.fragmentShader };
-    material.onBeforeCompile(shader);
-    return shader;
-  };
   const flicker = compiled(glow.material);
   assert.equal(flicker.uniforms.flameTime, glow.material.userData.flameTime);
   assert.match(flicker.vertexShader, /attribute float flame;/);
@@ -771,6 +783,268 @@ test('the look: the glass is see-through (front faces, no depth write) with a ri
   }
   assert.equal(mesh('hall-lamp').visible, false);
   assert.equal(area.root.getObjectByName('hall').children.length, meshes.length);
+});
+
+test("the glossy marble: its sheen weight 1 on the column and pilaster shafts and 0.6 on the hearth's surround, a rim and a highlight from a light near the eye in a program of its own, so from the arrival and the dais's foot every column's shaft gleams in a stripe", () => {
+  const [trim, glow, glass] = [mesh('hall-trim'), mesh('hall-glow'), mesh('hall-bottle')];
+  assert.equal(trim.material.customProgramCacheKey(), 'hall-sheen');
+  assert.equal(new Set([glow.material, glass.material, trim.material].map((m) => m.customProgramCacheKey())).size, 3, 'three programs of their own');
+  // The weights: 1 on the shafts of the columns and of the portal's pilasters, 0.6 on the
+  // hearth's surround, none on the skirting, and none anywhere else.
+  const weight = trim.geometry.attributes.sheen;
+  assert.ok(weight && !trim.geometry.attributes.darkGlow, "the weights are the trim's 'sheen'");
+  const [pos, nrm] = [trim.geometry.attributes.position, trim.geometry.attributes.normal];
+  const { COLUMNS, COLUMN, FRONT_DOOR: F, PORTAL: P, CHIMNEY: C, HEARTH_FIRE: H } = hall;
+  const seen = { shaft: 0, pilaster: 0, surround: 0, skirting: 0 };
+  const wrong = [];
+  const weights = new Set();
+  for (let i = 0; i < pos.count; i++) {
+    const [x, y, z, k] = [pos.getX(i), pos.getY(i), pos.getZ(i), weight.getX(i)];
+    weights.add(k);
+    const part = (name, want) => {
+      seen[name]++;
+      if (k !== Math.fround(want)) wrong.push(`${name} (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(0)}): ${k}`);
+    };
+    const pilaster = (r) => [-1, 1].some((sx) => Math.abs(Math.hypot(x - sx * P.pilasterU, z - F.wallZ - P.sink) - r) < 1);
+    if (y > 300 && y < 2200 && COLUMNS.some((c) => Math.hypot(x - c.x, z - c.z) < COLUMN.r - 60)) part('shaft', 1);
+    // (a pilaster's shaft by its top ring, r 66 at 350 under the gilt capital: its foot's ring
+    // is the base's too)
+    else if (Math.abs(y - 350) < 1 && pilaster(66)) part('pilaster', 1);
+    else if (x > C.x1 + 1 && x < C.x1 + 50 && Math.abs(z - H.z) < 440 && y > 170 && y < 760) part('surround', 0.6);
+    else if (y < 100 && wallDistance(x, z) <= 36) part('skirting', 0);
+    else if (k > 0) {
+      const onColumn = COLUMNS.some((c) => Math.hypot(x - c.x, z - c.z) <= COLUMN.r);
+      const onPilaster = y <= 400 && [-1, 1].some((sx) => Math.hypot(x - sx * P.pilasterU, z - F.wallZ - P.sink) <= P.baseR + 1);
+      const onSurround = x > C.x1 - 1 && x < C.x1 + 60 && Math.abs(z - H.z) < 460 && y < 800;
+      if (!onColumn && !onPilaster && !onSurround) wrong.push(`${k} off the shafts and the surround (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(0)})`);
+    }
+  }
+  assert.deepEqual(wrong.slice(0, 10), [], `${wrong.length} vertices`);
+  for (const [name, n] of Object.entries(seen)) assert.ok(n >= 20, `${n} ${name} vertices`);
+  assert.deepEqual([...weights].sort(), [0, 0.6, 1].map(Math.fround).sort(), 'no other weight');
+  // The shader three.js compiles, per vertex: the normal and the view in view space, a Fresnel
+  // rim (its base clamped: |n.v| of two unit vectors can round past 1, and pow of a negative is
+  // undefined) and a highlight from a light near the eye (the view reflected about the normal),
+  // their weighted sum whitening the colour toward a warm white.
+  const sheen = compiled(trim.material);
+  const vs = sheen.vertexShader;
+  assert.match(vs, /attribute float sheen;/);
+  assert.match(vs, /varying float vSheen;/);
+  assert.match(vs, /vec3 sheenN = normalize\(normalMatrix \* normal\);/);
+  assert.match(vs, /vec3 sheenV = normalize\(-mvPosition\.xyz\);/);
+  assert.match(sheen.fragmentShader, /varying float vSheen;/);
+  const numbers = (re, source) => {
+    const m = source.match(re);
+    assert.ok(m, `${re}`);
+    return m.slice(1).map((t) => t.split(',').map(Number));
+  };
+  const [[rimPower]] = numbers(/float sheenRim = pow\(max\(1\.0 - abs\(dot\(sheenN, sheenV\)\), 0\.0\), ([0-9.]+)\);/, vs);
+  const [light, [spotPower]] = numbers(/float sheenSpot = pow\(max\(dot\(reflect\(-sheenV, sheenN\), vec3\(([-0-9., ]+)\)\), 0\.0\), ([0-9.]+)\);/, vs);
+  const [[rim], [spot]] = numbers(/vSheen = sheen \* \(([0-9.]+) \* sheenRim \+ ([0-9.]+) \* sheenSpot\);/, vs);
+  const [white, [mix]] = numbers(/diffuseColor\.rgb = mix\(diffuseColor\.rgb, vec3\(([0-9., ]+)\), min\(vSheen, 1\.0\) \* ([0-9.]+)\);/, sheen.fragmentShader);
+  assert.ok(white[0] >= white[1] && white[1] >= white[2] && white[2] > 0.8, `a warm white ${white}`);
+  // The light near the eye and nearly level (on an upright shaft the view reflected about the
+  // normal has no up in it: a higher light could never make it shine).
+  assert.ok(Math.abs(Math.hypot(...light) - 1) < 0.01 && Math.abs(light[1]) < 0.3 && light[2] > 0.8, `the light ${light}`);
+  // Worked out as the shader does, with the camera where the game puts it at the arrival and at
+  // the dais's foot: on every column's shaft (1000 .. 1400 up) the vertices facing the eye are
+  // whitened by at least 0.4 in its gleam and by less than 0.3 on average (a stripe, not a coat
+  // of white).
+  const L = new THREE.Vector3(...light);
+  const [n, v, r] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  for (const [where, z] of [['the arrival', hall.ENTRIES.front.z], ["the dais's foot", 600]]) {
+    const { p } = hero(0, 0, z, Math.PI);
+    const cam = camera(p);
+    cam.apply(1);
+    cam.camera.updateMatrixWorld();
+    area.root.updateMatrixWorld(true);
+    const modelView = new THREE.Matrix4().multiplyMatrices(cam.camera.matrixWorldInverse, trim.matrixWorld);
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(modelView);
+    COLUMNS.forEach((c, ci) => {
+      const whitened = [];
+      for (let i = 0; i < pos.count; i++) {
+        if (weight.getX(i) !== 1 || pos.getY(i) < 1000 || pos.getY(i) > 1400 || Math.hypot(pos.getX(i) - c.x, pos.getZ(i) - c.z) > COLUMN.r) continue;
+        v.fromBufferAttribute(pos, i).applyMatrix4(modelView).negate().normalize();
+        n.fromBufferAttribute(nrm, i).applyMatrix3(normalMatrix).normalize();
+        const facing = n.dot(v);
+        if (facing <= 0) continue;
+        r.copy(v).negate().reflect(n);
+        const sum = rim * Math.max(1 - Math.abs(facing), 0) ** rimPower + spot * Math.max(r.dot(L), 0) ** spotPower;
+        whitened.push(Math.min(sum, 1) * mix);
+      }
+      const most = Math.max(...whitened);
+      const mean = whitened.reduce((a, b) => a + b, 0) / whitened.length;
+      assert.ok(whitened.length >= 20 && most >= 0.4 && mean < 0.3, `${where}: column ${ci}'s shaft whitened by up to ${most.toFixed(2)}, ${mean.toFixed(2)} on average (${whitened.length} vertices)`);
+    });
+  }
+});
+
+test("the polished floor (MIRROR): see-through over the room's lower part mirrored under it, each face in its baked colour times its texture's mean, under a lid in the mean colour of what is higher; nothing that moves in it", () => {
+  const reflect = mesh('hall-reflect');
+  const floor = mesh('hall-floor');
+  assert.equal(!!reflect, MIRROR, 'hall-reflect exactly when MIRROR');
+  assert.equal(floor.material.transparent, MIRROR, 'the floor see-through exactly when MIRROR');
+  if (!MIRROR) return;
+  // The floor over it: see-through, still writing depth, drawn first of the see-through meshes
+  // (before the lamp in the bottle, the glass round it, the blob shadows and his own).
+  assert.ok(floor.material.opacity > 0.7 && floor.material.opacity < 0.9, `opacity ${floor.material.opacity}`);
+  assert.equal(floor.material.depthWrite, true);
+  const [lamp, glass] = [mesh('hall-lamp'), mesh('hall-bottle')];
+  assert.ok(floor.renderOrder < lamp.renderOrder && lamp.renderOrder < glass.renderOrder, `${floor.renderOrder}, ${lamp.renderOrder}, ${glass.renderOrder}`);
+  const hisShadow = new BlobShadow().mesh.renderOrder;
+  assert.ok(floor.renderOrder < SHADOW_RENDER_ORDER && floor.renderOrder < hisShadow, `before the blob shadows (${SHADOW_RENDER_ORDER}) and his own (${hisShadow})`);
+  // The mirror: flipped under the floor, untextured vertex colours, opaque.
+  assert.deepEqual([reflect.scale.x, reflect.scale.y, reflect.scale.z], [1, -1, 1]);
+  assert.ok(reflect.material.vertexColors && !reflect.material.map && !reflect.material.transparent);
+  const rpos = reflect.geometry.attributes.position;
+  const rcol = reflect.geometry.attributes.color;
+  const corner = (t, d) => [rpos.getX(3 * t + d), rpos.getY(3 * t + d), rpos.getZ(3 * t + d)];
+  // The lid, its last two faces (in its source's terms: the mesh flips them): flat at the
+  // cornice, facing down (up once flipped, toward the eye over the floor), over the room's box
+  // and well past it.
+  const n = rpos.count / 3 - 2;
+  let [x0, x1, z0, z1] = [Infinity, -Infinity, Infinity, -Infinity];
+  for (const t of [n, n + 1]) {
+    const [a, b, c] = [0, 1, 2].map((d) => corner(t, d));
+    assert.deepEqual([a[1], b[1], c[1]], [HALL.ceilingY, HALL.ceilingY, HALL.ceilingY], `lid face ${t}`);
+    assert.ok((c[0] - a[0]) * (b[2] - a[2]) - (b[0] - a[0]) * (c[2] - a[2]) < 0, 'facing down');
+    for (const q of [a, b, c]) [x0, x1, z0, z1] = [Math.min(x0, q[0]), Math.max(x1, q[0]), Math.min(z0, q[2]), Math.max(z1, q[2])];
+  }
+  assert.ok(x0 < -HALL.halfX - 2000 && x1 > HALL.halfX + 2000 && z0 < HALL.northZ - 2000 && z1 > HALL.southZ + 2000, `the lid over ${[x0, x1, z0, z1]}`);
+  assert.ok(n > 5000 && n < 12000, `${n} mirrored triangles`);
+  // Every other face from the floor up, reaching 8 above it (no rugs or inlays), its lowest
+  // corner at most 1600 high, all of it under the lid.
+  for (let t = 0; t < n; t++) {
+    const ys = [0, 1, 2].map((d) => corner(t, d)[1]);
+    assert.ok(Math.min(...ys) >= -1 && Math.min(...ys) <= 1600 && Math.max(...ys) >= 8 && Math.max(...ys) < HALL.ceilingY, `face ${t}: ${ys}`);
+  }
+  // And they are exactly those faces of the baked wall, dado, trim, wood, paint, cloth and the
+  // glow's steady faces (not its flames, not the rose window's glass from the rose texture),
+  // each in its colour times its source's texture mean, dimmed by 0.9 (the castle wood's mean
+  // is WOOD_MEAN; the paint has no texture; the glow as it is): no leaf, sign, glass or lamp.
+  // The lid is in the mean of the same colours of the faces left out above 1600, by area.
+  assert.ok(WOOD_MEAN.length === 3 && WOOD_MEAN[0] > WOOD_MEAN[1] && WOOD_MEAN[1] > WOOD_MEAN[2] && WOOD_MEAN[2] > 0 && WOOD_MEAN[0] < 1, 'a brown');
+  const dim = (m) => m.map((c) => c * 0.9);
+  const sources = [
+    ['hall-wall', dim(hallTextures.plasterTexture().userData.mean)],
+    ['hall-dado', dim(hallTextures.panelTexture().userData.mean)],
+    ['hall-trim', dim(hallTextures.marbleTexture().userData.mean)],
+    ['hall-wood', dim(WOOD_MEAN)],
+    ['hall-paint', dim([1, 1, 1])],
+    ['hall-cloth', dim(hallTextures.bannerTexture().userData.mean)],
+    ['hall-glow', [1, 1, 1]],
+  ];
+  const key = (p, i) => [i, i + 1, i + 2].map((j) => `${p.getX(j)},${p.getY(j)},${p.getZ(j)}`).join(';');
+  const left = new Map();
+  for (let t = 0; t < n; t++) {
+    const k = key(rpos, 3 * t);
+    if (!left.has(k)) left.set(k, []);
+    left.get(k).push(3 * t);
+  }
+  const missing = [];
+  let expected = 0;
+  const above = [0, 0, 0];
+  let aboveArea = 0;
+  for (const [name, f] of sources) {
+    const g = mesh(name).geometry;
+    const [pos, col, uv, flame] = [g.attributes.position, g.attributes.color, g.attributes.uv, g.attributes.flame];
+    for (let i = 0; i < pos.count; i += 3) {
+      const ys = [pos.getY(i), pos.getY(i + 1), pos.getY(i + 2)];
+      if (Math.min(...ys) < 0 || Math.max(...ys) < 8) continue;
+      if (flame && [i, i + 1, i + 2].some((j) => flame.getX(j) > 0 || uv.getX(j) !== 0.5 || uv.getY(j) !== 0.5)) continue;
+      const want = (j, c) => [col.getX(j) * c[0], col.getY(j) * c[1], col.getZ(j) * c[2]];
+      if (Math.min(...ys) > 1600) {
+        const [a, b, c] = [i, i + 1, i + 2].map((j) => new THREE.Vector3().fromBufferAttribute(pos, j));
+        const area2 = b.sub(a).cross(c.sub(a)).length() / 2;
+        for (let j = i; j < i + 3; j++) want(j, f).forEach((v, d) => (above[d] += (area2 / 3) * v));
+        aboveArea += area2;
+        continue;
+      }
+      expected++;
+      const same = (r) => [0, 1, 2].every((d) => want(i + d, f).every((v, c) => Math.abs(rcol.getComponent(r + d, c) - v) < 1e-6));
+      const candidates = left.get(key(pos, i)) ?? [];
+      const at = candidates.findIndex(same);
+      if (at < 0) missing.push(`${name} face ${i / 3} (${ys.map((y) => y.toFixed(0))})`);
+      else candidates.splice(at, 1);
+    }
+  }
+  assert.deepEqual(missing.slice(0, 10), [], `${missing.length} of ${expected} faces not mirrored in their colour`);
+  assert.equal(expected, n, 'nothing else in the mirror');
+  const lidColour = above.map((v) => v / aboveArea);
+  for (let j = 3 * n; j < rpos.count; j++) {
+    assert.ok([0, 1, 2].every((d) => Math.abs(rcol.getComponent(j, d) - lidColour[d]) < 1e-5), `the lid's colour ${[0, 1, 2].map((d) => rcol.getComponent(j, d))} vs ${lidColour}`);
+  }
+  // (a warm cream: the plaster's, the marble's and the vault's)
+  assert.ok(lidColour[0] > lidColour[1] && lidColour[1] > lidColour[2] && lidColour[2] > 0.15, `${lidColour}`);
+});
+
+test('every look through the open floor meets the mirror under it (a mirrored face or the lid), never the clear colour: from 1500 eyes all over the room', () => {
+  if (!MIRROR) return;
+  // An eye anywhere in the room's open air, 100 to 1100 up (the camera's heights; every fifth
+  // up to 2050, the perches'), and a point of the floor it sees past the colliders, 60 or more
+  // from the walls (the skirting stands over the floor's edge); the line of sight goes on
+  // through the floor into the flipped mesh under it.
+  const reflect = mesh('hall-reflect');
+  const fpos = mesh('hall-floor').geometry.attributes.position;
+  area.root.updateMatrixWorld(true);
+  const rng = makeRng(2026);
+  const ray = new THREE.Raycaster();
+  const missed = [];
+  let looks = 0;
+  while (looks < 1500) {
+    const [ex, ez] = [(rng() * 2 - 1) * HALL.halfX, HALL.northZ + rng() * (HALL.southZ - HALL.northZ)];
+    const ey = 100 + rng() * (looks % 5 ? 1000 : 1950);
+    const t = 3 * Math.floor(rng() * (fpos.count / 3));
+    let [a, b] = [rng(), rng()];
+    if (a + b > 1) [a, b] = [1 - a, 1 - b];
+    const [fx, fy, fz] = [0, 1, 2].map((d) => fpos.getComponent(t, d) + a * (fpos.getComponent(t + 1, d) - fpos.getComponent(t, d)) + b * (fpos.getComponent(t + 2, d) - fpos.getComponent(t, d)));
+    if (!hall.inPlan(ex, ez, 150) || inFurniture({ x: ex, y: ey, z: ez }) || !hall.inPlan(fx, fz, 60) || Math.abs(fy) > 1) continue;
+    const eye = world(ex, ey, ez);
+    const to = { x: fx - ex, y: 2 - ey, z: fz - ez };
+    const length = Math.hypot(to.x, to.y, to.z);
+    const dir = { x: to.x / length, y: to.y / length, z: to.z / length };
+    if (col.raycast(eye, dir, length)) continue; // (hidden from the eye)
+    looks++;
+    ray.set(new THREE.Vector3(eye.x, eye.y, eye.z), new THREE.Vector3(dir.x, dir.y, dir.z));
+    if (ray.intersectObject(reflect, false).length === 0) missed.push(`(${[ex, ey, ez].map(Math.round)}) to (${[fx, fz].map(Math.round)})`);
+  }
+  assert.deepEqual(missed.slice(0, 5), [], `${missed.length} of ${looks} looks through the floor meet nothing`);
+});
+
+test('nothing framed, lit or inlaid on the axis or behind the bottle (the originality rules): plain panelling behind the bottle, no rug on the axis, a plain ring on the dais\'s top, no pool of light on the axis floor', () => {
+  const { APSE, RUGS, DAIS: D, DAIS_APRON: A, ENTRIES } = hall;
+  const where = (name, inside) => {
+    const pos = mesh(name).geometry.attributes.position;
+    const found = [];
+    for (let i = 0; i < pos.count; i++) {
+      const [x, y, z] = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      if (inside(x, y, z)) found.push(`${name} (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(0)})`);
+    }
+    return found;
+  };
+  // The headboard behind the bottle (the apse's wall between its gold returns, over the chair
+  // rail, whose top edge lies on the wall at 1080, and under the stepped-up rail): its teal
+  // panelling and nothing gold or glowing on it (no picture, emblem, window or light).
+  const headboard = (x, y, z) => {
+    const deg = (Math.atan2(APSE.z - z, x - APSE.x) * 180) / Math.PI;
+    return Math.hypot(x - APSE.x, z - APSE.z) >= 2160 && deg > 68.5 && deg < 111.5 && y > 1080 && y <= 1695;
+  };
+  assert.deepEqual([...where('hall-glow', headboard), ...where('hall-paint', headboard)].slice(0, 10), []);
+  assert.ok(where('hall-dado', headboard).length > 10, 'the panelling');
+  // From the dais's foot to the front entry no rug comes within 300 of the axis, and the floor's
+  // only inlay there is the apron's half ring round the dais's foot.
+  const [z0, z1] = [D.z, ENTRIES.front.z];
+  for (const r of RUGS) if (r.z + r.r > z0 && r.z - r.r < z1) assert.ok(Math.abs(r.x) - r.r >= 300, `the ${r.kind} rug at (${r.x}, ${r.z})`);
+  const axisFloor = (x, y, z) => y < 10 && Math.abs(x) <= 300 && z > z0 && z < z1;
+  const apron = (x, z) => Math.hypot(x - D.x, z - D.z) >= A.r0 - 1 && Math.hypot(x - D.x, z - D.z) <= A.r1 + 1;
+  assert.deepEqual(where('hall-paint', (x, y, z) => axisFloor(x, y, z) && !apron(x, z)).slice(0, 10), []);
+  assert.ok(where('hall-paint', axisFloor).length > 0, 'the apron');
+  // The dais's top: a plain inlaid ring (420 .. 500 out), nothing inside it (inside its inner
+  // edge's vertices).
+  const inRing = (x, y, z) => y >= D.top + 2 && y <= D.top + 10 && z >= D.z && Math.hypot(x - D.x, z - D.z) < 419;
+  assert.deepEqual([...where('hall-paint', inRing), ...where('hall-glow', inRing)].slice(0, 10), []);
+  // No pool of light on the axis's floor: nothing glowing low there.
+  assert.deepEqual(where('hall-glow', (x, y, z) => y < 600 && Math.abs(x) <= 300 && z > z0 && z < z1).slice(0, 10), []);
 });
 
 test('the front door swings: its leaves turn into the south wall on their hinges onto a dark passage (shut, they fill the opening); the lamp in the bottle lights with setLit', () => {

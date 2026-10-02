@@ -26,7 +26,7 @@ function stormRenderer() {
   return r;
 }
 
-// A warm hall's look (the Great Hall's values): every field given.
+// A warm, hall-like look: every field given.
 const HALL = Object.freeze({
   fog: 0x3b2a1d,
   near: 3500,

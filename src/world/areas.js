@@ -49,17 +49,19 @@ import * as skerriesLayout from './skerries/layout.js';
 import { buildSkerries } from './skerries/build.js';
 import { buildSea } from './skerries/sea.js';
 
-// The warm hall: brown-amber fog (and clear colour: the hall has no sky), the actors lit by a
-// soft warm key from high up and a warm hemisphere.
+// The warm hall: a golden haze (its fog, and the clear colour: the hall has no sky) that the far
+// end of the room melts into, not a brown murk, the actors lit by a warm key from the bake's
+// own sun (HALL_SUN: from high in the south-west) under a warm hemisphere. No light is added
+// (render/N64Renderer.js: the actors' programs never change).
 export const HALL_ATMOSPHERE = Object.freeze({
-  fog: 0x3b2a1d,
-  near: 3500,
-  far: 16000,
-  sun: 0xffe0b0,
-  sunIntensity: 0.5 * Math.PI,
-  sunDir: Object.freeze({ x: 0, y: 0.72, z: 0.69 }),
-  sky: 0xfff0da,
-  ground: 0x6e5038,
+  fog: 0x6a4a34,
+  near: 4500,
+  far: 20000,
+  sun: 0xffe2b8,
+  sunIntensity: 0.55 * Math.PI,
+  sunDir: hallLayout.HALL_SUN,
+  sky: 0xfff2dc,
+  ground: 0x7a5038,
   ambientIntensity: 0.55 * Math.PI,
 });
 
