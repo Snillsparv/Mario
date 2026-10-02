@@ -15,7 +15,8 @@
 // back wall too; run into and walked into with the follow camera, from behind and off to the
 // sides) or the net mast's tip jump, the plank bridge (its gap jumped at a run, not at a walk)
 // down onto the islet's second terrace; a dive to the sunken boat for the 1-up; the maypole's
-// climb past its four coins.
+// climb past its four coins. No route ever wakes one of the course's critters (or is hurt by
+// one).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -49,6 +50,9 @@ function hero(x, y, z, yaw) {
   const tick = (input, camYaw) => {
     p.update(ctl.next(input), camYaw);
     om.update({ player: p });
+    // The critters live clear of every route.
+    assert.equal(om.critters.engaged, 0, 'a route never wakes a critter');
+    assert.equal(om.critters.hits, 0);
   };
   return { p, ctl, om, log, tick, at, coins: () => log.filter((e) => e.name === 'coin').length };
 }

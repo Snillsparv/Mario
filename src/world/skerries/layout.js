@@ -9,7 +9,8 @@
 // beside the net shed (or climb the net mast) onto its loft and walk the plank bridge down onto
 // the islet; then climb its terraces and the signal mast, and jump from its top onto the
 // gallery. Water catches every missed jump. Home Island has a maypole, a cottage and a
-// flagpole on its meadow, butterflies over it and gulls circling.
+// flagpole on its meadow, butterflies over it and gulls circling, and Wreath Frogs hopping on
+// it: the course's critters.
 // Everything here is in the course's own local frame: 1 unit = 1 cm, sea level at y 0, +x
 // east, -z north (toward the lighthouse). world/areas.js places it at its origin (world =
 // local + origin); world/area.js shifts these anchors into world coordinates.
@@ -23,14 +24,14 @@
 //   cliff│  s3                  the Sound      net shed ┐ East Rock│ cliff
 //        │      s2                 sand bar   chimney ──┘ boathouse│
 //        │        s1     boat  jetty                  boardwalk    │
-//        │           ┌── Home Island ─────────┐ beach ──┘          │
+//        │           ┌── Home Island (frogs) ─┐ beach ──┘          │
 //        └───────────┴─ maypole, cottage ─────┴─────────────────────┘
 //                         +Z (south): the mainland cliffs
 //
 // Ownership: like world/layout.js, the anchors are shared contract: the builders
 // (skerries/build.js, lighthouse.js, east.js, props.js, sea.js), the objects (COINS, ONE_UP,
-// STAR, SIGNS, POLES, BUTTERFLY_SPOTS, BIRD_CIRCLES) and the entry all read them. The builders
-// own everything drawn around them.
+// STAR, SIGNS, POLES, BUTTERFLY_SPOTS, BIRD_CIRCLES, CRITTERS) and the entry all read them. The
+// builders own everything drawn around them.
 
 import { NO_WATER } from '../../core/constants.js';
 
@@ -414,3 +415,16 @@ export const BIRD_CIRCLES = [
   { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, y: 3300, radius: 1000 },
 ];
 export const BIRD_TINT = 0xf4f2ec;
+
+// Midsummer critters (objects/Critters.js): Wreath Frogs on Home Island's meadow. Each guards
+// its fight circle round its home (x, y = its floor, z) on its own level, stays within fight +
+// its kind's leash pad (60 for a frog), and is clear of every route (tests/skerries.test.js):
+// its circle at least fight + 150 from every same-level route, 1200 from the arrival, on its
+// level and dry. yaw: the way its idle ring starts (and it faces at home); roam: the ring's size
+// (0.6 roam across); calm: a slower tell (frog_north, the first met, on the way back from the
+// jetty's foot); wade: may stand in shallow water; scale / stand: its size and how tall it
+// stands on its legs.
+export const CRITTERS = [
+  { id: 'frog_north', kind: 'frog', x: 150, y: HOME.top, z: 2650, yaw: -2.22, roam: 200, fight: 500, calm: 1.3 },
+  { id: 'frog_west', kind: 'frog', x: -1350, y: HOME.top, z: 4100, yaw: 2.26, roam: 200, fight: 500 },
+];

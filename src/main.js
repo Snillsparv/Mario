@@ -383,7 +383,8 @@ async function start() {
       lastAction = player.action;
       if (lastAction === 'spawn' && onRespawn()) return;
     }
-    areas.objects.update({ player, frame: state.frame, camera: cam }); // the current area's
+    // The current area's objects; while a warp runs (areas.busy) its critters hold their strikes.
+    areas.objects.update({ player, frame: state.frame, camera: cam, warping: areas.busy });
     cam.update(controller, player);
     hud.update({
       lives: state.lives,

@@ -1116,8 +1116,10 @@ export const SFX = {
     const { p } = opts;
     const o = inHall(ctx, out, opts, 0.4);
     noise(ctx, o, t, { filter: 'highpass', freq: 3000, dur: 0.012, gain: 0.08, attack: 0.001 });
+    // Each try 0.12 to 0.15 after the one before (never closer: the knocks stay apart).
+    let at = t + 0.09;
     for (let i = 0; i < 3; i++) {
-      const at = t + 0.09 + i * rand(0.12, 0.15);
+      if (i > 0) at += rand(0.12, 0.15);
       const k = 1 - i * 0.18;
       noise(ctx, o, at, { filter: 'highpass', freq: 2200, dur: 0.02, gain: 0.15 * k, attack: 0.001 });
       bell(ctx, o, at + 0.003, { freq: rand(700, 780) * p, dur: 0.16, gain: 0.06 * k, partials: METAL });
@@ -1179,6 +1181,55 @@ export const SFX = {
       at += len + rand(0.06, 0.12);
     }
     return at + 0.05;
+  },
+
+  // ---- Midsummer critters (objects/Critters.js; positional, with the event's pitch, quiet:
+  // an idle critter's softer call)
+
+  // A Wreath Frog's croak: two buzzy 'kvaak' pulses (a sawtooth bending down, warbling, over a
+  // reedy band of noise); `quiet` for its idle croak on the meadow.
+  frog_croak(ctx, out, t, { p, quiet }) {
+    const k = quiet ? 0.45 : 1;
+    for (const dt of [0, 0.13]) {
+      const saw = tone(ctx, out, t + dt, { wave: 'sawtooth', freq: 160 * p, to: 120 * p, dur: 0.09, gain: 0.12 * k, attack: 0.008 });
+      lfo(ctx, saw.detune, t + dt, 0.09, { rate: 45, depth: 60 });
+      noise(ctx, out, t + dt, { freq: 600 * p, q: 4, dur: 0.1, gain: 0.1 * k, attack: 0.006 });
+    }
+    return 0.26;
+  },
+
+  // Its throat sac puffing up (the windup, before the leap): a swelling, wobbling croak rising
+  // under a breathy hiss, loudest just before it jumps.
+  frog_puff(ctx, out, t, { p }) {
+    const swell = tone(ctx, out, t, { wave: 'triangle', freq: [[0, 110 * p], [0.6, 300 * p]], dur: 0.66, gain: 0.16, attack: 0.5 });
+    lfo(ctx, swell.detune, t, 0.66, { rate: 14, depth: 80 });
+    noise(ctx, out, t, { freq: [[0, 900], [0.6, 1800]], q: 1.5, dur: 0.66, gain: 0.05, attack: 0.45 });
+    return 0.66;
+  },
+
+  // The leap: a springy boing up and a whoosh as it flies.
+  frog_leap(ctx, out, t, { p }) {
+    boing(ctx, out, t, { from: 260 * p, to: 520 * p, dur: 0.22, gain: 0.25 });
+    whoosh(ctx, out, t + 0.08, { from: 600, to: 2000, dur: 0.2, gain: 0.12 });
+    return 0.3;
+  },
+
+  // Landing: a wet thump, a squelch and two little drips.
+  frog_land(ctx, out, t, { p }) {
+    thud(ctx, out, t, { freq: 140 * p, to: 60 * p, dur: 0.12, gain: 0.3 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 1500, to: 300, dur: 0.1, gain: 0.15, attack: 0.002 });
+    plip(ctx, out, t + 0.05, 500 * p, 0.08);
+    plip(ctx, out, t + 0.1, 700 * p, 0.06);
+    return 0.2;
+  },
+
+  // Stomped or knocked over: a trampoline boing and a plop as it pops, then the wreath flying
+  // off on three rising chimes (C, E, G).
+  frog_pop(ctx, out, t, { p }) {
+    boing(ctx, out, t, { from: 220 * p, to: 480 * p, dur: 0.25, gain: 0.22, rate: 24 });
+    tone(ctx, out, t, { freq: 900 * p, to: 260 * p, dur: 0.08, gain: 0.3, attack: 0.001 });
+    for (const [dt, m] of [[0.12, 84], [0.17, 88], [0.22, 91]]) chime(ctx, out, t + dt, mtof(m) * p, 0.25, 0.05);
+    return 0.5;
   },
 
   // ---- The cannon (objects/Cannon.js, player actions/cannon.js)
@@ -1403,6 +1454,12 @@ export const SFX_INFO = {
   door_rattle: { gap: 0.5, max: 1, hall: true },
   bottle_dive: { gap: 0.5, max: 1 },
   bottle_pop: { gap: 0.5, max: 1 },
+  // The Midsummer critters (objects/Critters.js): the idle croak carries less far.
+  frog_croak: { range: 0.8, gap: 0.3, max: 2 },
+  frog_puff: { gap: 0.3, max: 1 },
+  frog_leap: { gap: 0.2, max: 2 },
+  frog_land: { gap: 0.1, max: 2 },
+  frog_pop: { gap: 0.05, max: 3 },
   hall_warn: { range: 2.5, gap: 0.3, max: 2 }, // heard across the grounds: a unit is coming down
   hall_impact: { range: 2.5, gap: 0.1, max: 3 },
   hall_rise: { range: 2, gap: 0.25, max: 2 },

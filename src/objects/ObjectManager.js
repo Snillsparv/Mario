@@ -4,14 +4,17 @@
 // (MysteryBox.js), the castle door (CastleDoor.js) and other doors (Door.js); and for AI RACE
 // mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs, the
 // mushroom-capped robot minions (Minions.js) and the server halls taking over the grounds
-// (ServerHalls.js).
+// (ServerHalls.js); and a course's critters (Critters.js: layout.CRITTERS, Midsummer Skerries' Wreath
+// Frogs).
 //
 //   new ObjectManager({ scene, collision, events, layout, player, fx?, level?, view?, area? })
 //                                  view: the renderer (default scene.userData.view), to compile
 //                                  the server halls' shaders ahead of their first arrival;
 //                                  area: the name of the area these objects belong to (default
 //                                  'grounds'), sent with 'starCollected'
-//   update({ player })             30 Hz: pickups, star state, butterfly AI, button, beast, fireballs
+//   update({ player, warping? })   30 Hz: pickups, star state, butterfly AI, button, beast, fireballs,
+//                                  critters; warping: a warp runs (main passes areas.busy): the
+//                                  critters hold their strikes as while a dialog is up
 //   animate(time, alpha, camera)   per render frame: spin, flap, sparkles
 //   reset()                        new game: every pickup back, star hidden (or back on its spot
 //                                  when placed), star count taken back, no beast, fireballs, fire
@@ -23,7 +26,10 @@
 //                                  until he has walked away from it
 //   door, doors                    the castle door (null without layout.CASTLE); every door: the
 //                                  castle's first, then layout.DOORS
-//   spawnCoin(x, y, z)             a yellow coin appears over the floor there (minion drops)
+//   spawnCoin(x, y, z, minY?)      a yellow coin appears over the floor there, at least at minY
+//                                  (minion and critter drops)
+//   critters                       the course's critters (Critters.js), or null without
+//                                  layout.CRITTERS
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
 //   (AI RACE's meltdown, fx/Meltdown.js: on 'meltdown' { phase: 'white' } the button's cap light
@@ -68,10 +74,11 @@
 // there without a jump. Seven draw calls in total: coins, sparkles, shadows, star, 1-up,
 // butterflies, birds; plus the button (base, cap), the cannon (base, turret, barrel), the
 // mystery box (frame, crystal back and
-// front; the hat's three only while it is out) and, only while AI RACE mode shows them, the
-// beast (nine rig parts), fireball cores, their ground markers, the fire sprites, the
-// minions (one instanced draw) and the server halls (one instanced draw per unit type out, plus
-// their warning markers).
+// front; the hat's three only while it is out), the critters (one instanced draw where the
+// layout has CRITTERS, and one more for their danger markers while one shows) and, only while
+// AI RACE mode shows them, the beast (nine rig parts), fireball cores, their ground markers, the
+// fire sprites, the minions (one instanced draw) and the server halls (one instanced draw per
+// unit type out, plus their warning markers).
 //
 // Allocation: once JIT-compiled, the per-frame path allocates nothing, and the per-tick path
 // only event payloads plus the small result objects of its few collision queries (see
@@ -110,6 +117,7 @@ import { Door } from './Door.js';
 import { ServerHalls } from './ServerHalls.js';
 import { BossStar } from './BossStar.js';
 import { Cannon } from './Cannon.js';
+import { Critters } from './Critters.js';
 
 const STAR_SHADOW = 150;
 const STAR_GLOW = 360;
@@ -155,8 +163,10 @@ export class ObjectManager {
     const dropShadow0 = coinCount + 2;
     const boxShadow = dropShadow0 + COIN_DROPS; // box, hat
     const minionShadow0 = boxShadow + 2;
-    // (With the beast: the minions' slots, then one for its reward star, BossStar.js.)
-    this.shadows = new BlobShadows(minionShadow0 + (layout.KAIJU ? MINION_SLOTS + 1 : 0));
+    // (With the beast: the minions' slots, then one for its reward star, BossStar.js; then one
+    // for each critter.)
+    const critterShadow0 = minionShadow0 + (layout.KAIJU ? MINION_SLOTS + 1 : 0);
+    this.shadows = new BlobShadows(critterShadow0 + (layout.CRITTERS?.length ?? 0));
     this.coins = new CoinField({ layout, collision, groundAt, shadows: this.shadows, drops: COIN_DROPS, dropShadow0 });
     this.sparkles = new Sparkles(this.rng);
     this.star = new Star(makeStarEnvMap());
@@ -181,6 +191,10 @@ export class ObjectManager {
     // The cannon (Cannon.js): its pad puts Pip in the barrel (before the server halls, whose
     // planning keeps clear of it).
     this.cannon = layout.CANNON ? new Cannon({ spot: layout.CANNON, collision, events, groundAt: layout.groundHeight ?? null, fx }) : null;
+    // A course's critters (Critters.js): their coins come out of the drop slots.
+    this.critters = layout.CRITTERS?.length
+      ? new Critters({ spots: layout.CRITTERS, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowBase: critterShadow0, onCoin: (x, y, z, minY) => this.spawnCoin(x, y, z, minY) })
+      : null;
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -241,6 +255,7 @@ export class ObjectManager {
     // hold off until it closes, and fireballs already in flight (their blasts, fire zones) spare
     // him: nothing can hurt him while he cannot move.
     this.dialogOpen = false;
+    this.warping = false; // a warp runs (update's ctx.warping): the critters hold off too
     events.on?.('signRead', () => (this.dialogOpen = true));
     events.on?.('dialogClosed', () => (this.dialogOpen = false));
     events.on?.('lightning', (e) => this.beast?.flash(e?.strength ?? 1));
@@ -261,6 +276,7 @@ export class ObjectManager {
     }
     if (this.cannon) this.group.add(this.cannon.mesh);
     if (this.bossStar) this.group.add(this.bossStar.mesh);
+    if (this.critters) this.group.add(this.critters.mesh, this.critters.markers);
     scene.add(this.group);
     this._draw(0, 1, null);
   }
@@ -374,6 +390,7 @@ export class ObjectManager {
     this.halls?.clear();
     this.box?.reset();
     this.cannon?.reset();
+    this.critters?.reset(); // every critter home, the defeated back
     for (let i = 0; i < this.doors.length; i++) this.doors[i].reset();
     this.hero.valid = false;
     this.dialogOpen = false;
@@ -383,11 +400,13 @@ export class ObjectManager {
   }
 
   // The hero was just placed in this area (a warp, or back from another one): last tick's
-  // motion is not his (no stomp or box bump from it), a dialog that was up is gone, and a door
-  // he stands at waits until he has walked away instead of going off where he arrives.
+  // motion is not his (no stomp or box bump from it), a dialog that was up is gone, a door he
+  // stands at waits until he has walked away instead of going off where he arrives, and the
+  // critters are all back home, calm (the defeated too).
   enter(player) {
     this.hero.valid = false;
     this.dialogOpen = false;
+    this.critters?.reset();
     for (let i = 0; i < this.doors.length; i++) {
       const door = this.doors[i];
       if (door.near(player)) door.disarm();
@@ -405,6 +424,7 @@ export class ObjectManager {
     // The camera's look yaw (main passes the CameraController): the hat glides toward it.
     const cam = ctx.camera;
     this.cameraYaw = cam && typeof cam.getYaw === 'function' ? cam.getYaw() : null;
+    this.warping = ctx.warping === true;
     this._step(ctx.player ?? this.player);
   }
 
@@ -434,6 +454,9 @@ export class ObjectManager {
     const sealed = this.modeOn || this.darkT > 0;
     for (let i = 0; i < this.doors.length; i++) this.doors[i].update(player, sealed);
     if (this.cannon !== null) this.cannon.update(player, this.tick);
+    // The critters: no windup and no damage while a dialog is up or a warp runs (a struck one
+    // flies off the camera's line of sight).
+    if (this.critters !== null) this.critters.update(player, hero, this.tick, this.dialogOpen || this.warping, this.cameraYaw);
     if (this.beast !== null) {
       if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
       this.beast.update(player, this.tick);
@@ -459,9 +482,10 @@ export class ObjectManager {
     h.valid = true;
   }
 
-  // A yellow coin appears over the floor under (x, y, z) (a wrecked minion's drop).
-  spawnCoin(x, y, z) {
-    const c = this.coins.spawnCoin(x, y, z);
+  // A yellow coin appears over the floor under (x, y, z), at least at minY (a wrecked minion's
+  // drop, a defeated critter's).
+  spawnCoin(x, y, z, minY = -Infinity) {
+    const c = this.coins.spawnCoin(x, y, z, minY);
     if (c) this.sparkles.burst(c, this.time, TINT.coin, 5);
     return c;
   }
@@ -574,6 +598,7 @@ export class ObjectManager {
     if (this.button !== null) this.button.animate(alpha, clock);
     if (this.box !== null) this.box.animate(alpha, clock);
     if (this.cannon !== null) this.cannon.animate(alpha, clock);
+    if (this.critters !== null) this.critters.animate(alpha, clock);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);

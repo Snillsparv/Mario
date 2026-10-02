@@ -15,8 +15,9 @@ import { tryGrabTail } from './actions/tail.js';
 // Actions during which water entry is not checked (they position the hero themselves).
 const NO_WATER_CHECK = new Set(['death', 'ledge_hang', 'ledge_climb', 'pole', 'pole_top', 'spawn']);
 const ON_TREE = new Set(['pole', 'pole_top']);
-// Actions that ignore bounce() (besides the submerged and automatic groups).
-const NO_BOUNCE = new Set(['reading', 'spawn', 'spawn_land']);
+// Actions that ignore bounce() (besides the submerged and automatic groups). Exported for the
+// critters (objects/Critters.js), whose AWAY table is checked against it.
+export const NO_BOUNCE = new Set(['reading', 'spawn', 'spawn_land']);
 const FOOTSTEP_ANIMS = new Set(['tiptoe', 'walk', 'run', 'crawl']);
 const MAX_CHAINED_ACTIONS = 8;
 

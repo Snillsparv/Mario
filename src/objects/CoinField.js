@@ -3,9 +3,9 @@
 // pre-painted rotation frames like on the N64.
 //
 // Besides the layout's coins, a few "drop" slots hold yellow coins that appear at run time
-// (spawnCoin: a wrecked minion's coin). They are not part of `coins` (the layout's set), are
-// gone again after reset(), and take their shadows from the slots after the layout coins'
-// (shadow index `dropShadow0 + j`).
+// (spawnCoin: a wrecked minion's coin, a defeated critter's). They are not part of `coins`
+// (the layout's set), are gone again after reset(), and take their shadows from the slots
+// after the layout coins' (shadow index `dropShadow0 + j`).
 
 import { SpriteBatch } from './SpriteBatch.js';
 import { makeCoinAtlas, coinFrameUV, COIN_FRAMES } from './textures.js';
@@ -101,14 +101,14 @@ export class CoinField {
     return hits;
   }
 
-  // A yellow coin appears hovering over the floor under (x, y, z) (a wrecked minion's drop);
-  // returns its record, or null without drop slots. When every slot is taken the oldest coin
-  // moves here.
-  spawnCoin(x, y, z) {
+  // A yellow coin appears hovering over the floor under (x, y, z) (a wrecked minion's drop, a
+  // critter's), at least as high as minY (a crab's coin over the water it waded in); returns its
+  // record, or null without drop slots. When every slot is taken the oldest coin moves here.
+  spawnCoin(x, y, z, minY = -Infinity) {
     if (this.drops.length === 0) return null;
     const j = this.nextDrop;
     this.nextDrop = (j + 1) % this.drops.length;
-    return this._placeDrop(j, x, y, z);
+    return this._placeDrop(j, x, y, z, minY);
   }
 
   // Dropped coins standing where `covers(x, z)` holds (ground a server hall is taking) move
@@ -137,16 +137,17 @@ export class CoinField {
     return n;
   }
 
-  _placeDrop(j, x, y, z) {
+  _placeDrop(j, x, y, z, minY = -Infinity) {
     const c = this.drops[j];
     const f = this.collision.findFloor(x, y + 60, z);
     const floorY = f.surface ? f.y : y;
+    const hover = floorY + COIN_HOVER;
     c.x = x;
-    c.y = floorY + COIN_HOVER;
+    c.y = hover < minY ? minY : hover; // (the shadow stays on the floor)
     c.z = z;
     c.alive = true;
     if (this.dropShadow0 >= 0) {
-      if (f.surface) this.shadows.place(this.dropShadow0 + j, x, floorY, z, f.surface.normal, shadowSize(SHADOW_SIZE, COIN_HOVER));
+      if (f.surface) this.shadows.place(this.dropShadow0 + j, x, floorY, z, f.surface.normal, shadowSize(SHADOW_SIZE, c.y - floorY));
       else this.shadows.hide(this.dropShadow0 + j);
     }
     return c;

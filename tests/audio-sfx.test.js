@@ -10,7 +10,8 @@
 // is formant synthesis through an echo and a hall that die out within its length, and uses
 // the engine's shared hall instead of making a convolver of its own when given one); and the
 // areas' (a door still being built rattling, diving into the ship in the bottle and popping
-// back out of it, a gull over the skerries).
+// back out of it, a gull over the skerries); and the critters' (a Wreath Frog's croak, pitched
+// for its notice and quiet for its idle call, its puff, leap, landing and pop).
 // Measured levels (offline renders) are in src/dev/previews/audio.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -171,10 +172,11 @@ const DIALOG = ['dialog_open', 'text_blip', 'dialog_next', 'dialog_close'];
 const AI_RACE = ['button_press', 'alarm', 'kaiju_roar', 'fireball_charge', 'fireball_launch', 'fireball_explode', 'burn', 'fire_crackle', 'steam', 'thunder'];
 const HAT_AND_MINIONS = ['box_hit', 'powerup', 'wing_flap', 'stomp', 'minion_emerge', 'minion_bite', 'minion_wreck', 'minions_stinger', 'evil_laugh'];
 const AREAS = ['door_rattle', 'bottle_dive', 'bottle_pop', 'gull'];
+const CRITTER_SFX = ['frog_croak', 'frog_puff', 'frog_leap', 'frog_land', 'frog_pop'];
 const LONG = { thunder: 4.1, evil_laugh: 3.5 }; // the rolling thunder and the echoing laugh may run past the usual 3 s
 
-test('the combo, flying-kick, sign-dialog, AI RACE and area sounds exist', () => {
-  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE, ...HAT_AND_MINIONS, ...AREAS]) assert.equal(typeof SFX[n], 'function', n);
+test('the combo, flying-kick, sign-dialog, AI RACE, area and critter sounds exist', () => {
+  for (const n of [...GAMEPLAY_HITS, ...DIALOG, ...AI_RACE, ...HAT_AND_MINIONS, ...AREAS, ...CRITTER_SFX]) assert.equal(typeof SFX[n], 'function', n);
   for (const n of Object.keys(SFX_INFO)) assert.equal(typeof SFX[n], 'function', `SFX_INFO names a real sound: ${n}`);
 });
 
@@ -569,4 +571,31 @@ test("the areas' sounds: sane budgets and lengths, shaped as designed", () => {
     assert.ok(gull.voices.filter((v) => v.noise && v.src.type === 'bandpass').length === yelps.length, 'a rasp on each');
   }
   assert.ok(counts.size > 1, 'gulls differ');
+});
+
+test("the critters' sounds: each a recipe with its playback rules, sane budgets and lengths; the croak pitched up for the notice and quiet for the idle call; never a minion's", () => {
+  for (const n of CRITTER_SFX) {
+    assert.ok(SFX_INFO[n], `${n} has playback rules`);
+    const { budget, dur } = run(n);
+    assert.ok(budget > 0.05 && budget * LEVELS.sfx < 0.95, `${n} budget ${budget.toFixed(2)}`);
+    assert.ok(dur > 0 && dur <= 0.8, `${n} length ${dur}`);
+  }
+  // The notice croak (pitch 1.25: the engine hands it over as p) sits a third higher; the idle
+  // one (quiet: 1) at 0.45 of the level.
+  const croak = run('frog_croak');
+  const high = run('frog_croak', { p: 1.25 });
+  const saw = (r) => r.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sawtooth').map(firstFreq);
+  assert.equal(saw(croak).length, 2, 'two kvaak pulses');
+  saw(high).forEach((f, i) => assert.ok(Math.abs(f / saw(croak)[i] - 1.25) < 1e-9));
+  const quiet = run('frog_croak', { quiet: 1 });
+  assert.ok(Math.abs(quiet.budget / croak.budget - 0.45) < 0.02, `quiet ${quiet.budget.toFixed(3)} vs ${croak.budget.toFixed(3)}`);
+  // The puff swells (its loudest late), the leap boings up, the pop ends on rising chimes.
+  const puff = run('frog_puff');
+  const tri = puff.voices.find((v) => !v.noise && v.src.type === 'triangle');
+  assert.ok(tri.gainAt(T0 + 0.45) > tri.gainAt(T0 + 0.1) * 2, 'the puff swells');
+  const pop = run('frog_pop');
+  const chimes = pop.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sine' && n.startAt > T0 + 0.1 && firstFreq(n) > 1000).sort((a, b) => a.startAt - b.startAt);
+  assert.ok(chimes.length >= 3, 'chimes');
+  for (let i = 1; i < 3; i++) assert.ok(firstFreq(chimes[i]) > firstFreq(chimes[i - 1]), 'rising');
+  for (const n of CRITTER_SFX) assert.ok(!n.startsWith('minion_'));
 });

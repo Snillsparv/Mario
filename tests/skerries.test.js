@@ -12,8 +12,10 @@
 // where they stand, the firs stopping him like walls, the keeper's hut built into the rock (no
 // crack beside it), the camera's moment behind the cottage's corners, the net mast and the
 // maypole held from their south sides with the camera there, butterflies over the meadow and
-// white gulls overhead, the lamp dark until the star is won, and the camera keeping him in view
-// when he walks off the gallery's gap and the signal mast catches him under its floor.
+// white gulls overhead, the lamp dark until the star is won, the camera keeping him in view
+// when he walks off the gallery's gap and the signal mast catches him under its floor, and the
+// critters' homes (on their level, dry, a safe knockback toward home from anywhere in their
+// circles, clear of every route and of each other, the camera never losing him round them).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -27,6 +29,8 @@ import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { Events } from '../src/core/events.js';
 import { makeRng, wrapAngle } from '../src/core/math.js';
 import { CEIL_NONE, NO_WATER } from '../src/core/constants.js';
+import { CRITTER } from '../src/objects/Critters.js';
+import { CORRIDORS, corridorDistance } from './helpers/skerriesCorridors.js';
 
 const O = AREA_DEFS.skerries.origin;
 const t0 = performance.now();
@@ -336,7 +340,7 @@ test('58 coins, each over a floor within 120, but those in the air: the long jum
   assert.equal(sk.COINS.filter((c) => c.y < sk.BAY.bedY + 200).length, 5);
 });
 
-test("the star waits on the gallery's east side from the start, 160 over its floor, idle; the course's objects stay within 8 meshes", () => {
+test("the star waits on the gallery's east side from the start, 160 over its floor, idle; the course's objects stay within 9 meshes", () => {
   const S = sk.STAR;
   assert.equal(S.placed, true);
   assert.equal(S.id, 'skerries_star');
@@ -350,7 +354,7 @@ test("the star waits on the gallery's east side from the start, 160 over its flo
   assert.equal(om.star.mesh.visible, true);
   let n = 0;
   om.group.traverse((o) => o.isMesh && n++);
-  assert.ok(n > 0 && n <= 8, `${n} meshes`);
+  assert.ok(n > 0 && n <= 9, `${n} meshes`);
 });
 
 test('the course\'s objects: the 1-up waits in the sunken boat on the seabed, butterflies flutter over Home Island\'s meadow, white gulls circle over the island and round the lighthouse', () => {
@@ -639,5 +643,86 @@ test("walking off the gallery's gap, the signal mast catches him under its floor
     assert.ok(longest <= 5 && hidden <= 10, `${name}: hidden ${hidden} ticks, ${longest} in a row`);
     assert.ok(local(cam.pos).z > L.z + L.galleryR, `${name}: the camera south of the gallery (z ${Math.round(local(cam.pos).z)})`);
     assert.ok(h.at().z > sk.MAST.z + 40, `${name}: holding the mast from its south side, the trunk not between him and the camera`);
+  }
+});
+
+test("the critters: two Wreath Frogs on Home Island's meadow, each home on its floor, its fight circle level and dry, its leash on level, a knockback toward home safe from anywhere in it, every route at least fight + 150 away, 1200 from the arrival, the meadow's south edge kept clear, no two circles touching; their rings, their coins; the camera never loses him round them", () => {
+  const C = sk.CRITTERS;
+  assert.equal(C.length, 2);
+  assert.deepEqual(C.map((c) => c.kind), ['frog', 'frog']);
+  const LEASH = { frog: CRITTER.FROG.LEASH, crab: CRITTER.CRAB.LEASH, mosquito: CRITTER.MOSQUITO.LEASH };
+  const floorAt = (x, z, y) => {
+    const f = col.findFloor(x + O.x, y + 600 + O.y, z + O.z);
+    return f.surface ? f.y - O.y : null;
+  };
+  const dry = (x, z, y) => col.waterLevelAt(x + O.x, z + O.z) - O.y <= y - 10;
+  const level = (x, z, y, dy) => {
+    const f = floorAt(x, z, y);
+    return f !== null && Math.abs(f - y) <= dy;
+  };
+  const disc = (c, r, fn) => {
+    for (let dx = -r; dx <= r; dx += 25) for (let dz = -r; dz <= r; dz += 25) if (dx * dx + dz * dz <= r * r) fn(c.x + dx, c.z + dz);
+  };
+  const arrival = sk.ENTRIES.arrival;
+  for (const c of C) {
+    assert.ok(Math.abs(floorAt(c.x, c.z, c.y) - c.y) <= 1, `${c.id}: home on its floor`);
+    disc(c, c.fight, (x, z) => assert.ok(level(x, z, c.y, 12) && dry(x, z, c.y), `${c.id}: (${x}, ${z}) on level and dry`));
+    disc(c, c.fight + LEASH[c.kind], (x, z) => assert.ok(level(x, z, c.y, 12), `${c.id}: leash at (${x}, ${z}) on level`));
+    // From anywhere in the circle, knocked back toward home he lands on its level, dry.
+    disc(c, c.fight, (x, z) => {
+      const d = Math.hypot(c.x - x, c.z - z);
+      const ux = d > 1 ? (c.x - x) / d : 0;
+      const uz = d > 1 ? (c.z - z) / d : 1;
+      for (const k of [CRITTER.SHARED.KNOCK_NEAR, CRITTER.SHARED.KNOCK_FAR]) {
+        const qx = x + ux * k;
+        const qz = z + uz * k;
+        assert.ok(level(qx, qz, c.y, CRITTER.SHARED.KNOCK_DY) && dry(qx, qz, c.y), `${c.id}: knocked toward home from (${x}, ${z})`);
+      }
+    });
+    for (const k of CORRIDORS) {
+      if (Math.abs(k.y - c.y) > 100) continue;
+      const d = corridorDistance(k, c.x, c.z);
+      assert.ok(d >= c.fight + 150, `${c.id}: ${k.name} ${Math.round(d)} away`);
+    }
+    assert.ok(Math.hypot(c.x - arrival.x, c.z - arrival.z) >= 1200, `${c.id}: far from the arrival`);
+    if (c.y === sk.HOME.top) assert.ok(c.z + c.fight <= 4800, `${c.id}: clear of the meadow's south edge`);
+  }
+  for (let i = 0; i < C.length; i++) {
+    for (let j = i + 1; j < C.length; j++) assert.ok(Math.hypot(C[i].x - C[j].x, C[i].z - C[j].z) >= C[i].fight + C[j].fight, `${C[i].id} and ${C[j].id} apart`);
+  }
+  // In the course's objects: shifted by the origin, the frogs' rings kept, a coin slot each.
+  assert.deepEqual(area.objectsLayout.CRITTERS.map((c) => [c.x - O.x, c.y - O.y, c.z - O.z]), C.map((c) => [c.x, c.y, c.z]));
+  assert.equal(area.objectsLayout.CRITTERS[0].fight, C[0].fight);
+  const { om } = hero(0, sk.HOME.top, 3800, 0, { objects: true });
+  assert.equal(om.critters.alive, C.length);
+  for (const r of om.critters.list) assert.ok(r.hopN >= 2, `${r.id}: ${r.hopN} ring points`);
+  assert.ok(C.length <= om.coins.drops.length, 'a coin slot for each');
+  // The camera round each home: walked toward it from 8 sides then strafing round it, and
+  // walked out from it 8 ways: never trapped, hidden at most 2 ticks.
+  for (const c of C) {
+    let occluded = 0;
+    let trapped = 0;
+    const run = (x, z, yaw, input, ticks) => {
+      const h = hero(x, c.y, z, yaw);
+      const cam = camera(h.p);
+      for (let t = 0; t < ticks; t++) {
+        const k = h.ctl.next(input(t));
+        h.p.update(cam.playerInput(k), cam.getYaw());
+        cam.update(k, h.p);
+        if (cam.collider.occluded) occluded++;
+        if (cam.collider.trapped) trapped++;
+      }
+    };
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      let r = c.fight;
+      if (!level(c.x + Math.sin(a) * r, c.z + Math.cos(a) * r, c.y, 20)) r *= 0.6;
+      const x = c.x + Math.sin(a) * r;
+      const z = c.z + Math.cos(a) * r;
+      run(x, z, Math.atan2(c.x - x, c.z - z), (t) => (t < 40 ? { stickY: 0.6 } : { stickX: 0.6 }), 90);
+      run(c.x, c.z, a, (t) => (t < 25 ? { stickY: 0.6 } : {}), 50);
+    }
+    assert.equal(trapped, 0, `${c.id}: trapped ${trapped}`);
+    assert.ok(occluded <= 2, `${c.id}: occluded ${occluded}`);
   }
 });

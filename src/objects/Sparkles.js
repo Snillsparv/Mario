@@ -1,5 +1,6 @@
 // Sparkle particles (coin bursts, the star's trail and twinkles, the star's glow halo, the
-// mystery box's twinkles, clods of earth and scrap), all in one blended sprite batch. Particles are evaluated analytically from their spawn time, so the
+// mystery box's twinkles, clods of earth and scrap, the critters' twinkles and petals), all in
+// one blended sprite batch. Particles are evaluated analytically from their spawn time, so the
 // simulation only has to spawn them; their records come from a fixed pool (no allocation).
 
 import { SpriteBatch } from './SpriteBatch.js';
@@ -18,6 +19,12 @@ export const TINT = {
   hat: [0.62, 1, 0.9],
   dirt: [0.46, 0.33, 0.2],
   scrap: [0.5, 0.52, 0.56],
+  // The critters (Critters.js): white twinkles and the wreath's petals, buttercups, sand and the
+  // mosquito's fluff.
+  petal: [1, 1, 0.94],
+  buttercup: [1, 0.86, 0.3],
+  sand: [0.86, 0.76, 0.55],
+  fluff: [0.78, 0.76, 0.74],
 };
 
 // A particle record; the pool recycles them, so spawning allocates nothing.

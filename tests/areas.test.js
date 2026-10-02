@@ -38,6 +38,8 @@
 // (it closes) but not while he drops in or dies, so the pause screen offers it only then; a
 // life lost there drops him back in at the arrival; GAME OVER (main's order: the grounds back
 // before the resets and the title) gives the course its star, its coins and its dark lamp back.
+// Its critters are all back home after every arrival and after GAME OVER (the hall and the
+// grounds have none), and no strike of theirs lands while a warp runs (main passes areas.busy).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -134,7 +136,7 @@ function game(defs = AREA_DEFS) {
     sticks.push({ yaw: stickToWorldYaw(c.stickX, c.stickY, cam.getYaw()), mag: c.stickMag });
     player.update(cam.playerInput(c), cam.getYaw());
     if (player.action !== lastAction) lastAction = player.action;
-    areas.objects.update({ player, frame: 0, camera: cam });
+    areas.objects.update({ player, frame: 0, camera: cam, warping: areas.busy });
     cam.update(c, player);
     wipes.push(areas.wipe(1).amount);
   };
@@ -1328,4 +1330,58 @@ test("GAME OVER from the course: main brings the grounds back before the resets 
   assert.equal(course.objects.star.state, 'idle', 'and back on its spot');
   assert.equal(course.objects.coins.coins[0].alive, true, 'the coin back');
   assert.equal(lighthouse.lit, false, 'the lamp out');
+});
+
+test("Midsummer Skerries' critters: every arrival and GAME OVER bring them all back home (the hall and the grounds have none); main's tick holds them while a warp runs, and a frog's leap landing on him as he leaves the course does him no harm", () => {
+  const MAIN = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  // (main's tick() passes the warp to the current area's objects)
+  const from = MAIN.indexOf('function tick(');
+  const body = MAIN.slice(from, MAIN.indexOf('\n  function ', from + 1));
+  const call = body.slice(body.indexOf('areas.objects.update('), body.indexOf(');', body.indexOf('areas.objects.update(')));
+  assert.ok(call.startsWith('areas.objects.update(') && call.includes('warping: areas.busy'), call);
+  const g = game();
+  assert.equal(g.objects.critters, null, 'none on the grounds');
+  g.areas.enter('skerries');
+  g.until(() => g.player.grounded, 80);
+  const crit = g.areas.current.objects.critters;
+  assert.equal(crit.alive, sk.CRITTERS.length);
+  // Punch frog_north over (beside it, facing it); it is gone.
+  const knockOver = () => {
+    const f = crit.byId('frog_north');
+    g.place(f.x, f.y, f.z + 90, Math.PI);
+    for (let t = 0; t < 12; t++) g.tick({ B: t === 1 });
+    assert.equal(f.state, 'tumble');
+    g.until(() => f.state === 'gone', 60);
+    assert.equal(crit.alive, sk.CRITTERS.length - 1);
+  };
+  knockOver();
+  // Out to the hall (no critters there) and back in: all of them home again.
+  assert.equal(g.areas.leave(), true);
+  g.until(() => g.areas.phase === null, 40);
+  assert.equal(g.areas.name, 'hall');
+  assert.equal(g.areas.current.objects.critters, null, 'none in the hall');
+  g.areas.enter('skerries');
+  assert.equal(crit.alive, sk.CRITTERS.length, 'back after the arrival');
+  for (const c of crit.list) assert.equal(c.state, 'idle');
+  // GAME OVER brings them back too.
+  g.until(() => g.player.grounded, 80);
+  knockOver();
+  g.areas.enter('grounds', 'start');
+  g.areas.resetCourses();
+  assert.equal(crit.alive, sk.CRITTERS.length, 'back after GAME OVER');
+  // Leaving while frog_west leaps at him: the warp holds it, no wedge lost.
+  g.areas.enter('skerries');
+  g.until(() => g.player.grounded, 80);
+  const w = crit.byId('frog_west');
+  g.place(w.x, w.y, w.z - 240, 0);
+  // (Its leap hurts from tick 15 on: leaving at tick 5, the iris closes over those ticks.)
+  g.until(() => w.state === 'leap' && w.t >= 5, 120);
+  assert.equal(w.state, 'leap');
+  assert.equal(g.areas.leave(), true);
+  const health = g.player.health;
+  while (g.areas.busy) {
+    g.tick();
+    assert.equal(g.player.health, health, `no hit during the ${g.areas.phase}`);
+  }
+  assert.equal(crit.hits, 0);
 });

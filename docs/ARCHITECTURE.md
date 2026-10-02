@@ -106,7 +106,8 @@ tick (30 Hz, only in 'play'):
                                           see "Areas and transitions"; the switch itself runs here)
   dropHold > 0 ? dropHold-- : player.update(cam.playerInput(controller), cam.getYaw())
   action changed to 'spawn' -> respawn / game over (above)
-  areas.objects.update({ player, frame, camera })   (the current area's objects)
+  areas.objects.update({ player, frame, camera, warping: areas.busy })   (the current area's
+                                          objects; a warp running holds the critters' strikes)
   cam.update(controller, player)
   hud.update({ lives, coins, stars, health, showPower, breath, paused })
   audio.setListener(cam.camera.position, cam.getYaw())
@@ -177,6 +178,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
+| Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
 | Terrain + water | `src/world/terrain.js`, `src/world/terrain/*` (tessellate, floorBlocks, walls, shading, MeshBuffer), `src/world/water.js`, `src/world/terrainTextures.js` | WorldPart |
@@ -1117,8 +1119,9 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   the dark panes and a lamp inside; two beams, each a horizontal and a vertical fan whose vertex
   colours' alpha fades along it, unfogged), `-sea`, `-glint`. ~9.8k triangles, ~1.7k collider
   triangles (stone, grass, sand, wood; the stair `not_slippery`), built in ~70–120 ms in node
-  (~60 ms in the browser); the course's objects 7 meshes (coins, sparkles, shadows, star, 1-up,
-  butterflies, gulls); 37 draw calls from the arrival (the E2E budget is 55).
+  (~60 ms in the browser); the course's objects 9 meshes (coins, sparkles, shadows, star, 1-up,
+  butterflies, gulls, critters, critterMarkers); 38 draw calls from the arrival (the E2E budget
+  is 55; one more while a critter's danger marker shows).
   The `'skerries'` part's `setLit(on)` / `lit` lights the lamp (both its meshes hidden until
   then; its beams sweep round by game time): AreaSwitch lights it the moment the course's star
   is won, for the rest of the game, and `reset()` puts it out (GAME OVER's `resetCourses()`).
@@ -1137,7 +1140,7 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   `&view=overview|arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`, default
   `overview`; `&t=` freezes the clock).
 * **Tests**: `tests/skerries.test.js` (node, the course as `buildArea` places it with the real
-  Player, camera and objects: the budgets (its objects at most 8 meshes too), the arrival's open
+  Player, camera and objects: the budgets (its objects at most 9 meshes too), the arrival's open
   sky and the drop onto the jetty with the camera behind him, clear, and a straight push from
   there up the jetty past the welcome sign through its coins, the water over the bay and
   none outside it, a seabed under 200 sampled points, every top low enough or the islet's beach
@@ -1153,7 +1156,7 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   walked round either way (at most 24 ticks), the net mast and the maypole held from their south
   sides with the camera there however he grabbed them (the flagpole where he grabbed it), the
   lamp and its beams, the camera keeping him in view when he walks off the gallery's gap onto
-  the mast);
+  the mast, the critters' homes (see "Critters"));
   `tests/skerries-routes.test.js`
   (scripted input on the real course: the hops from the island's corner to Great Rock, s4 to s5
   by long jump (with the arc's coins) and not by a running jump, out of the water onto every rock
@@ -1174,7 +1177,175 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   jump onto the loft for five aims with the stick let go or held on, the bridge from the loft
   over the back wall, its gap jumped at a run (landing 100 to 550 past it) and not at a walk,
   down onto the second terrace; a dive to the sunken boat's 1-up from five sides with no wedge
-  lost; the maypole climbed from four sides past its four coins, the flagpole's climb).
+  lost; the maypole climbed from four sides past its four coins, the flagpole's climb; on every
+  tick of every route no critter is engaged and none has hurt him).
+
+#### Critters (`src/objects/Critters.js`, `src/objects/critters/*`, `src/objects/critterModel.js`)
+
+The course's enemies: small original critters of the midsummer archipelago, each living on its
+own patch of the course and guarding the **fight circle** round its home. Today the **Wreath
+Frogs** ("kransgroda") hop on Home Island's meadow; the **Tin Crab** ("burkkrabba", a hermit
+crab in an old herring tin) and the **Mosquito** ("mygga") have their models already (the
+preview shows them) but are placed later, with their own steps (`critters/crab.js`,
+`mosquito.js`). They are fair for a child, telegraphed, and beaten with Jonas's own stomp and
+attacks; a defeated one drops a coin (a coin heals a wedge).
+
+```js
+// layout.CRITTERS (course-local; world/area.js shifts x, y, z like the other point lists):
+//   [{ id, kind: 'frog' | 'crab' | 'mosquito', x, y (its floor), z, yaw, roam, fight,
+//      calm?, wade?, scale?, stand? }]
+objects.critters                 // Critters (ObjectManager builds it where the layout has
+                                 // CRITTERS: the course; null on the grounds and in the hall)
+critters.update(player, hero, tick, hold, cameraYaw)   // 30 Hz, after the cannon (hold:
+                                 // dialogOpen || warping); hero: the previous tick's { y, vy,
+                                 // air }; cameraYaw: ObjectManager's (a struck one flies off the
+                                 // camera's line of sight)
+critters.animate(alpha, clock)   // instance matrices and channels, shadows, markers
+critters.reset()                 // ObjectManager.reset() (GAME OVER) and enter() (every arrival)
+critters.sendHome()              // a lost life (the 'spawn' edge, seen in update)
+critters.alive, .engaged, .hits, .list, .byId(id), .mesh, .markers
+critters.debugPose(i, state, t, look)  // previews: record i at home, t ticks into a state,
+                                 // look(record) setting its channels (the preview's POSES)
+CRITTER = { SHARED, FROG, CRAB, MOSQUITO }   // every number (the difficulty knobs)
+AWAY, STATES, HITTABLE           // see below
+```
+
+* **Fair for a child** (each rule tested):
+  * F1 nothing hurts by touch: only a strike (the frog's landing, its last 6 leap ticks), 1
+    wedge (of 8), at most once a strike, through `player.takeDamage(1, fromPos)`. Touching one
+    is a harmless **bump**: a live critter he walks into (on its level, his feet below its top),
+    never during its strike, moves aside. A calm one notices him; its kind may have it skip
+    away (`bumped()`: a frog after him on the ground hops off, a windup called off first);
+    otherwise it is pushed out to arm's length (`PLAYER_RADIUS` + its `BUMP_R`) along the line
+    from him, or, where it may not go (its leash, a wall stopping it short, off its floor, the
+    water), round him 45 then 90 degrees to either side, toward home first: it slides round the
+    leash's rim or along the wall. Even while he dies it is pushed off his feet (a leap that
+    takes his last wedge also comes down short of him). Jonas never stands inside one.
+  * F2 every strike is told for at least 20 ticks (motion, glow, sound); its target or heading
+    locks at least 9 ticks before it can hurt; an orange **danger marker** on the ground shows
+    where it lands.
+  * F3 one attacker at a time: a token taken as a windup starts and given back as the strike
+    ends (a frog: on landing; a cancel, a defeat, a lost life), then `SHARED.GAP` (40) ticks
+    before the next windup.
+  * F4 nothing happens while he is **away**: `hold` (a dialog, or a warp: main passes
+    `warping: areas.busy`, ObjectManager holds the critters with it as with `dialogOpen`), in the
+    water, or `AWAY[action]` (19 actions: exactly where `Player.bounce()` refuses, the automatic
+    and submerged groups and `Player.NO_BOUNCE`, plus `cannon_shot`): no engagement, no new
+    windup, a windup under way is called off (token back, cooldown 30), a strike in flight does
+    no damage. No windup either while he blinks after a hit (`heroInvincible`, 2 s).
+  * F5 he wins a tie: his attack (`player.getAttack()`, read once a tick) and his stomp are
+    tested before the critter's own step.
+  * F6 knock-safe hits: at a hit his natural landing (145 and 290 along the knockback, which
+    carries him about 286) is probed (2 `findFloor`, 2 `waterLevelAt`); where it would be off
+    his level (60), on nothing or in the water, `fromPos` sends him toward the critter's home
+    instead.
+  * F7 never near a route (below); F8 one stomp or one hit defeats any critter in any live
+    state, and it drops exactly one coin.
+* **Engagement**: a calm critter (frog: `idle`, `return`) whose circle he is in, on its level
+  (his floor within 60 of its home's), not away, notices him (one caught in an idle hop lands it
+  first). An engaged one is let go after 20 ticks of him beyond fight + 80, off its level or
+  away (never mid-strike or in the daze after it, nor in the air: a hop lands first) and goes
+  home. Its body never leaves fight + its kind's leash (frog 60; a hop bumped in the air is held
+  inside it too).
+* **Lifecycle**: a lost life (the hero's `'spawn'` edge, seen in `update`; never the global
+  `'lifeLost'`, which every area's manager hears) sends the live ones home, calm, the token
+  free; the defeated stay gone, and one being defeated finishes and drops its coin. Every
+  arrival (`ObjectManager.enter`) and GAME OVER (`reset`) bring them all back home, calm, the
+  life counter at 0. While another area is current they are frozen (not ticked or drawn).
+  Re-entry lets a child farm coins: harmless (coins only heal).
+* **Determinism and cost**: no `Math.random`, no wall clock, no rng stream: every choice is
+  `noise(seed + life counter)` (Minions' noise), so a reset manager replays exactly and the
+  butterflies' and gulls' rng sequences are untouched. Idle critters make no collision queries
+  (a frog's idle ring is checked once in the constructor), no sparkles; an engaged frog one
+  `findWalls` per air tick and one `findFloor` per hop and at the lock. Allocation: collision
+  results and `'sfx'` payloads only (tests guard the hot paths).
+* **Sound**: positional `'sfx' { name, pos (lifted 60), pitch?, quiet? }` (see "Events");
+  every call but the idle ones always plays and sets the shared gate (`lastSfxLife`); an idle
+  call (`quiet: 1`) waits 45 ticks after any critter sound and only plays with him within 2000.
+* **Rendering**: all of a course's critters are **one InstancedMesh** `'critters'` (one draw
+  call) over one geometry holding the three models: each instance shows only its own (`aPart.z`
+  against `aAnim2.w`: the type mask), its moving parts posed in the vertex shader from two
+  per-instance channels (`CRITTER_ANIM`: the frog's legs, sac, head wobble, breath, blink,
+  wreath lift and glow). Smooth Gouraud shading (the lathes' and cylinders' own normals, turned
+  with each part; never recomputed), a warm rim and the glow (`aEmit`), the fog at 0.6 like
+  the minions'. Material `MeshLambertMaterial` with program cache key `'skerryCritters'`, lit
+  by the course's actor sun and hemisphere. The models' attributes are built once per session
+  (`critterBase()`) and shared by every manager's geometry. The **danger markers** are a second
+  small InstancedMesh `'critterMarkers'` (the AI RACE markers' texture with a wider, solid ring,
+  normally blended in a bright sRGB orange pulsing 0.7..1, steady at full brightness for the
+  first 0.3 of its growth, drawn with the blob shadows, renderOrder 0.6), visible only while one
+  shows (one more draw call). One blob shadow slot each (after the minions' and the boss
+  star's), hidden when it is gone; white twinkles, gold bursts and clods (new `TINT` petal,
+  buttercup, sand, fluff) only at moments he caused.
+* **The Wreath Frog** (`critters/frog.js`, `FROG`): a fat, glossy lime frog (its back #8DC23A,
+  light against the meadow from the raised follow camera) wearing a midsummer flower wreath of
+  daisies, buttercups and harebells (never gold; each flower standing clear of the leaves, turned
+  up and out toward the raised camera, its yellow eye a little proud), open, friendly gold eyes
+  (each a lathe whose pole looks forward: a wide black oval pupil under half the eye across,
+  paler gold round it, a white glint up on the same side of both), a pink throat sac; about 120
+  across its hind feet, its head (the stomp top) at 75, under 800 triangles. Calm (`idle`) it breathes, blinks and hops round a ring of up to six points about
+  its home (0.6 of its roam out; points on its floor, dry and clear of walls), croaking quietly
+  now and then. When he comes in it notices him (`notice`: a croak, pitch 1.25, a hop and a
+  white twinkle), then **approaches** in cycles of a crouch, a 12-tick hop and a rest: toward
+  him while he is beyond 290 (to land about 240 from him), away when he is nearer than 160, and
+  inside that window it rests and **winds up** (20 ticks, 26 for a `calm` frog: it crouches,
+  its sac puffs up glowing, it shakes from tick 12, `frog_puff`); at the lock (tick 14, 18 when
+  calm) its facing and the target T (his feet, at most 400 away, inside the leash, on its level
+  and dry, else half way, else it gives up with a puzzled croak) lock together and the marker
+  appears at T, growing from 110 across (well over his own shadow) to 150. The **leap** (20
+  ticks, `frog_leap`) lands exactly on T, its peak 135 over flat ground; only its ticks 15 to 20
+  hurt (its body sphere, 40 up, r 45, against his capsule). It lands (`frog_land`, the token
+  back) **dazed** for 36 ticks (squashed and wobbling, three white twinkles circling its head,
+  a new three every 12 ticks, a sleepy croak: the stomp window), cools off for 45 and comes
+  again. Walked into on the ground while after him it hops off (a windup called off). A
+  **stomp** bounces him with `player.bounce(72)`, a trampoline belly (he rises 684, about twice
+  a plain stomp), and squashes it flat in 2 ticks (stomped in the air, it drops to its floor as
+  it flattens), then it poofs; a hit knocks it tumbling (8 a tick, up at 22: its arc peaks
+  about 80 up), off the camera's line of sight when it would fly on behind him (`KNOCK_TURN`
+  0.7 rad aside). Either way its wreath pops off (`frog_pop`, petals) and flies straight up in
+  the world, spinning and shrinking, `WREATH_RISE` 300 over 10 ticks, then bursts into gold
+  sparkles: the wreath turned into the coin, which lies where the frog was (a stomp's at the
+  same tick). Early and high, so the follow camera rising with his bounce still sees it.
+  Measured with the real Player (the fairness test, at both ends of the window): standing
+  still he is hit; a sidestep up to 22 ticks into the tell is never hit; walking in mashing B
+  he knocks it over first; a jump as it takes off stomps it.
+* **Homes** (`layout.CRITTERS`, tested in `tests/skerries.test.js`: each on its floor, its
+  circle on its level and dry, a knockback toward home safe from anywhere in it, every
+  same-level route corridor (`tests/helpers/skerriesCorridors.js`) at least fight + 150 away,
+  1200 from the arrival, the meadow's circles north of z 4800, no two circles touching, the real
+  follow camera never trapped round them):
+
+  | id | kind | home (x, z), floor | fight / leash | notes |
+  |---|---|---|---|---|
+  | `frog_north` | frog | (150, 2650), meadow 150 | 500 / 560 | `calm` 1.3: the first one met, coming back from the jetty's foot; the maypole's approach 738 away |
+  | `frog_west` | frog | (−1350, 4100), meadow 150 | 500 / 560 | by the butterflies west of the maypole; the maypole 832 away |
+
+* **Originality**: original designs with English names (the Swedish ones only here). The tin
+  is brandless (plain bands, no lettering, no fish). Mechanics only (stomp, punch, a coin); no
+  flip-on-its-back crab, no pop-up-and-hide loop, no existing enemy's shape; dizzy marks are
+  white twinkles.
+* **Preview**: `/preview.html?m=critters` (`&kind=frog|crab|mosquito|all`,
+  `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N` ticks into the pose's state, `&yaw=`,
+  `&dist=`, `&spin=1`): the three side by side on grass by a strip of water, lit as the course's
+  actors, the camera on the middle of what is posed (from the ground to the highest top).
+* **Tests**: `tests/objects-critters.test.js` (node: the meshes and the shared models; the idle
+  rings with no queries and no sparkles, the same every run and after a reset; engagement and
+  release, a hop in the air landed first; the tell's exact length (calm too), the lock and the
+  locked yaw, the marker (its size, colour and steady start, strike after strike), one wedge by
+  its own rule, the leap's peak; every away case and the warp hold through ObjectManager; the
+  token; defeat in every live state, the tie, the coin; a stomp in the air, the wreath's flight
+  and burst, a tumble off the camera's line, the daze's twinkles; the knock-safe rule; the leash,
+  the water and the drop for its hops and its target (half way, the puzzled cancel) and the
+  strike window; the lost-life edge and reset; the blob shadows; the three models' sizes,
+  triangles and normals, the crab's planted feet, the eyes and flowers clear of what they sit
+  on, each part in its own model's branch of the shader; the hot paths; the fairness rows with
+  the real Player; the sounds and the shared gate; the bump at the leash's rim, against a wall,
+  in a windup and off a dying hero; the state vocabulary), `tests/skerries.test.js` (the homes, above), `tests/skerries-routes.test.js`
+  (no route wakes one), `tests/skerries-critters.test.js` (frog_north on the real course: it
+  notices him, hits him once, lets him go, is stomped and heals him with its coin; a life lost
+  by frog_west sends the frogs home), `tests/areas.test.js` (back after every arrival and GAME
+  OVER; none in the hall or on the grounds; no hit while a warp runs), `tests/audio-sfx.test.js`
+  (the frog's sounds).
 
 ## Player (`src/player/Player.js`)
 
@@ -2263,7 +2434,8 @@ build has no relay, so every phone feature stays hidden there.
 ```js
 new ObjectManager({ scene, collision, events, layout, player, fx, level, area? })  // fx/level: AI RACE fireballs
                                             // area: the area's name for 'starCollected' (default 'grounds')
-objects.update({ player, frame, camera })   // 30 Hz: collection, AI
+objects.update({ player, frame, camera, warping })   // 30 Hz: collection, AI (warping: a warp
+                                            // runs, main's areas.busy: the critters hold off)
 objects.animate(time, alpha, threeCamera)   // render: spin, billboards
 objects.reset()                             // new game: every pickup back (see below)
 objects.ambient(time) -> alpha              // title backdrop clock (animate() calls it itself)
@@ -2272,7 +2444,21 @@ objects.setAiRaceButton(on)                 // the title's game choice: false = 
                                             // (AiButton.setPresent: 'gone', colliders parked; kept by reset())
 objects.enter(player)                       // the hero was just placed in this area (see below)
 objects.door, objects.doors                 // the castle door (or null); every door (Door.js)
+objects.critters                            // a course's critters (Critters.js), or null
+objects.spawnCoin(x, y, z, minY?)           // a run-time coin (minion and critter drops), at
+                                            // least at minY (CoinField.spawnCoin)
 ```
+
+Critters (`layout.CRITTERS`, see "Critters" under Midsummer Skerries): `objects.critters` is a
+`Critters` manager (`Critters.js`, the shared framework: engagement, the one-attacker token,
+the `AWAY` table, the hit tests, the bump, the knock-safe hurt, the danger markers, the poof and
+the coin; `critters/<kind>.js`, each kind's state steps as plain functions `(self, c, player,
+hero)`; `critterModel.js`, the three models in one type-masked InstancedMesh and the marker
+mesh). The states are lowercase strings (`STATES`: per kind, each calm, engaged or a defeat;
+`HITTABLE` = every non-defeat state). It ticks in `_step` after the cannon with `hold =
+dialogOpen || warping`, draws in `_draw`, and `reset()` and `enter()` reset it. Its coins come
+out of the drop slots (`COIN_DROPS` 6: one per critter); its blob shadows take one slot each
+after the minions' and the boss star's.
 
 `enter(player)` (an arrival): the hero's remembered last tick is dropped (`hero.valid`, so no
 stomp or box bump is read from a tick in another place), a dialog flag left up is cleared, and
@@ -2319,7 +2505,7 @@ Everything animates on the simulation clock, so pausing freezes it.
 
 | name | payload | emitted by |
 |---|---|---|
-| `sfx` | `{ name, pos?, volume?, pitch?, pan? }` | anyone; audio plays it (`pan`: a non-positional sound's stereo position, the face screen) |
+| `sfx` | `{ name, pos?, volume?, pitch?, pan?, quiet?, deflate? }` | anyone; audio plays it (`pan`: a non-positional sound's stereo position, the face screen; `pitch` multiplies its pitch; `quiet: 1` a critter's idle call, the recipe's own softer level; `deflate: 1` a critter's other defeat variant) |
 | `footstep` | `{ terrain, pos, speed }` | player |
 | `land` | `{ terrain, pos, hard }` | player |
 | `splash` | `{ pos, big }` | player |
@@ -2366,14 +2552,17 @@ ambience itself, not through `'sfx'`), and Rustmaw's tail grab's
 `tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
 (`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), AI RACE's meltdown's
 `meltdown_klaxon, meltdown_ignite, meltdown_flash, meltdown_blast, meltdown_ring`, and the face screen's
-`face_grab, face_stretch, face_boing, face_boop` (with `pitch`, `volume` and `pan`).
+`face_grab, face_stretch, face_boing, face_boop` (with `pitch`, `volume` and `pan`), and the
+critters' (`Critters.js`, positional): the Wreath Frog's `frog_croak` (pitch 1.25 as it notices
+him, 0.7 puzzled, 0.8 dazed; `quiet` its idle croak), `frog_puff` (the windup), `frog_leap`,
+`frog_land`, `frog_pop` (a defeat; the wreath flying off).
 Unknown names must be ignored silently.
 
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,498,506
-  bytes, ~480 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1500 kB,
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,566,291
+  bytes, ~507 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1600 kB,
   `GAME_CHUNK_LIMIT_KB` in `vite.config.js`), then the phone's `pad.html` built separately into
   the same folder (~85 kB, its own copy of the touch controller and protocol). `npm run
   preview` serves it with the phone relay.
@@ -2387,7 +2576,9 @@ Unknown names must be ignored silently.
   the Great Hall alone (`&col=1` its colliders,
   `&view=overview|entry|bottle|fire|vault|roof|apse|toys`, `&lamp=1`, `&door=0..1`);
   `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
-  `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`).
+  `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`);
+  `/preview.html?m=critters` the course's critters (`&kind=frog|crab|mosquito|all`,
+  `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N`, `&yaw=`, `&dist=`, `&spin=1`).
 * `node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'`
   — the game straight in an area (`&entry=` for another of its entries; `__game.enterArea(name,
   entry)` switches at once mid-run). More recipes:

@@ -11,7 +11,8 @@
 // landing, each in fewer than 45 draw calls; the hall's own textures at most 128 px), and a stick
 // held forward through the inner door walks him on out across the porch instead of back in.
 // ?area=skerries boots into Midsummer Skerries (its course card over the picture, the sky and the
-// sea, fewer than 55 draw calls, its textures at most 128 px, its build time logged); paused while
+// sea, fewer than 55 draw calls, its textures at most 128 px, its build time logged, its two
+// Wreath Frogs about, back again on every entry); paused while
 // he drops in, the pause screen offers no way out and B does nothing; the star on the lighthouse
 // gallery takes him back out of the bottle into the hall, one star up, the lighthouse and the
 // little one in the bottle lit (out again after GAME OVER); paused while reading the welcome sign,
@@ -341,6 +342,8 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     t.diagnostic(`skerries: ${f.calls} draw calls, ${f.triangles} triangles, built in ${built.toFixed(1)} ms`);
     assert.ok(f.calls < 55, `${f.calls} draw calls`);
     assert.ok(built < 450, `the first entry's hitch: built in ${built} ms`);
+    // Its critters: the two Wreath Frogs on the meadow (one instanced draw).
+    assert.equal(await page.evaluate(() => window.__game.areas.current.objects.critters.alive), 2);
     assert.ok(skyBlue(f.pixels[0]) || f.pixels.some(skyBlue), `sky over the bay: ${JSON.stringify(f.pixels)}`);
     const sizes = await page.evaluate(async () => {
       const textures = await import('/src/world/skerries/textures.js');
@@ -377,6 +380,7 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     // Back in, then out from the pause screen, paused while reading the welcome sign (whose
     // last page says to): the way out is offered, and B closes the sign and leaves.
     await page.evaluate(() => window.__game.enterArea('skerries'));
+    assert.equal(await page.evaluate(() => window.__game.areas.current.objects.critters.alive), 2, 'the frogs back at home');
     await step(60);
     await page.evaluate(() => {
       const g = window.__game;

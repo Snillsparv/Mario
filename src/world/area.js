@@ -35,8 +35,8 @@
 //   respawn,               // the entry def.respawn names, with its drop: player.setWorld's spawn
 //   signs,                 // layout.SIGNS (world), for player.setWorld
 //   groundAt(x, z),        // the floor under (x, z), probed from def.probeY (under the ceiling)
-//   objectsLayout,         // what an ObjectManager reads: COINS, STAR, ONE_UP, DOORS, ... (world),
-//                          // BIRD_TINT
+//   objectsLayout,         // what an ObjectManager reads: COINS, STAR, ONE_UP, DOORS, CRITTERS,
+//                          // ... (world), BIRD_TINT
 //   waterFn(x, z),         // the water surface (collision.waterLevelAt): the renderer's water
 //   objects,               // its ObjectManager, once core/AreaSwitch.js has made it (else null);
 //                          // setVisible() shows and hides its group with the root
@@ -48,7 +48,7 @@ import { NO_WATER } from '../core/constants.js';
 
 // Layout lists and points the objects read (each item's x, y, z are shifted), and values they
 // read as they are.
-const POINT_LISTS = ['COINS', 'RED_COINS', 'SIGNS', 'BUTTERFLY_SPOTS', 'BIRD_CIRCLES'];
+const POINT_LISTS = ['COINS', 'RED_COINS', 'SIGNS', 'BUTTERFLY_SPOTS', 'BIRD_CIRCLES', 'CRITTERS'];
 const POINTS = ['STAR', 'ONE_UP'];
 const VALUES = ['BIRD_TINT'];
 
