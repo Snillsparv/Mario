@@ -3,8 +3,14 @@
 // lane/houses.js, the dad's front door by lane/door.js and the props (street furniture,
 // greenery, the mailbox, the fences, the forest, the signposts) by lane/props.js.
 //
-//   buildLane(layout) -> { name: 'lane', object3D, colliders, update(time), setDoorOpen(t, id),
-//                          reset() }
+//   buildLane(layout, { look, materials }?) -> { name: 'lane', object3D, colliders, update(time),
+//                          setDoorOpen(t, id), reset() }
+//     look          'classic' (the default: the baked N64 look below) or 'real' (the realistic
+//                   look's visuals, world/lane/real/look.js: the same builders, unbaked, drawn with
+//                   `materials`, a material per mesh name; its colliders are the classic build's
+//                   to the byte, and only the classic build's are used)
+//   REPEAT, REAL_REPEAT   world units a texture repeat spans in each mesh's uvs (the realistic
+//                   look's own meshes in REAL_REPEAT)
 //     update        per frame (world/area.js), the clock in seconds: the flags wave
 //     setDoorOpen   the dad's front door (id 'lane_home', or none), 0 shut .. 1 standing open
 //                   (core/AreaSwitch.js swings it as Jonas comes out of it and goes back in)
@@ -36,6 +42,14 @@
 // waving: props.js waveFlags), -signs, and -door (the dad's door's leaf, render's material,
 // turning on its hinge).
 //
+// The realistic look (look 'real') builds the same faces without the bake (the vertex colours
+// are the tints and the painted shades: the materials light them), with three meshes of its own
+// that the classic look draws in render's and grass's builders: lane-glass (the panes; the
+// houses hang a dim room behind each), lane-paint (frames, doors, fascias, soffits, poles, the
+// bins, the mailbox, the cars, the hoop, the trampoline...) and lane-path (the dad's grass-paver
+// path); its roofs' uvs run along their slopes (the tile courses lie across them), its lawns'
+// tints are made grey (the lawn texture is green itself) and its signs stay baked.
+//
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): the road and
 // every hard surface (stone), the lawns and the terraces' tops (grass), the terraces' walls and
 // the drives' sides (stone), the steps (a not-slippery ramp), the invisible boundary walls (from
@@ -56,7 +70,7 @@ import { doorLeaf, frontDoor } from './door.js';
 import { buildProps, waveFlags } from './props.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
-const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
+export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
 
 // Vertex tints (sRGB).
 const TINT = {
@@ -90,10 +104,35 @@ const KERB_LIFT = 1.5; // the kerbs' tops over the lawn and the pavement beside 
 // to `crest` over its top, out in the fog.
 const BANK = { depth: 1200, beyond: 2600, far: 200, out: 9000, crest: 2600 };
 const CARPORT_SHADE = 0.62; // the drive's asphalt under the carport's roof
+// The realistic look's own meshes (their repeats; the classic look draws them in render's and
+// grass's builders).
+export const REAL_REPEAT = { glass: 300, paint: 300, path: 240 };
 
-export function buildLane(layout) {
-  const kit = { solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} }, groundAt: layout.groundHeight };
-  for (const name of Object.keys(REPEAT)) kit[name] = new GeoBuilder(REPEAT[name]);
+// A roof's builder in the realistic look: uvs along each slope (u along its contour, v up it from
+// the eaves), so the tile texture's courses lie across every slope; flat and steep faces as any.
+class SlopeBuilder extends GeoBuilder {
+  project(p, n) {
+    if (n[1] < 0.2 || n[1] > 0.995) return super.project(p, n);
+    const s = 1 / this.repeat;
+    const h = Math.hypot(n[0], n[2]);
+    const hx = n[2] / h;
+    const hz = -n[0] / h;
+    // Up the slope: +y less its part along the normal.
+    const ux = -n[0] * n[1];
+    const uy = 1 - n[1] * n[1];
+    const uz = -n[2] * n[1];
+    const ul = Math.hypot(ux, uy, uz);
+    return [(p[0] * hx + p[2] * hz) * s, ((p[0] * ux + p[1] * uy + p[2] * uz) / ul) * s];
+  }
+}
+
+export function buildLane(layout, { look = 'classic', materials = null } = {}) {
+  const real = look === 'real';
+  const kit = { look, solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} }, groundAt: layout.groundHeight };
+  for (const name of Object.keys(REPEAT)) kit[name] = new (real && name === 'roof' ? SlopeBuilder : GeoBuilder)(REPEAT[name]);
+  kit.glass = real ? new GeoBuilder(REAL_REPEAT.glass) : kit.render;
+  kit.paint = real ? new GeoBuilder(REAL_REPEAT.paint) : kit.render;
+  kit.path = real ? new GeoBuilder(REAL_REPEAT.path) : kit.grass;
   const road = roadPieces(layout);
   ground(kit, layout, road);
   kerbs(kit, layout, road);
@@ -105,7 +144,7 @@ export function buildLane(layout) {
   carport(kit, layout.CARPORT);
   const leaf = frontDoor(kit, layout);
   buildProps(kit, layout);
-  return assemble(kit, layout, leaf);
+  return real ? assembleReal(kit, layout, leaf, materials) : assemble(kit, layout, leaf);
 }
 
 // ---------------------------------------------------------------- meshes
@@ -138,7 +177,54 @@ function assemble(kit, layout, leaf) {
   // The dad's front door's leaf, in render's material, turning on its hinge (setDoorOpen).
   const door = doorLeaf(leaf, materials.render, (geo) => bakeLighting(geo, lit));
   group.add(door.mesh);
+  return lanePart(kit, group, wave, door);
+}
 
+// The realistic look's meshes: unbaked, in `materials` (by mesh name: the classic ones, glass,
+// paint and path; signs, baked as in the classic look), every one but the ground and the glass
+// casting the sun's shadow, all receiving it.
+function assembleReal(kit, layout, leaf, materials) {
+  const group = new THREE.Group();
+  group.name = 'lane-real';
+  greyLawns(kit.grass, TINT.lawn);
+  const add = (name) => {
+    const mesh = new THREE.Mesh(kit[name].toGeometry(), materials[name]);
+    mesh.name = `lane-${name}`;
+    mesh.castShadow = !REAL_FLAT.has(name);
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    return mesh;
+  };
+  for (const name of Object.keys(REPEAT)) if (name !== 'cloth') add(name);
+  for (const name of Object.keys(REAL_REPEAT)) add(name);
+  const wave = waveFlags(add('cloth').geometry, layout);
+  const signs = bakedMesh('lane-signs', kit.signs.wood, materials.signs, { ...LIGHT, sun: layout.LANE_SUN });
+  signs.castShadow = true;
+  group.add(signs);
+  const door = doorLeaf(leaf, materials.paint, (geo) => geo);
+  door.mesh.castShadow = door.mesh.receiveShadow = true;
+  group.add(door.mesh);
+  return lanePart(kit, group, wave, door);
+}
+
+// The realistic look's meshes that cast no shadow: the ground's (nothing stands under them) and
+// the glass.
+const REAL_FLAT = new Set(['asphalt', 'grass', 'cobbles', 'path', 'glass']);
+
+// The lawns' tints made grey for the realistic look (its lawn texture is green itself): each
+// vertex the luminance of its tint over the lawn's, at most 1.2, so the back gardens, the bank
+// and the soft swaths stay as much darker or lighter as they were.
+function greyLawns(b, lawn) {
+  const c = new THREE.Color(lawn);
+  const ref = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  const col = b.col;
+  for (let i = 0; i < col.length; i += 3) {
+    const k = Math.min(1.2, (0.2126 * col[i] + 0.7152 * col[i + 1] + 0.0722 * col[i + 2]) / ref);
+    col[i] = col[i + 1] = col[i + 2] = k;
+  }
+}
+
+function lanePart(kit, group, wave, door) {
   const colliders = kit.solids.colliders();
   colliders.push({ positions: kit.signs.colliders.wood, terrain: 'wood' });
   return {
@@ -294,7 +380,7 @@ function hardSurfaces(L, road) {
     const [d0, d1] = p.drive;
     add([[d0, L.wallZAt(d0)], [d1, L.wallZAt(d1)], [d1, v.front], [d0, v.front]], 'cobbles', TINT.cobbles);
   }
-  add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'grass', TINT.path);
+  add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', TINT.path);
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', TINT.drive);
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.CARPORT.z1), 'asphalt', TINT.drive, CARPORT_SHADE);
   add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', TINT.drive);
@@ -531,7 +617,7 @@ function side(kit, L, x, z0, z1, s) {
 // A villa's steps from the street up to its terrace: a smooth ramp collider (not slippery)
 // under STEPS.n drawn steps, a dark railing along their drive side.
 function steps(kit, L, p, stepsZ) {
-  const { blocks, render, solids } = kit;
+  const { blocks, paint, solids } = kit;
   const { STEPS: S, GROUND: G, NORTH: N } = L;
   const [x0, x1] = p.steps;
   const z0 = L.wallZAt(x0);
@@ -556,16 +642,16 @@ function steps(kit, L, p, stepsZ) {
   // The first step's riser from the street.
   blocks.poly([[x0, G, z0], [x1, G, z0], [x1, G + step, z0 - tread / 2], [x0, G + step, z0 - tread / 2]], { facing: [0, 0.3, 1], shade: 0.9 });
   // The railing: posts and a handrail up the drive side.
-  render.color(TINT.railing);
+  paint.color(TINT.railing);
   const rail = S.rail;
   for (const k of [0, 0.5, 1]) {
     const z = z0 - 10 - (S.run - 20) * k;
     const y = G + (top - G) * Math.min(1, (z0 - z) / S.run);
-    render.box(x1 - 14, x1 - 6, y, y + rail, z - 4, z + 4, { bottom: false });
+    paint.box(x1 - 14, x1 - 6, y, y + rail, z - 4, z + 4, { bottom: false });
   }
   const yA = G + rail;
   const yB = top + rail;
-  render.solid([
+  paint.solid([
     [[x1 - 16, yA, z0 - 10], [x1 - 4, yA, z0 - 10], [x1 - 4, yA + 8, z0 - 10], [x1 - 16, yA + 8, z0 - 10]],
     [[x1 - 16, yB, stepsZ + 10], [x1 - 4, yB, stepsZ + 10], [x1 - 4, yB + 8, stepsZ + 10], [x1 - 16, yB + 8, stepsZ + 10]],
     [[x1 - 16, yA + 8, z0 - 10], [x1 - 4, yA + 8, z0 - 10], [x1 - 4, yB + 8, stepsZ + 10], [x1 - 16, yB + 8, stepsZ + 10]],

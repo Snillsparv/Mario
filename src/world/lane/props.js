@@ -2,7 +2,9 @@
 // GARDEN_TREES, RED_TREE, RHODODENDRON, ROUND_BED, POT, MAILBOX, CARS, HOOP, TRAMPOLINE,
 // MOTORHOME, FENCES, CABINET, PATH_SIGN, FLOWER_BEDS, ANTENNAS, FOREST, EDGE_FOREST,
 // SIDE_BLOCKS, SIGNS), written into the course's kit (lane/build.js): render faces into its
-// material builders, colliders into kit.solids, the signposts into kit.signs.
+// material builders (the painted things, from the poles and the bins to the mailbox, the cars and
+// the trampoline, into kit.paint: render's own builder in the classic look), colliders into
+// kit.solids, the signposts into kit.signs.
 //
 //   buildProps(kit, layout)
 //   waveFlags(geometry, layout) -> update(time)   // lane-cloth's flags waving in the breeze
@@ -131,17 +133,17 @@ export function buildProps(kit, layout) {
 // A lamppost: a grey eight-sided pole on a wider foot, an arm out along its yaw at the top and a
 // flat lamp head; a prism collider unless it is a climbable pole (layout.POLES).
 function lamppost(kit, layout, { x, z, yaw }) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const { LAMP, POLES } = layout;
   const y0 = layout.groundHeight(x, z);
-  render.color(TINT.lamp);
-  render.lathe(x, z, [[LAMP.r + 8, y0 - 10], [LAMP.r + 8, y0 + 60], [LAMP.r, y0 + 80], [LAMP.r - 3, LAMP.top], [0, LAMP.top]], 8, { flat: true });
+  paint.color(TINT.lamp);
+  paint.lathe(x, z, [[LAMP.r + 8, y0 - 10], [LAMP.r + 8, y0 + 60], [LAMP.r, y0 + 80], [LAMP.r - 3, LAMP.top], [0, LAMP.top]], 8, { flat: true });
   const ax = Math.sin(yaw);
   const az = Math.cos(yaw);
   const end = [x + ax * LAMP.arm, LAMP.top + 10, z + az * LAMP.arm];
-  render.solid(orientedBoxPolys([x + (ax * LAMP.arm) / 2, 0, z + (az * LAMP.arm) / 2], [ax, 0, az], LAMP.arm + 10, LAMP.top - 12, LAMP.top + 4, 10));
-  render.color(TINT.lampHead);
-  render.solid(orientedBoxPolys([end[0], 0, end[2]], [ax, 0, az], 90, LAMP.top - 24, LAMP.top - 4, 44), { faceShade: (n) => (n[1] < -0.5 ? 1.6 : 1) });
+  paint.solid(orientedBoxPolys([x + (ax * LAMP.arm) / 2, 0, z + (az * LAMP.arm) / 2], [ax, 0, az], LAMP.arm + 10, LAMP.top - 12, LAMP.top + 4, 10));
+  paint.color(TINT.lampHead);
+  paint.solid(orientedBoxPolys([end[0], 0, end[2]], [ax, 0, az], 90, LAMP.top - 24, LAMP.top - 4, 44), { faceShade: (n) => (n[1] < -0.5 ? 1.6 : 1) });
   if (POLES.some((p) => p.x === x && p.z === z)) return;
   solids.solid(prismPolys(x, z, LAMP.collider, 8, y0 - 10, LAMP.top), 'stone');
 }
@@ -149,14 +151,14 @@ function lamppost(kit, layout, { x, z, yaw }) {
 // A white flagpole tapering to a gold knob (a climbable pole: no collider of its own), its flag
 // or pennant (kit.cloth, seen from both sides) streaming from just under the knob along WIND.
 function flagpole(kit, layout, f) {
-  const { render, cloth } = kit;
+  const { paint, cloth } = kit;
   const { FLAGPOLE: F, WIND } = layout;
   const { x, z, y0 } = f;
   const top = y0 + 1200;
-  render.color(TINT.flag);
-  render.lathe(x, z, [[F.r + 26, y0 - 10], [F.r + 26, y0 + 30], [F.r, y0 + 40], [F.r - 4, top], [0, top]], 8, { flat: true });
-  render.color(TINT.gold);
-  render.lathe(x, z, [[0, top], [14, top + 6], [16, top + 18], [12, top + 30], [0, top + 34]], 8);
+  paint.color(TINT.flag);
+  paint.lathe(x, z, [[F.r + 26, y0 - 10], [F.r + 26, y0 + 30], [F.r, y0 + 40], [F.r - 4, top], [0, top]], 8, { flat: true });
+  paint.color(TINT.gold);
+  paint.lathe(x, z, [[0, top], [14, top + 6], [16, top + 18], [12, top + 30], [0, top + 34]], 8);
   const l = Math.hypot(WIND.dir[0], WIND.dir[1]);
   const [dx, dz] = [WIND.dir[0] / l, WIND.dir[1] / l];
   const at = (u, y) => [x + dx * (F.r + u), y, z + dz * (F.r + u)];
@@ -216,14 +218,14 @@ export function waveFlags(geo, { FLAGPOLES, FLAGPOLE, WIND }) {
 // A wheelie bin: a dark body, its lid a little wider on top, two wheels at its back; solid to its
 // lid's top.
 function bin(kit, layout, { x, z }) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const { BIN, GROUND } = layout;
   const [hx, hz] = [BIN.x / 2, BIN.z / 2];
-  render.color(TINT.bin);
-  render.box(x - hx, x + hx - 6, GROUND, BIN.top - 10, z - hz + 4, z + hz - 4, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
-  render.box(x - hx - 4, x + hx, BIN.top - 10, BIN.top, z - hz, z + hz, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
-  render.color(0x111111);
-  for (const s of [-1, 1]) render.box(x + hx - 16, x + hx + 6, GROUND, GROUND + 26, z + s * (hz - 18) - 8, z + s * (hz - 18) + 8);
+  paint.color(TINT.bin);
+  paint.box(x - hx, x + hx - 6, GROUND, BIN.top - 10, z - hz + 4, z + hz - 4, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+  paint.box(x - hx - 4, x + hx, BIN.top - 10, BIN.top, z - hz, z + hz, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+  paint.color(0x111111);
+  for (const s of [-1, 1]) paint.box(x + hx - 16, x + hx + 6, GROUND, GROUND + 26, z + s * (hz - 18) - 8, z + s * (hz - 18) + 8);
   solids.box(x - hx, x + hx, GROUND, BIN.top, z - hz, z + hz, 'stone');
 }
 
@@ -319,7 +321,7 @@ function broadTree(kit, layout, t) {
 // apples), the birch (white bark ringed dark under a tall yellowing canopy) or the red-leaved
 // shrub (two red domes, drawn in render); trunks and the shrub solid.
 function gardenTree(kit, layout, t) {
-  const { wood, render, solids } = kit;
+  const { wood, render, paint, solids } = kit;
   const y0 = layout.groundHeight(t.x, t.z);
   if (t.kind === 'birch') {
     birch(kit, t.x, t.z, y0, t.h, t.r, 7);
@@ -343,12 +345,12 @@ function gardenTree(kit, layout, t) {
   wood.lathe(t.x, t.z, [[40, y0 - 10], [32, y0 + 100], [26, c0 + 80], [0, c0 + 100]], 7, { flat: true });
   canopy(kit, t.x, t.z, c0, top, t.r, TINT.apple, 211, 5);
   const rng = makeRng(213);
-  render.color(TINT.fruit);
+  paint.color(TINT.fruit);
   for (let i = 0; i < 18; i++) {
     // An apple: a small red diamond on the canopy's skin, facing out.
     const [sx, sz, y] = [Math.sin(i * 2.4), Math.cos(i * 2.4), c0 + (top - c0) * (0.25 + rng() * 0.5)];
     const [x, z] = [t.x + sx * t.r * 0.8, t.z + sz * t.r * 0.8];
-    render.poly([[x - sz * 12, y, z + sx * 12], [x, y - 12, z], [x + sz * 12, y, z - sx * 12], [x, y + 12, z]], { facing: [sx, 0, sz] });
+    paint.poly([[x - sz * 12, y, z + sx * 12], [x, y - 12, z], [x + sz * 12, y, z - sx * 12], [x, y + 12, z]], { facing: [sx, 0, sz] });
   }
   solids.solid(prismPolys(t.x, t.z, 40, 8, y0 - 10, c0 + 100), 'wood');
 }
@@ -370,7 +372,7 @@ function birch(kit, x, z, base, h, r, seed) {
 // where Jonas stands on it; no collider), the rhododendron at the house's west corner (a dark
 // green dome, solid), a potted plant by the door and the car charger on the east gable.
 function dadsGarden(kit, layout) {
-  const { leaves, wood, blocks, render, solids } = kit;
+  const { leaves, wood, blocks, render, paint, solids } = kit;
   const { ROUND_BED: B, RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND } = layout;
   const bedTop = GROUND + 14;
   render.color(TINT.litter);
@@ -422,14 +424,14 @@ function dadsGarden(kit, layout) {
   leaves.shade = null;
   solids.solid(prismPolys(R.x, R.z, R.r * 0.85, 8, GROUND - 6, GROUND + R.h * 0.85), 'grass');
   // A blue pot by the door with a little green plant in it (drawn only).
-  render.color(TINT.pot);
-  render.lathe(P.x, P.z, [[16, GROUND], [24, GROUND + 4], [27, GROUND + 40], [0, GROUND + 40]], 8, { flat: true });
+  paint.color(TINT.pot);
+  paint.lathe(P.x, P.z, [[16, GROUND], [24, GROUND + 4], [27, GROUND + 40], [0, GROUND + 40]], 8, { flat: true });
   leaves.color(TINT.potLeaves);
   leaves.lathe(P.x, P.z, [[22, GROUND + 38], [32, GROUND + 58], [22, GROUND + 80], [0, GROUND + 90]], 7);
   // The car charger: a dark box on the white gable by the bins.
   const C2 = DAD.charger;
-  render.color(TINT.charger);
-  render.box(C2.x, C2.x + 14, GROUND + 130, GROUND + 215, C2.z - 30, C2.z + 30, { faceShade: (n) => (n[0] > 0.5 ? 1 : 0.8) });
+  paint.color(TINT.charger);
+  paint.box(C2.x, C2.x + 14, GROUND + 130, GROUND + 215, C2.z - 30, C2.z + 30, { faceShade: (n) => (n[0] > 0.5 ? 1 : 0.8) });
 }
 
 // A bed of cosmos on a terrace: dark soil, tufts of leaves (seeded) each with a few pink, rose
@@ -464,38 +466,38 @@ function flowerBed(kit, layout, bed) {
 // blue sparrow standing on its ridge at the street end; solid to its eaves (a coin waits over its
 // roof).
 function mailbox(kit, layout) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const { MAILBOX: M, GROUND } = layout;
   const [bw, bd] = M.body;
   const f = frame({ cx: M.x, cz: M.z, yaw: M.yaw, w: bw, d: bd, y0: GROUND });
   const y1 = GROUND + M.post;
-  render.color(TINT.mailbox);
-  render.solid(localBoxPolys(wallFrame(f.at(0, GROUND, 0), f.dir(0, 0, 1)), -7, 7, 0, M.post, -7, 7, { bottom: false }));
-  render.color(TINT.mailbox);
+  paint.color(TINT.mailbox);
+  paint.solid(localBoxPolys(wallFrame(f.at(0, GROUND, 0), f.dir(0, 0, 1)), -7, 7, 0, M.post, -7, 7, { bottom: false }));
+  paint.color(TINT.mailbox);
   const box = [f.at(-bw / 2, 0, bd / 2), f.at(bw / 2, 0, bd / 2), f.at(bw / 2, 0, -bd / 2), f.at(-bw / 2, 0, -bd / 2)];
   const at = (p, y) => [p[0], y, p[2]];
   for (let i = 0; i < 4; i++) {
     const j = (i + 1) % 4;
     const out = [box[i][0] + box[j][0] - 2 * M.x, 0, box[i][2] + box[j][2] - 2 * M.z];
-    render.poly([at(box[i], y1), at(box[j], y1), at(box[j], M.eaves), at(box[i], M.eaves)], { facing: out, shade: i === 0 ? 1 : 0.85 });
+    paint.poly([at(box[i], y1), at(box[j], y1), at(box[j], M.eaves), at(box[i], M.eaves)], { facing: out, shade: i === 0 ? 1 : 0.85 });
   }
-  render.poly(box.map((p) => at(p, y1)), { facing: [0, -1, 0], shade: 0.5 });
+  paint.poly(box.map((p) => at(p, y1)), { facing: [0, -1, 0], shade: 0.5 });
   // The roof: its ridge running from the street end to the back, the gable ends black too.
   const r0 = f.at(0, M.ridge, bd / 2 + 8);
   const r1 = f.at(0, M.ridge, -bd / 2 - 8);
   const e = (u, w) => f.at(u, M.eaves - 4, w);
-  for (const s of [-1, 1]) render.poly([e(s * (bw / 2 + 8), bd / 2 + 8), e(s * (bw / 2 + 8), -bd / 2 - 8), r1, r0], { facing: f.dir(s, 1.7, 0), shade: 0.9 });
-  for (const s of [-1, 1]) render.poly([f.at(-bw / 2, M.eaves, (s * bd) / 2), f.at(bw / 2, M.eaves, (s * bd) / 2), f.at(0, M.ridge - 4, (s * bd) / 2)], { facing: f.dir(0, 0, s) });
+  for (const s of [-1, 1]) paint.poly([e(s * (bw / 2 + 8), bd / 2 + 8), e(s * (bw / 2 + 8), -bd / 2 - 8), r1, r0], { facing: f.dir(s, 1.7, 0), shade: 0.9 });
+  for (const s of [-1, 1]) paint.poly([f.at(-bw / 2, M.eaves, (s * bd) / 2), f.at(bw / 2, M.eaves, (s * bd) / 2), f.at(0, M.ridge - 4, (s * bd) / 2)], { facing: f.dir(0, 0, s) });
   // The street end: the slot, a blank plate over it, the door and its knob below.
   const front = wallFrame(f.at(0, y1, bd / 2), f.dir(0, 0, 1));
-  render.color(TINT.brass);
-  render.panel(front, [[-28, 80], [28, 80], [28, 92], [-28, 92]], 1);
-  render.panel(front, [[22, 30], [28, 30], [28, 40], [22, 40]], 1.5);
-  render.color(TINT.plate);
-  render.panel(front, [[-18, 104], [18, 104], [18, 116], [-18, 116]], 1);
-  render.color(TINT.mailbox, 1.35);
-  render.panel(front, [[-36, 8], [36, 8], [36, 68], [-36, 68]], 0.5);
-  sparrow(render, f.at(0, M.ridge - 9, bd / 2 - 16), f.dir(1, 0, 0));
+  paint.color(TINT.brass);
+  paint.panel(front, [[-28, 80], [28, 80], [28, 92], [-28, 92]], 1);
+  paint.panel(front, [[22, 30], [28, 30], [28, 40], [22, 40]], 1.5);
+  paint.color(TINT.plate);
+  paint.panel(front, [[-18, 104], [18, 104], [18, 116], [-18, 116]], 1);
+  paint.color(TINT.mailbox, 1.35);
+  paint.panel(front, [[-36, 8], [36, 8], [36, 68], [-36, 68]], 0.5);
+  sparrow(paint, f.at(0, M.ridge - 9, bd / 2 - 16), f.dir(1, 0, 0));
   solids.solid([box.map((p) => at(p, M.eaves)), ...box.map((p, i) => [at(p, GROUND), at(box[(i + 1) % 4], GROUND), at(box[(i + 1) % 4], M.eaves), at(p, M.eaves)])], 'wood');
 }
 
@@ -543,7 +545,7 @@ function sparrow(b, o, fwd) {
 // pale headlights and red tail lights, a soft shadow on the ground under it; solid (the body and
 // the cabin, each convex).
 function car(kit, layout, c) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const K = layout.CAR_KINDS[c.kind];
   const f = frame({ cx: c.x, cz: c.z, yaw: c.yaw });
   const y0 = layout.groundHeight(c.x, c.z);
@@ -552,25 +554,25 @@ function car(kit, layout, c) {
   // two of them.
   const ring = (w0, w1, u, y) => [f.at(-u, y, w0), f.at(u, y, w0), f.at(u, y, w1), f.at(-u, y, w1)];
   const hexa = (a, b, opts) => hexaPolys([...a, ...b], opts);
-  const paint = (tint, polys, faceShade) => {
-    render.color(tint);
-    render.solid(polys, { faceShade });
+  const part = (tint, polys, faceShade) => {
+    paint.color(tint);
+    paint.solid(polys, { faceShade });
   };
   const body = (yb) => hexa(ring(-hl, hl, hw, yb), ring(-hl + 18, hl - 45, hw, belt), { bottom: false });
   const cabin = (top) => hexa(ring(-hl + K.tail, hl - K.hood, hw - 10, belt), ring(-hl + K.tailTop, hl - K.hood - K.screen, hw - 32, roof), { bottom: false, top });
   const [r0, r1] = [-hl + K.tailTop, hl - K.hood - K.screen];
   const wm = (K.tail - K.hood) / 2 - 20; // the pillar between the side windows
-  render.color(TINT.shadow);
-  render.poly(ring(-hl - 20, hl + 20, hw + 20, y0 + 1.5), { facing: [0, 1, 0], shade: 0.55 });
-  paint(c.tint, body(y0 + CAR_CLEAR), (n) => (n[1] > 0.5 ? 1.12 : 0.92));
-  paint(TINT.glass, cabin(false), (n) => (n[1] > 0.3 ? 1.25 : 1));
-  paint(c.tint, hexa(ring(r0 - 4, r1 + 6, hw - 28, roof - 12), ring(r0 - 2, r1 + 4, hw - 30, roof + 3)), (n) => (n[1] > 0.5 ? 1.15 : 0.9));
-  paint(c.tint, hexa(ring(wm - 14, wm + 14, hw - 9, belt), ring(wm - 14, wm + 14, hw - 31, roof - 10), { bottom: false, top: false }));
+  paint.color(TINT.shadow);
+  paint.poly(ring(-hl - 20, hl + 20, hw + 20, y0 + 1.5), { facing: [0, 1, 0], shade: 0.55 });
+  part(c.tint, body(y0 + CAR_CLEAR), (n) => (n[1] > 0.5 ? 1.12 : 0.92));
+  part(TINT.glass, cabin(false), (n) => (n[1] > 0.3 ? 1.25 : 1));
+  part(c.tint, hexa(ring(r0 - 4, r1 + 6, hw - 28, roof - 12), ring(r0 - 2, r1 + 4, hw - 30, roof + 3)), (n) => (n[1] > 0.5 ? 1.15 : 0.9));
+  part(c.tint, hexa(ring(wm - 14, wm + 14, hw - 9, belt), ring(wm - 14, wm + 14, hw - 31, roof - 10), { bottom: false, top: false }));
   // Pale headlights on the nose and red lights on the tail (on their sloping faces).
   for (const [tint, e, k] of [[TINT.white, 1, 45], [TINT.taillight, -1, 18]]) {
     const at = (u, y) => f.at(u, y, e * (hl - (k * (y - y0 - CAR_CLEAR)) / (K.belt - CAR_CLEAR) + 1.5));
-    render.color(tint);
-    for (const s of [-1, 1]) render.poly([at(s * (hw - 18), belt - 42), at(s * (hw - 70), belt - 42), at(s * (hw - 70), belt - 20), at(s * (hw - 18), belt - 20)], { facing: f.dir(0, 0.3, e) });
+    paint.color(tint);
+    for (const s of [-1, 1]) paint.poly([at(s * (hw - 18), belt - 42), at(s * (hw - 70), belt - 42), at(s * (hw - 70), belt - 20), at(s * (hw - 18), belt - 20)], { facing: f.dir(0, 0.3, e) });
   }
   // The wheels: a tyre (its face and its tread) round a grey hub.
   const R = K.wheel;
@@ -579,11 +581,11 @@ function car(kit, layout, c) {
     for (const s of [-1, 1]) {
       const disc = (u, r) => Array.from({ length: WHEEL_SIDES }, (_, k) => f.at(s * u, y0 + R + Math.cos(k * A) * r, w + Math.sin(k * A) * r));
       const [o, i] = [disc(hw + 3, R), disc(hw - 30, R)];
-      render.color(TINT.tyre);
-      render.poly(o, { facing: f.dir(s, 0, 0) });
-      o.forEach((p, k) => render.poly([p, o[(k + 1) % WHEEL_SIDES], i[(k + 1) % WHEEL_SIDES], i[k]], { facing: f.dir(0, Math.cos((k + 0.5) * A), Math.sin((k + 0.5) * A)) }));
-      render.color(TINT.hub);
-      render.poly(disc(hw + 4, R * 0.55), { facing: f.dir(s, 0, 0) });
+      paint.color(TINT.tyre);
+      paint.poly(o, { facing: f.dir(s, 0, 0) });
+      o.forEach((p, k) => paint.poly([p, o[(k + 1) % WHEEL_SIDES], i[(k + 1) % WHEEL_SIDES], i[k]], { facing: f.dir(0, Math.cos((k + 0.5) * A), Math.sin((k + 0.5) * A)) }));
+      paint.color(TINT.hub);
+      paint.poly(disc(hw + 4, R * 0.55), { facing: f.dir(s, 0, 0) });
     }
   }
   solids.solid(body(y0 - 5), 'stone');
@@ -595,29 +597,29 @@ function car(kit, layout, c) {
 // The post and the board with its arm are solid (the board's top a perch; nothing under the
 // board's front stops a jump at it).
 function hoop(kit, layout) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const { HOOP: H, GROUND } = layout;
   const zf = H.z + H.out; // the board's back, at the post
   const top = H.board + H.h;
-  render.color(0x1e1e1e);
-  render.lathe(H.x, H.z + 12, [[9, GROUND - 5], [8, top - 10], [0, top - 8]], 6, { flat: true });
-  render.box(H.x - 30, H.x + 30, H.board + 30, H.board + 44, H.z, zf, { faceShade: (n) => (n[1] < -0.5 ? 0.6 : 1) });
-  render.color(TINT.white);
-  render.box(H.x - H.w / 2, H.x + H.w / 2, H.board, top, zf, zf + 14, { faceShade: (n) => (n[2] > 0.5 ? 1 : 0.8) });
+  paint.color(0x1e1e1e);
+  paint.lathe(H.x, H.z + 12, [[9, GROUND - 5], [8, top - 10], [0, top - 8]], 6, { flat: true });
+  paint.box(H.x - 30, H.x + 30, H.board + 30, H.board + 44, H.z, zf, { faceShade: (n) => (n[1] < -0.5 ? 0.6 : 1) });
+  paint.color(TINT.white);
+  paint.box(H.x - H.w / 2, H.x + H.w / 2, H.board, top, zf, zf + 14, { faceShade: (n) => (n[2] > 0.5 ? 1 : 0.8) });
   const bf = wallFrame([H.x, 0, zf + 14], [0, 0, 1]);
-  render.color(TINT.hoop);
-  render.panel(bf, [[-30, H.board + 14], [30, H.board + 14], [30, H.board + 62], [-30, H.board + 62]], 1);
-  render.color(TINT.white);
-  render.panel(bf, [[-26, H.board + 18], [26, H.board + 18], [26, H.board + 58], [-26, H.board + 58]], 2);
+  paint.color(TINT.hoop);
+  paint.panel(bf, [[-30, H.board + 14], [30, H.board + 14], [30, H.board + 62], [-30, H.board + 62]], 1);
+  paint.color(TINT.white);
+  paint.panel(bf, [[-26, H.board + 18], [26, H.board + 18], [26, H.board + 58], [-26, H.board + 58]], 2);
   // The ring (ten short beams round its middle) and the net under it.
   const rz = zf + 14 + H.ring + 8;
   const rp = (k) => [H.x + Math.sin((k / 10) * Math.PI * 2) * H.ring, H.rim, rz + Math.cos((k / 10) * Math.PI * 2) * H.ring];
   for (let k = 0; k < 10; k++) {
     const [p, q] = [rp(k), rp(k + 1)];
-    render.solid(orientedBoxPolys([(p[0] + q[0]) / 2, 0, (p[2] + q[2]) / 2], [q[0] - p[0], 0, q[2] - p[2]], 26, H.rim - 3, H.rim + 3, 5));
+    paint.solid(orientedBoxPolys([(p[0] + q[0]) / 2, 0, (p[2] + q[2]) / 2], [q[0] - p[0], 0, q[2] - p[2]], 26, H.rim - 3, H.rim + 3, 5));
   }
-  render.color(TINT.white, 0.95);
-  render.lathe(H.x, rz, [[H.ring - 2, H.rim - 3], [H.ring * 0.62, H.rim - 50], [0, H.rim - 50]], 8, { flat: true });
+  paint.color(TINT.white, 0.95);
+  paint.lathe(H.x, rz, [[H.ring - 2, H.rim - 3], [H.ring * 0.62, H.rim - 50], [0, H.rim - 50]], 8, { flat: true });
   solids.solid(prismPolys(H.x, H.z + 12, 12, 6, GROUND - 5, H.board), 'stone');
   solids.box(H.x - H.w / 2, H.x + H.w / 2, H.board, top, H.z, zf + 14, 'wood', { bottom: true });
 }
@@ -626,20 +628,20 @@ function hoop(kit, layout) {
 // under the pad and six steel legs down to the terrace; solid from the terrace up to the mat's
 // top (objects/Trampoline.js does the bouncing).
 function trampoline(kit, layout) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const T = layout.TRAMPOLINE;
   const y0 = layout.groundHeight(T.x, T.z);
   const pad = 45;
   const mat = T.r - pad;
-  render.color(TINT.mat);
-  render.lathe(T.x, T.z, [[mat, T.y - 1], [mat * 0.5, T.y - 5], [0, T.y - 6]], 12, { flat: true, vMode: 'plan' });
-  render.color(TINT.pad);
-  render.lathe(T.x, T.z, [[T.r, T.y - 28, 0.7], [T.r, T.y - 6, 0.9], [T.r - 12, T.y + 2], [mat + 6, T.y + 1], [mat, T.y - 1]], 12, { flat: true });
-  render.color(TINT.charger);
+  paint.color(TINT.mat);
+  paint.lathe(T.x, T.z, [[mat, T.y - 1], [mat * 0.5, T.y - 5], [0, T.y - 6]], 12, { flat: true, vMode: 'plan' });
+  paint.color(TINT.pad);
+  paint.lathe(T.x, T.z, [[T.r, T.y - 28, 0.7], [T.r, T.y - 6, 0.9], [T.r - 12, T.y + 2], [mat + 6, T.y + 1], [mat, T.y - 1]], 12, { flat: true });
+  paint.color(TINT.charger);
   for (let i = 0; i < T.legs; i++) {
     const a = ((i + 0.5) / T.legs) * Math.PI * 2;
     const [sx, sz] = [Math.sin(a), Math.cos(a)];
-    render.solid(beamPolys([T.x + sx * (T.r - 5), y0, T.z + sz * (T.r - 5)], [T.x + sx * (T.r - 25), T.y - 28, T.z + sz * (T.r - 25)], [sz, 0, -sx], 12, 12));
+    paint.solid(beamPolys([T.x + sx * (T.r - 5), y0, T.z + sz * (T.r - 5)], [T.x + sx * (T.r - 25), T.y - 28, T.z + sz * (T.r - 25)], [sz, 0, -sx], 12, 12));
   }
   solids.solid(prismPolys(T.x, T.z, T.r, 12, y0 - 5, T.y), 'grass');
 }
@@ -651,23 +653,23 @@ function trampoline(kit, layout) {
 // headlights and a bumper, along the road side its door and a stripe down both sides, a ladder up
 // its back; solid from the ground to its roof (a coin spot).
 function motorhome(kit, layout) {
-  const { render, solids } = kit;
+  const { paint, solids } = kit;
   const { MOTORHOME: M, GROUND } = layout;
   const f = frame({ cx: M.cx, cz: M.cz, yaw: M.yaw, w: M.l, d: M.w });
   const top = GROUND + M.h;
   const [hl, hw] = [M.l / 2, M.w / 2];
   const box = (u0, u1, y0, y1, w0, w1) => hexaPolys([f.at(u0, y0, w0), f.at(u1, y0, w0), f.at(u1, y0, w1), f.at(u0, y0, w1), f.at(u0, y1, w0), f.at(u1, y1, w0), f.at(u1, y1, w1), f.at(u0, y1, w1)]);
-  render.color(TINT.white);
-  render.solid(box(-hl, hl, GROUND + 45, top, -hw, hw), { faceShade: (n) => (n[1] > 0.5 ? 1.05 : n[1] < -0.5 ? 0.5 : 0.95) });
-  render.color(0x2c3238);
-  render.solid(box(-hl - 2, hl + 2, top - 190, top - 120, -hw - 2, hw + 2), { faceShade: (n) => (Math.abs(n[1]) > 0.5 ? 0 : 1) });
-  render.color(0x111111);
-  for (const u of [-hl + 140, hl - 160]) for (const w of [-hw + 10, hw - 10]) render.solid(box(u - 45, u + 45, GROUND, GROUND + 90, w - 18, w + 18));
+  paint.color(TINT.white);
+  paint.solid(box(-hl, hl, GROUND + 45, top, -hw, hw), { faceShade: (n) => (n[1] > 0.5 ? 1.05 : n[1] < -0.5 ? 0.5 : 0.95) });
+  paint.color(0x2c3238);
+  paint.solid(box(-hl - 2, hl + 2, top - 190, top - 120, -hw - 2, hw + 2), { faceShade: (n) => (Math.abs(n[1]) > 0.5 ? 0 : 1) });
+  paint.color(0x111111);
+  for (const u of [-hl + 140, hl - 160]) for (const w of [-hw + 10, hw - 10]) paint.solid(box(u - 45, u + 45, GROUND, GROUND + 90, w - 18, w + 18));
   // The cab end: windscreen, headlights, bumper.
   const cab = wallFrame(f.at(-hl, GROUND, 0), f.dir(-1, 0, 0));
   const quad = (fr, u0, v0, u1, v1, w, tint) => {
-    render.color(tint);
-    render.panel(fr, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], w);
+    paint.color(tint);
+    paint.panel(fr, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], w);
   };
   quad(cab, -hw + 22, 170, hw - 22, 300, 1, 0x2c3238);
   quad(cab, -hw, 45, hw, 80, 2, 0x8a8e90);
@@ -679,9 +681,9 @@ function motorhome(kit, layout) {
   for (const s of [-1, 1]) quad(wallFrame(f.at(0, GROUND, s * hw), f.dir(0, 0, s)), -hl + 10, 140, hl - 10, 158, 1.5, TINT.stripe);
   // The ladder up its back: two rails and four rungs.
   const back = wallFrame(f.at(hl, GROUND, 0), f.dir(1, 0, 0));
-  render.color(0x6a6e72);
-  for (const u of [50, 100]) render.solid(localBoxPolys(back, u - 3, u + 3, 100, M.h + 30, 0, 12));
-  for (const v of [120, 220, 320, 420]) render.solid(localBoxPolys(back, 47, 103, v, v + 6, 8, 14));
+  paint.color(0x6a6e72);
+  for (const u of [50, 100]) paint.solid(localBoxPolys(back, u - 3, u + 3, 100, M.h + 30, 0, 12));
+  for (const v of [120, 220, 320, 420]) paint.solid(localBoxPolys(back, 47, 103, v, v + 6, 8, 14));
   solids.solid(box(-hl, hl, GROUND - 5, top, -hw, hw).slice(1), 'stone'); // (no bottom: hexaPolys's first)
 }
 
@@ -718,21 +720,21 @@ function fence(kit, layout, { house, kind, from, to, h }) {
 // A TV antenna on a chain house's ridge: a mast and a boom with five elements across it (drawn
 // only).
 function antenna(kit, layout, { house, x }) {
-  const { render } = kit;
+  const { paint } = kit;
   const H = layout.HOUSES.find((h) => h.id === house);
   const [y, z] = [H.ridge, H.cz];
   const top = y + 250;
-  render.color(TINT.antenna);
-  render.box(x - 4, x + 4, y - 20, top, z - 4, z + 4);
-  render.box(x - 3, x + 3, top - 16, top - 10, z - 120, z + 80);
-  [[110, -110], [95, -60], [85, -10], [75, 40], [65, 75]].forEach(([len, dz]) => render.box(x - len / 2, x + len / 2, top - 15, top - 11, z + dz - 2, z + dz + 2));
+  paint.color(TINT.antenna);
+  paint.box(x - 4, x + 4, y - 20, top, z - 4, z + 4);
+  paint.box(x - 3, x + 3, top - 16, top - 10, z - 120, z + 80);
+  [[110, -110], [95, -60], [85, -10], [75, 40], [65, 75]].forEach(([len, dz]) => paint.box(x - len / 2, x + len / 2, top - 15, top - 11, z + dz - 2, z + dz + 2));
 }
 
 // By the footpath: the grey electrical cabinet on a white brick pillar, the blue round sign on its
 // grey post (a white walking figure on it) and the low two-rail barrier across the path where
 // the play space ends.
 function footpathProps(kit, layout) {
-  const { render, brick, boards, solids } = kit;
+  const { paint, brick, boards, solids } = kit;
   const { CABINET: C, PATH_SIGN: S, FOOTPATH: P, GROUND, footpathAt } = layout;
   // The cabinet stands on the path's west side, its doors toward the path.
   const cf = frame({ cx: C.x, cz: C.z, yaw: Math.atan2(P.dir[1], -P.dir[0]), w: 80, d: 40, y0: GROUND });
@@ -740,24 +742,24 @@ function footpathProps(kit, layout) {
   const hexa = (c) => hexaPolys(c);
   brick.color(TINT.pillar);
   brick.solid(hexa(box(-50, 50, GROUND - 5, GROUND + 60, -26, 26)));
-  render.color(TINT.cabinet);
-  render.solid(hexa(box(-40, 40, GROUND + 60, GROUND + 200, -20, 20)), { faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+  paint.color(TINT.cabinet);
+  paint.solid(hexa(box(-40, 40, GROUND + 60, GROUND + 200, -20, 20)), { faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
   solids.solid(hexa(box(-50, 50, GROUND - 5, GROUND + 200, -26, 26)).slice(1), 'stone');
   // The sign: a grey post, a blue disc facing back up the path, the white figure walking on it
   // (head, body, legs and arms in stride).
-  render.color(TINT.lamp);
-  render.lathe(S.x, S.z, [[7, GROUND - 5], [6, GROUND + 230], [0, GROUND + 232]], 6, { flat: true });
+  paint.color(TINT.lamp);
+  paint.lathe(S.x, S.z, [[7, GROUND - 5], [6, GROUND + 230], [0, GROUND + 232]], 6, { flat: true });
   const sf = wallFrame([S.x, GROUND + 200, S.z], [-P.dir[0], 0, -P.dir[1]]);
   const disc = Array.from({ length: 12 }, (_, i) => {
     const a = Math.PI / 2 - (i / 12) * Math.PI * 2;
     return [Math.cos(a) * 45, Math.sin(a) * 45];
   });
-  render.color(TINT.white);
-  render.panel(sf, disc.map(([u, v]) => [u * 1.12, v * 1.12]), 8);
-  render.color(TINT.sign);
-  render.panel(sf, disc, 9);
-  render.color(TINT.white);
-  render.panel(sf, disc.slice(0, 8).map((_, i) => [3 + Math.cos((i / 8) * Math.PI * 2) * 6, 25 + Math.sin((i / 8) * Math.PI * 2) * 6]), 10);
+  paint.color(TINT.white);
+  paint.panel(sf, disc.map(([u, v]) => [u * 1.12, v * 1.12]), 8);
+  paint.color(TINT.sign);
+  paint.panel(sf, disc, 9);
+  paint.color(TINT.white);
+  paint.panel(sf, disc.slice(0, 8).map((_, i) => [3 + Math.cos((i / 8) * Math.PI * 2) * 6, 25 + Math.sin((i / 8) * Math.PI * 2) * 6]), 10);
   const figure = [
     [[-2, 17], [5, 17], [4, -2], [-3, -2]], // the body
     [[0, -2], [4, -2], [14, -30], [9, -31]], // the legs, in stride
@@ -765,7 +767,7 @@ function footpathProps(kit, layout) {
     [[3, 15], [6, 13], [13, 2], [10, 0]], // the arms
     [[-1, 15], [2, 16], [-8, 4], [-10, 6]],
   ];
-  for (const part of figure) render.panel(sf, part, 10);
+  for (const part of figure) paint.panel(sf, part, 10);
   solids.solid(prismPolys(S.x, S.z, 15, 6, GROUND - 5, GROUND + 232), 'stone');
   // The barrier: two rails across the path on three posts.
   const t = P.barrier;

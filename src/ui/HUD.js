@@ -11,6 +11,8 @@
 //   hud.setCourse(areaName)                     // the pause screen's course name (COURSE_NAMES)
 //   hud.setLeave(bool)                          // its "Leave course" line (main: as the game
 //                                               // pauses in a course whose way out is open)
+//   hud.setLook('real' | 'classic' | null)      // its legend's look row in a course with a
+//                                               // realistic look (pauseScreen.js controlsLegend)
 //   hud.showCourse(areaName)                    // the course card: its name big in gold for
 //                                               // COURSE_CARD.ticks ticks (a course's arrival)
 //   hud.setVisible(bool)                        // e.g. hidden behind the title card
@@ -57,6 +59,7 @@ export class HUD {
     this.controls = 'keys'; // pause legend: 'touch' (the touch controller is shown) | 'pad' | 'keys'
     this.course = COURSE_NAME; // the pause screen's course name (setCourse)
     this.leave = false; // the pause screen offers the course's way out (setLeave)
+    this.look = null; // the pause legend's look row (setLook)
     this.card = null; // the course card while it shows: { text, left (ticks) } (showCourse)
     this.slide = new MeterSlide();
     this.active = false; // nothing is drawn until the game first feeds state (not over the title)
@@ -132,6 +135,13 @@ export class HUD {
   // game pauses, true only while the way out can be taken (core/AreaSwitch.js canLeave).
   setLeave(on) {
     this.leave = !!on;
+    this.dirty = true;
+  }
+
+  // The pause legend's look row: 'real' (a realistic look draws: R / F2 the retro TV over it, G
+  // the classic look), 'classic' (one could, the classic look by choice) or null.
+  setLook(look) {
+    this.look = look === 'real' || look === 'classic' ? look : null;
     this.dirty = true;
   }
 
@@ -225,7 +235,7 @@ export class HUD {
     ctx.imageSmoothingEnabled = false;
     if (this.paused) {
       const { coins, stars } = this.state;
-      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course, leave: this.leave });
+      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course, leave: this.leave, look: this.look });
     }
     this._drawCounters();
     if (!this.paused) this._drawMeter(now);

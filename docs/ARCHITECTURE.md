@@ -178,7 +178,8 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
-| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures) | WorldPart, built by `area.js` |
+| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures; `real/look.js`, its realistic look) | WorldPart, built by `area.js` |
+| Realistic look | `src/render/real/*` (RealLook, OutputPass, sky, materials, probe, tier, RealAreas, textureStore, texCache, the worker `laneRealWorker.js`, `texgen/*`) | RealLook, RealAreas (see "Realistic look (Sparrow Lane)") |
 | Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
 | Trampolines | `src/objects/Trampoline.js` (the spring only: its course draws it) | Trampolines, built by ObjectManager (see "Objects") |
 | Collision | `src/collision/*` | below |
@@ -1533,7 +1534,10 @@ split-level villas behind grey block walls, along his side long low chain houses
 roofs; a turning area at the east end, the junction at the west. Cars stand on the drives (his
 own two by the carport), flags fly over the gardens, a little blue sparrow stands on his
 mailbox, and in a garden up the hill a trampoline throws him up toward a secret 1-up. Nothing
-here hurts: no critters, no water, no death floor.
+here hurts: no critters, no water, no death floor. Its environment has **two looks**: the classic
+N64 look below, and a realistic one (physically lit, its own sky, real shadows, procedural PBR
+textures: see "Realistic look (Sparrow Lane)") swapped in once built, with exactly the same
+colliders; Jonas and the course's objects keep their classic look in both.
 
 `world/lane/layout.js` holds the anchors in the course's local frame, the **street frame**: +x
 along the lane's long straight toward the turning area, +z across it toward the dad's side, −z up
@@ -2006,6 +2010,12 @@ view.setDarkness(t); view.flash(strength)   // AI RACE mode's storm (see "AI RAC
 view.setMeltdown(levels)          // AI RACE's meltdown (see "Meltdown"): fire grade, white-out,
                                   // glare, heat shimmer, fog and actor lights; all 0 = no change
 view.setAtmosphere(preset | null) // an area's own look (below); null = the grounds
+view.setLook(look | null)         // draw the world through a realistic look (render/real/
+                                  // RealLook.js), or classic again; see "Realistic look"
+view.addRealActor(object3D, blob) // an actor casting a look's sun shadow (Jonas)
+view.setFocus(p)                  // where a look's shadow box centres (per frame: Jonas)
+view.compileLook(look, objects) -> Promise   // their programs for a look before it shows
+view.toggleRetro(); view.retro    // F2 / R; the retro filter in effect (a look: this visit's)
 ```
 
 Areas (`setAtmosphere`): `preset = { fog, near, far, water, sun, sunIntensity, sunDir, sky,
@@ -2032,7 +2042,8 @@ pixel, so looking up shows a murky surface instead of a clear sky. The tinted pr
 compiled ahead of time while dry (`warm()`), so the first dive does not stall.
 
 Keys: F1 debug overlay (fps, draw calls, triangles, render mode), F2 or R retro filter (240-line
-render + 16-bit quantise/filter pass; off = native resolution), F3 or 4 4:3 pillarbox (never
+render + 16-bit quantise/filter pass; off = native resolution; with a realistic look set, the
+retro TV over it for this visit, never saved), F3 or 4 4:3 pillarbox (never
 with Ctrl/Cmd/Alt held: Cmd/Ctrl+R still reloads); V and 9 (the recorder's own listener, same
 rules, never on key repeat) record video, landscape and portrait, see "Recorder"; F
 (`ui/fullscreen.js` `fullscreenKey()`, same rules) toggles Fullscreen-API fullscreen on the
@@ -2044,6 +2055,140 @@ and mouse-drag camera rows are one, `['Arrows / drag', 'Camera']`. Player-visibl
 labels are neutral ("Retro filter" in the pause legend, "Retro WxH" / "native WxH" in the F1
 overlay, `MODE_LABELS`); internal names such as `N64Renderer`/`setN64Mode` are not shown. The
 retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
+
+## Realistic look (Sparrow Lane)
+
+The dad asked for his street "as realistic as possible", the character still classic. So
+Sparrow Lane's environment has a second, realistic look (`render/real/*`, `world/lane/real/*`;
+the plan behind it is the R1 milestone of the realistic-environment plan), while Jonas, the
+coins, the star, the 1-up, the signs' boards, butterflies, birds and the HUD keep their classic
+models and materials, and every other area keeps the N64 look.
+
+**Visual only.** The realistic visuals are the classic builders run again with `look: 'real'`
+(`buildLane(layout, { look: 'real', materials })`): the same faces, **unbaked** (the vertex
+colours are the tints and painted shades; the materials light them), split into meshes by part
+(the builders write panes into `kit.glass`, painted parts into `kit.paint`, the dad's paver path
+into `kit.path`: in the classic look these are render's and grass's own builders, so its
+geometry is unchanged to the byte), roofs with uvs up their slopes (`SlopeBuilder`), lawns' tints
+grey (the lawn texture is green), a dim room panel behind every pane. Colliders, poles, signs,
+coins, entries and the camera's world come from the classic build only; `tests/lane-real-
+build.test.js` checks the realistic build's colliders and collision world are the classic
+build's to the byte, and that it draws exactly the classic faces.
+
+**Modules.**
+
+* `render/real/RealLook.js` (`RealLook`): what a frame is drawn through: the HDR scene target
+  (half float, MSAA per tier), `OutputPass.js` (exposure 1.3, three's Khronos PBR **Neutral**
+  tone mapping, saturation 1.05, vignette 0.15, an 8 × 8 ordered dither), the analytic sky
+  (`sky.js`: an art-directed golden-hour gradient, the sun's glow and disc, cirrus; drawn on the
+  far plane centred on the camera; its `hazeColor(dir)` is every material's aerial
+  perspective), the sky's prefiltered environment (`scene.environment`, intensity 1.3), the
+  reflection probe (`probe.js`: one half-float cube capture of the street from over the road in
+  front of the dad's house, Jonas hidden, prefiltered: the windows' envMap; taken on the first
+  frame after each attach), the sun's soft shadow (PCF, radius 2.5) in a box round Jonas
+  (`view.setFocus`), snapped to whole shadow texels across the light so static shadows never
+  shimmer, and the light preset (`layout.LANE_REAL`).
+* `render/real/materials.js`: `pbrMaterial` (a texture set's albedo × vertex tint × colour,
+  normal map, ORM: occlusion and roughness), `plainMaterial` (paint, cloth), `glassMaterial`
+  (ior 2.2 for double glazing's ~14 %: its F0 set in the standard material's lighting as the
+  physical material would compute it, without that class in the bundle; roughness 0.02, its
+  reflection added at full strength over the room at 1 − 0.45: a premultiplied output),
+  `classicLook` (the signs' unlit boards, below), all but the last through `hazeChunk` (below);
+  fixed `customProgramCacheKey`s ('real-haze', 'real-glass'), so a handful of programs serve
+  the lane. `world/lane/real/look.js` holds the lane's catalogue (a set, cover, colour,
+  roughness and normal strength per mesh: the boards' Falu red is the house's own tint × a
+  light neutral board texture) and its build (`LANE_REAL_AREA = { jobs, build }`, the lane's
+  `def.real`).
+* **The clamp rule**: every realistic material's lit colour is clamped to 32 before the haze
+  (`CLAMP_GLSL`, in `hazeChunk`). A GGX sun highlight on the glass is ~1e6, Inf in the probe's
+  half-float cube, and the probe's prefilter smears it into NaN: every window went black. The
+  clamp also stops MSAA fireflies. `tests/real-materials.test.js` checks each one has it.
+* **Textures**: `render/real/texgen/noise.js` and `texgen/sets.js` paint PBR sets in code from
+  seeded integer-hash noise (boards, brick, tiles, asphalt, grass, pavers, render, soil): pure
+  functions on typed arrays, RGBA8 albedo (sRGB) / normal (tangent space, OpenGL) / ORM, each
+  tiling, deterministic to the byte. They run in **the realistic look's worker**
+  (`render/real/laneRealWorker.js`, a module worker like the title logo's), which keeps them in
+  an **IndexedDB cache** (`texCache.js`: database 'castle-real', store 'tex', key
+  `${TEXGEN_VERSION}:${jobKey}`, 48 MB, least recently used out, other versions first; any error
+  is a miss). `TEXGEN_VERSION` is bumped by hand whenever a generator's output changes:
+  `tests/real-texgen.test.js` pins each lane set's hash at 64 px with it. `textureStore.js` (main
+  thread) asks the worker, keeps the sets for the session and makes the `DataTexture`s
+  (repeating, mipmapped, anisotropic per tier; clones share an image). No photo pixels, no
+  downloads: every colour is a number in the generators or the catalogue.
+* `render/real/tier.js`: the tier from the device (phones and tablets **low**; a discrete or
+  Apple-silicon GPU **high**; other desktops **mid**; `?tier=` overrides), and per tier:
+
+  | | high | mid | low |
+  |---|---|---|---|
+  | render size | CSS × min(DPR, 1.5), ≤ 2.4 MP | CSS × 1, ≤ 1.6 MP | CSS × 1, ≤ 0.9 MP |
+  | HDR target | RGBA16F, MSAA 4 | MSAA 2 | none: straight to the canvas, three tone maps per material |
+  | shadow map, box | 2048, ±2600 | 1024, ±2200 | 1024, ±1600 |
+  | textures | 512 (256 for render, soil, the leaves) | 512, the lawn and leaves 256 | 256 |
+  | anisotropy, probe | 8, 256 | 4, 128 | 2, 64 |
+
+  Budgets per frame (the shadow pass included; checked in headless Chromium by
+  `tests/lane-real-browser.test.js`, frame times by hand on real hardware): high ≤ 160 draw
+  calls, ≤ 900k triangles, ≤ 20 realistic programs; mid ≤ 130 / 450k; low ≤ 100 / 200k. The
+  governor that steps down from measured frame times comes later.
+* `render/real/RealAreas.js` (main makes one; `AreaSwitch` uses it): the tier, whether
+  realistic looks may run (fallbacks to classic, logged once, the F1 line saying why:
+  `(classic: building | chosen | <what failed>)`: `?look=classic`, G in the game, the worker or a
+  build failing; without float render targets the tier drops to low), the
+  texture prefetch at boot (idle priority), and an area's build (its sets, `def.real.build`, its
+  programs compiled for the look: `view.compileLook`). Under `?test=1` the realistic look is
+  opt-in (`?look=real` or a `?tier=`), so scripted tests never see the look change mid-run.
+
+**The switch.** `AreaSwitch.get` starts an area's realistic build in the background as it builds
+the area; once ready the area holds it (`Area.setReal(part, look)`: a second WorldPart under its
+root, hidden) and, while it is the current area and realistic looks are wanted, `_look` shows
+it (`Area.showReal`: its update and door follow), hides the grounds' sky dome and calls
+`view.setLook(look)`. `_swap` drops any look first (`view.setLook(null)`), then the next area's
+atmosphere and look. `setLook(look)` snapshots every field a look may touch and `setLook(null)`
+writes it back, so leaving restores the renderer exactly:
+
+| state | classic | realistic (the lane) |
+|---|---|---|
+| `renderer.shadowMap` enabled / type / autoUpdate | false / – / true | true / PCF / true |
+| `sun.castShadow`, `sun.shadow` (map, mapSize, radius, biases, camera box) | off | on, per tier, radius 2.5, bias −4e-4, normalBias 3 |
+| `sun.position`, `sun.target` | `setAtmosphere` | over the focus along `LANE_SUN` |
+| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: (1, 0.82, 0.62) × 3, sky 0xcfe0ff, ground 0x5a6040, 0.9; fog in the haze's horizon colour, 3000 … 45000 |
+| `scene.environment` / intensity / `background` | null / 1 / fog colour | sky PMREM / 1.3 / null (the sky draws) |
+| `renderer.toneMapping` / exposure | none / 1 | none (the output pass) or Neutral (low) / 1.3 |
+| retro filter | the saved setting | off; F2 / R: retro over realistic for this visit (`lookRetro`), never saved |
+| pixel ratio | min(DPR, 2) | the tier's |
+| Jonas | no shadow; blob shadow | casts and receives the sun's shadow; blob at 35 % (`REAL_BLOB`) |
+
+The signs' boards stay unlit and baked, their colour turned back through the exposure and the
+Neutral curve (`materials.js classicLook`: exact below its shoulder; on the direct path simply
+not tone mapped), so they come out of the output pass as the classic look draws them. Keys: G
+toggles "Classic street" (the classic look, this session; `AreaSwitch.setClassic`); F2 / R in
+the realistic look is the retro TV over it for this visit. The pause legend's retro row says so
+in such a course (`REAL_LOOK_ROW` 'R / F2 / G  Retro / Classic', `CLASSIC_LOOK_ROW` 'Retro /
+Realistic' while classic by choice: `hud.setLook`), keeping the legend's twelve rows and widths. A frame with a look (`N64Renderer.draw`'s one branch, `look.draw`): the scene into
+the HDR target, the output pass to the canvas; with the storm's grade, a flash or the meltdown
+the output pass writes into the grade's target and `GradePass` finishes as in native mode; with
+retro over realistic the scene is drawn at 240 lines and goes through the output pass into the
+retro target and `N64Pass` (a real street on a 1998 TV); the recorder's capture sizes it like any
+frame and its frame hook sees the finished canvas; a `setView()` scene bypasses it. The F1 line
+reads `real 1600x900 msaa4 high`.
+
+**Tests**: `tests/real-texgen.test.js` (every lane set pinned at 64 px with `TEXGEN_VERSION`,
+deterministic, periodic noises and seams, plausible albedo / roughness / normals, the high tier's
+sets within 3 × 700 ms in node), `tests/lane-real-build.test.js` (the colliders and collision
+world byte-identical to the classic build's, the classic faces exactly, the split by part, the
+rooms, unbaked tints, grey lawns, roof uvs up the slopes, no NaN, the catalogue's materials and
+shadow flags, the pause legend's look row, the realistic sources' privacy),
+`tests/real-materials.test.js` (the haze and the clamp in every material's patched shader, the
+glass's F0 and premultiplied output, shared uniforms, ≤ 20 programs, the signs' inverse tone
+mapping), `tests/lane-real-browser.test.js` (E2E: the swap, the pixels, the grade and the
+recorder's framings, the counts at five views, G, the low tier, `?look=classic`, and the exact
+restore of the renderer after a visit, with and without F2); `tests/net-relay-build.test.js`
+(the worker chunk).
+
+**Bundle**: the generators (and, later, the realistic geometry builders) are pure code in the
+worker's own chunk (`laneRealWorker-*.js`, ~10 kB, no three.js, no imports: under 160 kB);
+`main` carries only the renderer side (+~29 kB: 1,673,632 bytes, under the 1,700,000-byte
+budget). `tests/net-relay-build.test.js` checks both.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -2999,11 +3144,12 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,644,515
-  bytes with Sparrow Lane and its details, ~536 kB gzip, plus the ~13 kB title-logo worker; the
-  size warning limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for
-  the second course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built
-  separately into the same folder (~85 kB, its own copy of the touch controller and protocol).
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,673,632
+  bytes with Sparrow Lane, its details and its realistic look's renderer side, ~547 kB gzip,
+  plus the ~13 kB title-logo worker and the ~10 kB realistic look's worker; the size warning
+  limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for the second
+  course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built separately
+  into the same folder (~85 kB, its own copy of the touch controller and protocol).
   `npm run preview` serves it with the phone relay.
 * `node tools/shot.mjs --url "/preview.html?m=<area>&cam=x,y,z&look=x,y,z" --out shots/x.png`
   — headless screenshot of a preview page (prints browser errors).
@@ -3038,6 +3184,10 @@ Unknown names must be ignored silently.
 * V in the game (run locally) records a 1920x1080 video with sound, 9 a 1080x1920 portrait one
   (see "Recorder"); `E2E=1 REC_OUT=<dir> node --test tests/recorder-browser.test.js` keeps the
   test recordings and PNGs of their frames.
+* `node tools/realShots.mjs --out shots/real [--views arrival,door,west,turn,cars,roof,retro]
+  [--sizes 960x540,1280x720] [--looks high,low,classic]` — Sparrow Lane's realistic look from
+  fixed camera poses (the acceptance shots), beside the classic look; `/?test=1&area=lane` needs
+  `&look=real` (or a `&tier=`) for the realistic look in shot.mjs runs.
 * `/preview.html?m=fx&melt=48` holds AI RACE's meltdown at 48 s (sky, grade, embers, the light).
 * `/preview.html?m=face` shows the face screen alone (Start shows it again); scripted pulls for
   shot.mjs: `{"eval":"__face.pointer('down', 0.6, 0.55)"}`, `{"eval":"__face.pointer('move',

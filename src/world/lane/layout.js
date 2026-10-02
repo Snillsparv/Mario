@@ -527,6 +527,33 @@ export const LANE_SUN = (() => {
   return Object.freeze({ x: v.x / l, y: v.y / l, z: v.z / l });
 })();
 
+// The realistic look (world/lane/real/look.js, render/real/RealLook.js): the same golden hour,
+// physically lit. Tuned by eye against the photographs (never sampled from them).
+//   sky          the analytic sky's colours (linear: a deep blue zenith paling to a blue-white
+//                horizon away from the sun, a peach band only near the horizon on its side, the
+//                dark ground the environment's lower half shows), its brightness and cirrus
+//   exposure     before the output pass's Neutral tone mapping (1.3: the shade reads like the
+//                phone photos without blowing out the sunlit villas)
+//   environment  the sky's light on every realistic material (1.3: at 1 the shaded lawn is too
+//                dark); haze: the aerial perspective's density per unit (exponential, toward the
+//                sky's colour in each direction)
+//   shadow       the sun's soft shadow (three's PCF with this radius; biases for the flat walls
+//                at a grazing sun)
+//   probe        the reflection probe's place: over the road in front of the dad's house
+//   atmosphere   the actors' look meanwhile (view.setAtmosphere): the sun (1, 0.82, 0.62) x 3
+//                along LANE_SUN, a pale sky and green ground hemisphere for Jonas, the classic
+//                objects' fog in the haze's horizon colour, far enough to match it
+export const LANE_REAL = Object.freeze({
+  sky: Object.freeze({ zenith: [0.075, 0.2, 0.62], horizonAway: [0.5, 0.66, 0.9], horizonSun: [1.25, 0.82, 0.42], ground: [0.05, 0.06, 0.035], intensity: 1, clouds: 0.55 }),
+  sunDir: LANE_SUN,
+  exposure: 1.3,
+  environment: 1.3,
+  haze: 2.2e-5,
+  shadow: Object.freeze({ radius: 2.5, bias: -0.0004, normalBias: 3 }),
+  probe: Object.freeze({ x: 0, y: 260, z: 250 }),
+  atmosphere: Object.freeze({ fog: 0xbbd6f3, near: 3000, far: 45000, sun: 0xffeace, sunIntensity: 3, sunDir: LANE_SUN, sky: 0xcfe0ff, ground: 0x5a6040, ambientIntensity: 0.9 }),
+});
+
 // ---------------------------------------------------------------- entries, doors, star
 
 // Jonas comes out of his own front door, walking out onto the path toward the street (yaw pi),

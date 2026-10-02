@@ -1,6 +1,7 @@
 // The dad's black front door (lane/layout.js DAD.door), written into the course's kit
-// (lane/build.js): its white frame and threshold in the wall's opening (houses.js leaves it), a
-// wall lamp beside it, the dark vestibule behind it, and the leaf itself, built apart to swing.
+// (lane/build.js; kit.paint, render's builder in the classic look): its white frame and
+// threshold in the wall's opening (houses.js leaves it), a wall lamp beside it, the dark
+// vestibule behind it, and the leaf itself, built apart to swing.
 //
 //   frontDoor(kit, layout) -> leaf    // { builder, hinge, turn }: the leaf's own GeoBuilder (in
 //                                     // the course's frame, shut), the point it turns about
@@ -25,23 +26,23 @@ const VESTIBULE = { depth: 170, fade: 0.55, swing: 1.35 }; // swing: radians, st
 const LEAF = { thick: 5 };
 
 export function frontDoor(kit, { DAD }) {
-  const { render } = kit;
+  const { paint } = kit;
   const D = DAD.door;
   const hw = D.w / 2;
   // The door's wall frame: on the house's front face at its middle, looking out at the street.
   const f = wallFrame([D.x, DAD.floor, D.faceZ], [0, 0, -1]);
   // The white frame round the opening and the grey threshold.
-  render.color(TINT.frame);
-  render.solid(localBoxPolys(f, -hw - FRAME.w, -hw, 0, D.h, -4, FRAME.out));
-  render.solid(localBoxPolys(f, hw, hw + FRAME.w, 0, D.h, -4, FRAME.out));
-  render.solid(localBoxPolys(f, -hw - FRAME.w, hw + FRAME.w, D.h, D.h + FRAME.w, -4, FRAME.out));
-  render.color(TINT.threshold);
-  render.poly([f.at(-hw, 1, FRAME.out), f.at(hw, 1, FRAME.out), f.at(hw, 1, -LEAF.thick), f.at(-hw, 1, -LEAF.thick)], { facing: [0, 1, 0] });
-  wallLamp(render, f, hw + FRAME.w + 50, 220);
-  vestibule(render, f, hw, D.h);
+  paint.color(TINT.frame);
+  paint.solid(localBoxPolys(f, -hw - FRAME.w, -hw, 0, D.h, -4, FRAME.out));
+  paint.solid(localBoxPolys(f, hw, hw + FRAME.w, 0, D.h, -4, FRAME.out));
+  paint.solid(localBoxPolys(f, -hw - FRAME.w, hw + FRAME.w, D.h, D.h + FRAME.w, -4, FRAME.out));
+  paint.color(TINT.threshold);
+  paint.poly([f.at(-hw, 1, FRAME.out), f.at(hw, 1, FRAME.out), f.at(hw, 1, -LEAF.thick), f.at(-hw, 1, -LEAF.thick)], { facing: [0, 1, 0] });
+  wallLamp(paint, f, hw + FRAME.w + 50, 220);
+  vestibule(paint, f, hw, D.h);
   // The leaf: black boards, a narrow pane, a brass handle; its back and edges for when it
   // stands open.
-  const builder = new GeoBuilder(render.repeat);
+  const builder = new GeoBuilder(paint.repeat);
   builder.color(TINT.leaf);
   builder.solid(localBoxPolys(f, -hw, hw, 0, D.h, -LEAF.thick, 0), { faceShade: (n) => (n[2] > 0.5 ? 0.6 : 1) });
   builder.color(TINT.glass);

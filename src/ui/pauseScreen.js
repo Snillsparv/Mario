@@ -7,7 +7,7 @@
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { drawText, drawIcon, textWidth } from './raster.js';
-import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, phoneEntry, pauseLayout, pauseLeaveRect, leaveLine } from './hudLogic.js';
+import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, REAL_LOOK_ROW, CLASSIC_LOOK_ROW, phoneEntry, pauseLayout, pauseLeaveRect, leaveLine } from './hudLogic.js';
 import { padLayout } from '../core/input.js';
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -49,10 +49,19 @@ function counterGroup(ctx, cache, icon, name, value, x, y, s, draw = true) {
 }
 
 // The legend for the pause screen: 'touch' | 'pad' | 'switch' | 'keys'. While a phone can join
-// as a controller (phoneEntry.enabled), the keys and pad legends end with PHONE_CONTROL.
+// as a controller (phoneEntry.enabled), the keys and pad legends end with PHONE_CONTROL. `look`
+// ('real' | 'classic' | null: a course with a realistic look, drawn so or classic by choice)
+// swaps the keys legend's retro row for REAL_LOOK_ROW or CLASSIC_LOOK_ROW (the same rows and
+// widths: pauseItemRect's places hold).
 const WITH_PHONE = new Map([KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS].map((c) => [c, [...c, PHONE_CONTROL]]));
-export function controlsLegend(kind) {
+const lookRows = (row) => {
+  const swap = (c) => c.map((r) => (r[0] === 'R / F2' ? row : r));
+  return { base: swap(KEY_CONTROLS), phone: swap(WITH_PHONE.get(KEY_CONTROLS)) };
+};
+const WITH_LOOK = { real: lookRows(REAL_LOOK_ROW), classic: lookRows(CLASSIC_LOOK_ROW) };
+export function controlsLegend(kind, look = null) {
   const base = kind === 'touch' ? TOUCH_CONTROLS : kind === 'pad' ? PAD_CONTROLS : kind === 'switch' ? SWITCH_PAD_CONTROLS : KEY_CONTROLS;
+  if (base === KEY_CONTROLS && WITH_LOOK[look]) return phoneEntry.enabled ? WITH_LOOK[look].phone : WITH_LOOK[look].base;
   return phoneEntry.enabled && WITH_PHONE.has(base) ? WITH_PHONE.get(base) : base;
 }
 
@@ -75,13 +84,13 @@ export function pauseItemRect(W, H, kind, item) {
   return null;
 }
 
-export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys', course = COURSE_NAME, leave = false }) {
+export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys', course = COURSE_NAME, leave = false, look = null }) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   ctx.fillStyle = 'rgba(0,0,12,0.5)';
   ctx.fillRect(0, 0, cw, ch);
   const cx = cw / 2;
-  const lay = pauseLayout(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls));
+  const lay = pauseLayout(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls, look));
   const { top, pauseY, panel, padX, padY, headerH, lineH, legend } = lay;
 
   drawText(ctx, cache, BIG_FONT, course, cx, top * s, { px: s, align: 'center' });
@@ -98,7 +107,7 @@ export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = f
   drawText(ctx, cache, BIG_FONT, 'PAUSE', cx, pauseY * s, { px: s * 2, align: 'center' });
   // A course's way out, in the gap under it.
   if (leave) {
-    const r = pauseLeaveRect(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls), controls);
+    const r = pauseLeaveRect(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls, look), controls);
     drawText(ctx, cache, SMALL_FONT, leaveLine(controls), cx, r.y * s, { px: s, align: 'center', style: 'key' });
   }
 

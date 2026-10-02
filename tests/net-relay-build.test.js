@@ -1,6 +1,8 @@
 // The production build and `vite preview` with the phone controller (vite.config.js,
-// tools/padRelay.js): the game stays one self-contained bundle and pad.html is built on its
-// own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
+// tools/padRelay.js): the game stays one self-contained bundle (under its 1,700,000-byte budget)
+// beside its two module workers (the title logo's, and the realistic look's with the pure code
+// main does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
+// its own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
 // offers the pad page only at addresses a phone can reach.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,12 +35,12 @@ const preloads = (html) => [...html.matchAll(/<link\b[^>]*rel="modulepreload"[^>
 // Static and dynamic imports of other built files ("./x.js" or "/assets/x.js").
 const chunkImports = (js) => [...js.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'](\.{0,2}\/[^"']+\.js)["']/g)].map((m) => m[1]);
 
-test('the game is one bundle; pad.html has its own', async () => {
+test('the game is one bundle (and its workers); pad.html has its own', async () => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();
   const js = assets.filter((f) => f.endsWith('.js'));
   assert.deepEqual(
     js.map((f) => f.replace(/-[\w-]{8}\.js$/, '')).sort(),
-    ['logoWorker', 'main', 'pad'],
+    ['laneRealWorker', 'logoWorker', 'main', 'pad'],
     `built scripts: ${js.join(', ')}`,
   );
 
@@ -53,6 +55,13 @@ test('the game is one bundle; pad.html has its own', async () => {
   const padJs = await read(`assets/${js.find((f) => f.startsWith('pad-'))}`);
   assert.deepEqual(chunkImports(main), [], 'the game imports no other chunk');
   assert.deepEqual(chunkImports(padJs), [], 'the pad imports no other chunk');
+  assert.ok(Buffer.byteLength(main) < 1700000, `the game stays under its budget (${Buffer.byteLength(main)} bytes)`);
+  // The realistic look's worker: started by the game (new Worker(new URL(...)), not an import).
+  const worker = await read(`assets/${js.find((f) => f.startsWith('laneRealWorker-'))}`);
+  assert.match(main, /laneRealWorker-[\w-]{8}\.js/, 'the game starts it');
+  assert.deepEqual(chunkImports(worker), [], 'the worker imports no other chunk');
+  assert.ok(!worker.includes('WebGLRenderer'), 'no three.js in the worker');
+  assert.ok(Buffer.byteLength(worker) < 160 * 1024, `the worker stays small (${Buffer.byteLength(worker)} bytes)`);
   assert.ok(padJs.length < 200 * 1024, `the pad stays small (${padJs.length} bytes)`);
   assert.ok(!padJs.includes('WebGLRenderer'), 'no three.js on the phone');
 });

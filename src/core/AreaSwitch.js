@@ -6,7 +6,7 @@
 // is updated and animated).
 //
 //   const areas = new AreaSwitch({ scene, view, events, input, player, cam, hud, dialog, defs,
-//                                  grounds: { level, objects }, canWarp, onSwap })
+//                                  grounds: { level, objects }, canWarp, onSwap, real })
 //   areas.get(name) -> Area | null     // built on first use (world/area.js buildArea plus an
 //                                      // ObjectManager of its own), then kept for the session
 //   areas.enter(name, entryId?)        // switch at once, no wipe (GAME OVER, ?area=, tests);
@@ -36,13 +36,23 @@
 //   areas.heroOffset(alpha) -> { x, z }   // per render frame: how far his model is drawn off
 //                                      // where he stands (main moves it by that): nothing, but
 //                                      // for his step into a door's opening (below); reused
+//   areas.setClassic(on)               // the "Classic street" choice (G, this session): an
+//                                      // area with a realistic look drawn classic, or back
 //   areas.busy, .name, .current, .objects (the current area's), .phase, .warp,
 //   .buildMs ({ name: ms of its first build }), .carry (a stick held through a door, below),
 //   .still (one held out of a course, below), .won (the courses whose star he has won)
 //
+// Realistic looks (`real`: render/real/RealAreas.js, absent in the node tests): an area whose def
+// has one (def.real: Sparrow Lane) starts its realistic build as it is built (get), in the
+// background; once ready the area holds it (Area.setReal) and, while it is the current area and
+// realistic looks are wanted, shows it and the renderer draws through its look (_look:
+// view.setLook; the grounds' sky dome hides for the look's own sky; else view.setLookNote says
+// why not: 'building', 'chosen' or what failed). A failed build leaves it classic.
+//
 // Switching (_swap, the only place that points the game at another area), in this order: an
-// open dialog closes; the old area hides and the new one shows (the grounds' sky dome only
-// where def.sky); the renderer takes its look (setAtmosphere) and water; Jonas its world,
+// open dialog closes; the old area hides and the new one shows; the renderer drops any
+// realistic look (restoring itself) and takes the new area's look (setAtmosphere, then _look:
+// its realistic one if ready, and the grounds' sky dome where def.sky) and water; Jonas its world,
 // respawn point and signs (player.setWorld), then stands at the entry (placeAt); the camera
 // its world, snapping to the entry's camYaw (default: behind him); the area's objects forget
 // his last tick and keep a door he arrives at quiet (objects.enter); the HUD names the course,
@@ -147,8 +157,8 @@ const IRIS_COLOR = '#000000';
 const STAR_COLOR = '#fff4d0';
 
 export class AreaSwitch {
-  constructor({ scene, view, events, input, player, cam, hud, dialog, defs, grounds, canWarp = () => true, onSwap = () => {} }) {
-    Object.assign(this, { scene, view, events, input, player, cam, hud, dialog, defs, canWarp, onSwap });
+  constructor({ scene, view, events, input, player, cam, hud, dialog, defs, grounds, canWarp = () => true, onSwap = () => {}, real = null }) {
+    Object.assign(this, { scene, view, events, input, player, cam, hud, dialog, defs, canWarp, onSwap, real });
     this.grounds = groundsArea(grounds.level, grounds.objects);
     this.sky = this.grounds.sky; // the one sky dome (a grounds part), shown where def.sky
     this.built = { grounds: this.grounds };
@@ -185,6 +195,7 @@ export class AreaSwitch {
     this.leafWas = 0;
     this.offset = { x: 0, z: 0 }; // heroOffset's, reused
     this.won = new Set(); // courses whose own star he has won this game (their lamps lit)
+    this.realBuilding = new Set(); // areas whose realistic build is under way
     events.on('warpRequest', (w) => this.request(w));
     events.on('starCollected', (e) => this.onStar(e));
   }
@@ -217,7 +228,44 @@ export class AreaSwitch {
     this.buildMs[name] = performance.now() - t0;
     this.built[name] = area;
     this._light(area);
+    if (this.real?.wanted && def.real) this._buildReal(area);
     return area;
+  }
+
+  setClassic(on) {
+    if (!this.real) return;
+    this.real.setClassic(on);
+    const area = this.current;
+    if (!on && area.def.real && !area.real && !this.realBuilding.has(area)) this._buildReal(area);
+    this._look(area);
+  }
+
+  // An area's realistic build, in the background: once ready the area holds it, and shows it at
+  // once if it is the current one.
+  _buildReal(area) {
+    this.realBuilding.add(area);
+    this.real.build(area).then(
+      ({ part, look }) => {
+        this.realBuilding.delete(area);
+        area.setReal(part, look);
+        if (this.current === area) this._look(area);
+      },
+      () => {
+        this.realBuilding.delete(area); // (RealAreas says why; the area stays classic)
+        if (this.current === area) this._look(area);
+      },
+    );
+  }
+
+  // The area's look: its realistic one where ready and wanted (its realistic part shown), else
+  // classic; the grounds' sky dome where def.sky and no realistic sky draws.
+  _look(area) {
+    const look = this.real?.wanted && area.look ? area.look : null;
+    area.showReal?.(look !== null);
+    if (this.sky?.object3D) this.sky.object3D.visible = !!area.def.sky && look === null;
+    this.view.setLook?.(look);
+    // (The F1 line: why an area with a realistic look draws classic.)
+    this.view.setLookNote?.(this.real && area.def.real && !look ? this.real.reason || 'building' : '');
   }
 
   // Switch at once, cancelling any transition (the wipe opens straight away).
@@ -594,8 +642,9 @@ export class AreaSwitch {
     if (this.dialog?.isOpen) this.dialog.close();
     from.setVisible(false);
     to.setVisible(true);
-    if (this.sky?.object3D) this.sky.object3D.visible = !!to.def.sky;
+    this.view.setLook?.(null);
     this.view.setAtmosphere(to.def.atmosphere ?? null);
+    this._look(to);
     this.view.setWaterLevelFn(to.waterFn);
     player.setWorld({ collision: to.collision, spawn: to.respawn, signs: to.signs, groundAt: to.groundAt });
     player.placeAt(entry);

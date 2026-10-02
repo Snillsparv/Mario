@@ -43,6 +43,12 @@
 //   waterFn(x, z),         // the water surface (collision.waterLevelAt): the renderer's water
 //   objects,               // its ObjectManager, once core/AreaSwitch.js has made it (else null);
 //                          // setVisible() shows and hides its group with the root
+//   real, look,            // its realistic build once ready (def.real; core/AreaSwitch.js, null
+//                          // until then): a second WorldPart of visuals only, under the root
+//                          // beside the classic parts, and the RealLook it is drawn through
+//   setReal(part, look),   // ...hands them over (the part hidden)
+//   showReal(on),          // the realistic part shown instead of the classic ones (or back):
+//                          // update() and setDoorOpen() follow it
 // }
 
 import * as THREE from 'three';
@@ -149,7 +155,14 @@ export function buildArea(scene, def) {
     objectsLayout,
     waterFn: (x, z) => collision.waterLevelAt(x, z),
     objects: null,
+    real: null,
+    look: null,
+    realShown: false,
     update(time, camera) {
+      if (this.realShown) {
+        this.real.update?.(time, camera);
+        return;
+      }
       for (const p of parts) p.update?.(time, camera);
     },
     reset() {
@@ -162,6 +175,18 @@ export function buildArea(scene, def) {
     // (Every frame while the door moves: an index loop.)
     setDoorOpen(t, id = null) {
       for (let i = 0; i < parts.length; i++) parts[i].setDoorOpen?.(t, id);
+      this.real?.setDoorOpen?.(t, id);
+    },
+    setReal(part, look) {
+      this.real = part;
+      this.look = look;
+      part.object3D.visible = false;
+      root.add(part.object3D);
+    },
+    showReal(on) {
+      this.realShown = !!on && this.real !== null;
+      for (const p of parts) if (p.object3D) p.object3D.visible = !this.realShown;
+      if (this.real) this.real.object3D.visible = this.realShown;
     },
     setLit(on) {
       for (const p of parts) p.setLit?.(on);

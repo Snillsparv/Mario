@@ -38,6 +38,23 @@
 //     and strength). preset = { fog, near, far, water, sun, sunIntensity, sunDir, sky, ground,
 //     ambientIntensity }; a field left out keeps the grounds' value, and null is the grounds
 //     exactly. No light is added or removed, so the actors' shader programs never change.
+//   Realistic look (an area drawn physically lit: Sparrow Lane, render/real/RealLook.js):
+//     setLook(look) draws the world through it (an HDR target, its sky, the sun's shadow, the
+//     output pass's tone mapping) instead of the classic path, which stays untouched; null goes
+//     back. Setting one first snapshots every field a look may touch (the shadow map's settings,
+//     the sun's shadow and place, the scene's environment and background, the tone mapping and
+//     exposure, the atmosphere preset, the pixel ratio, the actors' shadow flags: lookState())
+//     and null writes the snapshot back, so leaving the area leaves the renderer exactly as it
+//     was. While a look is set the retro filter is off whatever the saved setting; F2 / R toggles
+//     "retro over realistic" for this visit only (lookRetro: the realistic frame through the
+//     240-line target and the N64 pass), never saved. The storm grade, a flash and the meltdown
+//     grade its output as in native mode; the recorder's capture sizes it as any frame; a
+//     setView() scene bypasses it. setFocus(p) is where the sun's shadow box centres (Jonas);
+//     addRealActor(object3D, blob) names an actor that casts and receives that shadow while a
+//     look is set (its blob shadow fades to REAL_BLOB as a contact shadow); compileLook(look,
+//     objects) compiles their programs for a look before it is first set. The F1 line then reads
+//     'real 1600x900 msaa4 high' (look.describe); setLookNote(why) adds why an area that has one
+//     draws classic ('native 1920x1080 (classic: building)').
 //
 // World geometry is unlit (baked vertex colours). The sun and hemisphere lights below only
 // shade dynamic actors (hero, coins, star) that use Lambert/Phong materials.
@@ -78,6 +95,9 @@ export const AMBIENT_GROUND_COLOR = 0x9a9a88;
 export const AMBIENT_INTENSITY = 0.62 * Math.PI;
 
 const MAX_PIXEL_RATIO = 2;
+// An actor's blob shadow's opacity, as a share of its own, while a realistic look draws its real
+// shadow (a contact shadow under the feet, where the shadow map's texels are coarse).
+export const REAL_BLOB = 0.35;
 
 // Picture rectangle (CSS px), pixel ratio and retro render lines for a width x height
 // container: full size, the 4:3 pillarbox, or, while a capture asks for it (the video
@@ -143,6 +163,12 @@ export class N64Renderer {
     this.pixelRatio = 1;
     this.capture = null; // setCapture(): the video recorder's framing, { aspect, minHeight, zoom, label }
     this.frameHook = null; // setFrameHook(): called after every render()
+    this.look = null; // setLook(): the realistic look the world is drawn through (null: classic)
+    this.lookSaved = null; // ...the state it found (lookState()), written back when it goes
+    this.lookRetro = false; // F2 / R while a look is set: retro over realistic (this visit)
+    this.focus = new THREE.Vector3(); // setFocus(): the look's shadow box centres here
+    this.realActors = []; // addRealActor(): { object3D, blob } casting the look's shadow
+    this.lookNote = ''; // setLookNote(): why an area that has a realistic look draws classic
 
     const settings = loadSettings(storage);
     this.n64 = settings.n64;
@@ -175,7 +201,7 @@ export class N64Renderer {
     this.drawSize = new THREE.Vector2();
     this.keyDir = new THREE.Vector3();
     this.warmList = []; // objects to compile ahead of their first visible frame (prewarm)
-    this.warmed = { n64: 0, native: 0, grade: 0 }; // how many of them each setup has compiled
+    this.warmed = { n64: 0, native: 0, grade: 0, real: 0, realDirect: 0 }; // how many of them each setup has compiled
     // The day look the storm and the meltdown crossfade from, and its fog range: the grounds'
     // until setAtmosphere() gives an area's. dayDefault keeps the grounds' own (with the sun's
     // direction) for setAtmosphere(null). (Set up here, not in the constructor: the node tests
@@ -190,6 +216,7 @@ export class N64Renderer {
       ambientIntensity: this.ambient.intensity,
     });
     this.fogRange = { near: FOG_NEAR, far: FOG_FAR };
+    this.atmosphere = null; // the preset setAtmosphere() was last given
     this.dayDefault = {
       fog: day.fog.clone(),
       water: day.water.clone(),
@@ -237,6 +264,7 @@ export class N64Renderer {
   // out keeps the grounds' value. null restores the grounds exactly. Applied at once (a camera
   // under water gets it on surfacing).
   setAtmosphere(preset = null) {
+    this.atmosphere = preset; // (a look's setLook(null) puts back the one it found)
     const a = preset ?? {};
     const { day, dayDefault: d } = this;
     const color = (out, value, fallback) => (value === undefined || value === null ? out.copy(fallback) : out.set(value));
@@ -421,6 +449,176 @@ export class N64Renderer {
     return this.gradeWarm === 'ready';
   }
 
+  // ---------------------------------------------------------------- the realistic look
+
+  // Draw the world through `look` (render/real/RealLook.js), or classic again with null (see
+  // the top): the snapshot is taken as a look comes and written back as it goes.
+  setLook(look = null) {
+    if (look === this.look) return;
+    this.applyLook(look);
+    this.refit(); // (the pixel ratio and the retro filter follow)
+  }
+
+  // setLook's work without the refit (compileLook sets a look only for a moment).
+  applyLook(look) {
+    if (this.look) this.dropLook();
+    if (!look) return;
+    this.lookSaved = this.lookState();
+    this.look = look;
+    look.attach(this);
+    this.setAtmosphere(look.preset.atmosphere);
+    for (const { object3D, blob } of this.realActors) {
+      object3D.traverse((o) => {
+        if (o.isMesh && o !== blob) o.castShadow = o.receiveShadow = true;
+      });
+      if (blob) {
+        blob.material.opacity *= REAL_BLOB;
+        blob.material.transparent = true;
+      }
+    }
+    this.refreshActors();
+  }
+
+  // The actors' programs are picked again (three caches both variants, so this compiles nothing
+  // the second time): an unlit one (the blob shadow) would otherwise keep the variant it was
+  // last drawn with, the shadow map's or the classic one.
+  refreshActors() {
+    for (const { object3D } of this.realActors) {
+      object3D.traverse((o) => {
+        if (o.isMesh) for (const m of [].concat(o.material)) m.needsUpdate = true;
+      });
+    }
+  }
+
+  // Every field a look may change (setLook's snapshot).
+  lookState() {
+    const { renderer, scene, sun } = this;
+    const sc = sun.shadow.camera;
+    return {
+      shadowMap: { enabled: renderer.shadowMap.enabled, type: renderer.shadowMap.type, autoUpdate: renderer.shadowMap.autoUpdate },
+      toneMapping: renderer.toneMapping,
+      exposure: renderer.toneMappingExposure,
+      environment: scene.environment,
+      environmentIntensity: scene.environmentIntensity,
+      background: scene.background,
+      atmosphere: this.atmosphere,
+      sun: {
+        castShadow: sun.castShadow,
+        mapSize: sun.shadow.mapSize.clone(),
+        radius: sun.shadow.radius,
+        bias: sun.shadow.bias,
+        normalBias: sun.shadow.normalBias,
+        camera: { left: sc.left, right: sc.right, top: sc.top, bottom: sc.bottom, near: sc.near, far: sc.far },
+        position: sun.position.clone(),
+        target: sun.target.position.clone(),
+      },
+      actors: this.realActors.map(({ object3D, blob }) => {
+        const meshes = [];
+        object3D.traverse((o) => {
+          if (o.isMesh && o !== blob) meshes.push([o, o.castShadow, o.receiveShadow]);
+        });
+        return { meshes, blob, opacity: blob?.material.opacity, transparent: blob?.material.transparent };
+      }),
+    };
+  }
+
+  // The look goes: its own resources freed (look.detach), the snapshot written back.
+  dropLook() {
+    const look = this.look;
+    const s = this.lookSaved;
+    this.look = null;
+    this.lookSaved = null;
+    this.lookRetro = false;
+    look.detach(this);
+    const { renderer, scene, sun } = this;
+    Object.assign(renderer.shadowMap, s.shadowMap);
+    renderer.toneMapping = s.toneMapping;
+    renderer.toneMappingExposure = s.exposure;
+    scene.environment = s.environment;
+    scene.environmentIntensity = s.environmentIntensity;
+    scene.background = s.background;
+    sun.castShadow = s.sun.castShadow;
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    sun.shadow.mapSize.copy(s.sun.mapSize);
+    sun.shadow.radius = s.sun.radius;
+    sun.shadow.bias = s.sun.bias;
+    sun.shadow.normalBias = s.sun.normalBias;
+    Object.assign(sun.shadow.camera, s.sun.camera);
+    sun.shadow.camera.updateProjectionMatrix();
+    sun.target.position.copy(s.sun.target);
+    sun.target.updateMatrixWorld();
+    this.setAtmosphere(s.atmosphere);
+    sun.position.copy(s.sun.position);
+    for (const { meshes, blob, opacity, transparent } of s.actors) {
+      for (const [o, cast, receive] of meshes) {
+        o.castShadow = cast;
+        o.receiveShadow = receive;
+      }
+      if (blob) {
+        blob.material.opacity = opacity;
+        blob.material.transparent = transparent;
+      }
+    }
+    this.refreshActors();
+  }
+
+  // An actor that casts and receives a look's sun shadow while one is set (Jonas; `blob` its
+  // blob shadow's mesh, faded to REAL_BLOB meanwhile). Registered once, at boot.
+  addRealActor(object3D, blob = null) {
+    this.realActors.push({ object3D, blob });
+  }
+
+  // Where a look's shadow box centres (per frame: Jonas's place; copied, no allocation).
+  setFocus(p) {
+    this.focus.set(p.x, p.y, p.z);
+  }
+
+  // Compile `objects`' programs (and the actors') as `look` will draw them, before it is first
+  // set: its state is set for the compile and the classic one put back (no frame is drawn in
+  // between; hidden objects are shown for it). Resolves once compiled (in parallel where the
+  // browser can: KHR_parallel_shader_compile).
+  compileLook(look, objects) {
+    const { renderer, camera, scene } = this;
+    const before = this.look;
+    this.applyLook(look);
+    const list = [...objects, ...this.realActors.map((a) => a.object3D), look.sky];
+    const shown = list.map((o) => o.visible);
+    let done = [];
+    try {
+      renderer.setRenderTarget(look.sceneTarget(renderer));
+      for (const o of list) o.visible = true;
+      done = list.map((o) => renderer.compileAsync(o, camera, scene));
+    } finally {
+      list.forEach((o, i) => (o.visible = shown[i]));
+      renderer.setRenderTarget(null);
+      this.applyLook(before);
+    }
+    return Promise.all(done);
+  }
+
+  // Why the current area, which has a realistic look, draws classic ('building', 'chosen' or
+  // what failed; '' when it does not, or has none): the F1 line says so.
+  setLookNote(note = '') {
+    this.lookNote = note;
+  }
+
+  // The retro filter in effect: the saved setting, or while a look is set this visit's choice.
+  get retro() {
+    return this.look ? this.lookRetro : this.n64;
+  }
+
+  // F2 / R: the retro filter (saved); while a look is set, retro over realistic for this visit.
+  toggleRetro() {
+    if (!this.look) {
+      this.setN64Mode(!this.n64);
+      return;
+    }
+    if (!this.look.canRetro) return;
+    this.lookRetro = !this.lookRetro;
+    this.refit();
+  }
+
   addLights() {
     this.sun = new THREE.DirectionalLight(SUN_COLOR, SUN_INTENSITY);
     this.sun.name = 'sun';
@@ -531,8 +729,8 @@ export class N64Renderer {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const actions = {
       F1: () => this.setDebugOverlay(!this.debug.visible),
-      F2: () => this.setN64Mode(!this.n64),
-      KeyR: () => this.setN64Mode(!this.n64),
+      F2: () => this.toggleRetro(),
+      KeyR: () => this.toggleRetro(),
       F3: () => this.setPillarbox(!this.pillarbox),
       Digit4: () => this.setPillarbox(!this.pillarbox),
     };
@@ -555,14 +753,19 @@ export class N64Renderer {
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
     // N64 mode upscales a small image anyway, so the canvas stays at CSS resolution (unless
-    // the recorder asks for a bigger buffer).
-    const basePixelRatio = this.n64 ? 1 : Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-    const layout = frameLayout(width, height, { pillarbox: this.pillarbox, capture: this.capture, basePixelRatio, retroLines: this.internalHeight });
+    // the recorder asks for a bigger buffer); a realistic look caps it by its tier.
+    const dpr = window.devicePixelRatio || 1;
+    const fit = { pillarbox: this.pillarbox, capture: this.capture, basePixelRatio: this.retro ? 1 : Math.min(dpr, MAX_PIXEL_RATIO), retroLines: this.internalHeight };
+    let layout = frameLayout(width, height, fit);
+    if (this.look && !this.retro) {
+      fit.basePixelRatio = this.look.pixelRatio(dpr, layout.viewport.width, layout.viewport.height);
+      layout = frameLayout(width, height, fit);
+    }
     const { viewport: vp, pixelRatio, lines } = layout;
     const zoom = this.capture?.zoom ?? 1;
     this.lastDevicePixelRatio = window.devicePixelRatio;
     // Re-assigning the canvas size clears it, so skip redundant resizes.
-    const key = `${vp.x},${vp.y},${vp.width},${vp.height},${pixelRatio},${this.n64},${lines},${zoom}`;
+    const key = `${vp.x},${vp.y},${vp.width},${vp.height},${pixelRatio},${this.retro},${lines},${zoom}`;
     if (key === this.sizeKey) return false;
     this.sizeKey = key;
     this.viewport = vp;
@@ -610,6 +813,10 @@ export class N64Renderer {
     const storm = this.darkness * (1 - MELT_GRADE.stormEase * this.melt.fire);
 
     renderer.info.reset();
+    if (this.look) {
+      this.look.draw(this, storm, flash, melt, graded);
+      return;
+    }
     if (this.n64) {
       renderer.setRenderTarget(this.target);
       this.underwater.warm(this.compileObject, 'n64'); // programs depend on the bound target
@@ -657,17 +864,23 @@ export class N64Renderer {
   }
 
   // F1 overlay line, e.g. 'Retro 427x240 4:3' or 'native 1920x1080 underwater' ('16:9 rec' or
-  // '9:16 rec' while the recorder frames the picture).
+  // '9:16 rec' while the recorder frames the picture; 'real 1600x900 msaa4 high' through a
+  // realistic look, 'real 427x240 msaa4 high Retro' retro over it).
   describeMode() {
-    const size = this.n64
-      ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}`
-      : `${MODE_LABELS.native} ${Math.round(this.viewport.width * this.pixelRatio)}x${Math.round(this.viewport.height * this.pixelRatio)}`;
+    const w = Math.round(this.viewport.width * this.pixelRatio);
+    const h = Math.round(this.viewport.height * this.pixelRatio);
+    let size = this.n64 ? `${MODE_LABELS.retro} ${this.internal.width}x${this.internal.height}` : `${MODE_LABELS.native} ${w}x${h}`;
+    if (this.look && !this.viewScene) {
+      size = this.lookRetro ? `${this.look.describe(this.internal.width, this.internal.height)} ${MODE_LABELS.retro}` : this.look.describe(w, h);
+    }
     const frame = this.capture ? ` ${this.capture.label ? `${this.capture.label} ` : ''}rec` : this.pillarbox ? ' 4:3' : '';
     if (this.viewScene) return size + frame;
-    return size + frame + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '') + (this.meltOn ? ' meltdown' : '');
+    const note = this.lookNote ? ` (classic: ${this.lookNote})` : '';
+    return size + frame + (this.isUnderwater ? ' underwater' : '') + (this.darkness > 0 ? ' storm' : '') + (this.meltOn ? ' meltdown' : '') + note;
   }
 
   dispose() {
+    this.applyLook(null);
     this.viewportListeners.clear();
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('resize', this.onResize);

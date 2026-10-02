@@ -10,6 +10,10 @@
 //   ?area=hall     start in another area (world/areas.js: hall, skerries, lane), at &entry=<id>
 //                  (default: its respawn entry); only where play starts at once (?test,
 //                  ?skipTitle)
+//   ?look=classic  Sparrow Lane in its classic look (no realistic look; G toggles it in the game);
+//                  ?look=real: realistic (the default, but under ?test=1, where it is opt-in)
+//   ?tier=high     the realistic look's tier (high | mid | low) instead of the device's guess
+//                  (and realistic under ?test=1 too)
 //
 // Game flow (state.mode 'title' -> 'play' -> 'gameover' -> 'title' ...; 'face' with ?face=1):
 //   * title: the camera orbits the grounds behind the title card. On a first visit the card
@@ -60,6 +64,7 @@ import { ObjectManager } from './objects/ObjectManager.js';
 import { Effects } from './fx/Effects.js';
 import { Meltdown } from './fx/Meltdown.js';
 import { AreaSwitch } from './core/AreaSwitch.js';
+import { RealAreas } from './render/real/RealAreas.js';
 import { AREA_DEFS } from './world/areas.js';
 import { ScreenWipe } from './ui/ScreenWipe.js';
 
@@ -91,6 +96,7 @@ async function start() {
   const player = new Player({ collision: level.collision, events, spawn: level.spawn });
   const model = new PlayerModel();
   scene.add(model.object3D);
+  view.addRealActor(model.object3D, model.shadow.mesh); // (he casts a realistic look's shadow)
 
   const cam = new CameraController({ collision: level.collision, camera, events });
   const shake = new CameraShake(events); // jolts the view on 'hallImpact' (server halls landing)
@@ -146,6 +152,9 @@ async function start() {
     darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
   let lastAction = player.action;
+  // Areas with a realistic look (Sparrow Lane: render/real/*), on this device's tier; ?look=classic
+  // keeps them classic, as does G in the game (this session).
+  const real = new RealAreas({ view, search: location.search, test: TEST });
   // The areas (the grounds, the Great Hall, the courses): walking through a door, GAME OVER's
   // way back. A warp waits for plain play: not in AI RACE (the storm stays on the grounds), nor
   // while the meltdown runs (nor while a dialog is up: AreaSwitch sees to that itself).
@@ -164,6 +173,16 @@ async function start() {
     onSwap: () => {
       lastAction = player.action; // an arrival (even one dropping in) is no respawn
     },
+    real,
+  });
+  real.prefetch(AREA_DEFS); // the realistic looks' textures, in the background from now on
+  // The pause legend's look row: in a course with a realistic look, drawn so or classic by choice.
+  const lookRow = () => (view.look ? 'real' : areas.current.def.real && real.reason === 'chosen' ? 'classic' : null);
+  // G: "Classic street", the realistic look off (or back on) for this session.
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyG' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    areas.setClassic(!real.classic);
+    hud.setLook(lookRow());
   });
   let face = null; // the face screen while it shows
   const inMenu = () => state.mode === 'title' || state.mode === 'face';
@@ -339,6 +358,7 @@ async function start() {
       // while it can be taken: not while Jonas dies or drops in (nothing changes while paused).
       const leave = state.paused && areas.canLeave();
       hud.setLeave?.(leave);
+      hud.setLook?.(lookRow());
       hud.setPaused?.(state.paused);
       events.emit(state.paused ? 'pause' : 'unpause', { leave });
     }
@@ -414,6 +434,7 @@ async function start() {
     model.object3D.visible = state.mode === 'play' && state.dropHold === 0 && !cam.hideHero;
     cam.apply(renderAlpha);
     shake.apply(camera, state.mode === 'play' && !state.paused ? dt : 0);
+    view.setFocus(model.object3D.position); // (a realistic look's shadow box follows him)
     areas.update(state.time, camera, renderAlpha); // the current area's world (a door swinging)...
     areas.objects.animate(state.time, renderAlpha, camera); // ...and objects
     fx.update(state.mode === 'play' && !state.paused ? dt : 0, state.time, camera);

@@ -106,6 +106,13 @@ export const KEY_CONTROLS = [
   ['V / 9', 'Record 16:9 / 9:16'],
   ['F', 'Fullscreen'],
 ];
+// In a course with a realistic look (Sparrow Lane: render/real/*), the keys legend's retro row
+// names G too (keeping the legend's twelve rows and its widths): while the look draws, R / F2 is
+// the retro TV over it for this visit and G the classic look; while the classic one draws by
+// choice, R / F2 is the retro filter and G the realistic look back (pauseScreen.js
+// controlsLegend).
+export const REAL_LOOK_ROW = Object.freeze(['R / F2 / G', 'Retro / Classic']);
+export const CLASSIC_LOOK_ROW = Object.freeze(['R / F2 / G', 'Retro / Realistic']);
 export const PAD_CONTROLS = [
   ['Left stick', 'Move (tilt to walk)'],
   ['A', 'Jump'],
