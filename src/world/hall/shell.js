@@ -147,16 +147,18 @@ function wallSpans(L, runs) {
     skirting: [[slot0, slot1], [buttress, end('west')]],
     dado: [[slot0, slot1], [buttress, end('west')]],
   };
-  // East (from the apse south): the two doors' niches.
+  // East (from the apse south): the two doors' niches (the open door's opening cut out).
   const east = (z) => z - L.APSE.z;
-  const niche = L.EAST_DOORS.width / 2 + 150;
+  const D = L.EAST_DOORS;
+  const niche = D.width / 2 + 150;
   spans.east = { skirting: [], dado: [] };
   let s = 0;
-  for (const z of L.EAST_DOORS.zs) {
+  D.zs.forEach((z, i) => {
+    const hole = i === D.open ? [archHole(east(z), 0, D.width / 2, D.height - D.width / 2, 16)] : [];
     spans.east.skirting.push([s, east(z) - niche]);
-    spans.east.dado.push([s, east(z) - niche], [east(z) - niche, east(z) + niche]);
+    spans.east.dado.push([s, east(z) - niche], [east(z) - niche, east(z) + niche, hole]);
     s = east(z) + niche;
-  }
+  });
   spans.east.skirting.push([s, end('east')]);
   spans.east.dado.push([s, end('east')]);
   return spans;

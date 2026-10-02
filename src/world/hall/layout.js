@@ -131,10 +131,12 @@ export const BANNER_POLE = { x: BUTTRESS.x1 + 250, z: (BUTTRESS.z0 + BUTTRESS.z1
 
 // ---------------------------------------------------------------- east wall
 
-// Two arched doors still being built (the next courses), in teal niches framed by cream
-// architraves standing `depth` out of the wall (their piers solid), a plaque over each (at
-// plaqueV, above the chair rail) hinting at its world; a ship's wheel on the wall between them,
-// and out in the room the round chart table.
+// Two arched doors in teal niches framed by cream architraves standing `depth` out of the wall
+// (their piers solid), a plaque over each (at plaqueV, above the chair rail) hinting at its
+// world: the snowflake's door is still being built (a course to come); the little house's,
+// nearer the way in, opens onto Sparrow Lane (world/lane/*), its leaves swinging into the wall
+// onto a dark passage (the `open` door: its index in zs). A ship's wheel on the wall between
+// them, and out in the room the round chart table.
 export const EAST_DOORS = {
   faceX: 2144,
   yaw: -Math.PI / 2,
@@ -142,8 +144,9 @@ export const EAST_DOORS = {
   height: 600,
   depth: 56,
   zs: [BANNER_POLE.z, CHIMNEY.hearth.z],
-  plaques: ['snowflake', 'cog'],
+  plaques: ['snowflake', 'house'],
   plaqueV: 1190,
+  open: 1,
 };
 export const WHEEL = { x: HALL.halfX, y: 1500, z: (SLOT.z0 + SLOT.z1) / 2, r: 300 };
 export const CHART_TABLE = { x: 1050, z: 750, r: 320, top: 90 };
@@ -210,39 +213,38 @@ export const RUGS = [
 // the bottle he pops out onto the dais's top facing south (with its sound: sfx, played by
 // core/AreaSwitch.js as the wipe opens), the camera in front of him (camYaw), 280 out from the
 // mouth's face: just off its re-arm apron (objects/Door.js REACH + APRON, 260), so the mouth is
-// armed again and turning round walks him straight back in.
+// armed again and turning round walks him straight back in. Back from Sparrow Lane (its door,
+// its star, its pause screen's leave) he comes out of the east door with the little house over
+// it, 174 in front of its face, facing west into the room with the camera in front of him (its
+// back to the chart table's south side). `door`: the door he comes out of, which stands open as
+// he arrives and shuts behind him (core/AreaSwitch.js; none for the star or the leave).
 export const ENTRIES = {
-  front: { x: 0, y: 0, z: 1550, yaw: Math.PI, walkIn: 10 },
+  front: { x: 0, y: 0, z: 1550, yaw: Math.PI, walkIn: 10, door: 'hall_front' },
   bottle: { x: 0, y: DAIS.top, z: -1120, yaw: 0, drop: 250, camYaw: 0, sfx: 'bottle_pop' },
+  east_2: { x: EAST_DOORS.faceX - 174, y: 0, z: EAST_DOORS.zs[EAST_DOORS.open], yaw: -Math.PI / 2, camYaw: -Math.PI / 2, walkIn: 8, door: 'hall_east_2' },
 };
 // A respawn drops him in at the front entry from `drop` above (under the 2600 ceiling).
 export const RESPAWN = { entry: 'front', drop: 400 };
 // Height the ground probe starts from (below the ceiling, so it finds the floor, not the roof).
 export const PROBE_Y = 2400;
 
-// What the doors that do not open yet say (no laugh: nothing sinister, just not built yet; the
+// What the door that does not open yet says (no laugh: nothing sinister, just not built yet; the
 // door only rattles in its frame, objects/Door.js).
 export const HALL_DOOR_SOON = Object.freeze({
   id: 'hall_door_soon',
   pages: Object.freeze(['This door is still being built.', 'Come back after the next update!']),
 });
 
-// The doors (objects/Door.js): the front door's inside leads back out onto the porch; the two
-// east doors are still being built; the bottle's mouth (walked into from the dais's top, facing
-// north) takes him to the first course, Midsummer Skerries (world/skerries/*).
+// The doors (objects/Door.js): the front door's inside leads back out onto the porch; the east
+// door with the little house over it to the second course, Sparrow Lane (out of the dad's front
+// door), the snowflake's is still being built; the bottle's mouth (walked into from the dais's
+// top, facing north) takes him to the first course, Midsummer Skerries (world/skerries/*).
 export const DOORS = [
   { id: 'hall_front', x: FRONT_DOOR.x, z: FRONT_DOOR.faceZ, yaw: Math.PI, width: FRONT_DOOR.width, floorY: 0, to: 'grounds', entry: 'porch' },
-  ...EAST_DOORS.zs.map((z, i) => ({
-    id: `hall_east_${i + 1}`,
-    x: EAST_DOORS.faceX,
-    z,
-    yaw: EAST_DOORS.yaw,
-    width: EAST_DOORS.width,
-    floorY: 0,
-    to: null,
-    locked: HALL_DOOR_SOON,
-    laugh: false,
-  })),
+  ...EAST_DOORS.zs.map((z, i) => {
+    const door = { id: `hall_east_${i + 1}`, x: EAST_DOORS.faceX, z, yaw: EAST_DOORS.yaw, width: EAST_DOORS.width, floorY: 0 };
+    return i === EAST_DOORS.open ? { ...door, to: 'lane', entry: 'home' } : { ...door, to: null, locked: HALL_DOOR_SOON, laugh: false };
+  }),
   { id: 'bottle', x: 0, z: BOTTLE.lip[1], yaw: 0, width: 400, floorY: DAIS.top, kind: 'bottle', to: 'skerries', entry: 'arrival' },
 ];
 

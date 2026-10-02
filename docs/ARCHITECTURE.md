@@ -178,6 +178,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
+| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures) | WorldPart, built by `area.js` |
 | Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
@@ -234,8 +235,11 @@ Each builder is `build*(layout) -> WorldPart`:
   colliders: [{ object3D?, positions?, surface?, terrain? }],
   poles?: [{ x, z, y0, y1, radius }],          // climbable tree trunks
   update?(timeSeconds, threeCamera),           // per render frame (scrolling water, billboards)
-  setDoorOpen?(t),                             // its swinging door, 0 shut .. 1 open (the castle's
-                                               // front door, its inside in the hall: "Areas")
+  setDoorOpen?(t, id),                         // its swinging door named `id`, 0 shut .. 1 open (the
+                                               // castle's front door; in the hall its inside,
+                                               // 'hall_front', or the east door to Sparrow Lane,
+                                               // 'hall_east_2'; the lane's 'lane_home': "Areas"); a
+                                               // part with one door swings it whatever the id
   setLit?(on),                                 // its lamp (a course's lighthouse, the one in the
                                                // hall's bottle): lit once the course's star is won
 }
@@ -290,9 +294,10 @@ coins (`COINS` entries with `y`) and the `'keep_top'` sign wait.
 
 Jonas is always in one **area**, a place with its own collision world, objects, entries and look:
 `'grounds'` (the castle grounds, `world/level.js`, built at boot), `'hall'` (the Great Hall
-inside the castle, `world/hall/*`) or `'skerries'` (Midsummer Skerries, the first course,
-through the ship in the bottle, `world/skerries/*`); the hall and the course are built the
-first time he goes in and kept for the session.
+inside the castle, `world/hall/*`), `'skerries'` (Midsummer Skerries, the first course,
+through the ship in the bottle, `world/skerries/*`) or `'lane'` (Sparrow Lane, the second
+course, through the hall's east door with the little house on it, `world/lane/*`); the hall and
+the courses are built the first time he goes in and kept for the session.
 All areas share the one scene: each built area has a root group (`'area-<name>'`) shown only
 while he is in it, so hidden areas cost no draw calls, and only the current area is updated
 (`areas.update`) and animated (`areas.objects`).
@@ -304,7 +309,9 @@ while he is in it, so hidden areas cost no draw calls, and only the current area
   origin: { x: 0, y: 0, z: -60000 },   // world = local + origin (areas are authored in local coords)
   builders: [buildHall],               // WorldParts (level.js); colliders must be { positions }
   layout,                              // local anchors: ENTRIES, DOORS (and COINS, STAR, SIGNS, ...)
-  entries: { front: { x, y, z, yaw, walkIn }, bottle: { x, y, z, yaw, drop, camYaw } },
+  entries: { front: { x, y, z, yaw, walkIn, door }, bottle: { x, y, z, yaw, drop, camYaw } },
+                                       // door: the id of the swinging door he comes out of
+                                       // there (it stands open as he arrives, then shuts)
   respawn: { entry: 'front', drop: 400 },
   waterLevelAt: (x, z) => NO_WATER,    // local
   probeY: 2400,                        // the ground probe's start (under the ceiling)
@@ -334,8 +341,8 @@ the origin, hidden), and fills a new CollisionWorld with every collider's `posit
 pole shifted by the origin (an `{ object3D }` collider is refused: it would stay where the
 builder left it), with the water from `def.waterLevelAt` shifted likewise. The Area is `{ name,
 def, root, collision, parts, entries, audio, respawn, signs, groundAt, objectsLayout, waterFn,
-objects, update(time, camera), reset(), setVisible(on), setDoorOpen(t), setLit(on) }` (the last
-two hand on to its parts' own, see "World parts"), everything in world coordinates
+objects, update(time, camera), reset(), setVisible(on), setDoorOpen(t, id), setLit(on) }` (the
+last two hand on to its parts' own, see "World parts"), everything in world coordinates
 (`audio`: `def.audio` with its sound spots shifted and its `seaLevel` raised by the origin,
 plus `isWater(x, z)`, whether there is open water there (the water's surface above the floor,
 so not on a rock, the jetty or a beach above the waterline: the sea's laps); the grounds' is
@@ -347,7 +354,8 @@ entry `def.respawn` names with its drop (player.setWorld's spawn), `waterFn` the
 world's water (the renderer's, per area).
 
 Rules for areas:
-* **Far apart**: the hall's origin is (0, 0, −60000), the course's (60000, 0, 0). Separate
+* **Far apart**: the hall's origin is (0, 0, −60000), Midsummer Skerries' (60000, 0, 0), Sparrow
+  Lane's (−60000, 0, 0). Separate
   collision worlds keep the flight rim, water, the hole test and camera probes apart by
   construction; the distance is a second safeguard, so code that still reads the grounds' layout
   (ambience emitters, the shake's falloff, the AI RACE look-up zone, the effects' height cache)
@@ -459,10 +467,15 @@ the read) and requests `def.leave`. Main offers the way out (the pause screen's 
 B kept bright) only while `canLeave()` holds as the game pauses, so the line and the button
 always agree (nothing changes while paused).
 
-**Doors swing, Jonas shrinks.** Through a door (`kind 'door'`) its two leaves swing
-(`Area.setDoorOpen(t)`, 0 shut .. 1 open, eased by the part; each area has one swinging door: the
-castle's front door on the grounds, its inside in the hall, `castle/building.js` `door()` with a
-passage, see "Castle door"): the door he walks into opens from shut as the wipe closes (`t /
+**Doors swing, Jonas shrinks.** Through a door (`kind 'door'`) its leaves swing
+(`Area.setDoorOpen(t, doorId)`, 0 shut .. 1 open, eased by the part; an area may have more than
+one swinging door, and the one named swings: the castle's front door on the grounds (`'castle'`,
+its only one), in the hall its inside (`'hall_front'`) or the east door to Sparrow Lane
+(`'hall_east_2'`), both `castle/building.js` `door()` with a passage, see "Castle door", and in
+the lane the dad's front door (`'lane_home'`, one leaf, `lane/door.js`). AreaSwitch names the door
+he walks into (`warp.from.id`) until the switch, then the one his entry names (`entry.door`; an
+entry with none, the porch, leaves it to the part's own); the star exit and the leave swing
+none): the door he walks into opens from shut as the wipe closes (`t /
 closeTicks`) and, if the warp is called off, shuts again with the wipe. Its collider stays solid,
 so where he stands he stops at the surround's face, about 106 short of the leaves; once they have
 swung aside (`WARP.STEP_AT`, 0.4 of the close) his model steps on into the opening as the iris
@@ -556,7 +569,7 @@ unchanged);
 `tests/ui-touch.test.js` (E2E=1: in a course on a landscape phone, paused, B stays bright over
 the faded overlays and a tap on it leaves); `tests/skerries.test.js` and
 `tests/skerries-routes.test.js` (see "Midsummer Skerries"); `tests/hall.test.js` (node, the hall
-as `buildArea` places it with the real Player, camera and objects: the budgets (at most 14
+as `buildArea` places it with the real Player, camera and objects: the budgets (at most 16
 meshes, under 26k room triangles and 1.5k collider triangles, built in under a second; the
 hall's own objects at most 8 meshes too), a closed room (sampled with 12 seeds on the plan
 (`inPlan`), outside the furniture; and at head height every ray out from the middle stopping at
@@ -595,7 +608,10 @@ headboard, no rug near the axis and no inlay on it but the dais's apron, nothing
 ring on the dais's top, no glow low on the axis), the lamp (lit: a deep gold far from the
 wall's cream, its beams turning round inside the glass, drawn before it), the front door's
 leaves filling its opening shut (round the head of its arch too) and swinging aside onto the
-passage, eased); `tests/hall-wood.test.js` (the castle wood texture painted in node through
+passage, eased, and the east door to Sparrow Lane's the same (by its id only, the front door's
+staying shut; its plaque's little red house, the other's snowflake), the `east_2` entry's
+footing and framing (1300 of floor before him, the camera in front of him clear of the chart
+table, the walk-in on into the room)); `tests/hall-wood.test.js` (the castle wood texture painted in node through
 a stand-in canvas: its mean still `WOOD_MEAN`); `tests/geom.test.js` the toolkit the hall is built
 with (a lathe over part of a turn, and with no option exactly the full lathe every other
 builder draws, pinned to digests of its output before the options; smooth along its profile;
@@ -609,8 +625,9 @@ in the legend's bindings, between PAUSE and the panel at every screen size), and
 camera sees it, smaller the further it closes, lower with his size (into the bottle), centred
 for a hero behind the camera, and the fade even; `tests/ui-dialog.test.js` that every hall and course sign and door page draws in the dialog
 font, fits one screen of the box and is its own (no trademark), and that "AI RACE" never wraps
-apart. `tests/areas.test.js` also walks Jonas up to the hall's east doors: their sign, no laugh,
-no warp.
+apart. `tests/areas.test.js` also walks Jonas up to the hall's snowflake door: its sign, no laugh, no
+warp; and through the east door with the little house into Sparrow Lane and back (see "Sparrow
+Lane").
 
 ### The Great Hall (`src/world/hall/*`)
 
@@ -621,8 +638,8 @@ builders (one per material) and solids: `world/hall/plan.js` (the plan as runs o
 `planRuns`, `planPolygon`, `facetPanel`, `archHole`, `runPath`, `wallColliders`),
 `world/hall/shell.js` (the floor, the walls in their bands, the vault and half-dome, the
 columns, the windows), `world/hall/features.js` (the front portal, the fireplace, the
-buttress and the banner pole, the east doors and the wheel, the chart table, the rugs, the
-candle rings), `world/hall/bottle.js` (its north end: the bottle, its stand and cradles, the
+buttress and the banner pole, the east doors (the one to Sparrow Lane opening) and the wheel,
+the chart table, the rugs, the candle rings), `world/hall/bottle.js` (its north end: the bottle, its stand and cradles, the
 dais, the cork and the books), then bakes it (`world/hall/light.js`) and assembles the meshes.
 `world/hall/textures.js` paints its own textures (`floorTexture`, `plasterTexture`,
 `panelTexture`, `marbleTexture`, `bannerTexture`; each 64 × 64 but the banner's 32 × 64, painted
@@ -712,11 +729,17 @@ so it is there in node too and no canvas is ever read back).
   small banner near its top: the jump off its top toward the wall carries 730 … 850, clears the
   buttress's edge and stops against the wall over it, so any aim within 15° of straight at the
   wall drops him mid-top, where he stays (and a coin waits).
-* **East wall**: two doors still being built (`EAST_DOORS`: `door()`, 360 × 600, faces at x
-  2144, z 150 and 1270) in teal arched niches with cream architraves (56 deep) and gold beads,
-  their piers solid (u ±(330 … 406), up to 460); a snowflake and a cog on the plaques over them
-  (at 1190, over the rail); a ship's wheel between them (`WHEEL`, at z 560, 1500 up: an oak rim, a
-  gold hub, eight spokes out to gold handles).
+* **East wall**: two doors (`EAST_DOORS`: `door()`, 360 × 600, faces at x 2144, z 150 and 1270)
+  in teal arched niches with cream architraves (56 deep) and gold beads, their piers solid (u
+  ±(330 … 406), up to 460); plaques over them (at 1190, over the rail): a snowflake over the
+  north one, still being built, and a little house (Falu-red walls, a black roof, a white door
+  and window, a tiny blue bird on its ridge, on a deep blue field) over the south one, nearer the
+  way in (`EAST_DOORS.open`), which opens onto Sparrow Lane: built like the front door with a
+  passage, its two leaves (`hall-east-door-left/right`) swinging into the wall on their hinges
+  (`setDoorOpen(t, 'hall_east_2')`) through the opening its niche (a ring of teal from the door's
+  arch out to the niche's) and the dado behind it (cut with the same 16 segments) leave, onto a
+  dark passage drawn in with the wood; a ship's wheel between them (`WHEEL`, at z 560, 1500 up:
+  an oak rim, a gold hub, eight spokes out to gold handles).
 * **Out in the room**: the round oak **chart table** (`CHART_TABLE`, (1050, 750), r 320, top 90,
   an octagonal collider) with a chart of the first course on it, on a compass rose inlaid in the
   floor (`RUGS`, r 640: gold, Falu red and teal rings, an eight-point star whose red north point
@@ -776,7 +799,7 @@ so it is there in node too and no canvas is ever read back).
   red and teal covers overhanging cream page blocks with page lines at their west ends and the
   sides toward the hall (their fore-edges), rounded spines on their north sides between the
   boards' edges, with gold bands; hop up book, book, cork, a coin on each.
-* **Meshes** (14; 13 drawn while the lamp is unlit): `hall-floor` (glazed tiles on a 200 grid
+* **Meshes** (16; 15 drawn while the lamp is unlit): `hall-floor` (glazed tiles on a 200 grid
   clipped to the plan inset 300, in a rose border ring and an ivory fillet whose uvs sit on the
   tile's plain grout; see-through over its reflection, below), `hall-wall` (plaster: walls,
   vault, dome, strips, hood), `hall-dado` (teal raised panels: the wainscot, the headboard, the
@@ -784,9 +807,10 @@ so it is there in node too and no canvas is ever read back).
   repeat), `hall-trim` (pale marble, tinted cream or rose: skirting, cornice, ribs, corbels,
   columns, window reveals and surrounds, the portal, the door surrounds, the architraves, the
   dais, the breast, the mantel, the buttress, the hearthstone; glossy, below), `hall-wood` (oak
-  and iron: the table, the wheel, mullions, rods, chains; the front door's passage),
+  and iron: the table, the wheel, mullions, rods, chains; the swinging doors' passages),
   `hall-door-left` and `hall-door-right` (the front door's leaves, the wood's material, each
-  turning about its hinge), `hall-paint` (untextured vertex colours: gold work, cradles, the
+  turning about its hinge), `hall-east-door-left` and `hall-east-door-right` (the east door to
+  Sparrow Lane's, the same; two meshes more than before it opened), `hall-paint` (untextured vertex colours: gold work, cradles, the
   stand's rail and top, rugs and inlays, the crest, plaques, chart, candles, cork, books, the
   fire's logs, the model in the bottle), `hall-glow` (full-bright: the rose window's glass from
   the rose texture, and the panes, the hearth's back, embers, the logs' ends and flames, which
@@ -878,12 +902,18 @@ so it is there in node too and no canvas is ever read back).
   with `sfx: 'bottle_pop'` (AreaSwitch plays it as the wipe opens), 280 out from the mouth's
   face: just off its re-arm apron (`DOOR.REACH + APRON`, 260), so turning round walks him
   straight back in (a stick held on from the course waits to be let go first); the respawn drops
-  in at `front` from 400.
+  in at `front` from 400. `front` names its door (`door: 'hall_front'`, the one that stands open
+  as he comes in from the porch, then shuts); `east_2` (1970, 0, 1270), 174 in front of the east
+  door to Sparrow Lane, facing west into the room with the camera in front of him (`camYaw`
+  −π/2: south of the chart table, with 1300 of floor before him), walking in 8 ticks, its door
+  `'hall_east_2'`: back from the lane through the dad's front door, its star and its pause
+  screen's leave (the last two swing no door: it stays shut behind him).
 * **Doors** (`DOORS`): `hall_front`, the inside of the front door (face z 2944, yaw π), back out
   to the grounds' `porch`; `bottle` (the lip's end face, z −1400, on the dais's top at 550,
-  `kind: 'bottle'`) into Midsummer Skerries' `arrival` (see "Midsummer Skerries"); `hall_east_1`,
-  `hall_east_2` (faces x 2144 at z 150 and 1270, yaw −π/2) `to: null` for now: no laugh, the
-  handle rattling in its frame (`laugh: false`: `door_rattle`) and their sign (`HALL_DOOR_SOON`
+  `kind: 'bottle'`) into Midsummer Skerries' `arrival` (see "Midsummer Skerries");
+  `hall_east_2` (face x 2144 at z 1270, yaw −π/2) into Sparrow Lane's `home` (out of the dad's
+  front door, see "Sparrow Lane"); `hall_east_1` (z 150) `to: null` for now: no laugh, the
+  handle rattling in its frame (`laugh: false`: `door_rattle`) and its sign (`HALL_DOOR_SOON`
   'This door is still being built.' / 'Come back after the next update!').
 * **Pickups and signs**: 25 coins (`COINS`, each at its floor + 60, but the three hanging in the
   wall-kick slot at 450, 900, 1350: the ring round the chart table, the slot, three of the dais's
@@ -909,7 +939,7 @@ so it is there in node too and no canvas is ever read back).
   * **Nothing framed, windowed or lit above the dais or behind the bottle.** The headboard is plain
     teal panelling; the apse windows are off-axis plain glazing. No oculus, no light shaft.
   * **The rose window stays over the entrance**, behind the arriving player.
-  * **No star-emblem doors:** snowflake and cog plaques, Jonas's π crest, a ship's wheel.
+  * **No star-emblem doors:** snowflake and little-house plaques, Jonas's π crest, a ship's wheel.
   * **Palette and motifs** are Swedish and nautical. Textures are procedural and original.
 * **Sound** (`def.audio`, see "Audio"): its own loop, "Compass and Candle" (`castle_hall`); the
   `'hall'` ambience, a low room tone with the fire crackling in the hearth (`HEARTH_FIRE`, the
@@ -1491,6 +1521,178 @@ AWAY, STATES, HITTABLE           // see below
   back after every arrival and GAME OVER; none in the hall or on the grounds; no hit while a
   warp runs), `tests/audio-sfx.test.js` (the thirteen critter sounds).
 
+### Sparrow Lane (`src/world/lane/*`)
+
+The second course, through the hall's east door with the little house on its plaque: a quiet
+residential cul-de-sac on a golden October afternoon, Jonas's own street. He comes out of his
+own black front door onto the grass-paver path of his long red house; the course's star waits
+over the ridge of his roof, in view from the first second. Up the hill across the street stand
+split-level villas behind grey block walls, along his side long low chain houses linked by flat
+roofs; a turning area at the east end, the junction at the west. Nothing here hurts: no
+critters, no water, no death floor.
+
+`world/lane/layout.js` holds the anchors in the course's local frame, the **street frame**: +x
+along the lane's long straight toward the turning area, +z across it toward the dad's side, −z up
+the hill toward the forest, the road at y 0 (world = local + (−60000, 0, 0)). Everything is drawn
+at **1.5 times its real size** (`SCALE` 150 units a metre: a 6 m carriageway is 900 wide, room for
+the follow camera between kerb and walls), measured off an aerial view in the street frame (the
+houses set parallel to the street, the chain houses' lengths trimmed to fit end to end; the real
+lane's gentle climb dropped: the road is flat). `world/lane/build.js` builds the course
+(`buildLane(layout)`, the WorldPart `'lane'`): the ground, the kerbs, the terraces, the forest's
+bank and the boundary, writing into its kit the houses through `world/lane/houses.js` (`house(kit,
+h)` by `h.kit`: `'villa'`, `'chain'`, `'garage'`; `link`, `carport`), the dad's front door through
+`world/lane/door.js` (`frontDoor`, `doorLeaf`) and the props through `world/lane/props.js`
+(`buildProps`); `world/lane/textures.js` paints its three textures of its own (`asphaltTexture`
+and `panTileTexture` 64 × 64, `renderTexture` 32 × 32; the rest reuses the terrain's grass,
+masonry and flagstones, the castle's stone bricks and wood, the skerries' painted planks, the
+trees' leaves).
+
+```
+                               -Z (uphill: the forest)
+        ┌──────────────── forest bank, firs ──────────────────────┐
+        │ north_west   north_1  north_2  north_3  north_4  north_5│
+        │  (motorhome)   ┌wall┐  ┌wall┐  ┌wall┐  ┌wall┐ ╭── east_ │
+   west │ L1 junction ╲── street ── pavement ──────────── turning │ east_house
+        │  trees  F3   ╲  south_1 ┤link├ DAD ├carport┤ south_2 area│  F2
+        │ south_west    hedge   mailbox, red tree  bins      footpath ╲
+        └──────── back hedges ────────────────────────────────── barrier
+                               +Z (the dad's side)
+```
+
+* **The ground** (`ROAD`, `TURN`, `KERB`, `PAVEMENT`, `FOOTPATH`): the carriageway (half width 450
+  round a centreline polyline: the west leg from the junction, a bend of three short segments,
+  the long straight at z 0, mitred) and the turning area (a 16-sided disc r 1150 at (3500, −250))
+  at y 0; everything else a step up at `GROUND` 22 (walked up without a jump): the north
+  pavement (paler asphalt, 450 … 700 off the line, along the bend and the straight), the drives
+  (asphalt; the villas' notches cobbled), the dad's grass-paver path, the footpath (450 wide, out
+  of the turning area's south-east rim, a low two-rail barrier across it 1300 along: the play
+  space's end) and the lawn. The lawn is drawn as 2000 tiles with every road and hard surface
+  (and the terraces) cut out of them (castle/geom.js `subtractConvex`, after a separating-axis
+  test, each piece rid of repeated corners), so nothing lies over anything; the same pieces are
+  its colliders (grass; the road and hard surfaces stone) wherever Jonas can be. Granite kerbs
+  run along every edge of the road's pieces that is the road's edge (a face from the road up and
+  a strip on top), dropped (asphalt grey) in front of the drives; their 22 needs no collider (under
+  the knee probe). Out past the junction the road runs on into the fog with the side road (drawn
+  only).
+* **The terraces** (`NORTH`, `PLOTS_N`, `STEPS`): the five villas' gardens behind a retaining wall
+  of split-face blocks (a paler coping along its top) from the pavement (z −700) up to `TERRACE`
+  150, flat back to z −3400, then rising 1 in 4 to 300 at the forest's edge (z −4000); along the
+  turning area the wall follows an arc of r 1400 round its middle, then runs on east at z −1300
+  (`wallZAt(x)`). Each plot is convex blocks (their fronts straight, 300 long round the arc), cut
+  by its drive notch (cobbles at 22 from the wall back to the villa's garage door, block walls
+  either side) and its steps (five drawn steps on a smooth `not_slippery` ramp up from the
+  pavement, a dark railing on their drive side); where two blocks' fronts differ, the one nearer
+  the street shows its side. Behind them the forest's bank rises to 1500 (drawn only).
+* **The houses** (`HOUSES`, `houses.js`): a record is a footprint `w` along its own u by `d` along
+  its w, turned by `yaw` (u runs (cos yaw, −sin yaw), w (sin yaw, cos yaw); its front the +w face),
+  so the west end's houses, set at an angle to the street, are built like any other (`frame(h)`).
+  **Villas** (`VILLAS`, north_1 … north_5, 1800 × 1500, the split-level brick houses: white render
+  to 412 with the garage door at drive level, red-brown brick to the eaves at 822, plain, arched
+  and bay windows, an arched front door at its garden's level, a hipped roof of pan tiles, 27°, to
+  1204, wide eaves (110) over a dark soffit; north_3 a balcony on its west gable, solid, 390 over
+  its side yard); **north_west** (white render to its eaves at 462, a light grey pyramid roof with
+  two roof windows, a double garage, a low wing behind it, a flagstone drive in front) with the
+  **motorhome** on its drive (a white box with a dark window band on four wheels, solid to 522:
+  a running double jump grabs its edge, a single one from the drive falls short). **Chain houses**
+  (south_west, south_1, `DAD`, south_2 and its wing, east_house): a white brick plinth (135), boards
+  to the eaves at 412 (or white brick gable ends with boards in their triangles), black-framed
+  windows with a pale glint and white curtains, a black front door, a low gable roof (20°) along
+  u, 60 overhangs; south_west a glazed veranda on its west gable, a brown picket fence and a rail
+  fence (slabs). The **link** (south_1 … the dad's, a block to its flat roof at 370) and the
+  **carport** (`CARPORT`, the dad's … south_2: its roof slab 345 … 370 on three posts, open toward
+  the drive, a back wall of yellow boards: 323 of room under it). **east_garage** (a double garage
+  facing the turning area: white render, a white board gable, two dark panel doors, a white brick
+  pier) in front of east_house. Each house is one convex collider (its walls and its hipped or
+  gable roof); the drawn overhangs have none.
+* **The dad's house** (`DAD`, x −1100 … 1600, z 1330 … 2605): Falu-red boards, its eaves at 412,
+  its ridge at 644 over z 1967.5; the black front door (`DAD.door`, 150 × 315 at x 0 in a white
+  frame: `door.js`, one leaf hinged on its left seen from the path, swinging 1.35 rad into a dark
+  vestibule 170 deep, its own mesh), six windows, the white brick gable ends; in the front garden
+  the path, the round bed (a stone ring, raised 14) with the red-leaf tree (a climbable pole to
+  442 under a red canopy drawn in render's white, not in the green leaf texture), the
+  rhododendron (solid), the mailbox; the two wheelie bins against the east gable (`BINS`, solid to
+  182); his drive runs on under the carport.
+* **Props** (`props.js`): lampposts L1 … L7 (grey, an arm and a flat head; prism colliders, but
+  for the climbable L1 and L6), white flagpoles F1 … F3 with gold knobs (climbable), hedges (solid
+  leafy boxes with a soft crown, their tops walkable: south_1's 165 high along the street,
+  south_2's along the turning area, the back hedges at 242, north_3's low box hedge on its
+  terrace), thujas (steep frustum colliders), the three big trees at the junction (solid trunks
+  under lumpy canopies), the mailbox, the footpath's cabinet and blue sign and its barrier, the
+  forest's firs on the bank (`FOREST`, 34, skerries/props.js `fir()`) and a ring of firs round the
+  outside of the boundary (`EDGE_FOREST`, 70), drawn only, so the camera never looks out on
+  nothing.
+* **Boundary** (`BOUNDS`, `inBounds(x, z)`): invisible walls from −200 up to 4500, facing in, along
+  a polygon a little inside the drawn edges (the forest bank, the hedges, the barrier, the firs):
+  the camera stops at them too.
+* **Entries and exits**: `home` (0, 22, 1156), 174 in front of the dad's front door on the path,
+  facing the street, `camYaw` π (the camera in front of him over the lawn, the door shutting
+  behind him and the star over the ridge in the picture), walking out 8 ticks, its door
+  `'lane_home'`; a lost life drops him in there from 1000 (`RESPAWN`). The dad's front door
+  (`DOORS`: `lane_home`, yaw π) takes him back into the hall's `east_2`, as do the star exit and
+  the pause screen's leave (`def.leave`, `def.starExit`); `card: true`. `PROBE_Y` 4400 (over
+  every roof). `waterLevelAt` is `NO_WATER` everywhere.
+* **The star climb** (`STAR`: `lane_star` at (−250, 824, 1967.5), 180 over the ridge, placed):
+  from the drive onto a bin, onto the carport's roof, a hop west lands on the roof's south-west
+  slope anywhere along the carport's back half (walking into the gable gets him nowhere), up to
+  the ridge; or a standing jump within 100 of the front wall grabs the eave; or the red-leaf
+  tree's handstand and a flip toward the house with the stick held 4 … 20 ticks. Every fall from
+  the dad's roof is harmless.
+* **Coins** (`COINS`, 50, each at its floor + 60): down the path, on the mailbox's roof, along the
+  street both ways, round the turning area (7), along north_2's and north_3's wall tops, up
+  north_3's steps, up north_4's drive, up the side yard between north_2 and north_3, on the
+  motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
+  the bins, on the carport's roof and up the roof's south-west slope. No 1-up yet, no red coins.
+* **Signs** (`SIGNS`): `sparrow_mailbox` (`post: false`: the mailbox is the sign, no signpost is
+  drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
+  the junction facing up the lane, `lane_footpath` beside the blue sign. Only "Jonas" is named.
+* **Poles** (`POLES`, each with its own side, `camYaw`): L1 (looking along the west leg), L6 (at
+  the dad's roof), F1, F2 (west up the lane), F3, the red-leaf tree (the roof ahead). Falls from
+  them count from their foot.
+* **Look** (`LANE_ATMOSPHERE`): the grounds' fog colour and sky dome (`def.sky`), the fog from 6000
+  to 24000, a low warm actor sun 0xffdcb0 (0.66π) from the bake's `LANE_SUN` (−0.16, 0.40, 0.90:
+  low in the south-west, so the villas' street faces and the turning area glow while the chain
+  houses' fronts stand in soft shade), a warm hemisphere. Lighting baked from `LANE_SUN` with a
+  warm tint (ambient 0.6, diffuse 0.55, at most 1.1), the walls darker toward their feet.
+* **Meshes** (12): `lane-asphalt`, `-grass`, `-blocks` (masonry: the terraces' walls, the steps,
+  the kerbs, the round bed's stones), `-brick` (the castle's stone bricks tinted: the villas' upper
+  floors, the white brick plinths and gable ends), `-render` (white render and every flat-coloured
+  detail by vertex tint: frames, panes, doors, poles, the bins, the mailbox, the motorhome,
+  soffits, fascias, the vestibule, the red canopy), `-boards` (the skerries' painted planks
+  upright: the chain houses' boards and gables, the fences, the barrier), `-roof` (pan tiles; the
+  flat roofs' felt), `-cobbles` (the flagstone texture: the notches' cobbles, the north-west
+  villa's flagstones, the round bed's soil), `-leaves`, `-wood` (trunks), `-signs` and `-door` (the
+  dad's door's leaf, render's material). ~13k triangles, ~1.5k collider triangles (stone, grass,
+  wood; the steps `not_slippery`), built in ~200 ms in node (~95 ms in the browser); the course's
+  objects (coins, sparkles, shadows, the star) within 9 meshes; 35 … 37 draw calls from the
+  arrival, the roof, the turning area, the bend and the junction (the E2E budget is 50).
+* **Sound** (`def.audio`, see "Audio"): Midsummer Skerries' polska (`skerries`) again; the `'lane'`
+  ambience (the grounds' breeze, leaves and distant birds without their waterfall and moat
+  laps); no reverb. Footsteps: stone on the road, the hard surfaces and the roofs, grass on the
+  lawns and terraces, wood on the fences and the mailbox.
+* **Privacy and originality** (the repository is public): no photograph's pixels (every texture is
+  painted in code), no real street name, no house numbers (the houses go by neutral ids: north_1 …
+  north_5, north_west, south_west, south_1, south_dad, south_2, east_garage, east_house), no names
+  but Jonas's, no licence plates, no brands; the hall's plaque is this game's own little house.
+* **Preview**: `/preview.html?m=lane` (`src/dev/previews/lane.js`: the course under its fog with
+  the grounds' sky dome; `&col=1` the collider overlay; `&door=0..1` the dad's door that far
+  open; `&view=overview|arrival|home|roof|west|junction|turn|north|gap`; `&t=` freezes the clock).
+* **Tests**: `tests/lane.test.js` (node, the course as `buildArea` places it with the real Player,
+  camera and objects: the budgets, the arrival (on the path, the camera in front of him clear
+  after the walk-in, the star in the picture, the respawn drop onto the path unhurt), no water and
+  a floor everywhere inside the boundary, spam from 14 spots and long jumps off the ridge and L1's
+  top never leaving it, the dad's house as measured (its slopes raycast at 18 points, the eaves,
+  the carport's roof and the room under it), no floor under a ceiling lower than 300 anywhere,
+  every coin over a floor, the star, every sign read from in front only (the mailbox with no
+  signpost), the six poles grabbed from every open side with the camera swinging to `camYaw` and
+  jumps off them unhurt, the side yards walked with the follow camera and C-button swings never
+  in a solid, the privacy scan of its sources and signs, the look (the sun, the villas' fronts lit
+  over the dad's, his walls Falu red, his roof dark)); `tests/lane-routes.test.js` (scripted
+  input: the star climb, the front eave, the red-leaf tree's flip, and the routes round the
+  street, each collecting exactly its coins); `tests/areas.test.js` (through the east door into
+  the lane and back with the doors swinging, a stick held through, the door ids, the star exit,
+  the leave, GAME OVER); `tests/areas-browser.test.js` (E2E: `?area=lane`, the full walk through
+  it).
+
 ## Player (`src/player/Player.js`)
 
 ```js
@@ -1828,7 +2030,9 @@ the ambience keeps any fade under way (the storm lifting over its 3 s).
   all round or from high up (beyond `LAP_RANGE`); and it calls a gull (`gull`) every 4–10 s from
   a point on one of the `gulls` circles, nearer circles far more often (none beyond 12000: the
   next call waits until one is in range, then comes at once); no tree birds, chorus, waterfall
-  or room tone. The pastoral bed plays only where the profile has it and not in AI RACE. The
+  or room tone. `'lane'` (Sparrow Lane) is the grounds' air, leaves, tree birds and distant
+  chorus without their waterfall and moat laps (those are the grounds' own, at their layout's
+  spots: in the lane only the chorus sings). The pastoral bed plays only where the profile has it and not in AI RACE. The
   profile and spots already in force change nothing (`setProfile` returns at once).
 * **Reverb**: with `reverb` (the hall) every sound effect's voice also feeds the shared hall
   reverb (`hallReverb`) through one send (`roomSend`, 0.25 of it), except those that send into
@@ -2087,11 +2291,13 @@ pointer, a sky backdrop, synthesized sounds and our own texts.
 
 ## Signs and dialog (`layout.SIGNS`, Player, `src/ui/DialogBox.js`)
 
-`layout.SIGNS`: `[{ id, x, z, yaw, y?, pages: [string] }]`, wooden signposts built by props (the
-readable board faces `yaw`; a sign with `y` stands on that floor instead of the lawn: the one on
-top of the keep), with original text. Other areas list theirs in their own layout (the Great
-Hall's and Midsummer Skerries' `SIGNS`, each with its `y`, drawn by their builders with the same
-`props/decor.js` `addSignpost`; `player.setWorld` hands Jonas the current area's). Reading works
+`layout.SIGNS`: `[{ id, x, z, yaw, y?, post?, pages: [string] }]`, wooden signposts built by props
+(the readable board faces `yaw`; a sign with `y` stands on that floor instead of the lawn: the
+one on top of the keep), with original text. Other areas list theirs in their own layout (the
+Great Hall's, Midsummer Skerries' and Sparrow Lane's `SIGNS`, each with its `y`, drawn by their
+builders with the same `props/decor.js` `addSignpost`; `player.setWorld` hands Jonas the current
+area's). A sign with `post: false` has no signpost: the thing it stands for is the sign (Sparrow
+Lane's mailbox), drawn and solid by its builder, its collider within reach of the read. Reading works
 like the classic games:
 
 * Player: B pressed while grounded and not attacking, with a sign within reach in front of Jonas
@@ -2710,9 +2916,10 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,584,238
-  bytes, ~512 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1600 kB,
-  `GAME_CHUNK_LIMIT_KB` in `vite.config.js`), then the phone's `pad.html` built separately into
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,629,736
+  bytes with Sparrow Lane, ~530 kB gzip, plus the ~13 kB title-logo worker; the size warning
+  limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for the second
+  course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built separately into
   the same folder (~85 kB, its own copy of the touch controller and protocol). `npm run
   preview` serves it with the phone relay.
 * `node tools/shot.mjs --url "/preview.html?m=<area>&cam=x,y,z&look=x,y,z" --out shots/x.png`
@@ -2726,6 +2933,8 @@ Unknown names must be ignored silently.
   `&view=overview|entry|bottle|fire|vault|roof|apse|toys`, `&lamp=1`, `&door=0..1`);
   `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
   `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`);
+  `/preview.html?m=lane` Sparrow Lane (`&col=1`, `&door=0..1`,
+  `&view=overview|arrival|home|roof|west|junction|turn|north|gap`);
   `/preview.html?m=critters` the course's critters, each pose reached through their own steps
   (`&kind=frog|crab|mosquito|all`, `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N`,
   `&yaw=`, `&dist=`, `&spin=1`).

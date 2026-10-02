@@ -25,8 +25,11 @@
 // textures' means, under a lid in the mean colour of what is higher, nothing that moves in it;
 // every look through the open floor meets the mirror); nothing framed, lit or inlaid on the
 // axis or behind the bottle (the originality rules); the front door's leaves fill its opening
-// shut (round its arch's head too) and swing aside onto a dark passage, and the lamp lights
-// with setLit.
+// shut (round its arch's head too) and swing aside onto a dark passage, and so do the leaves of
+// the east door to Sparrow Lane (setDoorOpen by its id, the front door's staying shut), under
+// its plaque's little red house; out of that door the east_2 entry stands him in the room facing
+// west with the camera in front of him, clear of the chart table; and the lamp lights with
+// setLit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -151,8 +154,9 @@ function compiled(material) {
   return shader;
 }
 
-test('budgets: at most 14 meshes with baked colours, under 26k room triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
-  assert.ok(meshes.length <= 14, `${meshes.length} meshes`);
+// (16: the two swinging doors' leaves are four of them, the east door to Sparrow Lane's two.)
+test('budgets: at most 16 meshes with baked colours, under 26k room triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
+  assert.ok(meshes.length <= 16, `${meshes.length} meshes`);
   let tris = 0;
   for (const m of meshes) {
     const g = m.geometry;
@@ -623,7 +627,13 @@ test('every door\'s trigger stands on its face: the inner front door, the two ea
     assert.equal(col.findFloor(from.x, from.y, from.z).y - O.y, d.floorY, `${d.id}: its floor`);
   }
   const shut = hall.DOORS.filter((d) => d.to === null);
-  assert.deepEqual(shut.map((d) => [d.id, d.locked.id, d.laugh]), [['hall_east_1', 'hall_door_soon', false], ['hall_east_2', 'hall_door_soon', false]]);
+  assert.deepEqual(shut.map((d) => [d.id, d.locked.id, d.laugh]), [['hall_east_1', 'hall_door_soon', false]]);
+  // The east door with the little house over it leads to the second course, out of the dad's
+  // front door.
+  const lane = hall.DOORS.find((d) => d.id === 'hall_east_2');
+  assert.deepEqual([lane.to, lane.entry, lane.kind ?? 'door', lane.locked], ['lane', 'home', 'door', undefined]);
+  assert.equal(hall.EAST_DOORS.zs[hall.EAST_DOORS.open], lane.z);
+  assert.ok(AREA_DEFS.lane.entries[lane.entry], 'a real entry of the course');
   // The bottle's mouth leads to the first course, out of the bottle's own kind.
   const mouth = hall.DOORS.find((d) => d.id === 'bottle');
   assert.deepEqual([mouth.to, mouth.entry, mouth.kind], ['skerries', 'arrival', 'bottle']);
@@ -1097,6 +1107,105 @@ test('the front door swings: its leaves turn into the south wall on their hinges
   assert.equal(mesh('hall-lamp').visible, true);
   area.setLit(false);
   assert.equal(mesh('hall-lamp').visible, false);
+});
+
+test("the east door to Sparrow Lane swings: its leaves turn into the east wall onto a dark passage (shut, they fill the opening), by its id only; its plaque is a little red house, the snowflake door's a snowflake", () => {
+  const { EAST_DOORS: D } = hall;
+  const z0 = D.zs[D.open];
+  const left = mesh('hall-east-door-left');
+  const right = mesh('hall-east-door-right');
+  assert.ok(left && right, 'two leaves of their own');
+  assert.equal(left.material, mesh('hall-wood').material, "the wood's look");
+  // Rays from the room toward the door (west of it, looking east) at points of its opening.
+  const ray = new THREE.Raycaster();
+  const hit = (u, y) => {
+    area.root.updateMatrixWorld(true);
+    ray.set(new THREE.Vector3(HALL.halfX - 600 + O.x, y + O.y, z0 + u + O.z), new THREE.Vector3(1, 0, 0));
+    const h = ray.intersectObjects(meshes.filter((m) => m.visible), false)[0];
+    return h && { name: h.object.name, x: h.point.x - O.x };
+  };
+  const opening = [];
+  for (const u of [-150, -90, -30, 30, 90, 150]) for (const y of [40, 200, 380]) opening.push([u, y]);
+  // Round the arch's head too (but behind door()'s keystone, which hangs in front of its crown).
+  const hw = D.width / 2;
+  for (let k = 0; k < 8; k++) {
+    const a = ((k + 0.5) * Math.PI) / 8;
+    const [u, y] = [Math.cos(a) * (hw - 2.5), D.height - hw + Math.sin(a) * (hw - 2.5)];
+    if (Math.abs(u) > 40 || y < D.height - 14) opening.push([u, y]);
+  }
+  area.setDoorOpen(0, 'hall_east_2');
+  for (const [u, y] of opening) {
+    const h = hit(u, y);
+    assert.ok(/^hall-east-door-/.test(h?.name) && h.x > HALL.halfX - 14 && h.x < HALL.halfX, `shut: ${u},${y} -> ${JSON.stringify(h)}`);
+  }
+  area.setDoorOpen(1, 'hall_east_2');
+  assert.ok(left.rotation.y > 1.2 && right.rotation.y < -1.2, `${left.rotation.y}, ${right.rotation.y}`);
+  for (const [u, y] of opening.filter(([u]) => Math.abs(u) < 100)) {
+    const h = hit(u, y);
+    assert.ok(h?.name === 'hall-wood' && h.x > HALL.halfX + 100, `open: ${u},${y} -> ${JSON.stringify(h)}`);
+  }
+  // Swinging it leaves the front door shut, and the front door's id (or none) leaves it be.
+  assert.ok(mesh('hall-door-left').rotation.y === 0 && mesh('hall-door-right').rotation.y === 0, 'the front door stays shut');
+  const full = left.rotation.y;
+  area.setDoorOpen(0.5, 'hall_front');
+  area.setDoorOpen(0.5);
+  assert.equal(left.rotation.y, full, 'only by its own id');
+  assert.ok(mesh('hall-door-left').rotation.y > 0, 'the front door swings by its id or none');
+  for (const t of [0.25, 0.5, 0.8]) {
+    area.setDoorOpen(t, 'hall_east_2');
+    assert.ok(Math.abs(left.rotation.y - full * t * t * (3 - 2 * t)) < 1e-9 && right.rotation.y === -left.rotation.y, `eased at ${t}: ${left.rotation.y}`);
+  }
+  area.setDoorOpen(0, 'hall_east_2');
+  area.setDoorOpen(0);
+  assert.ok(left.rotation.y === 0 && mesh('hall-door-left').rotation.y === 0, 'shut again');
+  // The plaques over the two doors: the house's Falu-red walls (red well over green and blue)
+  // over the open door only, and a blue field under both.
+  const paint = mesh('hall-paint').geometry.attributes;
+  const plaque = (z) => {
+    const out = { red: 0, blue: 0 };
+    for (let i = 0; i < paint.position.count; i++) {
+      const [x, y, pz] = [paint.position.getX(i), paint.position.getY(i), paint.position.getZ(i)];
+      if (x < HALL.halfX - 20 || Math.abs(y - D.plaqueV) > 82 || Math.abs(pz - z) > 82) continue;
+      const [r, g, b] = [paint.color.getX(i), paint.color.getY(i), paint.color.getZ(i)];
+      if (r > 2.5 * g && r > 2.5 * b) out.red++;
+      if (b > 1.5 * r && b > g) out.blue++;
+    }
+    return out;
+  };
+  const house = plaque(z0);
+  const snow = plaque(D.zs[1 - D.open]);
+  assert.deepEqual(D.plaques, ['snowflake', 'house']);
+  assert.ok(house.red >= 4 && house.blue > 0, `the little house: ${JSON.stringify(house)}`);
+  assert.ok(snow.red === 0 && snow.blue > 0, `the snowflake: ${JSON.stringify(snow)}`);
+});
+
+test("the east_2 entry: out of the east door to Sparrow Lane he stands in the room facing west, the camera in front of him (camYaw), clear of the chart table, with 1300 of floor before him; the walk-in goes on into the room", () => {
+  const e = area.entries.east_2;
+  const L = hall.ENTRIES.east_2;
+  assert.equal(L.door, 'hall_east_2');
+  assert.equal(L.walkIn, 8);
+  assert.ok(Math.abs(L.x - (hall.EAST_DOORS.faceX - 174)) < 1e-9 && L.z === hall.EAST_DOORS.zs[hall.EAST_DOORS.open]);
+  // Open floor west of him for the camera.
+  for (let d = 0; d <= 1300; d += 100) {
+    const floor = col.findFloor(e.x - d, e.y + 10, e.z);
+    assert.ok(floor.surface && Math.abs(floor.y - e.y) < 1, `floor ${d} before him`);
+    assert.ok(!inFurniture(local({ x: e.x - d, y: e.y + 100, z: e.z })), `nothing in the way ${d} before him`);
+  }
+  const { p, ctl, at } = hero(0, 0, 0, 0);
+  p.placeAt(e);
+  const cam = camera(p, { yaw: e.camYaw });
+  const c0 = local(cam.pos);
+  assert.ok(c0.x < L.x - 900 && Math.abs(c0.z - L.z) < 100, `the camera in front of him: ${JSON.stringify(c0)}`);
+  assert.equal(cam.collider.occluded, false);
+  assert.ok(!inFurniture(c0, 60) && !insideSolid(cam.pos), 'clear of the chart table and the walls');
+  for (let i = 0; i < 40; i++) {
+    const c = ctl.next(i < L.walkIn ? toward(cam, L.yaw) : {});
+    p.update(cam.playerInput(c), cam.getYaw());
+    cam.update(c, p);
+    assert.ok(inRoom(local(cam.pos)) && !insideSolid(cam.pos), `tick ${i}: the camera in the room, clear`);
+  }
+  const end = at();
+  assert.ok(end.x < L.x - 40 && Math.abs(end.z - L.z) < 20 && p.grounded, `walked on in: ${JSON.stringify(end)}`);
 });
 
 test('the lit lamp in the bottle shows from the room: a warm deep gold lantern (not the cream of the wall behind it) and two hazy beams turning round it, inside the glass whichever way they point, drawn before it', () => {

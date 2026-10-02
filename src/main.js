@@ -7,7 +7,7 @@
 //   ?mute=1        no audio
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
-//   ?area=hall     start in another area (world/areas.js: hall, skerries), at &entry=<id>
+//   ?area=hall     start in another area (world/areas.js: hall, skerries, lane), at &entry=<id>
 //                  (default: its respawn entry); only where play starts at once (?test,
 //                  ?skipTitle)
 //
@@ -449,7 +449,7 @@ async function start() {
       return face; // the FaceScreen while it shows (test hooks: see ui/FaceScreen.js), else null
     },
     get area() {
-      return areas.name; // the area Jonas is in: 'grounds' | 'hall' | 'skerries'
+      return areas.name; // the area Jonas is in: 'grounds' | 'hall' | 'skerries' | 'lane'
     },
     // Switch area at once (no wipe), at an entry (default: its respawn entry), then draw.
     enterArea(name, entry) {

@@ -195,7 +195,7 @@ export function pauseLayout(W, H, measure, controls = KEY_CONTROLS) {
 
 export const COURSE_NAME = 'CASTLE GROUNDS';
 // The pause screen's course name in each area (world/areas.js; HUD.setCourse).
-export const COURSE_NAMES = Object.freeze({ grounds: COURSE_NAME, hall: 'THE GREAT HALL', skerries: 'MIDSUMMER SKERRIES' });
+export const COURSE_NAMES = Object.freeze({ grounds: COURSE_NAME, hall: 'THE GREAT HALL', skerries: 'MIDSUMMER SKERRIES', lane: 'SPARROW LANE' });
 
 // A course's way out on its pause screen (world/areas.js `leave`; main: B while paused): a gold
 // line, the button in the bindings of the legend shown, in the gap between PAUSE (BIG_FONT at

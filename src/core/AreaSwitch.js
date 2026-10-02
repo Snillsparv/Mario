@@ -1,5 +1,6 @@
 // Moving Jonas between areas (world/areas.js): the castle grounds, the Great Hall inside the
-// castle and Midsummer Skerries (the first course, through the ship in the bottle), each with a
+// castle, Midsummer Skerries (the first course, through the ship in the bottle) and Sparrow Lane
+// (the second, through the hall's east door with the little house on it), each with a
 // collision world, objects and a look of their own, all in the one scene (each area's root
 // group shows only while he is in it; hidden ones cost no draw calls, and only the current area
 // is updated and animated).
@@ -60,9 +61,11 @@
 //   open  (OPEN ticks): the wipe opens (an entry with a sound of its own plays it now: entry.sfx,
 //         popping out of the bottle); with entry.walkIn he walks on along entry.yaw for that
 //         many ticks, then the stick is his
-// Through a door (kind 'door') its leaves swing (Area.setDoorOpen: the castle's front door on
-// the grounds, its inside in the hall): the door he walks into opens as the wipe closes (and
-// shuts again with the wipe if the warp is called off), and once its leaves have swung aside
+// Through a door (kind 'door') its leaves swing (Area.setDoorOpen(t, doorId): the castle's front
+// door on the grounds, its inside or the east door to the lane in the hall, the dad's front door
+// in the lane; the id is the door's he walks into, warp.from.id, until the switch, then the one
+// his entry names, entry.door): the door he walks into opens as the wipe closes (and shuts again
+// with the wipe if the warp is called off), and once its leaves have swung aside
 // he steps on into its opening (heroOffset: WARP.STEP, his model only, the door's collider
 // stays solid; back out with a warp called off). At the switch that door is shut (its area
 // hidden) and the one he comes out of stands open; it stays open while the iris is still small
@@ -173,9 +176,11 @@ export class AreaSwitch {
     this.carried = neutralController(); // the carried or stilled stick (his buttons), reused
     this.neutral = neutralController();
     this.wipeState = { amount: 0, kind: 'iris', color: IRIS_COLOR };
-    // The door leaves swinging (a door's warp): the area whose door they are, and how far open
-    // they stand after this tick and after the one before (frames are drawn between the two).
+    // The door leaves swinging (a door's warp): the area whose door they are, the door's id (an
+    // area may have more than one: Area.setDoorOpen swings the one named), and how far open they
+    // stand after this tick and after the one before (frames are drawn between the two).
     this.leafArea = null;
+    this.leafDoor = null;
     this.leaf = 0;
     this.leafWas = 0;
     this.offset = { x: 0, z: 0 }; // heroOffset's, reused
@@ -392,7 +397,7 @@ export class AreaSwitch {
     a.update(time, camera);
     if (a !== this.grounds && a.def.sky) this.sky?.update(time, camera); // (the grounds update it themselves)
     const leaves = this.leafArea;
-    if (leaves !== null) leaves.setDoorOpen?.(this.leafWas + (this.leaf - this.leafWas) * alpha);
+    if (leaves !== null) leaves.setDoorOpen?.(this.leafWas + (this.leaf - this.leafWas) * alpha, this.leafDoor);
   }
 
   // How far the wipe covers the screen a frame `alpha` of the way into the next tick.
@@ -408,13 +413,17 @@ export class AreaSwitch {
   // The door leaves after this tick (see the header): open with the wipe closing through a
   // door, shut with it if the warp was called off; standing open at the switch in the area he
   // arrives in, and SHUT_FROM ticks into the open shutting behind him, to meet on SHUT_AT (as
-  // 'door_close' plays).
+  // 'door_close' plays). Which door: the one he walks into (its id, warp.from.id) until the
+  // switch, then the one his entry names (entry.door), so an area with more than one swinging
+  // door swings the right one.
   _swing() {
     const w = this.warp;
     let area = null;
+    let door = null;
     let open = 0;
     if (w !== null && w.kind === 'door') {
       area = this.current;
+      door = this.arrival !== null ? (this.arrival.door ?? null) : (w.from?.id ?? null);
       if (this.phase === 'close') open = this.t / this.closeTicks;
       else if (this.arrival === null) open = 1 - this.t / WARP.OPEN; // (no switch: covered, or called off)
       else if (this.phase === 'hold') open = 1;
@@ -423,11 +432,12 @@ export class AreaSwitch {
         open = open < 1 ? (open > 0 ? open : 0) : 1;
       }
     }
-    if (area !== this.leafArea) {
+    if (area !== this.leafArea || door !== this.leafDoor) {
       // A new door: the last one shuts (its area hidden now); the one he walks into opens from
       // shut, the one he comes out of stands open from the switch (the screen covered).
-      if (this.leafArea !== null) this.leafArea.setDoorOpen?.(0);
+      if (this.leafArea !== null) this.leafArea.setDoorOpen?.(0, this.leafDoor);
       this.leafArea = area;
+      this.leafDoor = door;
       this.leafWas = this.phase === 'close' ? 0 : open;
     } else this.leafWas = this.leaf;
     this.leaf = open;
@@ -475,8 +485,9 @@ export class AreaSwitch {
     this.t = 0;
     this.walk = 0;
     // A door still swinging (a switch at once, enter()) shuts.
-    if (this.leafArea !== null) this.leafArea.setDoorOpen?.(0);
+    if (this.leafArea !== null) this.leafArea.setDoorOpen?.(0, this.leafDoor);
     this.leafArea = null;
+    this.leafDoor = null;
     this.leaf = this.leafWas = 0;
   }
 

@@ -1,13 +1,15 @@
 // The places Jonas can be in, each with a collision world of its own (core/AreaSwitch.js moves
 // him between them): 'grounds', the castle grounds (world/level.js, built at boot), 'hall', the
-// Great Hall inside the castle (world/hall/*), and 'skerries', Midsummer Skerries, the first
-// course, through the ship in the bottle (world/skerries/*); world/area.js builds the hall and
-// the course the first time he goes in. Data and builder references only.
+// Great Hall inside the castle (world/hall/*), 'skerries', Midsummer Skerries, the first course,
+// through the ship in the bottle (world/skerries/*), and 'lane', Sparrow Lane, the second
+// course, through the hall's east door with the little house on it (world/lane/*);
+// world/area.js builds the hall and the courses the first time he goes in. Data and builder
+// references only.
 //
 //   AREA_DEFS[name] = AreaDef
 //   groundsArea(level, objects) -> Area   // the grounds as an Area (world/area.js), wrapping
 //                                         // what boot already built
-//   HALL_ATMOSPHERE, SKERRIES_ATMOSPHERE  // their looks (view.setAtmosphere)
+//   HALL_ATMOSPHERE, SKERRIES_ATMOSPHERE, LANE_ATMOSPHERE   // their looks (view.setAtmosphere)
 //
 // AreaDef = {
 //   name,
@@ -15,11 +17,13 @@
 //   builders: [build(layout)],   // WorldParts (level.js); colliders must be { positions }
 //   layout,                      // local anchors: ENTRIES, DOORS, COINS, ONE_UP, SIGNS, POLES
 //                                // (and later STAR, ...)
-//   entries: { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx? } }   // local
+//   entries: { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx?, door? } }   // local
 //                                //   drop: he falls in from that high (action 'spawn');
 //                                //   camYaw: the camera's orbit yaw (default: behind him);
 //                                //   walkIn: ticks he walks on along yaw as the picture opens;
-//                                //   sfx: the sound of arriving there, as the picture opens
+//                                //   sfx: the sound of arriving there, as the picture opens;
+//                                //   door: the id of the swinging door he comes out of there
+//                                //   (Area.setDoorOpen's: the one that stands open, then shuts)
 //   respawn: { entry, drop },    // where a lost life drops him back in
 //   waterLevelAt(x, z),          // local water surface, or NO_WATER
 //   probeY,                      // local height the ground probe starts from (under the ceiling)
@@ -48,6 +52,8 @@ import { buildHall } from './hall/hall.js';
 import * as skerriesLayout from './skerries/layout.js';
 import { buildSkerries } from './skerries/build.js';
 import { buildSea } from './skerries/sea.js';
+import * as laneLayout from './lane/layout.js';
+import { buildLane } from './lane/build.js';
 
 // The warm hall: a golden haze (its fog, and the clear colour: the hall has no sky) that the far
 // end of the room melts into, not a brown murk, the actors lit by a warm key from the bake's
@@ -74,6 +80,21 @@ export const SKERRIES_ATMOSPHERE = Object.freeze({
   sun: 0xffe2b4,
   sunIntensity: 0.66 * Math.PI,
   sunDir: skerriesLayout.SKERRIES_SUN,
+});
+
+// A golden October afternoon in Sparrow Lane: the grounds' fog colour (the shared sky dome
+// shows; the lane is ringed by forest, so the horizon mostly hides), the fog a little nearer
+// than out on the sea, the actors lit by a low warm sun from the south-west (the bake's LANE_SUN)
+// under a warm sky and a green ground.
+export const LANE_ATMOSPHERE = Object.freeze({
+  near: 6000,
+  far: 24000,
+  sun: 0xffdcb0,
+  sunIntensity: 0.66 * Math.PI,
+  sunDir: laneLayout.LANE_SUN,
+  sky: 0xfff0d8,
+  ground: 0x6a7a4a,
+  ambientIntensity: 0.6 * Math.PI,
 });
 
 // Arriving on the porch from the hall: this far in front of the door's face, on the landing
@@ -127,13 +148,34 @@ export const AREA_DEFS = {
     starExit: { to: 'hall', entry: 'bottle' },
     card: true,
   },
+  lane: {
+    name: 'lane',
+    origin: { x: -60000, y: 0, z: 0 },
+    builders: [buildLane],
+    layout: laneLayout,
+    entries: laneLayout.ENTRIES,
+    respawn: laneLayout.RESPAWN,
+    waterLevelAt: () => NO_WATER,
+    probeY: laneLayout.PROBE_Y,
+    sky: true,
+    atmosphere: LANE_ATMOSPHERE,
+    // "Skerry Polska" again (a bright folk loop suits a summer street), the grounds' birds,
+    // leaves and breeze without their waterfall and moat.
+    audio: { music: 'skerries', ambience: 'lane', reverb: false },
+    // Out of the course (the pause screen's leave, or the star): back into the hall, in front of
+    // the east door with the little house on it.
+    leave: { to: 'hall', entry: 'east_2' },
+    starExit: { to: 'hall', entry: 'east_2' },
+    card: true,
+  },
 };
 
 // The grounds as an Area: boot built them (level.js) and their objects (objects: the grounds'
 // ObjectManager). Entries: 'start' (the spawn, falling in from the sky) and 'porch' (in front of
 // the castle door, his back to it and the camera in front of him, walking out 8 ticks). Showing
 // or hiding them toggles every part but the sky (areas share the one sky dome) and the objects.
-// Their swinging door is the castle's front door (the castle part's setDoorOpen).
+// Their swinging door is the castle's front door (the castle part's setDoorOpen; the door's id
+// is no matter: it is the grounds' only one).
 export function groundsArea(level, objects) {
   const sky = level.parts.find((p) => p.name === 'sky') ?? null;
   const castle = level.parts.find((p) => p.name === 'castle') ?? null;

@@ -34,7 +34,7 @@ browser once with `npx playwright install chromium`.
 
 * **Jonas's stretchy face**: open the game with `?face=1` for a start screen with Jonas's big face: grab and pull his cheeks, nose, glasses, ears or cap (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start to play.
 * **Into the castle and on to the first course**: walk into the castle's big front door; see
-  "The castle and Midsummer Skerries" below.
+  "The castle and Midsummer Skerries" and "Sparrow Lane" below.
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and
   grab it.
@@ -68,8 +68,9 @@ the picture closes in a circle around him, and it opens again inside the **Great
 vaulted hall in a golden haze, with gleaming rose-marble columns, teal panelling and a polished
 tiled floor that mirrors the room, where the ship in a bottle lies in a round apse at the top
 of a round stepped dais. A **1-up** waits on the fireplace's mantel: wall-kick up the narrow gap
-beside it, or climb the banner pole and jump from its top. The doors in the east wall are still
-being built (they only rattle). The front door, inside, swings open the same way and takes him
+beside it, or climb the banner pole and jump from its top. Of the two doors in the east wall,
+the one with the snowflake over it is still being built (it only rattles); the one with the
+little red house over it leads to Sparrow Lane (below). The front door, inside, swings open the same way and takes him
 back out onto the porch, where it swings shut behind him with a thud as the picture opens.
 While AI RACE is on (or its storm is still clearing) the storm keeps the door sealed. The hall
 has its own music, a music-box waltz, over the crackle of the fire in its hearth, and every
@@ -114,6 +115,29 @@ the gulls.
   down the plank bridge, in the sunken boat, and round and up the **maypole** on Home Island's
   midsummer meadow (by the red cottage and the flagpole; butterflies over it and gulls in the
   sky). The maypole, the flagpole and the masts can all be climbed.
+
+### Sparrow Lane
+
+The east door with the **little red house** on its plaque (right beside the way in) swings open
+like the front door and takes Jonas to **Sparrow Lane**, the second course: his own street on a
+golden autumn afternoon. He steps out of his own black front door onto the path of his long red
+house, with the mailbox (a little blue sparrow keeps watch over it: read it) by the street; up
+the hill across the street stand villas behind grey stone walls, with steps, drives and side
+yards up to the forest; along his side long low houses joined by flat-roofed carports; a turning
+area at the far end with a double garage and a footpath, the junction with its big trees and a
+motorhome at the other. Nothing here can hurt him.
+
+* The course's **star** twinkles over the ridge of Jonas's roof. Climb a **wheelie bin** by the
+  carport, jump onto the carport's flat roof and hop across onto the roof's slope, then walk up to
+  the ridge. Or jump right at the front wall to grab the eaves, or climb the little red-leaf tree
+  in the round bed, stand on your hands on its top and flip onto the roof.
+* 50 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
+  the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
+  double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof.
+* The lampposts at the junction and the turning area, the three flagpoles and the red-leaf tree
+  can be climbed: a handstand on top shows the lane.
+* The star takes Jonas back into the Great Hall in front of the little house's door; so does
+  pausing and pressing **J** (B), and walking back into his own front door.
 
 ### Moves
 
@@ -173,8 +197,9 @@ WebM (VP9 + Opus, e.g. Firefox). Portrait files end in `-portrait`
 that blocks downloads) V and 9 only explain this.
 
 URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-time loop;
-driven through `window.__game`, see the docs), `?area=hall` or `?area=skerries` (with
-`?skipTitle=1` or `?test=1`: start inside the Great Hall, or in Midsummer Skerries).
+driven through `window.__game`, see the docs), `?area=hall`, `?area=skerries` or `?area=lane`
+(with `?skipTitle=1` or `?test=1`: start inside the Great Hall, in Midsummer Skerries or in
+Sparrow Lane).
 
 ## Play with your phone as a controller
 

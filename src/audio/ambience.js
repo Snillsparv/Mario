@@ -12,8 +12,10 @@
 // a tree out there), waves lap at the sea's level on the open water round the listener
 // (spots.seaLevel, spots.isWater: never on dry land, so they thin out and fade inland) and now
 // and then a gull calls from over one of the gulls' circles (spots.gulls); no tree birds, no
-// distant chorus, no waterfall. Setting the profile and spots already in force changes nothing
-// (a fade under way, such as the storm lifting, runs on).
+// distant chorus, no waterfall. In the street ('lane') it is the grounds' birds, leaves and
+// breeze without their waterfall and moat laps (those are the grounds' own, at their layout's
+// spots). Setting the profile and spots already in force changes nothing (a fade under way, such
+// as the storm lifting, runs on).
 
 import { WATERFALL, WATER_LEVEL, MOAT, ISLAND, POND, TREES, groundHeight, sdRoundRect, sdCircle } from '../world/layout.js';
 import { clamp, TAU } from '../core/math.js';
@@ -61,6 +63,7 @@ export const PROFILES = {
   grounds: { pastoral: true, leaves: true, birds: true, chorus: true, waterfall: true, laps: 'moat', room: false, fires: false, gulls: false },
   hall: { pastoral: false, leaves: false, birds: false, chorus: false, waterfall: false, laps: null, room: true, fires: true, gulls: false },
   sea: { pastoral: true, leaves: false, birds: false, chorus: false, waterfall: false, laps: 'sea', room: false, fires: false, gulls: true },
+  lane: { pastoral: true, leaves: true, birds: true, chorus: true, waterfall: false, laps: null, room: false, fires: false, gulls: false },
 };
 
 // An area's spots (setProfile) when it names none (isWater null: open water all round).

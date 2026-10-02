@@ -643,8 +643,9 @@ test('areaChange: indoors the pastoral bed fades out under the room tone and the
 });
 
 test("areas' own music: the hall's and the course's loops start on areaChange (over the arrival cue) and crossfade into each other; back on the grounds they stop, and nothing else does", async () => {
-  // Every area's own track is a plain loop of its own, one that going back to the grounds stops.
-  const tracks = Object.values(AREA_DEFS).map((d) => d.audio.music).filter(Boolean);
+  // Every area's own track is a plain loop of its own, one that going back to the grounds stops
+  // (Sparrow Lane plays Midsummer Skerries' too).
+  const tracks = [...new Set(Object.values(AREA_DEFS).map((d) => d.audio.music).filter(Boolean))];
   assert.deepEqual([...AREA_TRACKS].sort(), [...tracks].sort());
   for (const name of tracks) assert.ok(SONGS[name] && !SONGS[name].finalBar && !SONGS[name].menu && !SONGS[name].jingle, name);
   const events = new Events();

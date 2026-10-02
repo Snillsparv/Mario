@@ -27,7 +27,7 @@
 // them; the door stays solid); Jonas shrinks into the bottle (his size again from the switch;
 // his shadow on the landing under a jump), and a course's star lights its lighthouse and the
 // one in the hall's bottle (an area built later comes lit; GAME OVER puts them out). The hall's
-// east doors (not open yet) show their sign, without a laugh or a warp. Midsummer Skerries, the
+// snowflake door (not open yet) shows its sign, without a laugh or a warp. Midsummer Skerries, the
 // first course: up the steps of the dais into the bottle's neck (its own sound, the iris) he
 // drops in onto the jetty from the sky with the camera behind him and the course's look, and
 // its card shows on the first entry of a game only; the star (on the lighthouse gallery) takes
@@ -40,6 +40,15 @@
 // before the resets and the title) gives the course its star, its coins and its dark lamp back.
 // Its critters are all back home after every arrival and after GAME OVER (the hall and the
 // grounds have none), and no strike of theirs lands while a warp runs (main passes areas.busy).
+// Sparrow Lane, the second course: into the hall's east door with the little house on it (its
+// leaves swinging open over the close, the front door's staying shut) he comes out of the dad's
+// front door, which stands open, then shuts behind him as door_close plays, with the course's
+// look, sky, sound and card; back in through that door he comes out of the hall's east door, which
+// shuts behind him the same way; a stick held through the door walks him on out, not back in;
+// AreaSwitch hands each part the id of the door that swings (a spy on every area: the castle's,
+// the hall's front and east doors, the dad's); the lane's star takes him out in front of the east
+// door 20 ticks after his dance (no door swings, a stick held on waits to be let go), and so does
+// the pause screen's leave; GAME OVER from the lane gives the course its star and coins back.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -57,14 +66,16 @@ import { DOOR } from '../src/objects/Door.js';
 import { AreaSwitch, WARP } from '../src/core/AreaSwitch.js';
 import { PlayerModel } from '../src/player/PlayerModel.js';
 import { readFileSync } from 'node:fs';
-import { AREA_DEFS, HALL_ATMOSPHERE, SKERRIES_ATMOSPHERE } from '../src/world/areas.js';
+import { AREA_DEFS, HALL_ATMOSPHERE, LANE_ATMOSPHERE, SKERRIES_ATMOSPHERE } from '../src/world/areas.js';
 import { buildArea, shiftPositions } from '../src/world/area.js';
 import { SolidBuilder } from '../src/world/castle/geom.js';
 import * as hall from '../src/world/hall/layout.js';
 import * as sk from '../src/world/skerries/layout.js';
+import * as lane from '../src/world/lane/layout.js';
 
 const HALL_Z = AREA_DEFS.hall.origin.z;
 const SK = AREA_DEFS.skerries.origin; // Midsummer Skerries: world = local + SK
+const LN = AREA_DEFS.lane.origin; // Sparrow Lane: world = local + LN
 const PORCH = { x: 0, y: 300, z: -470 }; // the grounds' porch entry, measured on the real level
 
 // The game as main wires it: the real grounds and their objects, Jonas, the camera, and
@@ -433,11 +444,11 @@ test('AI RACE seals the castle door, also while it fades out: the laugh and the 
   assert.ok(log.includes('warp:hall') && log.includes('door_open') && !log.includes('evil_laugh'), log.join());
 });
 
-test("the hall's doors still being built say so: their sign and a rattle of the handle, no laugh, no warp", () => {
+test("the hall's door still being built says so: its sign and a rattle of the handle, no laugh, no warp", () => {
   const g = game();
   g.areas.enter('hall');
   const doors = g.areas.objects.doors;
-  for (const [id, sign] of [['hall_east_1', 'hall_door_soon'], ['hall_east_2', 'hall_door_soon']]) {
+  for (const [id, sign] of [['hall_east_1', 'hall_door_soon']]) {
     const d = doors.find((door) => door.id === id);
     const yaw = d.yaw + Math.PI;
     g.dialog.isOpen = false;
@@ -1330,6 +1341,219 @@ test("GAME OVER from the course: main brings the grounds back before the resets 
   assert.equal(course.objects.star.state, 'idle', 'and back on its spot');
   assert.equal(course.objects.coins.coins[0].alive, true, 'the coin back');
   assert.equal(lighthouse.lit, false, 'the lamp out');
+});
+
+// The lane's door leaf and the hall's east door's left leaf, after each tick of a transition (and
+// a frame half way from the tick before), with whether door_close has played by then.
+function laneDoors(g) {
+  const hallArea = g.areas.get('hall');
+  const laneArea = g.areas.get('lane');
+  const east = hallArea.root.getObjectByName('hall-east-door-left');
+  const front = hallArea.root.getObjectByName('hall-door-left');
+  const dad = laneArea.root.getObjectByName('lane-door');
+  laneArea.setDoorOpen(1, 'lane_home');
+  hallArea.setDoorOpen(1, 'hall_east_2');
+  const full = { dad: dad.rotation.y, east: east.rotation.y };
+  laneArea.setDoorOpen(0, 'lane_home');
+  hallArea.setDoorOpen(0, 'hall_east_2');
+  const now = (alpha = 1) => {
+    g.areas.update(0, g.cam.camera, alpha);
+    return { dad: dad.rotation.y, east: east.rotation.y, front: front.rotation.y };
+  };
+  const through = () => {
+    const seen = [];
+    while (g.areas.phase !== null && seen.length < 60) {
+      g.tick();
+      const half = now(0.5);
+      seen.push({ phase: g.phases.at(-1), t: g.areas.t, area: g.areas.name, half, ...now(), shut: g.log.includes('door_close') });
+    }
+    return seen;
+  };
+  return { full, now, through };
+}
+
+// Jonas in the hall 600 in front of the east door with the little house on it, facing it.
+const atEastDoor = (g) => {
+  const d = hall.DOORS.find((e) => e.id === 'hall_east_2');
+  g.areas.enter('hall');
+  g.place(d.x - 600, 0, d.z + HALL_Z, Math.PI / 2);
+  return d;
+};
+
+test("Sparrow Lane: into the hall's east door with the little house (its leaves swing open, the front door's stay shut), out of the dad's front door (standing open, then shutting behind him as door_close plays), the course's look, sky, sound and card; back in through it, out of the east door, which shuts behind him", () => {
+  const g = game();
+  const leaves = laneDoors(g);
+  assert.ok(leaves.full.dad > 1.2 && leaves.full.east > 1.2, JSON.stringify(leaves.full));
+  atEastDoor(g);
+  g.log.length = 0;
+  g.until(() => g.log.includes('warp:lane'), 120, g.toward(Math.PI / 2));
+  assert.ok(g.log.includes('door_open') && !g.log.includes('door_rattle') && !g.log.includes('evil_laugh'), g.log.join());
+  g.log.length = 0;
+  let seen = leaves.through();
+  const at = (phase) => seen.filter((s) => s.phase === phase);
+  assert.equal(at('close').length, WARP.CLOSE);
+  assert.ok(rising(at('close').map((s) => s.east)) && near(at('close').at(-1).east, leaves.full.east), JSON.stringify(at('close').map((s) => s.east)));
+  assert.ok(seen.every((s) => s.front === 0), "the hall's front door stays shut");
+  // The switch: the east door shut, the dad's door standing open; it shuts on the open's tick 13.
+  assert.ok(at('hold').every((s) => s.east === 0 && s.area === 'lane' && near(s.dad, leaves.full.dad)), JSON.stringify(at('hold')));
+  const open = at('open');
+  assert.ok(open.slice(0, WARP.SHUT_FROM).every((s) => near(s.dad, leaves.full.dad)));
+  const meet = open.findIndex((s) => s.shut);
+  assert.equal(open[meet].t, WARP.OPEN - 1);
+  assert.ok(falling(open.slice(WARP.SHUT_FROM - 1, meet + 1).map((s) => s.dad)));
+  assert.ok(open.slice(meet).every((s) => s.dad === 0));
+  assert.equal(count(g.log, 'door_close'), 1);
+  // The arrival: on the path in front of the door, facing the street, the camera in front of him.
+  const a = g.areas.current;
+  const arrive = g.arrivals.at(-1);
+  const e = lane.ENTRIES.home;
+  assert.deepEqual([arrive.to, arrive.entry, arrive.action], ['lane', 'home', 'idle']);
+  assert.deepEqual([arrive.pos.x, arrive.pos.y, arrive.pos.z], [e.x + LN.x, e.y + LN.y, e.z + LN.z]);
+  assert.equal(arrive.faceYaw, Math.PI);
+  assert.ok(arrive.cam.z < arrive.pos.z - 800 && !arrive.occluded, `the camera in front of him: ${arrive.cam.toArray().map(Math.round)}`);
+  assert.ok(g.player.pos.z < arrive.pos.z - 30, 'walked out toward the street');
+  // The course: its look, no water, the sky dome, its own world on Jonas and the camera, its
+  // sound and card.
+  assert.equal(g.view.looks.at(-1), LANE_ATMOSPHERE);
+  assert.equal(g.view.water(LN.x, LN.z), NO_WATER);
+  assert.equal(g.level.parts.find((p) => p.name === 'sky').object3D.visible, true);
+  assert.deepEqual(worldsIn(g.player, g.cam), [a.collision]);
+  assert.deepEqual([arrive.audio.music, arrive.audio.ambience, arrive.audio.reverb], ['skerries', 'lane', false]);
+  assert.equal(g.hud.course, 'lane');
+  assert.deepEqual(g.hud.cards, ['lane']);
+  assert.equal(g.areas.canLeave(), true);
+  assert.deepEqual(g.player.spawn, { x: e.x + LN.x, y: e.y + LN.y, z: e.z + LN.z, yaw: e.yaw, drop: lane.RESPAWN.drop });
+  // Back: off the door's apron, then back in through it.
+  g.until(() => false, 30, g.toward(Math.PI));
+  g.until(() => false, 2);
+  g.log.length = 0;
+  g.until(() => g.log.includes('warp:hall'), 120, g.toward(0));
+  assert.ok(g.log.includes('door_open'), g.log.join());
+  g.log.length = 0;
+  seen = leaves.through();
+  assert.ok(rising(at('close').map((s) => s.dad)) && near(at('close').at(-1).dad, leaves.full.dad), JSON.stringify(at('close').map((s) => s.dad)));
+  assert.ok(at('hold').every((s) => s.dad === 0 && s.area === 'hall' && near(s.east, leaves.full.east)));
+  const back = at('open');
+  const shut = back.findIndex((s) => s.shut);
+  assert.equal(back[shut].t, WARP.OPEN - 1);
+  assert.ok(back.slice(shut).every((s) => s.east === 0) && seen.every((s) => s.front === 0));
+  const b = g.arrivals.at(-1);
+  const h = hall.ENTRIES.east_2;
+  assert.deepEqual([b.to, b.entry], ['hall', 'east_2']);
+  assert.deepEqual([b.pos.x, b.pos.y, b.pos.z], [h.x, h.y, h.z + HALL_Z]);
+  assert.equal(b.faceYaw, -Math.PI / 2);
+  assert.ok(b.cam.x < b.pos.x - 800 && !b.occluded, `the camera in front of him: ${b.cam.toArray().map(Math.round)}`);
+  assert.deepEqual(worldsIn(g.player, g.cam), [g.areas.current.collision]);
+  assert.equal(g.hud.course, 'hall');
+  assert.deepEqual(g.hud.cards, ['lane'], 'the card once a game');
+});
+
+test("a stick held through the east door walks him on out of the dad's door toward the street, not back in; AreaSwitch hands each area the id of the door that swings", () => {
+  const g = game();
+  // A spy on every area's setDoorOpen: the (area, door id) pairs, as they change.
+  const ids = [];
+  for (const area of [g.areas.grounds, g.areas.get('hall'), g.areas.get('lane')]) {
+    const set = area.setDoorOpen.bind(area);
+    area.setDoorOpen = (t, id) => {
+      const last = ids.at(-1);
+      if (!last || last[0] !== area.name || last[1] !== id) ids.push([area.name, id]);
+      set(t, id);
+    };
+  }
+  // In through the castle door, then out of the hall's east door to the lane, the stick held.
+  g.place(0, 300, -300, Math.PI);
+  g.until(() => g.areas.name === 'hall' && g.areas.phase === null, 200, { stickY: 1 });
+  atEastDoor(g);
+  g.log.length = 0;
+  const hold = g.toward(Math.PI / 2)();
+  g.until(() => g.log.includes('warp:lane'), 120, hold);
+  g.until(() => g.areas.phase === null, 40, hold);
+  assert.equal(g.areas.name, 'lane');
+  const z0 = g.player.pos.z;
+  g.until(() => false, 30, hold);
+  assert.ok(g.player.pos.z < z0 - 150, `walked on toward the street: ${Math.round(g.player.pos.z - z0)}`);
+  assert.ok(!g.log.includes('warp:hall'), 'not back in');
+  // Back into the hall through the dad's door, then out of the front door onto the porch.
+  g.until(() => false, 2);
+  g.until(() => g.log.includes('warp:hall'), 120, g.toward(0));
+  g.until(() => g.areas.phase === null, 40);
+  const d = hall.DOORS.find((e) => e.id === 'hall_front');
+  g.place(d.x, 0, d.z - 400 + HALL_Z, 0);
+  g.until(() => g.log.includes('warp:grounds'), 120, g.toward(0));
+  g.until(() => g.areas.phase === null, 40);
+  assert.deepEqual(ids, [
+    ['grounds', 'castle'],
+    ['hall', 'hall_front'],
+    ['hall', 'hall_east_2'],
+    ['lane', 'lane_home'],
+    ['hall', 'hall_east_2'],
+    ['hall', 'hall_front'],
+    ['grounds', null],
+  ]);
+});
+
+test("the lane's star over the dad's ridge: the exit waits out his dance and 20 ticks more, then fades and he comes out in front of the hall's east door, one star up, no door swinging; a stick held on waits to be let go; the pause screen's leave goes the same way; GAME OVER gives the course its star and coins back", () => {
+  const g = game();
+  const leaves = laneDoors(g);
+  g.areas.enter('lane');
+  const S = lane.STAR;
+  g.player.teleport(S.x + 250 + LN.x, lane.DAD.ridge + LN.y, S.z + LN.z, -Math.PI / 2);
+  g.player.setAction('idle');
+  g.cam.reset(g.player);
+  const stars = [];
+  g.events.on('starCollected', (e) => stars.push(e));
+  g.until(() => stars.length > 0, 60, g.toward(-Math.PI / 2));
+  assert.deepEqual([stars[0].id, stars[0].area], ['lane_star', 'lane']);
+  assert.equal(g.player.stars, 1);
+  const { out, fade } = danceThenFade(g);
+  assert.equal(fade - out, 20, `the fade 20 ticks after the dance: ${out} -> ${fade}`);
+  assert.equal(g.areas.wipe(1).kind, 'fade');
+  g.log.length = 0;
+  const seen = [];
+  while (g.areas.phase !== null && seen.length < 60) {
+    g.tick({ stickY: 1 });
+    seen.push(leaves.now());
+  }
+  assert.ok(seen.every((s) => s.east === 0 && s.dad === 0 && s.front === 0), 'no door swings');
+  assert.ok(!g.log.includes('door_close') && !g.log.includes('door_open'));
+  const arrive = g.arrivals.at(-1);
+  const h = hall.ENTRIES.east_2;
+  assert.deepEqual([arrive.to, arrive.entry], ['hall', 'east_2']);
+  assert.deepEqual([arrive.pos.x, arrive.pos.y, arrive.pos.z], [h.x, h.y, h.z + HALL_Z]);
+  assert.equal(g.player.stars, 1);
+  // The stick held on from the course waits to be let go (the east door is armed: he stands off
+  // its apron, where the walk-in took him).
+  g.until(() => false, 10, { stickY: 1 });
+  const x0 = g.player.pos.x;
+  assert.ok(x0 < h.x, 'walked in a few steps');
+  g.until(() => false, 40, { stickY: 1 });
+  assert.equal(g.areas.still, true);
+  assert.ok(!g.log.includes('warp:lane') && Math.abs(g.player.pos.x - x0) < 1, `still where the walk-in left him: ${g.player.pos.x}`);
+  g.tick();
+  assert.equal(g.areas.still, false);
+  // The pause screen's leave: an iris to the same spot.
+  g.areas.enter('lane');
+  g.until(() => false, 5);
+  assert.equal(g.areas.canLeave(), true);
+  assert.equal(g.areas.leave(), true);
+  assert.equal(g.areas.warp.kind, 'leave');
+  g.until(() => g.areas.phase === null, 40);
+  assert.deepEqual([g.areas.name, g.arrivals.at(-1).entry], ['hall', 'east_2']);
+  assert.equal(g.areas.canLeave(), false, 'the hall is no course');
+  // GAME OVER: a coin taken, then the course's star and coins back.
+  g.areas.enter('lane');
+  const course = g.areas.current;
+  const c = lane.COINS[0];
+  g.player.teleport(c.x + LN.x, lane.GROUND + LN.y, c.z + LN.z, Math.PI);
+  g.player.setAction('idle');
+  g.tick();
+  assert.equal(course.objects.coins.coins[0].alive, false, 'a coin taken');
+  g.areas.enter('grounds', 'start');
+  g.areas.resetCourses();
+  assert.deepEqual(worldsIn(g.player, g.cam), [g.level.collision]);
+  assert.equal(g.player.stars, 0, 'the star taken back off his count');
+  assert.equal(course.objects.star.state, 'idle', 'and back over the ridge');
+  assert.equal(course.objects.coins.coins[0].alive, true, 'the coin back');
 });
 
 test("Midsummer Skerries' critters: every arrival and GAME OVER bring all six back home, calm (a frog, a mosquito and a crab knocked over first; the hall and the grounds have none); main's tick holds them while a warp runs, and a frog's leap landing on him as he leaves the course does him no harm", () => {

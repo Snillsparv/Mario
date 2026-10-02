@@ -1,8 +1,9 @@
 // The Great Hall's building (area 'hall', see hall/layout.js): a WorldPart built in the hall's
 // local frame, which world/area.js places at the hall's origin.
 //
-//   buildHall(layout) -> { object3D, colliders, update(time), setDoorOpen(t), setLit(on) }
-//     setDoorOpen   the front door's leaves, 0 shut .. 1 standing open (core/AreaSwitch.js)
+//   buildHall(layout) -> { object3D, colliders, update(time), setDoorOpen(t, id), setLit(on) }
+//     setDoorOpen   a door's leaves, 0 shut .. 1 standing open (core/AreaSwitch.js): the east door
+//                   to Sparrow Lane's for id 'hall_east_2', else the front door's
 //     setLit        the lamp of the little lighthouse in the bottle
 //   MIRROR      the polished floor's switch (hall-reflect under a see-through floor)
 //   WOOD_MEAN   the castle wood texture's mean colour (linear RGB), its factor in the mirror
@@ -10,15 +11,15 @@
 // A round gallery: the plan's shell (hall/shell.js: the tiled floor, the panelled and
 // plastered walls with their trims, the vault and half-dome, the engaged columns, the
 // windows), the features on and before the walls (hall/features.js: the front portal, the
-// fireplace, the buttress and the banner pole, the east doors and the wheel, the chart table,
-// the rugs, the candle rings), the ship in the bottle on its dais (hall/bottle.js) and the
-// signposts (props/decor.js addSignpost), all written into one kit of builders (one per
-// material) and solids, then assembled here.
+// fireplace, the buttress and the banner pole, the east doors (the one to Sparrow Lane opening)
+// and the wheel, the chart table, the rugs, the candle rings), the ship in the bottle on its
+// dais (hall/bottle.js) and the signposts (props/decor.js addSignpost), all written into one kit
+// of builders (one per material) and solids, then assembled here.
 //
 // Unlit worldMaterial meshes with the light baked into their vertex colours (hall/light.js: the
 // floor's light on the floor, the walls' on everything else but the full-bright glow and lamp
 // and the raw glass; the rose window's coloured pool tinted into the floor first), one mesh per
-// material, the front door's two leaves and the floor's reflection, fourteen in all: hall-floor
+// material, the two swinging doors' leaves and the floor's reflection, sixteen in all: hall-floor
 // (the glazed tiles and the border rings; with the mirror see-through, FLOOR_OPACITY, drawn
 // first of the see-through meshes, renderOrder -2, still writing depth, so the lamp, the glass
 // and every shadow lie on it), hall-wall (plaster: walls, vault, dome, the hood), hall-dado
@@ -30,17 +31,19 @@
 // pilasters and 0.6 on the hearth's surround, whitens a vertex toward a warm highlight by a
 // Fresnel rim and a highlight from a light near the eye, so a shaft gleams in a stripe that
 // slides round it as the camera moves; one program more, no draw call), hall-wood (oak and
-// iron, the front door's passage), hall-door-left and hall-door-right (the leaves, the wood's
-// material, each turning about its hinge), hall-paint (untextured vertex colours: gold work,
-// cradles, the stand's rail and top, rugs and inlays, crest, plaques, chart, candles, cork,
-// books, the model in the bottle), hall-cloth (the banners), hall-glow (full-bright: the rose
-// window's glass, from the rose texture, and the window panes, the hearth's glowing back, embers
-// and flames, which all sample the rose's pale gold middle), hall-bottle (the glass:
-// transparent, front faces only, no depth write, paler and more opaque where the view grazes
-// it, so its outline reads), hall-signs, hall-lamp (the lamp of the lighthouse in the bottle and
-// its two hazy beams, hidden until that course's star is won: setLit(on); see-through like the
-// course's beams, the beams fading out, drawn before the glass round them, and turning about
-// the lighthouse's axis with update(time) while lit) and hall-reflect.
+// iron, the swinging doors' passages), hall-door-left and hall-door-right (the front door's
+// leaves, the wood's material, each turning about its hinge), hall-east-door-left and
+// hall-east-door-right (the east door to Sparrow Lane's, the same), hall-paint (untextured
+// vertex colours: gold work, cradles, the stand's rail and top, rugs and inlays, crest,
+// plaques, chart, candles, cork, books, the model in the bottle), hall-cloth (the banners),
+// hall-glow (full-bright: the rose window's glass, from the rose texture, and the window panes,
+// the hearth's glowing back, embers and flames, which all sample the rose's pale gold middle),
+// hall-bottle (the glass: transparent, front faces only, no depth write, paler and more opaque
+// where the view grazes it, so its outline reads), hall-signs, hall-lamp (the lamp of the
+// lighthouse in the bottle and its two hazy beams, hidden until that course's star is won:
+// setLit(on); see-through like the course's beams, the beams fading out, drawn before the glass
+// round them, and turning about the lighthouse's axis with update(time) while lit) and
+// hall-reflect.
 // The flames flicker: the glow mesh's 'flame' attribute (0 steady, else the flame's phase)
 // scales their colour by a wobble of the time set in update(time) (one uniform, no allocation).
 //
@@ -56,7 +59,7 @@
 // walls, so every look through the floor meets the mirrored room, never the dark clear colour
 // behind it. It is static: Jonas, the coins, the flames, the swinging leaves, the glass, the
 // lamp and the signs are not in it, which goes unseen through 1 - FLOOR_OPACITY of the floor.
-// With MIRROR false the floor is opaque and there are thirteen meshes.
+// With MIRROR false the floor is opaque and there are fifteen meshes.
 //
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): stone slabs
 // for the floor and the ceiling, the plan's walls (hall/plan.js wallColliders), the columns,
@@ -168,9 +171,11 @@ function assemble(kit, layout) {
     materials[name] = add(name, geo, name === 'trim' ? sheenMaterial(map) : worldMaterial({ map })).material;
     mirrored.push({ geo, k: mean.map((c) => c * REFLECT.dim) });
   }
-  // The front door's leaves, swinging on their hinges (setDoorOpen) with the wood's look.
+  // The front door's leaves and the east door's to Sparrow Lane, swinging on their hinges
+  // (setDoorOpen) with the wood's look.
   const leaves = doorLeaves(kit.leaves, materials.wood, (geo) => bakeHall(geo, light.wall), 'hall-door');
-  for (const mesh of leaves.meshes) group.add(mesh);
+  const east = doorLeaves(kit.eastLeaves, materials.wood, (geo) => bakeHall(geo, light.wall), 'hall-east-door');
+  for (const mesh of [...leaves.meshes, ...east.meshes]) group.add(mesh);
   const banners = bannerTexture();
   const clothGeo = bakeHall(kit.cloth.toGeometry(), light.wall);
   add('cloth', clothGeo, worldMaterial({ map: banners }));
@@ -220,10 +225,11 @@ function assemble(kit, layout) {
       flicker.time.value = time;
       if (lamp.visible) lamp.rotation.y = time * LAMP_SWEEP;
     },
-    // The front door, 0 shut .. 1 standing open (core/AreaSwitch.js swings it as Jonas goes out
-    // through it and comes in).
-    setDoorOpen(t) {
-      leaves.setOpen(t);
+    // A door, 0 shut .. 1 standing open (core/AreaSwitch.js swings it as Jonas goes out through
+    // it and comes in): the east door to Sparrow Lane ('hall_east_2'), or the front door.
+    setDoorOpen(t, id = null) {
+      if (id === 'hall_east_2') east.setOpen(t);
+      else leaves.setOpen(t);
     },
     // The lamp of the lighthouse in the bottle: lit once the course's star is won (AreaSwitch,
     // AREA_DEFS.hall.lamp).

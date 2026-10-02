@@ -18,7 +18,14 @@
 // little one in the bottle lit (out again after GAME OVER); paused while reading the welcome sign,
 // the pause screen offers the way out (the touch B kept bright) and B closes the sign and leaves
 // the course; and a life lost at x0 there ends in the GAME OVER card, then the title over the
-// grounds. With sound (a real AudioContext, unlocked by a key press): the hall plays its waltz
+// grounds. The full walk takes in Sparrow Lane too: back in the hall from the course, into the
+// east door with the little house on it (its leaves swinging open, his model stepping into the
+// opening), out of the dad's front door, back in through it and out of the east door into the
+// hall, the door shutting behind him. ?area=lane boots into Sparrow Lane (its course card, the sky,
+// fewer than 50 draw calls at the arrival and from the roof, the turning area, the bend and the
+// junction, its textures at most 128 px, its build time logged); its star takes him out in front
+// of the hall's east door, one star up; pause and B leave it the same way; GAME OVER there
+// returns to the grounds' title. With sound (a real AudioContext, unlocked by a key press): the hall plays its waltz
 // under its room tone and hearth with every sound in its reverb, the course its polska with the
 // sea's laps and gulls, the grounds none of that again; the new sounds all play, and the audio
 // never gives up on an error. No page errors anywhere.
@@ -65,6 +72,20 @@ async function open(query = '', { sound = false } = {}) {
         g.step(1, { stickX: Math.sin(a), stickY: Math.cos(a) });
       }
       return g.snapshot().warp;
+    };
+    // Walk to the local point (x, z) of the area he is in (within 40), at most n ticks, unless a
+    // warp starts; returns his position.
+    window.__walkToPoint = (x, z, n) => {
+      const g = window.__game;
+      const o = g.areas.current.def.origin;
+      for (let i = 0; i < n && !g.snapshot().warp; i++) {
+        const p = g.player.pos;
+        if (Math.hypot(x + o.x - p.x, z + o.z - p.z) < 40) break;
+        const yaw = Math.atan2(x + o.x - p.x, z + o.z - p.z);
+        const a = Math.atan2(Math.sin(g.camera.getYaw() - yaw), Math.cos(g.camera.getYaw() - yaw));
+        g.step(1, { stickX: Math.sin(a), stickY: Math.cos(a) });
+      }
+      return { x: g.player.pos.x - o.x, z: g.player.pos.z - o.z };
     };
   });
   const step = (n, input = null) => page.evaluate(([k, i]) => window.__game.step(k, i), [n, input]);
@@ -166,7 +187,7 @@ test('through the castle door into the Great Hall and back out onto the porch', 
   }
 });
 
-test('the full walk: in through the castle door (its leaves swing in), up the hall into the bottle (he shrinks into it), the course, out from the pause screen, down the hall and out of the inner door (the castle door shutting behind him on the porch)', { skip, timeout: 600000 }, async () => {
+test('the full walk: in through the castle door (its leaves swing in), up the hall into the bottle (he shrinks into it), the course, out from the pause screen, into the east door to Sparrow Lane and out of the dad\'s front door, back in, down the hall and out of the inner door (the castle door shutting behind him on the porch)', { skip, timeout: 600000 }, async () => {
   const { page, errors, step, snap } = await open();
   // How far the castle door's left leaf stands turned, whether its passage shows, Jonas's size.
   const looks = () =>
@@ -245,8 +266,49 @@ test('the full walk: in through the castle door (its leaves swing in), up the ha
     await step(60);
     s = await snap();
     assert.deepEqual([s.area, s.warp], ['hall', null]);
-    // South down the steps of the dais and the hall to the inner door, and out onto the porch:
-    // the castle door stands open as the picture opens and shuts behind him as he walks out.
+    // Down the dais and across to the east door with the little house on it, and in: its leaves
+    // swing open and he steps into the opening; out of the dad's front door in Sparrow Lane.
+    const east = () =>
+      page.evaluate(() => {
+        const g = window.__game;
+        const hall = g.areas.built.hall.root;
+        const lane = g.areas.built.lane?.root;
+        return { east: hall.getObjectByName('hall-east-door-left').rotation.y, front: hall.getObjectByName('hall-door-left').rotation.y, dad: lane?.getObjectByName('lane-door').rotation.y ?? 0 };
+      });
+    await page.evaluate(() => window.__walkToPoint(0, 1800, 400));
+    await page.evaluate(() => window.__walkToPoint(1500, 1270, 400));
+    warp = await page.evaluate(() => window.__walkTo(Math.PI / 2, 120));
+    assert.deepEqual(warp, { phase: 'close', to: 'lane', entry: 'home', kind: 'door' });
+    await step(7);
+    let d = await east();
+    assert.ok(d.east > 0.2 && d.east < 1.3 && d.front === 0, `the east door swinging in: ${JSON.stringify(d)}`);
+    await step(6);
+    const stepIn = await page.evaluate(() => {
+      const g = window.__game;
+      return { drawn: g.model.object3D.position.x, stands: g.player.pos.x };
+    });
+    assert.ok(stepIn.drawn > stepIn.stands + 80, `stepping in: ${JSON.stringify(stepIn)}`);
+    await step(5);
+    d = await east();
+    assert.ok(d.east === 0 && d.dad > 1.2, `the dad's door standing open at the switch: ${JSON.stringify(d)}`);
+    await step(40);
+    s = await snap();
+    assert.deepEqual([s.area, s.warp], ['lane', null]);
+    assert.equal((await east()).dad, 0, 'shut behind him');
+    // Off the door's apron and back in: out of the east door into the hall, shutting behind him.
+    await page.evaluate(() => window.__walkToPoint(0, 900, 60));
+    warp = await page.evaluate(() => window.__walkTo(0, 120));
+    assert.deepEqual(warp, { phase: 'close', to: 'hall', entry: 'east_2', kind: 'door' });
+    await step(18);
+    d = await east();
+    assert.ok(d.east > 1.2 && d.dad === 0, `the east door standing open at the switch: ${JSON.stringify(d)}`);
+    await step(40);
+    s = await snap();
+    assert.deepEqual([s.area, s.warp], ['hall', null]);
+    assert.equal((await east()).east, 0, 'shut behind him');
+    // South down the hall to the inner door, and out onto the porch: the castle door stands open
+    // as the picture opens and shuts behind him as he walks out.
+    await page.evaluate(() => window.__walkToPoint(0, 2200, 400));
     warp = await page.evaluate(() => window.__walkTo(0, 400));
     assert.deepEqual(warp, { phase: 'close', to: 'grounds', entry: 'porch', kind: 'door' });
     await step(18);
@@ -418,6 +480,89 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     assert.equal(s.mode, 'title');
     assert.equal(s.stars, 0, 'the star taken back');
     assert.equal(await page.evaluate(() => window.__game.areas.built.skerries.parts.find((p) => p.name === 'skerries').lit), false, 'the lamp out');
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arrival, the roof, the turning area, the bend and the junction; its star takes him out in front of the hall\'s east door; pause and B leave it; GAME OVER there returns to the grounds', { skip, timeout: 600000 }, async (t) => {
+  const { page, errors, step, snap } = await open('&area=lane');
+  try {
+    let s = await snap();
+    assert.equal(s.area, 'lane');
+    assert.deepEqual([s.pos.x, s.pos.y, s.pos.z], [-60000, 22, 1330 - 174]);
+    await step(30);
+    assert.equal(await page.evaluate(() => window.__game.hud.card?.text), 'SPARROW LANE', 'the course card');
+    assert.equal(await page.evaluate(() => window.__game.level.parts.find((p) => p.name === 'sky').object3D.visible), true, 'the sky dome');
+    const built = await page.evaluate(() => window.__game.areas.buildMs.lane);
+    // From the arrival and four views over the course: fewer than 50 draw calls each.
+    const views = { arrival: null, roof: [1750, 370, 2300, -Math.PI / 2], turn: [2000, 0, 0, Math.PI / 2], bend: [-3600, 0, 0, -Math.PI / 2], junction: [-7600, 22, 1500, -1.17] };
+    for (const [name, at] of Object.entries(views)) {
+      if (at) {
+        await page.evaluate(([x, y, z, yaw]) => {
+          const g = window.__game;
+          g.player.teleport(x - 60000, y, z, yaw);
+          g.player.setAction('idle');
+          g.camera.reset(g.player);
+          g.step(10);
+        }, at);
+      }
+      const f = await frame(page);
+      t.diagnostic(`lane ${name}: ${f.calls} draw calls, ${f.triangles} triangles`);
+      assert.ok(f.calls < 50, `${name}: ${f.calls} draw calls`);
+    }
+    t.diagnostic(`lane: built in ${built.toFixed(1)} ms`);
+    const sizes = await page.evaluate(async () => {
+      const textures = await import('/src/world/lane/textures.js');
+      return Object.entries(textures).map(([name, make]) => {
+        const { image } = make();
+        return [name, image.width, image.height];
+      });
+    });
+    assert.equal(sizes.length, 3);
+    for (const [name, w, h] of sizes) assert.ok(w <= 128 && h <= 128, `${name}: ${w} x ${h}`);
+    // The star: on the ridge east of it, walking west into it; out in front of the east door.
+    const star = await page.evaluate(() => {
+      const g = window.__game;
+      g.player.teleport(-60000 - 250 + 250, 644, 1967.5, -Math.PI / 2);
+      g.player.setAction('idle');
+      g.camera.reset(g.player);
+      let n = 0;
+      for (; n < 300 && g.area !== 'hall'; n++) {
+        const a = Math.atan2(Math.sin(g.camera.getYaw() + Math.PI / 2), Math.cos(g.camera.getYaw() + Math.PI / 2));
+        g.step(1, n < 20 ? { stickX: Math.sin(a), stickY: Math.cos(a) } : null);
+      }
+      g.step(20);
+      return { n, area: g.area, stars: g.player.stars, warp: g.snapshot().warp, x: g.player.pos.x, z: g.player.pos.z };
+    });
+    assert.equal(star.area, 'hall', JSON.stringify(star));
+    assert.equal(star.stars, 1);
+    assert.equal(star.warp, null);
+    assert.ok(star.x > 1500 && Math.abs(star.z + 60000 - 1270) < 5, `in front of the east door: ${JSON.stringify(star)}`);
+    // Back in; paused, B leaves to the same spot.
+    await page.evaluate(() => window.__game.enterArea('lane'));
+    await step(10);
+    await step(1, { START: true });
+    assert.equal(await page.evaluate(() => window.__game.hud.leave), true);
+    await step(1, { B: true });
+    assert.equal((await snap()).warp?.kind, 'leave');
+    await step(60);
+    s = await snap();
+    assert.deepEqual([s.area, s.warp], ['hall', null]);
+    // GAME OVER in the course: the card, then the grounds behind the title.
+    await page.evaluate(() => window.__game.enterArea('lane'));
+    await step(10);
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.state.lives = 0;
+      g.player.loseLife();
+      g.step(2);
+    });
+    assert.equal((await snap()).mode, 'gameover');
+    await page.waitForTimeout(4500);
+    s = await snap();
+    assert.deepEqual([s.area, s.mode, s.stars], ['grounds', 'title', 0]);
     assert.deepEqual(errors, []);
   } finally {
     await page.close();

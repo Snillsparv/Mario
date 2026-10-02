@@ -368,8 +368,9 @@ test('GAME OVER is covered by the big font and fits the 320-wide card like PAUSE
 });
 
 test('course names: one per area, big-font glyphs, fit the 320-wide pause screen; the HUD names the area it is in', () => {
-  assert.deepEqual(Object.keys(COURSE_NAMES), ['grounds', 'hall', 'skerries']);
+  assert.deepEqual(Object.keys(COURSE_NAMES), ['grounds', 'hall', 'skerries', 'lane']);
   assert.equal(COURSE_NAMES.grounds, COURSE_NAME);
+  assert.equal(COURSE_NAMES.lane, 'SPARROW LANE');
   for (const name of Object.values(COURSE_NAMES)) {
     assert.ok(BIG_STRINGS.includes(name), `glyph coverage checks ${name}`);
     assert.deepEqual(missingGlyphs(BIG_FONT, name), [], name);
@@ -380,6 +381,8 @@ test('course names: one per area, big-font glyphs, fit the 320-wide pause screen
   assert.equal(hud.course, COURSE_NAME);
   hud.setCourse('hall');
   assert.equal(hud.course, 'THE GREAT HALL');
+  hud.setCourse('lane');
+  assert.equal(hud.course, 'SPARROW LANE');
   hud.setCourse('grounds');
   assert.equal(hud.course, COURSE_NAME);
   hud.setCourse('toString'); // not an area: the grounds' name

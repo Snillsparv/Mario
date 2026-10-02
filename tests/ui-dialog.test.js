@@ -24,6 +24,7 @@ import { SIGNS } from '../src/world/layout.js';
 import { CASTLE_LOCKED, CASTLE_SEALED } from '../src/objects/CastleDoor.js';
 import * as hall from '../src/world/hall/layout.js';
 import * as skerries from '../src/world/skerries/layout.js';
+import * as lane from '../src/world/lane/layout.js';
 
 const measure = (t) => measureText(DIALOG_FONT, t);
 const WRAP = dialogMetrics(960, 540).wrap;
@@ -71,12 +72,13 @@ describe('dialog text', () => {
     }
   });
 
-  test("every page of the Great Hall's and Midsummer Skerries' signs and doors can be drawn in full with the dialog font, and is its own", () => {
+  test("every page of the Great Hall's, Midsummer Skerries' and Sparrow Lane's signs and doors can be drawn in full with the dialog font, and is its own", () => {
     const letters = (t) => (t.match(/[\p{L}\p{N}]/gu) ?? []).length;
     const shut = hall.DOORS.filter((d) => d.locked).map((d) => d.locked);
-    assert.ok(shut.length >= 2, 'the east doors');
+    assert.ok(shut.length >= 1, "the snowflake's east door");
     assert.equal(skerries.SIGNS.length, 3);
-    for (const sign of [...hall.SIGNS, ...shut, ...skerries.SIGNS]) {
+    assert.equal(lane.SIGNS.length, 3);
+    for (const sign of [...hall.SIGNS, ...shut, ...skerries.SIGNS, ...lane.SIGNS]) {
       assert.ok(sign.pages.length >= 2, sign.id);
       for (const page of sign.pages) {
         const text = normalizeText(page);
@@ -203,8 +205,8 @@ describe('dialog box metrics', () => {
     const wraps = new Set(SIZES.filter(([w, h]) => w >= h).map(([w, h, d]) => dialogMetrics(w, h, d).wrap));
     assert.equal(wraps.size, 1, [...wraps].join());
     // On a desktop picture every sign page fits one screen of the box (the grounds' signs, the
-    // Great Hall's and its doors' that do not open yet, Midsummer Skerries').
-    for (const sign of [...SIGNS, ...hall.SIGNS, hall.HALL_DOOR_SOON, ...skerries.SIGNS]) {
+    // Great Hall's and its door's that does not open yet, Midsummer Skerries', Sparrow Lane's).
+    for (const sign of [...SIGNS, ...hall.SIGNS, hall.HALL_DOOR_SOON, ...skerries.SIGNS, ...lane.SIGNS]) {
       const screens = paginate(sign.pages, { wrap: WRAP });
       assert.equal(screens.length, sign.pages.length, sign.id);
     }

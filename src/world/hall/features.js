@@ -1,7 +1,8 @@
 // The Great Hall's features (hall/layout.js), written into the hall's kit (hall/hall.js) after
 // its shell (hall/shell.js): what stands on and against the walls, and out in the room.
 //
-//   features(kit, layout)          kit.leaves set (the front door's, for assemble())
+//   features(kit, layout)          kit.leaves and kit.eastLeaves set (the front door's and the
+//                                  open east door's, for assemble())
 //
 // South wall: the inside of the castle's front door (castle/building.js door(), the same door
 // the grounds see: its collider fills the surround, so the face stands at FRONT_DOOR.faceZ; its
@@ -14,19 +15,20 @@
 // glowing embers and seven tongues of flame; a rose-marble bullnose round the arch, a gilt
 // keystone) and a bullnose mantel shelf (its top, with the 1-up), a plaster hood over it up to
 // the ceiling; the wall-kick slot north of it; the buttress, a marble pedestal (round corners,
-// a teal panel, a gold cap); the brass banner pole in front of it. East wall: two doors still
-// being built (door()) in teal niches with cream architraves and gold beads (the piers solid),
-// a plaque over each (a snowflake, a cog), a ship's wheel between them. Out in the room: the
-// round oak chart table with a chart of the first course on it; the rugs and inlays on the
-// floor (the compass rose under the table, the half-round hearth rug, mats before the doors,
-// the apron round the dais's foot: hall-paint, flat, drawn only); three gold candle rings on
-// the axis.
+// a teal panel, a gold cap); the brass banner pole in front of it. East wall: two doors (door())
+// in teal niches with cream architraves and gold beads (the piers solid), a plaque over each: the
+// snowflake's door still being built, the little house's (Sparrow Lane's) swinging into the wall
+// onto a dark passage like the front door (its niche and the dado behind it leave it open); a
+// ship's wheel between them. Out in the room: the round oak chart table with a chart of the
+// first course on it; the rugs and inlays on the floor (the compass rose under the table, the
+// half-round hearth rug, mats before the doors, the apron round the dais's foot: hall-paint,
+// flat, drawn only); three gold candle rings on the axis.
 //
 // Nothing drawn only stands more than 56 out of the wall behind it (the camera keeps 60 off
 // the walls): deeper parts have colliders.
 
 import { archContour, beamPolys, circleContour, contourPath, localBoxPolys, openingPolys, prismPolys, sweep, wallFrame } from '../castle/geom.js';
-import { door } from '../castle/building.js';
+import { door, doorContour } from '../castle/building.js';
 import { roundWindow } from '../castle/parts.js';
 import { vaultY } from './shell.js';
 
@@ -55,7 +57,9 @@ const TINT = {
   chartLand: 0xd9a58f,
   chartMeadow: 0x9cc480,
   ink: 0x5a3a2a,
-  plaques: { snowflake: 0x3a6ab0, cog: 0x9a6a3a },
+  plaques: { snowflake: 0x3a6ab0, house: 0x2f5f8a },
+  roof: 0x2a2a2c, // the little house's
+  bird: 0x6aa0e8,
   // The compass rose's points: [lit half, dark half] (north, the other long points, the short).
   compass: { north: [0xd8483a, 0xa02a24], long: [0xf6ecd4, 0xd8c8a2], short: [0xf0c860, 0xc89a3a] },
 };
@@ -375,10 +379,20 @@ function eastWall(kit, { HALL, EAST_DOORS: D, WHEEL }) {
   const spring = D.height - hw + EAST.raise; // the surrounds' arches spring over the door's own
   D.zs.forEach((z, i) => {
     const frame = wallFrame([HALL.halfX, 0, z], [-1, 0, 0]);
-    door(kit, frame, D.width, D.height, { segs: 16 });
+    const open = i === D.open;
+    // The open door's leaves swing in onto a dark passage (in the wood, as the front door's).
+    const leaves = door(kit, frame, D.width, D.height, open ? { segs: 16, passage: kit.wood } : { segs: 16 });
+    if (open) kit.eastLeaves = leaves;
     const niche = archContour(hw + EAST.niche, spring, 16);
     dado.color(TINT.teal);
-    dado.panel(frame, niche, 1, { uvs: niche.map(() => [0.5, 0.5]) });
+    if (open) {
+      // The niche round the opening: a ring from the door's arch out to the niche's.
+      const hole = doorContour(D.width, D.height, 16);
+      for (let k = 0; k + 1 < niche.length; k++) {
+        const quad = [hole[k], hole[k + 1], niche[k + 1], niche[k]];
+        dado.panel(frame, quad, 1, { uvs: quad.map(() => [0.5, 0.5]) });
+      }
+    } else dado.panel(frame, niche, 1, { uvs: niche.map(() => [0.5, 0.5]) });
     trim.color(TINT.cream);
     trim.moulding(frame, niche, archContour(hw + EAST.architrave, spring, 16), D.depth, { w0: -4, revealShade: 0.6 });
     paint.color(TINT.gold);
@@ -407,7 +421,8 @@ function eastWall(kit, { HALL, EAST_DOORS: D, WHEEL }) {
 }
 
 // A round plaque on a wall frame at height v: a gold rim, a coloured field and its sign (a white
-// snowflake, or a bronze cog).
+// snowflake, or a little house: Falu-red walls under a black roof, a white door, a tiny blue
+// bird on the ridge).
 function plaque(paint, frame, kind, v) {
   const k = PLAQUE.field / 66; // (the sign drawn for a field of 66)
   paint.color(TINT.gold);
@@ -432,16 +447,23 @@ function plaque(paint, frame, kind, v) {
       }
     }
   } else {
-    paint.color(0xd8b070);
-    const ring = (r) => circleContour(0, v, r * k, 8);
-    const out = ring(40);
-    const inside = ring(20);
-    for (let j = 0; j < 8; j++) {
-      const n = (j + 1) % 8;
-      paint.panel(frame, [inside[j], out[j], out[n], inside[n]], 5);
-      const a = ((j + 0.5) * Math.PI) / 4;
-      bar(a, 9, 9, [Math.cos(a) * 47 * k, v + Math.sin(a) * 47 * k]);
-    }
+    const at = (pts, w) => paint.panel(frame, pts.map(([pu, pv]) => [pu * k, v + pv * k]), w);
+    paint.color(TINT.falu);
+    at([[-30, -34], [30, -34], [30, 6], [-30, 6]], 5);
+    paint.color(TINT.roof);
+    at([[-40, 4], [40, 4], [0, 32]], 6);
+    paint.color(TINT.white);
+    at([[-8, -34], [8, -34], [8, -12], [-8, -12]], 6);
+    at([[14, -18], [24, -18], [24, -6], [14, -6]], 6);
+    // The bird on the ridge, looking right: tail, body, head, beak, a white breast.
+    paint.color(TINT.bird);
+    at([[-14, 36], [-6, 33], [-4, 37]], 7);
+    at([[-7, 31], [6, 31], [9, 36], [3, 41], [-6, 38]], 7);
+    at([[3, 39], [9, 38], [11, 43], [6, 46], [2, 44]], 8);
+    paint.color(TINT.gold);
+    at([[11, 42], [16, 42], [11, 44]], 8);
+    paint.color(TINT.white);
+    at([[2, 32], [7, 32], [8, 36], [4, 37]], 8);
   }
 }
 

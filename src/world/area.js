@@ -24,10 +24,13 @@
 //   reset(),               // a new game (its parts': the lighthouse's lamp out again; the
 //                          // pickups live in its objects)
 //   setVisible(on),
-//   setDoorOpen(t),        // its swinging door (the hall's front door): 0 shut .. 1 open
+//   setDoorOpen(t, id),    // its swinging door named `id` (the hall's front door 'hall_front' or
+//                          // its east door 'hall_east_2', the lane's 'lane_home'; a part swings
+//                          // its own door by that id, its only one with none): 0 shut .. 1 open
 //   setLit(on),            // its lamp: a course's lighthouse, the hall's lighthouse in the
 //                          // bottle (core/AreaSwitch.js lights them as a course's star is won)
-//   entries,               // { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx? } } (world)
+//   entries,               // { id: { x, y, z, yaw, drop?, camYaw?, walkIn?, sfx?, door? } }
+//                          // (world)
 //   audio,                 // def.audio with its sound spots (fires, gulls, seaLevel) in world
 //                          // coordinates, plus isWater(x, z) (open water there: its surface
 //                          // above the floor; the sea's laps): 'areaChange' hands it to
@@ -157,8 +160,8 @@ export function buildArea(scene, def) {
       if (this.objects) this.objects.group.visible = !!on;
     },
     // (Every frame while the door moves: an index loop.)
-    setDoorOpen(t) {
-      for (let i = 0; i < parts.length; i++) parts[i].setDoorOpen?.(t);
+    setDoorOpen(t, id = null) {
+      for (let i = 0; i < parts.length; i++) parts[i].setDoorOpen?.(t, id);
     },
     setLit(on) {
       for (const p of parts) p.setLit?.(on);

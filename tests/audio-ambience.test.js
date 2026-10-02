@@ -8,7 +8,9 @@
 // listener, about one a second; from over Home Island or the islet off their shores, farther
 // off and on the meadow fewer; none from dry land all round), and a gull calls every 4-10 s
 // from a point on one of the gulls' circles, the nearer circle far more often (seeded draws;
-// none out of range, then one at once on coming back); no birds, chorus, room tone or fire.
+// none out of range, then one at once on coming back); no birds, chorus, room tone or fire. In
+// Sparrow Lane ('lane') the grounds' air, leaves and distant birds play on, with no waterfall,
+// no laps, no fire, no gulls and no room tone.
 // A profile set before anything plays is in force from the first update, the laps keep to the
 // area's sea level, and the profile and spots already in force change nothing.
 import { test } from 'node:test';
@@ -270,6 +272,26 @@ test("the sea's laps only on open water: over Home Island and the islet they com
   // An area with no water anywhere near (its test never holds): no laps at all.
   amb.setProfile('sea', 0, { ...audio, isWater: () => false });
   assert.equal(lapsAt(at(500, 400, -250)).length, 0);
+});
+
+test("the lane: the grounds' breeze, leaves and distant birds; no waterfall, no laps, no fire, no gulls, no room tone", (t) => {
+  t.mock.method(Math, 'random', makeRng(23));
+  assert.deepEqual(PROFILES.lane, { pastoral: true, leaves: true, birds: true, chorus: true, waterfall: false, laps: null, room: false, fires: false, gulls: false });
+  const { ctx, amb, played, run } = ambience();
+  const audio = areaAudio('lane');
+  assert.deepEqual([audio.music, audio.ambience, audio.reverb], ['skerries', 'lane', false]);
+  ctx.currentTime = 3;
+  amb.setProfile('lane', 1.2, audio);
+  assert.equal(amb.profile, PROFILES.lane);
+  assert.equal(lastRamp(amb.room.gain)?.[1] ?? 0, 0, 'no room tone');
+  // In the street (the course's local origin, in world coordinates).
+  const O = AREA_DEFS.lane.origin;
+  run(30, { x: O.x, y: O.y + 300, z: O.z, yaw: 0 });
+  assert.ok(played.filter((c) => c.volume !== undefined).length > 10, `distant birds: ${played.length}`);
+  assert.ok(!played.some((c) => c.volume === undefined), 'no laps');
+  assert.ok(!played.some((c) => isFire(c) || isGull(c)));
+  assert.equal(amb.leaves.gain.value, 1);
+  assert.equal(amb.fallGain.gain.events.findLast(([m]) => m === 'setTargetAtTime')[1], 0, 'no waterfall');
 });
 
 test('an area entered before anything plays is in force from the first update; unknown profiles and missing spots are the grounds\' and none; the laps keep to the sea level given; the same profile and spots again change nothing', () => {
