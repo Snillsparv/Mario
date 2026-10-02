@@ -229,6 +229,20 @@ test('a slide along one wall into the corner with another stops in front of it, 
   assert.ok(to.x > 0 && to.z > 1, `in front of both faces: ${to.x.toFixed(1)}, ${to.z.toFixed(1)}`);
 });
 
+test('a level slide along a sloping ceiling (an overhang\'s underside) stays out of it at the move\'s height', () => {
+  // The underside of an overhang rising to the east at 45 degrees (y = 300 + x), facing down
+  // and west: at the camera's height 400 its face is at x 100. A level move from east of it
+  // slanting into it slides along it there, never on into it (resolve() keeps only x and z).
+  const world = new CollisionWorld();
+  world.addTriangles(quad([-3000, 0, 3000], [3000, 0, 3000], [3000, 0, -3000], [-3000, 0, -3000]));
+  world.addTriangles(quad([0, 300, 1000], [0, 300, -1000], [400, 700, -1000], [400, 700, 1000]));
+  world.finalize();
+  const cam = new CameraController({ collision: world, camera: new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000), events: null });
+  const to = new THREE.Vector3(0, 400, -200);
+  cam.collider._slideMove(new THREE.Vector3(200, 400, 0), to);
+  assert.ok(to.x > 100 && to.z < -100, `slid along the overhang, outside it: ${to.x.toFixed(1)}, ${to.z.toFixed(1)}`);
+});
+
 test('C-rotation into a wall is refused with a buzz', () => {
   const { cam, sfx } = makeCam();
   // Camera looks along the wall (hero faces -z); rotating toward +x would bury it.

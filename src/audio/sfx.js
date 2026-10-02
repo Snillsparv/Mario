@@ -1143,7 +1143,7 @@ export const SFX = {
     return 1.1;
   },
 
-  // Popping back out of the bottle onto the hall's landing (its 'bottle' entry: AreaSwitch, as
+  // Popping back out of the bottle onto the hall's dais (its 'bottle' entry: AreaSwitch, as
   // the picture opens): a cork-like pop (a click and a hollow 'pok' dropping fast), an airy
   // rush sweeping up as he grows back with a slide under it, the glass ringing, and a sparkle
   // up a G major chord (the hall's key).

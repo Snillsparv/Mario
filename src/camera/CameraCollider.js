@@ -39,8 +39,9 @@
 //  * Reach: along the ray the camera may extend up to the first surface while in front of it,
 //    or up to the next one beyond while already past it. This applies immediately.
 //  * Path: the camera never tunnels. A move into a wall or ceiling stops in front of it and
-//    slides along it (a slide that would end on another one, in an inside corner, stops short);
-//    floors are left to the height limit, which carries the camera over terrain edges.
+//    slides along it (a sloping ceiling level, where it crosses the camera's height; a slide
+//    that would end on another one, in an inside corner, stops short); floors are left to the
+//    height limit, which carries the camera over terrain edges.
 //  * Speed: the resolved camera moves at most STEP_MARGIN further per tick than the orbit
 //    position or the hero moved (whichever moved more), so a camera released by a pillar it was
 //    held back by, or pulled in toward a hero dropping out of sight into the moat, glides instead
@@ -68,6 +69,7 @@
 // copied out right away, so nothing depends on the hit object living on.
 
 import { NO_WATER, CEIL_NONE, FLOOR_LOWER_LIMIT } from '../core/constants.js';
+import { FLOOR_MIN_NY } from '../collision/CollisionWorld.js';
 import { CrestRise } from './crest.js';
 
 const DEG = Math.PI / 180;
@@ -520,9 +522,18 @@ export class CameraCollider {
   _slideMove(from, to) {
     const hit = this._entering(from, to, this._enter);
     if (!hit) return;
-    const nx = hit.nx;
-    const ny = hit.ny;
-    const nz = hit.nz;
+    let nx = hit.nx;
+    let ny = hit.ny;
+    let nz = hit.nz;
+    // A sloping ceiling met by a level move (resolve() makes only those, and keeps only x and z)
+    // is slid along the line where it crosses that level: slid down its slope instead, the
+    // slide's level part would still run on into it. (A level ceiling only grazes a level move.)
+    const h = Math.sqrt(nx * nx + nz * nz);
+    if (ny < -FLOOR_MIN_NY && from.y === to.y && h > 1e-6) {
+      nx /= h;
+      nz /= h;
+      ny = 0;
+    }
     const mx = to.x - from.x;
     const my = to.y - from.y;
     const mz = to.z - from.z;

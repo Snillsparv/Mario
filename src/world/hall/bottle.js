@@ -1,7 +1,7 @@
-// The north end of the Great Hall (hall/layout.js): the giant ship in a bottle on its oak stand,
-// the little world inside it, and the way up to its mouth (the landing, the stairs, and a cork
-// and a stack of books to hop up on). Written into the hall's kit (hall/hall.js): render faces
-// into its material builders, colliders into kit.solids.
+// The north end of the Great Hall (hall/layout.js): the giant ship in a bottle on its stand in
+// the apse, the little world inside it, and the way up to its mouth (the half-round dais, and a
+// cork with two giant books to hop up on). Written into the hall's kit (hall/hall.js): render
+// faces into its material builders, colliders into kit.solids.
 //
 //   buildBottle(kit, layout)
 //
@@ -9,25 +9,30 @@
 // grazes it: hall.js) is the bottle's outer surface only, 16 sides round its axis, so it never
 // lies over itself (a highlight stripe runs along it). Its collider is convex solids round the
 // axis (body, shoulder frustum, neck and lip; slippery stone), each with a vertical face across
-// its widest band (a wall the camera's path check stops at). It lies on a dark oak stand, set
-// back under the glass, with two lighter carved cradles across it. No spot Jonas can stand on
-// is lower than HEADROOM under the glass (layout.js): the stand runs the bottle's length and
-// rises round the glass's underside to 45 degrees either side of straight down, where the
-// glass is high enough over the floor beside it, and the cradles' cheeks rise round the glass
-// into its widest band, so neither leaves a ledge under it.
+// its widest band (a wall the camera's path check stops at). It lies on a stand panelled in
+// teal under a gold rail, set back under the glass, with two gold cradles across it (their
+// blocks and caps soft-edged). No spot Jonas can stand on is lower than HEADROOM under the
+// glass (layout.js): the stand runs the bottle's length and rises round the glass's underside
+// to 45 degrees either side of straight down, where the glass is high enough over the floor
+// beside it, and the cradles' cheeks rise round the glass into its widest band, so neither
+// leaves a ledge under it.
 // Inside lies a putty sea with a model of the first course (kit.paint): pink granite islets, a
 // red cottage, a red-sailed boat and a white lighthouse with a red band, whose lamp (kit.lamp,
 // its own mesh, turning about kit.lampAt: hall.js) is lit once that course's star is won: its
 // lantern glowing warm gold, and two hazy beams sweeping round inside the glass, as the
 // course's own lighthouse has (the beams' fade is their faces' glow). The mouth (the lip's end
-// face) is the door Jonas walks into from the landing. The stairs are a smooth ramp collider
-// (not slippery) under 11 drawn steps between two sloping stringers.
+// face) is the door Jonas walks into from the dais's top.
+// The dais is a smooth half-cone collider (not slippery) under 11 drawn round steps (rose
+// risers, cream treads with a rounded nosing, each tread's middle on the slope); the cork and
+// the books are hall-paint over wooden colliders.
+
+import { softBox, sweep } from '../castle/geom.js';
 
 const TINT = {
   glass: 0xbfe3d6,
   shine: 0xffffff,
-  oak: 0xd2a070,
-  stand: 0x6a4630,
+  brass: 0xe2b252, // the stand's rail and the cradles
+  teal: 0x1f5754, // the stand's top
   putty: 0x2f62a8,
   sea: 0x3f8fd0,
   wave: 0x72b6e6,
@@ -42,22 +47,36 @@ const TINT = {
   white: 0xf4f0e6,
   red: 0xc8282c,
   lantern: 0x2a2c34,
-  lamp: 0xffa828, // (lit: a warm, deep gold that stands out from the cream wall behind)
+  lamp: 0xffa828, // (lit: a warm, deep gold that stands out from the headboard and the plaster behind)
   beam: 0xffb848,
+  rose: 0xe3a08e, // the dais's risers (rose marble: the trim's pale marble tinted)
+  cream: 0xf0e6d2, // its treads, top and back
+  gold: 0xe8b84a,
   cork: 0xc89a62,
   corkRing: 0xa87a48,
   pages: 0xf0e6cc,
-  gold: 0xe0b040,
-  books: [0x9c2a2a, 0x2a4a8c, 0x2f6b3f],
+  pageLine: 0xd8ccae,
+  books: [0x9c2a2a, 0x2a6662],
 };
 
-const DECK = 1.7; // the landing's and the stairs' light oak (the wood texture is dark brown)
 const SIDES = 16; // the glass round its axis
 const SHINE = [0.45, 0.85]; // the highlight stripe: this far west of straight up (radians)
 const KEEL = Math.PI / 4; // the stand rises round the glass this far either side of straight down
 const GAP = 14; // its top's inner corners lie this far inside the glass (under the body: inside the putty)
-const RAIL = 40; // the lighter rail along the top of its sides
+const RAIL = 40; // the gold rail along the top of its sides
+const STAND_INTO = 10; // its colliders' sides run this far up into the glass's (stand())
 const CORK_TAPER = 30; // the cork narrows by this much from its foot to its top
+const PANEL = { u: 640, v: 392 }; // one raised panel of the stand's sides (the panel texture), along and up
+// The cradles' soft blocks and caps: their vertical edges' and top edges' radii.
+const CRADLE_ROUND = { block: [40, 10], cap: [30, 20] };
+// The dais (layout DAIS): its steps round in `sides` (smooth), each tread's nosing standing
+// `nose` proud of its riser and rounding down `noseDrop` over its front; an inlay on its top (a
+// gold ring r 470..500 round a Falu one, 420..470); a collider of `facets` facets.
+const DAIS_DRAW = { sides: 24, nose: 6, noseDrop: 14, inlay: [[500, 470, 'gold'], [470, 420, 'falu']], facets: 12 };
+// A book's boards, how far its page block is set in from their edges, its page lines (as parts
+// of the block's height, and their thickness), its spine (proud of the north face, between the
+// boards' edges) and the gold bands round the spine (from its west end, `band` wide).
+const BOOK = { board: 18, inset: 8, lines: [1 / 3, 2 / 3], line: 4, spine: 26, spineSegs: 6, bands: [50, 110], band: 20 };
 const SEA_Y = 420; // the putty sea's surface inside the body (the cradles' top)
 const PUTTY_R = 512; // the putty's curved underside, just inside the glass
 // The little lighthouse's beams (lit): from `near` the lamp out to `length` (inside the glass
@@ -67,17 +86,23 @@ const LAMP_BEAM = { near: 40, length: 380, far: 64, glow: 0.8 };
 // one straight up and one straight down, and a vertical face across the widest band. With a
 // corner at the widest point the faces either side would be a steep floor and a steep ceiling,
 // and the follow camera's path check leaves floors to its height limit: a C-button swing could
-// carry it into the glass. A wall stops it.
+// carry it into the glass. A wall stops it. The neck's ring has its corners where the stand's
+// top meets it (KEEL either side of straight down).
 const BODY_RING = [0, 30, 60, 75, 105, 120, 150, 180, 210, 240, 255, 285, 300, 330];
 const NECK_RING = [0, 45, 70, 110, 135, 180, 225, 250, 290, 315];
+// The shoulder's collider ends this much wider than the neck's, so its end face holds the
+// neck's whole (their rings differ): no sliver of the neck's end is left standing out of it, a
+// wall facing north whose push would shove the camera into the shoulder.
+const NECK_COLLAR = 10;
 
 export function buildBottle(kit, layout) {
   glass(kit, layout.BOTTLE);
   const halfX = stand(kit, layout);
   cradles(kit, layout, halfX);
   world(kit, layout.BOTTLE);
-  landing(kit, layout);
-  toys(kit, layout);
+  dais(kit, layout);
+  cork(kit, layout);
+  books(kit, layout);
 }
 
 // ---------------------------------------------------------------- round the bottle's axis
@@ -165,21 +190,23 @@ function glass(kit, B) {
   // Slippery stone: he slides off the curved glass rather than standing on its side.
   const { solids } = kit;
   solids.solid(axialSolid(Y, bodyR, bodyR, B.body[0], B.body[1], BODY_RING), 'stone', 'slippery');
-  solids.solid(axialSolid(Y, bodyR, neckR, B.shoulder[0], B.shoulder[1], BODY_RING), 'stone', 'slippery');
+  solids.solid(axialSolid(Y, bodyR, neckR + NECK_COLLAR, B.shoulder[0], B.shoulder[1], BODY_RING), 'stone', 'slippery');
   solids.solid(axialSolid(Y, neckR, neckR, B.neck[0], B.lip[0], NECK_RING), 'stone', 'slippery');
   solids.solid(axialSolid(Y, lipR, lipR, B.lip[0], B.lip[1], NECK_RING), 'stone', 'slippery');
 }
 
-// The stand under the bottle, its whole length from its end to the landing: dark oak rising
-// round the glass to its corners 45 degrees (KEEL) either side of straight down, its sides
-// straight down from there to the floor, so its half-width follows the glass (the body,
-// narrowing under the shoulder, the neck and lip). Beside it the glass is at least HEADROOM
-// over the floor (layout.js). Its top is the glass's underside (drawn a little inside it: under
-// the body, inside the putty, which hides it); its colliders are flat-topped boxes whose tops
-// lie inside the glass (at worst a sliver under it, far too low to stand in). Dark, in the
-// glass's shadow, so the glass's curve reads over it. Returns its half-width under the body.
+// The stand under the bottle, its whole length from its end to the dais: rising round the
+// glass to its corners 45 degrees (KEEL) either side of straight down, its sides straight down
+// from there to the floor, so its half-width follows the glass (the body, narrowing under the
+// shoulder, the neck and lip). Beside it the glass is at least HEADROOM over the floor
+// (layout.js). Its sides are teal raised panels (kit.dado) under a gold rail; its top is the
+// glass's underside in deep teal (drawn a little inside it: under the body, inside the putty,
+// which hides it); its colliders are flat-topped boxes whose sides run up into the glass's
+// collider, so no slit is left between the two: a camera slipping through one over the stand's
+// top would be lifted (its clearance over the floor under it wins over the ceiling) up through
+// the glass. Returns its half-width under the body.
 function stand(kit, { BOTTLE: B }) {
-  const { wood, solids } = kit;
+  const { dado, paint, solids } = kit;
   const Y = B.axisY;
   const k = Math.sin(KEEL);
   // [r0, r1, z0, z1] north to south: the body, the shoulder, the neck with its lip.
@@ -190,26 +217,33 @@ function stand(kit, { BOTTLE: B }) {
   ];
   const a0 = Math.PI - KEEL;
   const steps = Math.round((2 * KEEL) / ((Math.PI * 2) / SIDES)); // the glass's facets it covers
+  const uv = (z, y) => [z / PANEL.u, y / PANEL.v];
   for (const [r0, r1, z0, z1] of sections) {
     const [w0, w1] = [r0 * k, r1 * k];
     const [h0, h1] = [Y - r0 * k, Y - r1 * k];
-    // Its sides, dark below a lighter rail along their top.
+    // Its sides, panelled, darker toward the floor, under the rail.
     for (const s of [-1, 1]) {
-      wood.color(TINT.stand);
-      wood.poly([[s * w0, 0, z0], [s * w1, 0, z1], [s * w1, h1 - RAIL, z1], [s * w0, h0 - RAIL, z0]], { facing: [s, 0, 0], shade: [0.5, 0.5, 0.75, 0.75] });
-      wood.color(TINT.oak, 1.3);
-      wood.poly([[s * w0, h0 - RAIL, z0], [s * w1, h1 - RAIL, z1], [s * w1, h1, z1], [s * w0, h0, z0]], { facing: [s, 0, 0] });
+      dado.color(0xffffff);
+      dado.poly([[s * w0, 0, z0], [s * w1, 0, z1], [s * w1, h1 - RAIL, z1], [s * w0, h0 - RAIL, z0]], {
+        facing: [s, 0, 0],
+        shade: [0.85, 0.85, 1, 1],
+        uvs: [uv(z0, 0), uv(z1, 0), uv(z1, h1 - RAIL), uv(z0, h0 - RAIL)],
+      });
+      paint.color(TINT.brass);
+      paint.poly([[s * w0, h0 - RAIL, z0], [s * w1, h1 - RAIL, z1], [s * w1, h1, z1], [s * w0, h0, z0]], { facing: [s, 0, 0] });
     }
     // The top: the glass's facets, its inner corners sunk GAP toward the axis.
-    wood.color(TINT.stand);
+    paint.color(TINT.teal);
     const corner = (r, i, z) => onAxis(Y, i === 0 || i === steps ? r : r - GAP, a0 + (i * 2 * KEEL) / steps, z);
     for (let i = 0; i < steps; i++) {
       const aM = a0 + ((i + 0.5) * 2 * KEEL) / steps;
       const facing = [-Math.sin(aM) * (z1 - z0), -Math.cos(aM) * (z1 - z0), r1 - r0]; // toward the axis
-      wood.poly([corner(r0, i, z0), corner(r0, i + 1, z0), corner(r1, i + 1, z1), corner(r1, i, z1)], { facing });
+      paint.poly([corner(r0, i, z0), corner(r0, i + 1, z0), corner(r1, i + 1, z1), corner(r1, i, z1)], { facing });
     }
-    // Its collider: the footprint (narrowing under the shoulder) up to its sides' highest top.
-    const top = Y - Math.min(r0, r1) * k;
+    // Its collider: the footprint (narrowing under the shoulder) up to the highest of the
+    // sides' tops (the neck's: there the glass's collider has its corners) and STAND_INTO over,
+    // which lies inside the glass all along.
+    const top = Y - B.neckR * k + STAND_INTO;
     const box = (y) => [[-w0, y, z0], [w0, y, z0], [w1, y, z1], [-w1, y, z1]];
     const [lo, hi] = [box(0), box(top)];
     const polys = [hi];
@@ -219,38 +253,38 @@ function stand(kit, { BOTTLE: B }) {
   return B.bodyR * k;
 }
 
-// The two carved cradles across the stand: side blocks out from it under a moulded cap level
-// with the putty sea, and on each side a cheek rising from the cap round the glass into its
-// widest band, its outer side sloping in (drawn hugging the glass; its collider runs on across
-// the cradle inside it).
+// The two gold cradles across the stand: soft-edged side blocks out from it under a soft cap
+// level with the putty sea, and on each side a cheek rising from the cap round the glass into
+// its widest band, its outer side sloping in (drawn hugging the glass; its collider runs on
+// across the cradle inside it).
 function cradles(kit, { BOTTLE, CRADLES: C }, standX) {
-  const { wood, solids } = kit;
+  const { paint, solids } = kit;
   const h = C.top;
   const inner = glassUnderside(BOTTLE, h, C.cheekTop);
   const lip = inner[inner.length - 1];
   const outer = [[C.cheekFoot, h], [C.cheekX, C.cheekTop]];
   const profile = [...outer, ...[...inner].reverse()]; // a fan from the outer foot sees it all
+  paint.color(TINT.brass);
   for (const z of C.zs) {
     const za = z - C.depth / 2;
     const zb = z + C.depth / 2;
     for (const s of [-1, 1]) {
       const at = ([x, y], zz) => [s * x, y, zz];
-      wood.color(TINT.oak, 1.3);
       // A side block (the middle is the stand) under a cap that overhangs it outward and along
       // the bottle.
       const [xa, xb] = s < 0 ? [-C.halfX, -standX] : [standX, C.halfX];
-      wood.box(xa, xb, 0, h - 40, za, zb, { bottom: false, top: false, shade: 0.8 });
+      softBox(paint, xa, xb, 0, h - 40, za, zb, ...CRADLE_ROUND.block);
       const [ca, cb] = s < 0 ? [xa - 20, xb] : [xa, xb + 20];
-      wood.box(ca, cb, h - 40, h, za - 20, zb + 20, { faceShade: (n) => (n[1] < -0.5 ? 0.6 : 1) });
+      softBox(paint, ca, cb, h - 44, h, za - 20, zb + 20, ...CRADLE_ROUND.cap);
       // The cheek: its two ends, its outer side and top, and its inner side along the glass.
-      wood.poly(profile.map((p) => at(p, za)), { facing: [0, 0, -1] });
-      wood.poly(profile.map((p) => at(p, zb)), { facing: [0, 0, 1] });
-      wood.poly([at(outer[0], za), at(outer[0], zb), at(outer[1], zb), at(outer[1], za)], { facing: [s, 0, 0], shade: 0.9 });
-      wood.poly([at(lip, za), at(outer[1], za), at(outer[1], zb), at(lip, zb)], { facing: [0, 1, 0] });
+      paint.poly(profile.map((p) => at(p, za)), { facing: [0, 0, -1] });
+      paint.poly(profile.map((p) => at(p, zb)), { facing: [0, 0, 1] });
+      paint.poly([at(outer[0], za), at(outer[0], zb), at(outer[1], zb), at(outer[1], za)], { facing: [s, 0, 0], shade: 0.9 });
+      paint.poly([at(lip, za), at(outer[1], za), at(outer[1], zb), at(lip, zb)], { facing: [0, 1, 0] });
       for (let i = 0; i + 1 < inner.length; i++) {
         const [p, q] = [inner[i], inner[i + 1]];
         const facing = [-s * (p[0] + q[0]), 2 * BOTTLE.axisY - p[1] - q[1], 0]; // toward the axis
-        wood.poly([at(p, za), at(q, za), at(q, zb), at(p, zb)], { facing, shade: 0.7 });
+        paint.poly([at(p, za), at(q, za), at(q, zb), at(p, zb)], { facing, shade: 0.7 });
       }
     }
     solids.box(-C.halfX, C.halfX, 0, h, za, zb, 'wood');
@@ -382,79 +416,114 @@ function world(kit, B) {
   lamp.glow = 0;
 }
 
-// The landing in front of the bottle's mouth and the stairs up to it.
-function landing(kit, { LANDING: L, STAIRS: S }) {
-  const { wood, solids } = kit;
-  wood.color(0xffffff, DECK);
-  wood.shade = (px, py) => 0.62 + 0.38 * Math.min(1, py / L.top);
-  wood.box(L.x0, L.x1, 0, L.top, L.z0, L.z1, { bottom: false });
-  solids.box(L.x0, L.x1, 0, L.top, L.z0, L.z1, 'wood');
-
-  // Drawn steps: each tread's middle on the ramp, the last one the landing's edge.
-  const run = S.z0 - S.z1;
-  const rise = S.top / S.steps;
-  const tread = run / S.steps;
-  for (let i = 0; i < S.steps; i++) {
-    const y = rise * (i + 1);
-    const front = S.z0 - tread * (i + 0.5);
-    const back = i === S.steps - 1 ? S.z1 : front - tread;
-    wood.poly([[S.x0, y - rise, front], [S.x1, y - rise, front], [S.x1, y, front], [S.x0, y, front]], { facing: [0, 0, 1], shade: 0.5 });
-    wood.poly([[S.x0, y, front], [S.x1, y, front], [S.x1, y, back], [S.x0, y, back]], { facing: [0, 1, 0], shade: 1.12 });
+// The dais in front of the bottle's mouth: a half-round stepped podium, its flat back on the
+// mouth's plane. Drawn round (smooth, DAIS_DRAW.sides): each step a rose riser, darker toward
+// the floor, under a cream tread with a rounded nosing; riser i stands half a tread out from
+// where the collider's slope is at its height, so each tread's middle lies on the slope (he
+// stands on the drawn treads, not a step under them); the top is the last tread, on into the
+// middle, with a gold and Falu ring inlaid round it. The collider: a half-frustum of
+// DAIS_DRAW.facets facets from the foot (rFoot, floor) to the top (rTop, top), not slippery.
+// Between its corners a facet lies lower than the round slope (by the sagitta's share of the
+// rise there), so every tread below the top is drawn half that much lower at its middle: his
+// feet keep as near it in the middle of a facet as on a corner.
+function dais(kit, { DAIS: D }) {
+  const { trim, paint, solids } = kit;
+  const { sides, nose, noseDrop, facets } = DAIS_DRAW;
+  const run = (D.rFoot - D.rTop) / D.steps;
+  const rise = D.top / D.steps;
+  const sag = (r) => ((rise / run) * r * (1 / Math.cos(Math.PI / 2 / facets) - 1)) / 2;
+  // From the west (-x) round the south (+z) to the east: the half toward the room.
+  const half = { a0: -Math.PI / 2, arc: Math.PI };
+  let y0 = 0;
+  for (let i = 0; i < D.steps; i++) {
+    const rOut = D.rFoot - run * (i + 0.5); // riser i
+    const rIn = i + 1 === D.steps ? 0 : rOut - run; // riser i + 1 (the top runs on into the middle)
+    const y1 = rise * (i + 1) - (rIn > 0 ? sag(rOut - run / 2) : 0);
+    trim.color(TINT.rose);
+    trim.shade = (px, py) => 0.86 + 0.14 * (py / D.top);
+    trim.lathe(D.x, D.z, [[rOut + nose, y0], [rOut + nose, y1 - noseDrop]], sides, half);
+    trim.shade = null;
+    trim.color(TINT.cream);
+    const tread = [[rOut + nose, y1 - noseDrop], [rOut + 2, y1 - 3], [rOut - 8, y1], [rIn > 0 ? rIn + nose : 0, y1]];
+    trim.lathe(D.x, D.z, tread, sides, { ...half, smoothProfile: true, vMode: 'plan' });
+    // Its share of the flat back, either side of the middle.
+    for (const s of [-1, 1]) {
+      const [ra, rb] = [rIn > 0 ? rIn + nose : 0, rOut + nose];
+      trim.poly([[s * ra, 0, D.z], [s * rb, 0, D.z], [s * rb, y1, D.z], [s * ra, y1, D.z]], { facing: [0, 0, -1], shade: 0.85 });
+    }
+    y0 = y1;
   }
-  wood.shade = null;
-  // The stringers either side, dark, their tops along the ramp (the stair's slope reads from
-  // the front), its collider running on under them.
-  const { z0, z1, top } = S;
-  wood.color(TINT.stand);
-  for (const [xi, xo] of [[S.x0, S.x0 - S.stringer], [S.x1, S.x1 + S.stringer]]) {
-    wood.poly([[xo, 0, z0], [xo, top, z1], [xo, 0, z1]], { facing: [xo - xi, 0, 0], shade: 0.8 });
-    wood.poly([[xi, 0, z0], [xi, top, z1], [xi, 0, z1]], { facing: [xi - xo, 0, 0], shade: 0.6 });
-    wood.poly([[xi, 0, z0], [xo, 0, z0], [xo, top, z1], [xi, top, z1]], { facing: [0, z0 - z1, top], shade: 1.1 });
+  for (const [r1, r0, tint] of DAIS_DRAW.inlay) {
+    paint.color(TINT[tint]);
+    paint.lathe(D.x, D.z, [[r1, D.top + 2], [r0, D.top + 2]], sides, half);
   }
-  // The ramp: a wedge from the floor at z0 up to the landing at z1, as wide as the stringers.
-  const x0 = S.x0 - S.stringer;
-  const x1 = S.x1 + S.stringer;
-  const ramp = [
-    [[x0, 0, z0], [x1, 0, z0], [x1, top, z1], [x0, top, z1]],
-    [[x0, 0, z0], [x0, 0, z1], [x0, top, z1]],
-    [[x1, 0, z0], [x1, 0, z1], [x1, top, z1]],
-    [[x0, 0, z1], [x1, 0, z1], [x1, top, z1], [x0, top, z1]],
-  ];
-  solids.solid(ramp, 'wood', 'not_slippery');
+  const ring = (r, y) => Array.from({ length: facets + 1 }, (_, k) => {
+    const a = half.a0 + (half.arc * k) / facets;
+    return [D.x + Math.sin(a) * r, y, D.z + Math.cos(a) * r];
+  });
+  const [foot, head] = [ring(D.rFoot, 0), ring(D.rTop, D.top)];
+  const polys = [head, [foot[0], head[0], head[facets], foot[facets]]];
+  for (let k = 0; k < facets; k++) polys.push([foot[k], foot[k + 1], head[k + 1], head[k]]);
+  solids.solid(polys, 'stone', 'not_slippery');
 }
 
-// The cork (an octagonal prism, standing on its wide end, a darker ring round its foot where
-// it was in the bottle's neck) and the stack of books by the landing.
-function toys(kit, { CORK, BOOKS }) {
+// The giant cork standing upright in the apse's east flank (round, smooth: a darker ring round
+// its foot where it was in the bottle's neck, a lighter top), an octagonal collider.
+function cork(kit, { CORK }) {
   const { paint, solids } = kit;
   const { x, z, r, top } = CORK;
   paint.color(TINT.corkRing);
-  paint.lathe(x, z, [[r, 0], [r - 4, 60]], 8, { flat: true });
+  paint.lathe(x, z, [[r, 0], [r - 4, 60]], 16);
   paint.color(TINT.cork);
-  paint.lathe(x, z, [[r - 4, 60], [r - 22, top - 20]], 8, { flat: true });
+  paint.lathe(x, z, [[r - 4, 60], [r - 22, top - 20]], 16);
   paint.color(TINT.cork, 1.08);
-  paint.lathe(x, z, [[r - 22, top - 20], [r - CORK_TAPER, top], [0, top]], 8, { flat: true });
+  paint.lathe(x, z, [[r - 22, top - 20], [r - CORK_TAPER, top], [0, top]], 16);
   const ring = (rr, y) => Array.from({ length: 8 }, (_, i) => [x + Math.sin((i * Math.PI) / 4) * rr, y, z + Math.cos((i * Math.PI) / 4) * rr]);
   const [foot, head] = [ring(r, 0), ring(r - CORK_TAPER, top)];
   solids.solid([head, ...foot.map((p, i) => [p, foot[(i + 1) % 8], head[(i + 1) % 8], head[i]])], 'wood');
+}
 
-  // Each book lies on the one below: boards top and bottom, the page block between them (inset
-  // at the ends and the back), the spine toward the hall with two gold bands.
+// The two giant books stacked like steps up to the cork, each lying on the one below: cover
+// boards top and bottom; the cream page block between them set in from their edges, so the
+// covers overhang it, with two darker page lines, showing at the west end and along the south
+// side toward the hall (the fore-edge); a rounded spine in the cover's colour along the north
+// side, between the boards' edges, with two gold bands round it. A wooden box each as its
+// collider.
+function books(kit, { BOOKS }) {
+  const { paint, solids } = kit;
   const { z0, z1, x1 } = BOOKS;
+  const { board, inset } = BOOK;
   let base = 0;
-  BOOKS.stack.forEach(({ x0, top: t }, i) => {
+  BOOKS.stack.forEach(({ x0, top }, i) => {
     const cover = TINT.books[i % TINT.books.length];
     paint.color(cover);
-    paint.box(x0, x1, base, base + 18, z0, z1, { bottom: false });
-    paint.box(x0, x1, t - 18, t, z0, z1, { bottom: false });
-    paint.box(x0, x1, base + 18, t - 18, z1 - 22, z1, { bottom: false, top: false });
-    paint.color(TINT.pages);
-    paint.box(x0 + 14, x1, base + 18, t - 18, z0 + 14, z1 - 22, { bottom: false, top: false, shade: 0.95 });
-    paint.color(TINT.gold);
-    for (const bx of [x0 + 50, x1 - 70]) {
-      paint.poly([[bx, base + 22, z1 + 1], [bx + 20, base + 22, z1 + 1], [bx + 20, t - 22, z1 + 1], [bx, t - 22, z1 + 1]], { facing: [0, 0, 1] });
+    paint.box(x0, x1, base, base + board, z0, z1, { bottom: false });
+    paint.box(x0, x1, top - board, top, z0, z1, { bottom: false });
+    // The page block's west end and south side, in bands: pages, a line, pages, a line, pages.
+    const [ya, yb] = [base + board, top - board];
+    const cuts = [ya];
+    for (const t of BOOK.lines) cuts.push(ya + (yb - ya) * t - BOOK.line / 2, ya + (yb - ya) * t + BOOK.line / 2);
+    cuts.push(yb);
+    const [px, pz] = [x0 + inset, z1 - inset];
+    for (let k = 0; k + 1 < cuts.length; k++) {
+      const [c0, c1] = [cuts[k], cuts[k + 1]];
+      paint.color(k % 2 ? TINT.pageLine : TINT.pages);
+      paint.poly([[px, c0, z0], [px, c0, pz], [px, c1, pz], [px, c1, z0]], { facing: [-1, 0, 0] });
+      paint.poly([[px, c0, pz], [x1, c0, pz], [x1, c1, pz], [px, c1, pz]], { facing: [0, 0, 1] });
     }
-    solids.box(x0, x1, 0, t, z0, z1, 'wood');
-    base = t;
+    // The spine: a half-ellipse swept (westward) along the north side, closed at its ends.
+    const mid = (base + top) / 2;
+    const rr = (top - base - board) / 2;
+    const spine = Array.from({ length: BOOK.spineSegs + 1 }, (_, k) => {
+      const a = (k / BOOK.spineSegs) * Math.PI;
+      return [BOOK.spine * Math.sin(a), mid - rr * Math.cos(a)];
+    });
+    const along = (xa, xb, w) => [{ p: [xb, 0, z0 - w], n: [0, 0, -1], b: [0, 1, 0] }, { p: [xa, 0, z0 - w], n: [0, 0, -1], b: [0, 1, 0] }];
+    paint.color(cover);
+    sweep(paint, along(x0, x1, 0), spine, { caps: true });
+    paint.color(TINT.gold);
+    for (const u of BOOK.bands) sweep(paint, along(x0 + u, x0 + u + BOOK.band, 1), spine, { caps: true });
+    solids.box(x0, x1, 0, top, z0, z1, 'wood');
+    base = top;
   });
 }

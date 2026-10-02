@@ -1,24 +1,36 @@
 // The Great Hall (world/hall/*), built as the game builds it (world/area.js buildArea at the
 // hall's origin) with the real Player, CameraController and ObjectManager: its budgets (meshes,
 // triangles, colliders, build time; the hall's objects too), a closed room (every ray from the
-// open air inside hits a face looking back at it), no spot to stand on under a ceiling lower
-// than HEADROOM, jump / crouch / attack spam that never gets Jonas (or the camera) out of the
-// room, its entries (a floor with headroom, the camera behind him at the front door and in
-// front of him on the landing, a walk from the front door up to the landing without the camera
-// getting stuck), walks round the bottle's end and C-button swings by the furniture that never
-// trap the camera or take it into a solid, the routes (the stairs, the cork and the books up
-// to the landing, wall kicks up the slot collecting its coins, the banner pole's top onto the
-// buttress for any aim near the wall's, the hop over the slot onto the mantel to the 1-up),
-// signs read from the front only, every coin over a floor, the doors' triggers on their faces
-// (the bottle's mouth into the first course), and the look's promises (the transparent glass
-// with its rim, the flickering flames, the lamp hidden until lit); the front door's leaves
-// fill its opening shut and swing aside onto a dark passage, and the lamp lights with setLit.
+// open air inside hits a face looking back at it; at head height every ray out from the middle
+// stops at the round plan's walls or the furniture against them), no spot to stand on under a
+// ceiling lower than HEADROOM, jump / crouch / attack spam that never gets Jonas (or the
+// camera) out of the room and seldom traps the camera, its entries (a floor with headroom, the
+// camera behind him at the front door and in front of him on the dais's top, a walk from the
+// front door up the steps of the dais without the camera getting stuck), walks round the
+// bottle in the apse and C-button swings by the furniture (whichever way he faces) that never
+// trap the camera or take it into a solid, walks into the books' north side whose camera turns
+// round the bottle's neck and never into the glass, stepping off the dais's back losing him
+// only until the camera turns, the routes (the books and the cork up to the cork's top, wall
+// kicks up the slot collecting its coins, the banner pole's top onto the buttress for any aim
+// near the wall's, the hop over the slot onto the mantel to the 1-up), signs read from the
+// front only, every coin over a floor, the doors' triggers on their faces (the bottle's mouth
+// into the first course), the bake's promises (darker along the walls, warm by the fire, as
+// baked too, the long walls apart, the fill on the south wall, the warm vault, the nave not
+// burnt white), the dais drawn where he stands on it, nothing drawn only standing more than 56
+// out of a wall, and the look's promises (the transparent glass with its rim, the flickering
+// flames, the panelling, the textures' mean colours, the lamp hidden until lit); the front
+// door's leaves fill its opening shut (round its arch's head too) and swing aside onto a dark
+// passage, and the lamp lights with setLit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildArea } from '../src/world/area.js';
 import { AREA_DEFS } from '../src/world/areas.js';
 import * as hall from '../src/world/hall/layout.js';
+import * as hallTextures from '../src/world/hall/textures.js';
+import { planPolygon, planRuns } from '../src/world/hall/plan.js';
+import { windowSpots } from '../src/world/hall/shell.js';
+import { makeHallLight } from '../src/world/hall/light.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { CameraController } from '../src/camera/CameraController.js';
@@ -37,8 +49,21 @@ const { HALL } = hall;
 // Local (hall) <-> world coordinates.
 const world = (x, y, z) => ({ x: x + O.x, y: y + O.y, z: z + O.z });
 const local = (p) => ({ x: p.x - O.x, y: p.y - O.y, z: p.z - O.z });
-const inRoom = (p, slack = 0) =>
-  Math.abs(p.x) <= HALL.halfX + slack && p.z >= HALL.northZ - slack && p.z <= HALL.southZ + slack && p.y >= -slack && p.y <= HALL.ceilingY + slack;
+const inRoom = (p, slack = 0) => hall.inPlan(p.x, p.z, -slack) && p.y >= -slack && p.y <= HALL.ceilingY + slack;
+
+// The plan's outline, and a point's distance to it (the nearest wall's line).
+const outline = planPolygon(hall, 0);
+function wallDistance(x, z) {
+  let best = Infinity;
+  for (let i = 0; i < outline.length; i++) {
+    const [ax, az] = outline[i];
+    const [bx, bz] = outline[(i + 1) % outline.length];
+    const [ex, ez] = [bx - ax, bz - az];
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez)));
+    best = Math.min(best, Math.hypot(x - ax - ex * t, z - az - ez * t));
+  }
+  return best;
+}
 
 // Jonas standing idle at a local point (with the hall's signs), his scripted controller, and
 // (with objects) the hall's own ObjectManager and the events it emitted.
@@ -78,22 +103,25 @@ function insideSolid(p) {
 }
 
 // Whether a local point lies inside (or within `pad` of) a piece of furniture standing in the
-// room: the chimney breast, the buttress, the landing and the stairs, the books, the cork, the
-// chart table, the signposts, the cradles, the bottle and the stand under it.
+// room: the chimney breast, the buttress, the steps of the dais (a half-cone up to its top),
+// the engaged columns, the cork, the books (with their spines), the chart table, the signposts,
+// the cradles, the bottle and the stand under it.
 function inFurniture({ x, y, z }, pad = 10) {
   const box = (x0, x1, y0, y1, z0, z1) => x > x0 - pad && x < x1 + pad && y > y0 - pad && y < y1 + pad && z > z0 - pad && z < z1 + pad;
   const post = (cx, cz, r, top) => Math.hypot(x - cx, z - cz) < r + pad && y < top + pad;
-  const { CHIMNEY: C, BUTTRESS: T, LANDING: L, STAIRS: S, BOOKS: K, CORK, CHART_TABLE, CRADLES: R, BOTTLE: B } = hall;
-  if (box(C.x0, C.x1, 0, C.top, C.z0, C.z1) || box(T.x0, T.x1, 0, T.top, T.z0, T.z1) || box(L.x0, L.x1, 0, L.top, L.z0, L.z1)) return true;
-  if (box(S.x0 - S.stringer, S.x1 + S.stringer, 0, S.top, S.z1, S.z0) && y < (S.top * (S.z0 - z)) / (S.z0 - S.z1) + pad) return true;
-  if (K.stack.some((b) => box(b.x0, K.x1, 0, b.top, K.z0, K.z1))) return true;
+  const { CHIMNEY: C, BUTTRESS: T, DAIS: D, BOOKS: K, CORK, CHART_TABLE, CRADLES: R, BOTTLE: B } = hall;
+  if (box(C.x0, C.x1, 0, C.top, C.z0, C.z1) || box(T.x0, T.x1, 0, T.top, T.z0, T.z1)) return true;
+  const r = Math.hypot(x - D.x, z - D.z);
+  if (z > D.z - pad && r < D.rFoot + pad && y < D.top * Math.min(1, (D.rFoot - r) / (D.rFoot - D.rTop)) + pad) return true;
+  if (hall.COLUMNS.some((c) => post(c.x, c.z, hall.COLUMN.r, HALL.ceilingY))) return true;
   if (post(CORK.x, CORK.z, CORK.r, CORK.top) || post(CHART_TABLE.x, CHART_TABLE.z, CHART_TABLE.r, CHART_TABLE.top)) return true;
+  if (K.stack.some((b) => box(b.x0, K.x1, 0, b.top, K.z0 - 30, K.z1))) return true;
   if (hall.SIGNS.some((s) => post(s.x, s.z, 100, s.y + 220))) return true;
   if (R.zs.some((cz) => box(-R.halfX, R.halfX, 0, R.cheekTop, cz - R.depth / 2, cz + R.depth / 2))) return true;
   if (z < B.body[0] - pad || z > B.lip[1] + pad) return false;
   const k = (z - B.shoulder[0]) / (B.shoulder[1] - B.shoulder[0]);
-  const r = z < B.shoulder[0] ? B.bodyR : z < B.shoulder[1] ? B.bodyR + (B.neckR - B.bodyR) * k : z < B.lip[0] ? B.neckR : B.lipR;
-  return Math.hypot(x, y - B.axisY) < r + pad || (Math.abs(x) < r && y < B.axisY);
+  const rb = z < B.shoulder[0] ? B.bodyR : z < B.shoulder[1] ? B.bodyR + (B.neckR - B.bodyR) * k : z < B.lip[0] ? B.neckR : B.lipR;
+  return Math.hypot(x, y - B.axisY) < rb + pad || (Math.abs(x) < rb && y < B.axisY);
 }
 
 // Stick input that walks him along world yaw `yaw` with the camera where it is.
@@ -106,21 +134,21 @@ const meshes = [];
 area.root.traverse((o) => o.isMesh && meshes.push(o));
 const mesh = (name) => meshes.find((m) => m.name === name);
 
-test('budgets: at most 12 meshes with baked colours, under 12k triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
-  assert.ok(meshes.length <= 12, `${meshes.length} meshes`);
+test('budgets: at most 14 meshes with baked colours, under 26k room triangles and 1.5k collider triangles of stone and wood, built in under a second', () => {
+  assert.ok(meshes.length <= 14, `${meshes.length} meshes`);
   let tris = 0;
   for (const m of meshes) {
     const g = m.geometry;
     assert.ok(g.attributes.color, `${m.name} has vertex colours`);
     assert.ok(g.attributes.position.count > 0, `${m.name} has vertices`);
-    tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    if (m.name !== 'hall-reflect') tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
   }
-  assert.ok(tris < 12000, `${tris} triangles`);
+  assert.ok(tris < 26000, `${tris} room triangles`);
   const colliders = area.parts.flatMap((p) => p.colliders);
   const colliderTris = colliders.reduce((n, c) => n + c.positions.length / 9, 0);
   assert.ok(colliderTris < 1500, `${colliderTris} collider triangles`);
   assert.deepEqual([...new Set(colliders.map((c) => c.terrain))].sort(), ['stone', 'wood']);
-  assert.deepEqual([...new Set(colliders.map((c) => c.surface).filter(Boolean))].sort(), ['not_slippery', 'slippery'], 'the glass, the stairs');
+  assert.deepEqual([...new Set(colliders.map((c) => c.surface).filter(Boolean))].sort(), ['not_slippery', 'slippery'], 'the glass, the dais');
   assert.ok(buildMs < 1000, `built in ${buildMs.toFixed(0)} ms`);
 });
 
@@ -140,8 +168,9 @@ test('a closed room: from 30 points in the open air inside (12 seeded draws), ev
     const points = [];
     while (points.length < 30) {
       const l = { x: (rng() * 2 - 1) * (HALL.halfX - 100), y: 50 + rng() * (HALL.ceilingY - 150), z: HALL.northZ + 100 + rng() * (HALL.southZ - HALL.northZ - 200) };
-      // Open air: not in a piece of furniture (every ray from inside a solid meets the back of
-      // its faces) and nothing within 60 of it either way.
+      // Open air: on the plan, not in a piece of furniture (every ray from inside a solid meets
+      // the back of its faces) and nothing within 60 of it either way.
+      if (!hall.inPlan(l.x, l.z, 100)) continue;
       const p = world(l.x, l.y, l.z);
       if (!inFurniture(l) && dirs.every((d) => !col.raycast(p, d, 60))) points.push(p);
     }
@@ -155,13 +184,33 @@ test('a closed room: from 30 points in the open air inside (12 seeded draws), ev
   assert.deepEqual(bad, []);
 });
 
+test('the shell is closed at head height: every ray out from the middle stops at the round walls (or a column, the buttress, the chimney breast)', () => {
+  const from = world(0, 1300, -100);
+  const footprint = (x, z) =>
+    hall.COLUMNS.some((c) => Math.hypot(x - c.x, z - c.z) < 195) ||
+    [hall.BUTTRESS, hall.CHIMNEY, hall.HOOD].some((b) => x >= b.x0 - 1 && x <= b.x1 + 1 && z >= b.z0 - 1 && z <= b.z1 + 1);
+  const bad = [];
+  for (let deg = 0; deg < 360; deg += 5) {
+    const a = (deg * Math.PI) / 180;
+    const hit = col.raycast(from, { x: Math.sin(a), y: 0, z: Math.cos(a) }, 20000, { floors: false, ceilings: false });
+    if (!hit) {
+      bad.push(`${deg} deg: no hit`);
+      continue;
+    }
+    const p = local(hit.point);
+    if (wallDistance(p.x, p.z) > 30 && !footprint(p.x, p.z)) bad.push(`${deg} deg: stopped at ${JSON.stringify(p)}, ${wallDistance(p.x, p.z).toFixed(0)} off the walls`);
+  }
+  assert.deepEqual(bad, []);
+});
+
 test(`no spot he can stand on lies under a ceiling lower than HEADROOM (${hall.HEADROOM}): the stand and the cradles leave no ledge under the glass`, () => {
-  // Every floor on a grid over the room, from the ceiling down: room for him under its ceiling
+  // Every floor on a grid over the plan, from the ceiling down: room for him under its ceiling
   // but less than HEADROOM is a pocket, unless the spot lies inside a solid (the floor under
   // the stand, a cradle's top under its cheek).
   const pockets = [];
   for (let x = -HALL.halfX + 7; x < HALL.halfX; x += 20) {
     for (let z = HALL.northZ + 7; z < HALL.southZ; z += 20) {
+      if (!hall.inPlan(x, z, -60)) continue;
       for (let y = HALL.ceilingY - 10; ; ) {
         const floor = col.findFloor(x + O.x, y + O.y, z + O.z, 0);
         if (!floor.surface || floor.y - O.y < -50) break;
@@ -176,15 +225,29 @@ test(`no spot he can stand on lies under a ceiling lower than HEADROOM (${hall.H
   assert.deepEqual(pockets.slice(0, 12), [], `${pockets.length} spots`);
 });
 
-test('jump, crouch and attack spam (6 seeded runs of 900 ticks) never gets Jonas or the camera out of the room', () => {
-  const starts = [[0, 0, 1550], [hall.ONE_UP.x, hall.CHIMNEY.top, hall.ONE_UP.z], [0, hall.LANDING.top, -1150], [hall.CORK.x, hall.CORK.top, hall.CORK.z], [hall.CHART_TABLE.x, hall.CHART_TABLE.top, hall.CHART_TABLE.z], [-1975, hall.BUTTRESS.top, -1850]];
+test('jump, crouch and attack spam (11 seeded runs of 900 ticks) never gets Jonas or the camera out of the room, and seldom traps the camera', (t) => {
+  const starts = [
+    [0, 0, 1550], // the front entry
+    [hall.ONE_UP.x, hall.CHIMNEY.top, hall.ONE_UP.z], // the mantel
+    [0, hall.DAIS.top, -1150], // the dais's top
+    [hall.CORK.x, hall.CORK.top, hall.CORK.z],
+    [hall.CHART_TABLE.x, hall.CHART_TABLE.top, hall.CHART_TABLE.z],
+    [-1975, hall.BUTTRESS.top, 150], // the buttress's top
+    [800, 0, -3700], // behind the bottle, east and west
+    [-1700, 0, -2700],
+    [985, hall.BOOKS.stack[1].top, -2150], // the top book
+    [480, 0, -2000],
+    [-800, 0, 850],
+  ];
   const out = [];
+  const trapped = [];
   starts.forEach(([x, y, z], run) => {
     const rng = makeRng(1000 + run);
     const { p, ctl } = hero(x, y, z, rng() * Math.PI * 2);
     const cam = camera(p);
     let sx = 0;
     let sy = 1;
+    trapped[run] = 0;
     for (let i = 0; i < 900; i++) {
       if (i % 20 === 0) {
         const a = rng() * Math.PI * 2;
@@ -194,6 +257,7 @@ test('jump, crouch and attack spam (6 seeded runs of 900 ticks) never gets Jonas
       const c = ctl.next({ stickX: sx, stickY: sy, A: rng() < 0.3, Z: rng() < 0.05, B: rng() < 0.05 });
       p.update(cam.playerInput(c), cam.getYaw());
       cam.update(c, p);
+      if (cam.collider.trapped) trapped[run]++;
       if (p.action === 'reading') p.endReading();
       if (!inRoom(local(p.pos))) {
         out.push(`run ${run} tick ${i}: Jonas at ${JSON.stringify(local(p.pos))} (${p.action})`);
@@ -206,6 +270,9 @@ test('jump, crouch and attack spam (6 seeded runs of 900 ticks) never gets Jonas
     }
   });
   assert.deepEqual(out, []);
+  const total = trapped.reduce((a, b) => a + b, 0);
+  t.diagnostic(`trapped camera ticks per run: ${trapped.join(', ')} (${total} in all)`);
+  assert.ok(total <= 80 && trapped.every((n) => n <= 35), `trapped camera ticks per run: ${trapped.join(', ')} (${total} in all)`);
 });
 
 test('each entry stands on a floor with at least 900 of headroom', () => {
@@ -217,7 +284,7 @@ test('each entry stands on a floor with at least 900 of headroom', () => {
   }
 });
 
-test('the front entry: the camera behind him, clear; the walk on north up the stairs onto the landing never traps it', () => {
+test('the front entry: the camera behind him, clear; the walk on north up the steps of the dais onto its top never traps it', () => {
   const e = hall.ENTRIES.front;
   const { p, ctl, at } = hero(e.x, e.y, e.z, e.yaw);
   const cam = camera(p);
@@ -237,10 +304,10 @@ test('the front entry: the camera behind him, clear; the walk on north up the st
   assert.equal(trapped, 0, 'trapped ticks');
   assert.equal(occluded, 0, 'occluded ticks');
   const end = at();
-  assert.ok(Math.abs(end.y - hall.LANDING.top) < 1 && end.z < hall.LANDING.z1 && p.grounded, `on the landing: ${JSON.stringify(end)} (${p.action})`);
+  assert.ok(Math.abs(end.y - hall.DAIS.top) < 1 && end.z < hall.LANDING.z1 && p.grounded, `on the dais's top: ${JSON.stringify(end)} (${p.action})`);
 });
 
-test("the bottle entry: he drops onto the landing facing south with the camera south of him (camYaw 0), clear", () => {
+test("the bottle entry: he drops onto the dais's top facing south with the camera south of him (camYaw 0), clear", () => {
   const e = area.entries.bottle;
   const { p, ctl, at } = hero(0, 0, 0, 0);
   p.placeAt(e);
@@ -252,24 +319,35 @@ test("the bottle entry: he drops onto the landing facing south with the camera s
     cam.update(c, p);
   }
   const end = at();
-  assert.ok(Math.abs(end.y - hall.LANDING.top) < 1 && Math.abs(end.z - hall.ENTRIES.bottle.z) < 1, `on the landing: ${JSON.stringify(end)}`);
+  assert.ok(Math.abs(end.y - hall.LANDING.top) < 1 && Math.abs(end.z - hall.ENTRIES.bottle.z) < 1, `on the dais's top: ${JSON.stringify(end)}`);
   const c = local(cam.pos);
   assert.ok(c.z > end.z + 800 && Math.abs(c.x) < 50, `camera south of him: ${JSON.stringify(c)}`);
   assert.equal(cam.collider.occluded, false);
 });
 
-test("walks along the north wall into the bottle's end and into its flanks never trap the camera (no corridor behind it)", () => {
-  // (With the bottle's end 200 off the wall, the walk back out of the corridor behind it
-  // trapped the camera for 46 ticks.)
-  const [N, E, W] = [Math.PI, Math.PI / 2, -Math.PI / 2];
+test('walks round the bottle in the apse, along the round walls and by the furniture never trap the camera or take it into a solid', () => {
+  const [N, E, W, S] = [Math.PI, Math.PI / 2, -Math.PI / 2, 0];
   // [what, start (x, z), legs [world yaw, ticks]]
   const walks = [
-    ['west along the north wall, and back', [1200, -4100], [[W, 120], [E, 120]]],
-    ['east along the north wall, and back', [-1200, -4100], [[E, 120], [W, 120]]],
-    ['north up the east side, then west into the flank', [900, -2600], [[N, 70], [W, 80]]],
-    ['north up the west side, then east into the flank', [-900, -2600], [[N, 70], [E, 80]]],
+    ['north up the east side into the apse, west into the flank', [900, -2600], [[N, 90], [W, 80]]],
+    ['north up the west side into the apse, east into the flank', [-900, -2600], [[N, 90], [E, 80]]],
+    ['the same up the east side, and back out south', [900, -2600], [[N, 90], [W, 80], [S, 150]]],
+    ['into the east wedge by the back cradle and out', [1100, -3300], [[N, 60], [W, 40], [S, 120]]],
+    ['into the west wedge by the back cradle and out', [-1100, -3300], [[N, 60], [E, 40], [S, 120]]],
+    ['along the apse wall east to west', [1800, -2600], [[N, 60], [W, 140], [S, 60]]],
+    ['along the apse wall west to east', [-1800, -2600], [[N, 60], [E, 140], [S, 60]]],
+    ['south out of the cradle corner', [600, -3870], [[S, 150]]],
+    ['north along the east wall past the column into the apse', [1950, 1500], [[N, 160]]],
+    ['north along the west wall from the buttress past the column', [-1950, -300], [[N, 120]]],
+    ['east wall north and back south', [1950, -400], [[N, 120], [S, 120]]],
+    ['round the south rounds to the door', [1900, 1500], [[S, 80], [W, 120]]],
+    ['north between the books and the stand, and back', [480, -1600], [[N, 90], [S, 90]]],
+    ["east past the books' pages, north, then west behind them", [900, -1700], [[E, 40], [N, 30], [W, 50]]],
+    ["north by the dais's back, east, north, west and out", [300, -1500], [[N, 30], [E, 40], [N, 40], [W, 40], [S, 60]]],
+    ['the west flank coin trail round the apse', [-1700, -1700], [[N, 60], [N + 0.5, 60], [E, 60]]],
+    ["from the dais's west end north into the flank", [-1400, -1300], [[N, 120], [S, 120]]],
   ];
-  const trapped = [];
+  const bad = [];
   for (const [what, [x, z], legs] of walks) {
     const { p, ctl } = hero(x, 0, z, legs[0][0]);
     const cam = camera(p);
@@ -280,47 +358,115 @@ test("walks along the north wall into the bottle's end and into its flanks never
         p.update(cam.playerInput(c), cam.getYaw());
         cam.update(c, p);
         if (cam.collider.trapped) n++;
+        if (insideSolid(cam.pos)) bad.push(`${what}: camera inside a solid at ${JSON.stringify(local(cam.pos))}`);
       }
     }
-    if (n) trapped.push(`${what}: ${n} ticks`);
+    if (n) bad.push(`${what}: ${n} trapped ticks`);
   }
-  assert.deepEqual(trapped, []);
+  assert.deepEqual(bad.slice(0, 10), []);
 });
 
-test('C-button swings round Jonas by the bottle and the furniture never take the camera into a solid', () => {
-  // A full turn of the orbit (C-left every 20 ticks) at the bottle's mouth, east of its body, on
-  // the stairs by its neck, by the chimney breast's south corner and by the landing's north face.
-  const spots = [[-300, hall.LANDING.top, -1400], [1200, 0, -2600], [-300, 330, -500], [-1200, 0, -200], [-1200, 0, -1400]];
-  const inside = [];
-  for (const [x, y, z] of spots) {
-    const { p, ctl } = hero(x, y, z, 0);
+test("stepping off the dais's back (a drop of 300 to 550, as off the old landing) loses him only until the camera turns round; jumping off the top's back corners, not at all", (t) => {
+  // The camera behind him up on the dais cannot see over the edge he drops behind (no lift is
+  // steep enough, no dolly gets past it): its trapped remedy turns the orbit to the side, in
+  // about a second, as it did at HEAD's landing (x 300: 21 trapped, 34 occluded ticks). These
+  // budgets keep it from getting worse. [x, trapped, occluded]: a walk north off the back at
+  // 0.6 stick for 24 ticks from z -1150, then 66 ticks standing.
+  const N = Math.PI;
+  const run = (x, z, yaw, input) => {
+    const { p, ctl } = hero(x, 0, z, yaw);
+    p.teleport(x + O.x, col.findFloor(x + O.x, 2000 + O.y, z + O.z, 0).y, z + O.z, yaw);
     const cam = camera(p);
-    for (let i = 0; i < 9 * 20; i++) {
-      const c = ctl.next({ CL: i % 20 === 0 && i > 0 });
+    let [trapped, occluded] = [0, 0];
+    for (let i = 0; i < 90; i++) {
+      const c = ctl.next(input(i, cam));
       p.update(cam.playerInput(c), cam.getYaw());
       cam.update(c, p);
-      if (insideSolid(cam.pos)) inside.push(`from (${x}, ${y}, ${z}) tick ${i}: camera at ${JSON.stringify(local(cam.pos))}`);
+      if (cam.collider.trapped) trapped++;
+      if (cam.collider.occluded) occluded++;
     }
+    return [trapped, occluded];
+  };
+  const slow = (cam) => {
+    const { stickX, stickY } = toward(cam, N);
+    return { stickX: stickX * 0.6, stickY: stickY * 0.6 };
+  };
+  const steps = [-1000, -800, -300, 300, 650, 900].map((x) => [x, ...run(x, -1150, N, (i, cam) => (i < 24 ? slow(cam) : {}))]);
+  t.diagnostic(`stepping off the back [x, trapped, occluded]: ${JSON.stringify(steps)}`);
+  for (const [x, trapped, occluded] of steps) assert.ok(trapped <= 30 && occluded <= 45, `x ${x}: ${trapped} trapped, ${occluded} occluded ticks`);
+  for (const s of [-1, 1]) {
+    const yaw = N - s * 0.6;
+    const [trapped, occluded] = run(s * 400, -1250, yaw, (i, cam) => (i < 30 ? { ...toward(cam, yaw), A: i >= 3 && i < 10 } : {}));
+    assert.ok(trapped === 0 && occluded === 0, `the jump off the ${s < 0 ? 'west' : 'east'} corner: ${trapped} trapped, ${occluded} occluded ticks`);
   }
-  assert.deepEqual(inside, []);
 });
 
-test('routes: the cork and the stack of books both lead up onto the landing', () => {
-  // The cork: a run west across its top and a jump at its edge.
-  const west = -Math.PI / 2;
-  const cork = hero(hall.CORK.x + 140, hall.CORK.top, hall.CORK.z, west);
-  let jumped = false;
-  for (let i = 0; i < 60 && !(jumped && cork.p.grounded); i++) {
-    if (!jumped && cork.at().x < hall.CORK.x - 60 && cork.p.grounded) jumped = true;
-    cork.tick({ stickY: 1, A: jumped }, west);
+test('C-button swings round Jonas by the bottle and the furniture, whichever way he faces, never trap the camera or take it into a solid', () => {
+  // A full turn of the orbit (C-left every 20 ticks) at the bottle's mouth, on the dais's
+  // steps, in the apse and its flanks (beside the stand, under the glass), by the walls and
+  // rounds, by the cork and the books, by the fireplace and the chart table, with him facing
+  // each of 8 ways. Trapped ticks count from the first swing (facing south, from the start):
+  // facing another way, the camera's reset may first put it behind the bottle's lip for a few
+  // ticks, which is no swing's doing.
+  const spots = [
+    [-300, 550, -1350], [1200, 0, -2600], [-1100, 206, -1000], [700, 345, -800], [0, 361, -500], [-1400, 0, 700], [-1400, 0, -200], [600, 0, -3900],
+    [-600, 0, -3900], [1850, 0, -1350], [1300, 0, -1850], [-1700, 0, -3000], [0, 0, 2600], [1700, 0, 2300], [-1700, 0, 2300], [1700, 0, 150],
+    [480, 0, -2150], [900, 0, -1800], [985, 255, -2150], [1300, 380, -2150], [-1640, 0, -2440], [-850, 0, 1150], [1250, 0, 300],
+    [-750, 0, -3100], [-750, 0, -3300], [-750, 0, -2900], [1000, 0, -3300], [850, 0, -2330],
+  ];
+  const bad = [];
+  for (const [x, y, z] of spots) {
+    for (let k = 0; k < 8; k++) {
+      const { p, ctl } = hero(x, y, z, (k * Math.PI) / 4);
+      const cam = camera(p);
+      let trapped = 0;
+      for (let i = 0; i < 9 * 20; i++) {
+        const c = ctl.next({ CL: i % 20 === 0 && i > 0 });
+        p.update(cam.playerInput(c), cam.getYaw());
+        cam.update(c, p);
+        if (cam.collider.trapped && (k === 0 || i >= 20)) trapped++;
+        if (insideSolid(cam.pos)) bad.push(`from (${x}, ${y}, ${z}) facing ${k * 45} deg, tick ${i}: camera at ${JSON.stringify(local(cam.pos))}`);
+      }
+      if (trapped) bad.push(`from (${x}, ${y}, ${z}) facing ${k * 45} deg: ${trapped} trapped ticks`);
+    }
   }
-  const c = cork.at();
-  assert.ok(Math.abs(c.y - hall.LANDING.top) < 1 && c.x < hall.LANDING.x1, `cork -> landing: ${JSON.stringify(c)}`);
+  assert.deepEqual(bad.slice(0, 10), []);
+});
 
-  // The books: a walk east, a jump up onto each book in turn, then onto the landing.
+test("walks from the apse's east flank into the books' north side: the camera, its view of him cut off by the books, turns round the bottle's neck and never into the glass", (t) => {
+  // [start (x, z), the way he faces, three legs of 60 ticks each along these world yaws]:
+  // he ends up pressed against the books' north side (or on past them to the east wall), the
+  // camera south of the books; its remedy for the lost view (the controller turning the orbit,
+  // sight.js) carries it along the shoulder and the neck.
+  const walks = [
+    [[1444.7, -3022.8], 2.46, [5.746, 5.621, 1.801]],
+    [[1342, -3565], 0.206, [6.138, 3.737, 0.611]],
+  ];
+  const bad = [];
+  const trapped = [];
+  for (const [[x, z], yaw, legs] of walks) {
+    const { p, ctl } = hero(x, 0, z, yaw);
+    const cam = camera(p);
+    let n = 0;
+    for (let i = 0; i < 60 * legs.length; i++) {
+      const c = ctl.next(toward(cam, legs[Math.floor(i / 60)]));
+      p.update(cam.playerInput(c), cam.getYaw());
+      cam.update(c, p);
+      if (cam.collider.trapped) n++;
+      if (insideSolid(cam.pos)) bad.push(`from (${x}, ${z}) tick ${i}: camera at ${JSON.stringify(local(cam.pos))}, Jonas at ${JSON.stringify(local(p.pos))}`);
+    }
+    trapped.push(n);
+  }
+  t.diagnostic(`trapped camera ticks (the books hiding him): ${trapped.join(', ')}`);
+  assert.deepEqual(bad.slice(0, 10), []);
+});
+
+test('routes: the books hop up to the cork, a coin on each', () => {
+  // A walk east along the books, a jump up onto each in turn, then onto the cork's top.
+  const K = hall.BOOKS;
   const east = Math.PI / 2;
-  const books = hero(-1550, 0, (hall.BOOKS.z0 + hall.BOOKS.z1) / 2, east);
-  const edges = [...hall.BOOKS.stack.map((b) => b.x0), hall.BOOKS.x1];
+  const books = hero(K.stack[0].x0 - 450, 0, hall.CORK.z, east, { objects: true });
+  const edges = [...K.stack.map((b) => b.x0), hall.CORK.x - hall.CORK.r];
   const floors = [];
   let next = 0;
   let hold = 0;
@@ -335,9 +481,10 @@ test('routes: the cork and the stack of books both lead up onto the landing', ()
     books.tick({ stickY: 0.7, A }, east);
     const y = Math.round(books.at().y);
     if (books.p.grounded && floors.at(-1) !== y) floors.push(y);
-    if (y === hall.LANDING.top && books.p.grounded) break;
+    if (y === hall.CORK.top && books.p.grounded) break;
   }
-  assert.deepEqual(floors, [0, ...hall.BOOKS.stack.map((b) => b.top), hall.LANDING.top], 'book by book');
+  assert.deepEqual(floors, [0, ...K.stack.map((b) => b.top), hall.CORK.top], 'book by book');
+  assert.equal(books.log.filter((e) => e === 'coin').length, 3, 'the books\' coins and the cork\'s');
 });
 
 test('routes: wall kicks up the slot reach the top (collecting its three coins); the banner pole\'s top jump lands on the buttress and he stays there', () => {
@@ -409,14 +556,16 @@ test('routes: from the buttress a running hop over the slot lands on the mantel,
 });
 
 test('every sign is read from in front of its face, never from behind', () => {
+  const bottle = hall.SIGNS.find((s) => s.id === 'bottle');
+  assert.equal(bottle.pages[2], 'Climb the steps, walk into the neck of the bottle and join it!');
   const problems = [];
   for (const s of hall.SIGNS) {
     for (const [side, off] of [['front', 0], ['front-left', 0.6], ['front-right', -0.6], ['behind', Math.PI]]) {
       const a = s.yaw + off;
-      // As far out as the room allows (the wall-kick sign stands 350 from the chimney breast):
-      // nothing between the spot and the signpost's box.
+      // As far out as the room allows: nothing between the spot and the signpost's box.
       const clear = (r) => !col.raycast(world(s.x + Math.sin(a) * (r + 60), s.y + 100, s.z + Math.cos(a) * (r + 60)), { x: -Math.sin(a), y: 0, z: -Math.cos(a) }, r - 50);
       const d = [400, 250].find(clear);
+      assert.ok(d, `${s.id} ${side}: room to walk up to it`);
       const x = s.x + Math.sin(a) * d;
       const z = s.z + Math.cos(a) * d;
       const yaw = Math.atan2(s.x - x, s.z - z);
@@ -433,16 +582,16 @@ test('every sign is read from in front of its face, never from behind', () => {
 });
 
 test('every coin hangs over a floor within 120 (the slot\'s three hang between its walls)', () => {
-  assert.equal(hall.COINS.length, 19);
+  assert.equal(hall.COINS.length, 25);
   const { SLOT, CHIMNEY } = hall;
+  const inSlot = (c) => c.z > SLOT.z0 && c.z < SLOT.z1 && c.x > CHIMNEY.x0 && c.x < CHIMNEY.x1;
   for (const c of hall.COINS) {
     assert.ok(Number.isFinite(c.y), `${JSON.stringify(c)} has a height`);
-    const inSlot = c.z > SLOT.z0 && c.z < SLOT.z1 && c.x > CHIMNEY.x0 && c.x < CHIMNEY.x1;
-    if (inSlot) continue;
+    if (inSlot(c)) continue;
     const floor = col.findFloor(c.x + O.x, c.y + O.y, c.z + O.z, 0);
     assert.ok(floor.surface && c.y + O.y - floor.y <= 120 && c.y + O.y - floor.y >= 0, `${JSON.stringify(c)}: floor ${floor.y - O.y}`);
   }
-  assert.equal(hall.COINS.filter((c) => c.z > SLOT.z0 && c.z < SLOT.z1 && c.x > CHIMNEY.x0 && c.x < CHIMNEY.x1).length, 3);
+  assert.equal(hall.COINS.filter(inSlot).length, 3);
   const gem = hall.ONE_UP;
   assert.equal(col.findFloor(gem.x + O.x, gem.y + O.y, gem.z + O.z).y - O.y, hall.CHIMNEY.top, 'the 1-up over the mantel');
 });
@@ -464,7 +613,126 @@ test('every door\'s trigger stands on its face: the inner front door, the two ea
   assert.ok(AREA_DEFS.skerries.entries[mouth.entry], 'a real entry of the course');
 });
 
-test('the look: the glass is see-through (front faces, no depth write) with a rim, the flames flicker with update(time), the lamp waits unlit', () => {
+test('the bake: the floor darker along the walls and warmer by the fire (as baked too), the long walls apart, the fill on the south wall, the vault warm, the nave not burnt white', () => {
+  const light = makeHallLight(hall, windowSpots(hall, planRuns(hall)));
+  const mean = ([r, g, b]) => (r + g + b) / 3;
+  const ratio = ([r, , b]) => r / b;
+  const up = [0, 1, 0];
+  const middle = light.floor(0, 0, 0, ...up);
+  const byWall = light.floor(2000, 0, -500, ...up);
+  assert.ok(mean(byWall) < 0.9 * mean(middle), `200 from the east wall ${mean(byWall).toFixed(3)} vs the middle ${mean(middle).toFixed(3)}`);
+  const fire = light.floor(-1450, 0, 1270, ...up);
+  assert.ok(ratio(fire) > ratio(middle) + 0.05, `r/b by the fire ${ratio(fire).toFixed(3)} vs the middle ${ratio(middle).toFixed(3)}`);
+  // The east wall faces the key light, the west wall away from it (measured 1.215: less 2%).
+  const east = light.wall(2200, 1800, -1050, -1, 0, 0);
+  const west = light.wall(-2200, 1800, -1050, 1, 0, 0);
+  assert.ok(mean(east) >= 1.19 * mean(west), `east ${mean(east).toFixed(3)} vs west ${mean(west).toFixed(3)}`);
+  // The south wall's round parts get a gradient from the apse side's fill: the face turned
+  // north (toward the apse) is lit more than the one turned east.
+  const north = light.wall(-470, 250, 2990, 0, 0, -1);
+  const side = light.wall(-470, 250, 2990, 1, 0, 0);
+  assert.ok(mean(north) - mean(side) >= 0.1, `the fill: ${mean(north).toFixed(3)} vs ${mean(side).toFixed(3)}`);
+  // The vault, facing down, warm (without its bounce and ramp clamp it would be about 0.95).
+  assert.ok(ratio(light.wall(0, 3500, 0, 0, -1, 0)) >= 1.1, `the vault's r/b ${ratio(light.wall(0, 3500, 0, 0, -1, 0)).toFixed(3)}`);
+  // And as baked into the floor (its colours clamped as one, so a pool keeps its hue): the
+  // floor before the fire warmer than the middle of the nave, which is not clamped at all (lit
+  // about as the walls are, not a flat white).
+  const floor = mesh('hall-floor').geometry;
+  const [pos, col] = [floor.attributes.position, floor.attributes.color];
+  const baked = (cx, cz, r) => {
+    const sum = [0, 0, 0];
+    let [n, top] = [0, 0];
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > 1 || Math.hypot(pos.getX(i) - cx, pos.getZ(i) - cz) > r) continue;
+      const c = [col.getX(i), col.getY(i), col.getZ(i)];
+      for (let k = 0; k < 3; k++) sum[k] += c[k];
+      top = Math.max(top, ...c);
+      n++;
+    }
+    return { rgb: sum.map((v) => v / n), top, n };
+  };
+  const [byFire, nave] = [baked(-1450, 1270, 250), baked(0, 0, 300)];
+  assert.ok(byFire.n > 10 && nave.n > 10, `${byFire.n} and ${nave.n} floor vertices`);
+  assert.ok(ratio(byFire.rgb) > ratio(nave.rgb) + 0.05, `baked r/b by the fire ${ratio(byFire.rgb).toFixed(3)} vs the nave's middle ${ratio(nave.rgb).toFixed(3)}`);
+  assert.ok(nave.top < 1.149, `the nave's middle baked up to ${nave.top.toFixed(3)} (clamped at 1.15)`);
+});
+
+test('the steps of the dais are drawn where he stands: walking up them, on a corner of the collider\'s facets or between two, his feet stay within 30 of the tread drawn under him', (t) => {
+  // Up from 1900 out toward the middle of the top, straight up the axis (a corner of the
+  // collider's facets), up the middle of facets and near the flat back. The tread under him is
+  // the drawn marble (the first hall-trim face straight down from over his head).
+  const D = hall.DAIS;
+  const run = (D.rFoot - D.rTop) / D.steps;
+  const trim = mesh('hall-trim');
+  area.root.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  const down = new THREE.Vector3(0, -1, 0);
+  const tread = (x, z) => {
+    ray.set(new THREE.Vector3(x + O.x, 2000 + O.y, z + O.z), down);
+    return ray.intersectObject(trim, false)[0].point.y - O.y;
+  };
+  const off = [];
+  const ranges = [];
+  for (const deg of [0, 7.5, -37.5, 67.5, -80]) {
+    const a = (deg * Math.PI) / 180;
+    const yaw = a + Math.PI;
+    const { p, ctl, at } = hero(D.x + Math.sin(a) * 1900, 0, D.z + Math.cos(a) * 1900, yaw);
+    let checked = 0;
+    let [lo, hi] = [Infinity, -Infinity];
+    for (let i = 0; i < 300 && !(p.grounded && Math.abs(at().y - D.top) < 1 && Math.hypot(at().x - D.x, at().z - D.z) < D.rTop - 100); i++) {
+      p.update(ctl.next({ stickY: 0.5 }), yaw);
+      const q = at();
+      const r = Math.hypot(q.x - D.x, q.z - D.z);
+      if (!p.grounded || r < D.rTop || r > D.rFoot - run / 2) continue;
+      const d = q.y - tread(q.x, q.z);
+      checked++;
+      [lo, hi] = [Math.min(lo, d), Math.max(hi, d)];
+      if (Math.abs(d) > 30) off.push(`${deg} deg, r ${r.toFixed(0)}: feet ${d.toFixed(1)} off the tread`);
+    }
+    ranges.push(`${deg} deg ${lo.toFixed(1)} .. ${hi.toFixed(1)}`);
+    assert.ok(checked > 20, `${deg} deg: ${checked} grounded ticks on the steps`);
+    assert.ok(Math.abs(at().y - D.top) < 1, `${deg} deg: up on the top: ${JSON.stringify(at())}`);
+  }
+  t.diagnostic(`feet minus the drawn tread: ${ranges.join('; ')}`);
+  assert.deepEqual(off, []);
+});
+
+test('nothing drawn only stands more than 56 out of the walls (the camera keeps 60 off them): deeper parts stand over colliders', () => {
+  // Every trim, paint and dado vertex from 10 up to the collision ceiling within 120 of the
+  // plan's walls is at most 56 into the room, but where a collider stands: the columns, the
+  // buttress, the chimney breast and the hood (their footprints with a margin for the trims
+  // round them), the cradles, the bottle and its stand (within 600 of its axis, along it), and
+  // the doors' surrounds (door()'s collider, along the wall from the door's middle and up to its
+  // top, and door()'s keystone: shared with the castle, it stands 10 past the collider's face
+  // and 14 over its top). The front portal's archivolt, keystone and round pilasters and the
+  // east doors' architraves and beads over their piers have no excuse.
+  const { BUTTRESS: B, CHIMNEY: C, HOOD: H, FRONT_DOOR: F, EAST_DOORS: E, CRADLES: R, BOTTLE } = hall;
+  const near = (x, z, [x0, x1, z0, z1], m) => x >= x0 - m && x <= x1 + m && z >= z0 - m && z <= z1 + m;
+  const boxes = [
+    [[B.x0, B.x1, B.z0, B.z1], 60],
+    [[C.x0, C.x1, C.z0, C.z1], 60],
+    [[H.x0, H.x1, H.z0, H.z1], 20],
+    ...R.zs.map((z) => [[-R.halfX, R.halfX, z - R.depth / 2, z + R.depth / 2], 20]),
+  ];
+  // u along the wall from the door's middle, y up.
+  const surround = (u, y, width, height) => (Math.abs(u) <= width / 2 + 70 && y <= height + 70) || (Math.abs(u) <= 36 && y <= height + 84);
+  const door = (x, y, z) => (z > F.wallZ - 120 && surround(x - F.x, y, F.width, F.height)) || (x > HALL.halfX - 120 && E.zs.some((ez) => surround(z - ez, y, E.width, E.height)));
+  const excused = (x, y, z) =>
+    hall.COLUMNS.some((c) => Math.hypot(x - c.x, z - c.z) < 220) || (Math.abs(x) < 600 && z < BOTTLE.lip[1] + 100) || boxes.some(([b, m]) => near(x, z, b, m)) || door(x, y, z);
+  const bad = [];
+  for (const name of ['hall-trim', 'hall-paint', 'hall-dado']) {
+    const pos = mesh(name).geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const [x, y, z] = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      if (y < 10 || y >= HALL.ceilingY || !hall.inPlan(x, z)) continue;
+      const d = wallDistance(x, z);
+      if (d > 56 + 1e-6 && d <= 120 && !excused(x, y, z)) bad.push(`${name} (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(0)}): ${d.toFixed(1)} out`);
+    }
+  }
+  assert.deepEqual(bad.slice(0, 10), [], `${bad.length} vertices`);
+});
+
+test('the look: the glass is see-through (front faces, no depth write) with a rim, the flames flicker with update(time), the walls panelled, every texture with its mean colour, the lamp waits unlit', () => {
   const glass = mesh('hall-bottle').material;
   assert.equal(glass.transparent, true);
   assert.equal(glass.side, THREE.FrontSide);
@@ -492,6 +760,15 @@ test('the look: the glass is see-through (front faces, no depth write) with a ri
   assert.match(rim.vertexShader, /vGlassRim = 1\.0 - abs\(dot\(normalize\(normalMatrix \* normal\)/);
   assert.match(rim.fragmentShader, /diffuseColor\.a = mix\(diffuseColor\.a, [0-9.]+, glassRim\);/);
   assert.notEqual(glow.material.customProgramCacheKey(), glass.customProgramCacheKey());
+  // The panelling has a mesh of its own; every texture of the hall's carries the mean of its
+  // pixels (linear RGB), worked out without a canvas.
+  assert.ok(mesh('hall-dado'), 'hall-dado');
+  const makers = Object.entries(hallTextures);
+  assert.ok(makers.length >= 5, `${makers.length} textures`);
+  for (const [name, make] of makers) {
+    const m = make().userData.mean;
+    assert.ok(Array.isArray(m) && m.length === 3 && m.every((v) => Number.isFinite(v) && v >= 0 && v <= 1), `${name}: ${m}`);
+  }
   assert.equal(mesh('hall-lamp').visible, false);
   assert.equal(area.root.getObjectByName('hall').children.length, meshes.length);
 });
@@ -513,13 +790,20 @@ test('the front door swings: its leaves turn into the south wall on their hinges
   };
   const opening = [];
   for (const x of [-170, -90, -30, 30, 90, 170]) for (const y of [40, 200, 380, 500]) opening.push([x, y]);
+  // And round the arch's head, 2.5 inside its round (16 segments, in the wall's hole and in the
+  // leaves alike): halfway along each chord of an arch of 8 segments, which would leave a gap.
+  const hw = D.width / 2;
+  for (let k = 0; k < 8; k++) {
+    const a = ((k + 0.5) * Math.PI) / 8;
+    opening.push([Math.cos(a) * (hw - 2.5), D.height - hw + Math.sin(a) * (hw - 2.5)]);
+  }
   area.setDoorOpen(0);
   for (const [x, y] of opening) {
     const h = hit(x, y);
     assert.ok(/^hall-door-/.test(h?.name) && h.z < D.wallZ && h.z > D.wallZ - 14, `shut: ${x},${y} -> ${JSON.stringify(h)}`);
   }
-  // Beside it, the wall.
-  for (const [x, y] of [[-400, 300], [400, 300], [0, 900]]) assert.equal(hit(x, y)?.name, 'hall-wall', `${x},${y}`);
+  // Beside it and above it, the plaster (the portal, the panelling and the rail lie lower).
+  for (const [x, y] of [[-900, 1300], [900, 1300], [0, 1300]]) assert.equal(hit(x, y)?.name, 'hall-wall', `${x},${y}`);
   area.setDoorOpen(1);
   assert.ok(left.rotation.y > 1.2 && right.rotation.y < -1.2, `${left.rotation.y}, ${right.rotation.y}`);
   for (const [x, y] of opening.filter(([x]) => Math.abs(x) < 100)) {

@@ -5,6 +5,9 @@
 // material; SolidBuilder turns them into collider triangles. Every face is given an
 // intended outward direction and re-wound to match it, so faces are counter-clockwise
 // seen from outside (three.js front faces, CollisionWorld outward walls) by construction.
+// sweep() runs a moulding's cross-section along a path (contourPath: round an arch; softBox:
+// a box with soft edges); the 2D helpers clip convex polygons (clipConvex, subtractConvex,
+// polyArea).
 
 import * as THREE from 'three';
 
@@ -17,6 +20,26 @@ const normalize = (a) => {
   const l = Math.hypot(a[0], a[1], a[2]) || 1;
   return [a[0] / l, a[1] / l, a[2] / l];
 };
+
+// The normals of a profile ([[w, v], ...] or a lathe's [[r, y], ...]) walked with its visible
+// side on its right, so each segment's normal is (dv, -dw), smoothed along it: per segment, its
+// normal at its start and at its end, each the mean of its own and its neighbour's there. A
+// zero-length segment (a repeated point) has no normal, so the edge there stays hard.
+function profileNormals(profile) {
+  const segs = [];
+  for (let i = 0; i + 1 < profile.length; i++) {
+    const dw = profile[i + 1][0] - profile[i][0];
+    const dv = profile[i + 1][1] - profile[i][1];
+    const l = Math.hypot(dw, dv);
+    segs.push(l < 1e-6 ? null : [dv / l, -dw / l]);
+  }
+  const mean = (a, b) => {
+    if (!a || !b) return a ?? b;
+    const l = Math.hypot(a[0] + b[0], a[1] + b[1]) || 1;
+    return [(a[0] + b[0]) / l, (a[1] + b[1]) / l];
+  };
+  return segs.map((n, i) => (n ? [mean(n, segs[i - 1]), mean(n, segs[i + 1])] : null));
+}
 
 export function centroid(points) {
   const c = [0, 0, 0];
@@ -50,6 +73,60 @@ export function circleContour(cx, cy, r, segs = 16) {
     pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
   }
   return pts;
+}
+
+// Signed area of a 2D polygon [[x, y], ...] (positive counter-clockwise, x right and y up).
+export function polyArea(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [x0, y0] = poly[i];
+    const [x1, y1] = poly[(i + 1) % poly.length];
+    a += x0 * y1 - x1 * y0;
+  }
+  return a / 2;
+}
+
+// The part of a convex 2D polygon on one side of the line through a and b: `side` +1 keeps
+// the left of a -> b, -1 the right (Sutherland-Hodgman, one edge).
+function clipLine(poly, a, b, side) {
+  const out = [];
+  const at = (p) => side * ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]));
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const sp = at(p);
+    const sq = at(q);
+    if (sp >= 0) out.push(p);
+    if (sp >= 0 !== sq >= 0) {
+      const t = sp / (sp - sq);
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+    }
+  }
+  return out;
+}
+
+// A convex 2D polygon clipped to a convex `clip` polygon (either winding): what lies inside
+// it (fewer than 3 points when nothing does).
+export function clipConvex(poly, clip) {
+  const side = polyArea(clip) > 0 ? 1 : -1;
+  let out = poly;
+  for (let i = 0; i < clip.length && out.length > 2; i++) out = clipLine(out, clip[i], clip[(i + 1) % clip.length], side);
+  return out;
+}
+
+// A convex 2D polygon minus a convex `hole`: the convex pieces of it outside the hole (cut
+// off by each of the hole's edges in turn).
+export function subtractConvex(poly, hole) {
+  const side = polyArea(hole) > 0 ? 1 : -1;
+  const pieces = [];
+  let rest = poly;
+  for (let i = 0; i < hole.length && rest.length > 2; i++) {
+    const [a, b] = [hole[i], hole[(i + 1) % hole.length]];
+    const outside = clipLine(rest, a, b, -side);
+    if (outside.length > 2 && Math.abs(polyArea(outside)) > 0.5) pieces.push(outside);
+    rest = clipLine(rest, a, b, side);
+  }
+  return pieces;
 }
 
 // ---------------------------------------------------------------- wall-mounted frames
@@ -99,6 +176,23 @@ export function openingPolys(frame, u0, u1, v0, v1, contour) {
     if (v1 > Math.max(va, vb)) polys.push([f(ua, va), f(ub, vb), f(ub, v1), f(ua, v1)]);
   }
   return polys;
+}
+
+// A sweep path (sweep(), below) along a 2D contour in a wall frame (an archContour, or with
+// `closed` a circleContour: clockwise seen from the front): at each point n is the frame's out
+// and b the contour's normal in the wall's plane, away from the opening (the left of a
+// clockwise contour, as moulding()'s). A profile [[w, v], ...] swept along it stands w out of
+// the wall and v out from the edge: a bullnose round an arch.
+export function contourPath(frame, contour, { closed = false } = {}) {
+  const n = contour.length;
+  return contour.map(([u, v], i) => {
+    const prev = contour[closed ? (i - 1 + n) % n : Math.max(0, i - 1)];
+    const next = contour[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+    const du = next[0] - prev[0];
+    const dv = next[1] - prev[1];
+    const l = Math.hypot(du, dv) || 1;
+    return { p: frame.at(u, v, 0), n: frame.out, b: frame.dir(-dv / l, du / l, 0) };
+  });
 }
 
 // ---------------------------------------------------------------- convex solids as polys
@@ -336,11 +430,18 @@ export class GeoBuilder {
   // and back in, so the outward normal of each segment is (dy, -dr). Smooth around, faceted
   // along the profile. Repeat a point with a different shade for a hard shading change.
   //   uRepeats: texture repeats around (default: from the largest radius)
-  //   vMode: 'y' (v = world height, courses align with walls) or 'len' (along the profile)
+  //   vMode: 'y' (v = world height, courses align with walls), 'len' (along the profile) or
+  //     'plan' (segments turned up or down more than out projected from above, as a floor is,
+  //     no streaks fanning to the middle; the rest as 'len')
   //   flat: faceted shading around too.
-  lathe(cx, cz, profile, sides, { uRepeats = null, vMode = 'y', flat = false, a0 = 0 } = {}) {
+  //   a0, arc: the angles it spans, from a0 (yaw convention: 0 faces +z) round by arc (default
+  //     the full turn; less leaves it open at both sides: a column engaged in a wall).
+  //   smoothProfile: smooth along the profile too (each point's normal the mean of its two
+  //     segments'; a repeated point still makes a hard edge).
+  lathe(cx, cz, profile, sides, { uRepeats = null, vMode = 'y', flat = false, a0 = 0, arc = Math.PI * 2, smoothProfile = false } = {}) {
     const rMax = Math.max(...profile.map((p) => p[0]));
-    const reps = uRepeats ?? Math.max(1, Math.round((Math.PI * 2 * rMax) / this.repeat));
+    const reps = uRepeats ?? Math.max(1, Math.round((arc * rMax) / this.repeat));
+    const smooth = smoothProfile ? profileNormals(profile) : null;
     let len = 0;
     for (let s = 0; s + 1 < profile.length; s++) {
       const [r0, y0] = profile[s];
@@ -351,33 +452,42 @@ export class GeoBuilder {
       if (segLen < 1e-6) continue;
       const nr = dy / segLen;
       const ny = -dr / segLen;
+      const plan = vMode === 'plan' && Math.abs(dy) < Math.abs(dr);
       const v0 = vMode === 'y' ? y0 / this.repeat : len / this.repeat;
       const v1 = vMode === 'y' ? y1 / this.repeat : (len + segLen) / this.repeat;
       len += segLen;
+      // The segment's normal in the (r, y) plane at its two ends.
+      const seg = [nr, ny];
+      const [m0, m1] = smooth ? smooth[s] : [seg, seg];
       for (let i = 0; i < sides; i++) {
-        const aA = a0 + (i / sides) * Math.PI * 2;
-        const aB = a0 + ((i + 1) / sides) * Math.PI * 2;
+        const aA = a0 + (i / sides) * arc;
+        const aB = a0 + ((i + 1) / sides) * arc;
         const aM = (aA + aB) / 2;
         const P = (r, y, a) => [cx + Math.sin(a) * r, y, cz + Math.cos(a) * r];
-        const N = (a) => [Math.sin(a) * nr, ny, Math.cos(a) * nr];
-        const nA = flat ? N(aM) : N(aA);
-        const nB = flat ? N(aM) : N(aB);
+        const N = (a, m = seg) => [Math.sin(a) * m[0], m[1], Math.cos(a) * m[0]];
+        const nA = flat ? N(aM, m0) : N(aA, m0);
+        const nB = flat ? N(aM, m0) : N(aB, m0);
+        const nA1 = flat ? N(aM, m1) : N(aA, m1);
+        const nB1 = flat ? N(aM, m1) : N(aB, m1);
         const uA = (i / sides) * reps;
         const uB = ((i + 1) / sides) * reps;
         const uM = (uA + uB) / 2;
         const s0 = profile[s][2] ?? 1;
         const s1 = profile[s + 1][2] ?? 1;
         // Vertex records: position, normal, uv, shade.
-        const V = (r, y, a, n, u, v, sh) => ({ p: P(r, y, a), n, t: [u, v], s: sh });
+        const V = (r, y, a, n, u, v, sh) => {
+          const p = P(r, y, a);
+          return { p, n, t: plan ? this.project(p, [0, 1, 0]) : [u, v], s: sh };
+        };
         const A0 = V(r0, y0, aA, nA, uA, v0, s0);
         const B0 = V(r0, y0, aB, nB, uB, v0, s0);
-        const A1 = V(r1, y1, aA, nA, uA, v1, s1);
-        const B1 = V(r1, y1, aB, nB, uB, v1, s1);
+        const A1 = V(r1, y1, aA, nA1, uA, v1, s1);
+        const B1 = V(r1, y1, aB, nB1, uB, v1, s1);
         const facing = N(aM);
         if (r0 < 1e-6) {
-          this._triV(V(r0, y0, aM, N(aM), uM, v0, s0), A1, B1, facing);
+          this._triV(V(r0, y0, aM, N(aM, m0), uM, v0, s0), A1, B1, facing);
         } else if (r1 < 1e-6) {
-          this._triV(A0, B0, V(r1, y1, aM, N(aM), uM, v1, s1), facing);
+          this._triV(A0, B0, V(r1, y1, aM, N(aM, m1), uM, v1, s1), facing);
         } else {
           this._triV(A0, B0, B1, facing);
           this._triV(A0, B1, A1, facing);
@@ -428,6 +538,99 @@ export class GeoBuilder {
     g.computeBoundingSphere();
     return g;
   }
+}
+
+// ---------------------------------------------------------------- sweeps
+
+// A moulding: the cross-section `profile` [[w, v, shade?], ...] swept along `path`
+// [{ p, n, b }, ...] into `builder`, each section's point at p + n * w + b * v (for a wall
+// trim: p on the wall's foot, n into the room, b up, v the height). The profile is walked with
+// its visible side on its right ((dv, -dw) is its outward normal, as a lathe's (dy, -dr)): for
+// a trim, from the wall at the bottom out, up and back to the wall. Smooth along the path (its
+// own n and b at each point) and across the profile unless `faceted` (a repeated point makes a
+// hard edge either way).
+//   closed: the path's last point joins its first
+//   uv: 'path' (u along the path, v along the profile, in the builder's repeats) or 'project'
+//   shade(pos, normal) -> multiplier, per vertex (with the profile's own shades)
+//   caps: close both ends of an open path with the profile's shape (a trim stopping in the
+//     open, not dying into something)
+export function sweep(builder, path, profile, { closed = false, faceted = false, uv = 'path', shade = null, caps = false } = {}) {
+  const smooth = profileNormals(profile);
+  const R = builder.repeat;
+  // Arc length along the path (u) and along the profile (v), for the uvs.
+  const along = [0];
+  for (let k = 1; k <= path.length; k++) {
+    const a = path[k - 1].p;
+    const c = path[k % path.length].p;
+    along.push(along[k - 1] + Math.hypot(c[0] - a[0], c[1] - a[1], c[2] - a[2]));
+  }
+  const across = [0];
+  for (let j = 1; j < profile.length; j++) across.push(across[j - 1] + Math.hypot(profile[j][0] - profile[j - 1][0], profile[j][1] - profile[j - 1][1]));
+  const at = (P, w, v) => [P.p[0] + P.n[0] * w + P.b[0] * v, P.p[1] + P.n[1] * w + P.b[1] * v, P.p[2] + P.n[2] * w + P.b[2] * v];
+  // A vertex record of profile point j (its normal m in the (w, v) plane) on path point P.
+  const vtx = (P, j, m, u) => {
+    const [w, v, s = 1] = profile[j];
+    const pos = at(P, w, v);
+    const n = normalize([P.n[0] * m[0] + P.b[0] * m[1], P.n[1] * m[0] + P.b[1] * m[1], P.n[2] * m[0] + P.b[2] * m[1]]);
+    return { p: pos, n, t: uv === 'path' ? [u / R, across[j] / R] : null, s: s * (shade ? shade(pos, n) : 1) };
+  };
+  const count = closed ? path.length : path.length - 1;
+  for (let k = 0; k < count; k++) {
+    const A = path[k];
+    const B = path[(k + 1) % path.length];
+    for (let j = 0; j + 1 < profile.length; j++) {
+      if (!smooth[j]) continue;
+      const [m0, m1] = faceted ? [null, null] : smooth[j];
+      const seg = [profile[j + 1][1] - profile[j][1], profile[j][0] - profile[j + 1][0]];
+      const a0 = vtx(A, j, m0 ?? seg, along[k]);
+      const a1 = vtx(A, j + 1, m1 ?? seg, along[k]);
+      const b0 = vtx(B, j, m0 ?? seg, along[k + 1]);
+      const b1 = vtx(B, j + 1, m1 ?? seg, along[k + 1]);
+      const facing = [a0.n[0] + a1.n[0] + b0.n[0] + b1.n[0], a0.n[1] + a1.n[1] + b0.n[1] + b1.n[1], a0.n[2] + a1.n[2] + b0.n[2] + b1.n[2]];
+      const tri = (x, y, z) => builder.tri(x.p, y.p, z.p, { facing, normals: [x.n, y.n, z.n], uvs: x.t && [x.t, y.t, z.t], shade: [x.s, y.s, z.s] });
+      tri(a0, b0, b1);
+      tri(a0, b1, a1);
+    }
+  }
+  if (!caps || closed) return;
+  // Each end: the profile's outline closed along the wall (w 0), fanned from the middle of
+  // that line, facing on along the path.
+  const outline = profile.map(([w, v]) => [w, v]);
+  if (outline[0][0] !== 0) outline.unshift([0, outline[0][1]]);
+  if (outline[outline.length - 1][0] !== 0) outline.push([0, outline[outline.length - 1][1]]);
+  const mid = [0, (outline[0][1] + outline[outline.length - 1][1]) / 2];
+  for (const [P, Q] of [[path[0], path[1]], [path[path.length - 1], path[path.length - 2]]]) {
+    const facing = sub(P.p, Q.p);
+    const c = at(P, mid[0], mid[1]);
+    for (let j = 0; j + 1 < outline.length; j++) builder.tri(c, at(P, ...outline[j]), at(P, ...outline[j + 1]), { facing });
+  }
+}
+
+// A box x0..x1 by y0..y1 by z0..z1 with soft edges: its vertical edges rounded to radius rc and
+// its top edges to rt, k segments to each quarter round, smooth throughout; flat top and
+// bottom (closed: every edge is shared by two faces).
+export function softBox(builder, x0, x1, y0, y1, z0, z1, rc, rt, k = 2) {
+  // The outline round the box in plan, from the middle of its north side, with each point's
+  // outward normal.
+  const path = [];
+  const corners = [[x1 - rc, z0 + rc, -Math.PI / 2], [x1 - rc, z1 - rc, 0], [x0 + rc, z1 - rc, Math.PI / 2], [x0 + rc, z0 + rc, Math.PI]];
+  for (const [cx, cz, a0] of corners) {
+    for (let i = 0; i <= k; i++) {
+      const a = a0 + (i / k) * (Math.PI / 2);
+      path.push({ p: [cx + Math.cos(a) * rc, 0, cz + Math.sin(a) * rc], n: [Math.cos(a), 0, Math.sin(a)], b: [0, 1, 0] });
+    }
+  }
+  // Up the side, then a quarter round in to the top.
+  const profile = [[0, y0], [0, y1 - rt]];
+  for (let i = 1; i < k; i++) {
+    const a = (i / k) * (Math.PI / 2);
+    profile.push([rt * Math.cos(a) - rt, y1 - rt + rt * Math.sin(a)]);
+  }
+  profile.push([-rt, y1]);
+  sweep(builder, path, profile, { closed: true });
+  const ring = (w, v) => path.map((P) => [P.p[0] + P.n[0] * w + P.b[0] * v, P.p[1] + P.n[1] * w + P.b[1] * v, P.p[2] + P.n[2] * w + P.b[2] * v]);
+  builder.poly(ring(-rt, y1), { facing: [0, 1, 0] });
+  builder.poly(ring(0, y0), { facing: [0, -1, 0] });
 }
 
 // ---------------------------------------------------------------- collision geometry

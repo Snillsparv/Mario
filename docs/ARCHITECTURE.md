@@ -175,7 +175,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 |---|---|---|
 | Core | `src/core/*` (but `AreaSwitch.js`), `src/main.js`, `src/world/level.js`, `index.html`, `vite.config.js`, `tools/*`, `docs/*` | integration |
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
-| Great Hall | `src/world/hall/*` (layout, builder, bottle, textures) | WorldPart, built by `area.js` |
+| Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
@@ -358,6 +358,16 @@ Rules for areas:
   Inside the hall no spot Jonas can stand on lies under a ceiling (an overhang included) lower
   than 400 over it (`hall/layout.js` `HEADROOM`): a lower overhang is filled solid or too low
   for him to fit under (`tests/hall.test.js` scans a grid of every floor for it).
+* **Rooms for the camera**: a room's shell is convex with no inside corners (the hall: a nave
+  into a half-round apse, its south corners rounded), so the follow camera slides round it
+  instead of catching in a corner. Curved walls are flat facets that shade round (smooth
+  normals) and collide as radial wedges from each facet out to well behind it (to the radius
+  + 1300), so no pocket of air is left behind them. The plan's own test, `hall/layout.js`
+  `inPlan(x, z, pad)`, is the samplers' authority (the tests' room bounds, the closed-room and
+  headroom grids). Decoration with no collider of its own stands at most 56 out of the surface
+  behind it (the camera keeps 60 off the walls): deeper parts get a collider (the list is under
+  "The Great Hall"; `tests/hall.test.js` checks every trim, paint and panel vertex near the
+  walls).
 * **Not re-pointed**: the effects (`fx`: area objects get `fx: null`), the meltdown, the camera
   shake, the look-up and boss camera and the cannon's perimeter clamp stay the grounds': they
   only act in AI RACE mode, which never leaves the grounds (below).
@@ -515,20 +525,20 @@ collider still stopping him while his model stands in the opening, no leaf ever 
 back out with a warp called off; none at the switch, into the inner door the other way, none into
 the bottle); Jonas shrinking into the bottle (falling every tick to `SHRINK`, the frames between
 ticks strictly between them, his size again from the switch, growing back with a dive called off,
-never through a door; jumping at the mouth, the real model's shadow staying on the landing as he
+never through a door; jumping at the mouth, the real model's shadow staying on the dais's top as he
 shrinks in the air); the lamps (the course's star
 lighting its lighthouse and the hall's at once, an area built later coming lit, GAME OVER
 putting them out, nothing lit by Rustmaw's star or another area's); and Midsummer Skerries: into
 the bottle's neck (its sound, the iris) to the drop-in onto the jetty with the camera behind
 him, the course's look and sky, its card once a game; the real star's exit back out of the
-bottle onto the hall's landing exactly 20 ticks after the dance, one star up, popping out with
+bottle onto the hall's dais exactly 20 ticks after the dance, one star up, popping out with
 `bottle_pop` as the fade opens, a stick held on from the course waiting to be let go and a fresh
 push then walking him straight back into the armed bottle, the star staying taken; the pause
 screen's leave (open while he reads a sign, which it closes; not while he drops in or dies;
 main's pause toggle and paused branch in order); a life lost there; GAME OVER from it (main's
 order, the star, the coins and the lamp back)); `tests/areas-browser.test.js` (E2E=1: the iris
 over the picture and under the HUD, setDark ignored mid-warp and in the hall, the hall's picture
-and draw calls (also from the landing), the hall's textures at most 128 px, the pause course
+and draw calls (also from the dais's top), the hall's textures at most 128 px, the pause course
 name, the way out; the full walk: in through the castle door (its leaves swinging in onto the
 passage, his model stepping into the opening), north up the hall into the bottle (Jonas
 shrinking, the iris centred on his chest as it comes down), the course, out of it from the
@@ -544,17 +554,39 @@ unchanged);
 `tests/ui-touch.test.js` (E2E=1: in a course on a landscape phone, paused, B stays bright over
 the faded overlays and a tap on it leaves); `tests/skerries.test.js` and
 `tests/skerries-routes.test.js` (see "Midsummer Skerries"); `tests/hall.test.js` (node, the hall
-as `buildArea` places it with the real Player, camera and objects: the budgets (the hall's own
-objects at most 8 meshes too), a closed room (sampled with 12 seeds, outside the furniture), no
-floor under less than `HEADROOM`, spam runs that never leave it, the entries' footing and
-framing, walks round the bottle's end and into its flanks that never trap the camera, C-button
-swings by the bottle and the furniture that never take it into a solid, the routes (stairs,
-cork, books, wall kicks up the slot with its coins, the banner pole onto the buttress for aims
-up to 15° off, staying up there, the hop onto the mantel to the 1-up), signs read from the front
-only, every coin over a floor, the doors' triggers on their faces, the glass and its rim, the
-flicker (its shader hook too), the lamp (lit: a deep gold far from the wall's cream, its beams
-turning round inside the glass, drawn before it), the front door's leaves filling its opening
-shut and swinging aside onto the passage, eased). `tests/ui.test.js` checks the pause screen draws the HUD's
+as `buildArea` places it with the real Player, camera and objects: the budgets (at most 14
+meshes, under 26k room triangles and 1.5k collider triangles, built in under a second; the
+hall's own objects at most 8 meshes too), a closed room (sampled with 12 seeds on the plan
+(`inPlan`), outside the furniture; and at head height every ray out from the middle stopping at
+the round walls, a column, the buttress or the chimney breast), no floor under less than
+`HEADROOM`, 11 spam runs that never take Jonas or the camera out of it and trap the camera at
+most 80 ticks in all (35 a run), the entries' footing and framing (the walk from the front door
+up the dais's steps never trapping or hiding the camera), 17 walks round the bottle in the apse,
+along the round walls and by the furniture and C-button swings from 28 spots (the apse's flanks
+beside the stand, under the glass, among them), each with him facing 8 ways, that never trap the
+camera or take it into a solid, two walks from the apse's east flank into the books' north side
+(the camera, its view cut off by the books, turning round the bottle's neck, never into the
+glass), stepping off the dais's back (a drop like the old landing's: the camera loses him until
+its remedy turns it, at most 30 trapped and 45 occluded ticks a step) and jumping off its top's
+back corners (not at all), the routes (the books up to the cork with their coins, wall kicks up the slot with its coins, the
+banner pole onto the buttress for aims up to 15° off, staying up there, the hop onto the mantel
+to the 1-up), signs read from the front only, every coin over a floor, the doors' triggers on
+their faces, the bake on its pure functions (the floor darker along the walls and warmer by the
+fire, the east wall at least 1.19 times the west's, the apse side's fill on the south wall, the
+vault warm) and as baked into the floor (warmer before the fire than in the nave, whose middle
+is not clamped), the dais drawn on its collider (walking up it, straight up the axis, up the
+middle of the collider's facets and near its back, his feet stay within 30 of the drawn tread
+under him), nothing drawn only standing more than 56 out of a wall but over a collider (the
+front portal and the east doors' architraves held to it), the glass and its rim, the flicker
+(its shader hook too), the panelling's mesh and every hall texture's mean colour, the lamp
+(lit: a deep gold far from the wall's cream, its beams turning round inside the glass, drawn
+before it), the front door's leaves filling its opening shut (round the head of its arch too)
+and swinging aside onto the passage, eased); `tests/geom.test.js` the toolkit the hall is built
+with (a lathe over part of a turn, and with no option exactly the full lathe every other
+builder draws, pinned to digests of its output before the options; smooth along its profile;
+its tops textured from above (`vMode: 'plan'`); sweeps with unit normals facing out and caps
+closing their ends; a path along a wall-frame contour; convex clipping; the closed soft box).
+`tests/ui.test.js` checks the pause screen draws the HUD's
 course name and the leave line only while the HUD offers it (`setLeave`; a switch takes it away;
 in the legend's bindings, between PAUSE and the panel at every screen size), and the course card
 (its ticks, its slide, waiting while paused, exactly double size on the 320-wide screen);
@@ -569,138 +601,262 @@ no warp.
 
 `world/hall/layout.js` holds the anchors in the hall's local frame (+x east, −z north toward the
 bottle at the far end, the floor at y 0; world = local + (0, 0, −60000)); `world/hall/hall.js`
-builds the room (`buildHall(layout)`, a WorldPart), `world/hall/bottle.js` its north end
-(`buildBottle(kit, layout)`, writing into the same kit), `world/hall/textures.js` the one texture
-of its own (`bannerTexture`, 32 × 64; everything else reuses the castle's and the courtyard's).
+builds the room (`buildHall(layout)`, a WorldPart) from its parts, all writing into one kit of
+builders (one per material) and solids: `world/hall/plan.js` (the plan as runs of wall:
+`planRuns`, `planPolygon`, `facetPanel`, `archHole`, `runPath`, `wallColliders`),
+`world/hall/shell.js` (the floor, the walls in their bands, the vault and half-dome, the
+columns, the windows), `world/hall/features.js` (the front portal, the fireplace, the
+buttress and the banner pole, the east doors and the wheel, the chart table, the rugs, the
+candle rings), `world/hall/bottle.js` (its north end: the bottle, its stand and cradles, the
+dais, the cork and the books), then bakes it (`world/hall/light.js`) and assembles the meshes.
+`world/hall/textures.js` paints its own textures (`floorTexture`, `plasterTexture`,
+`panelTexture`, `marbleTexture`, `bannerTexture`; each 64 × 64 but the banner's 32 × 64, painted
+once and cached, carrying `userData.mean`, the mean of its pixels in linear RGB, worked out in JS
+so it is there in node too and no canvas is ever read back).
 
 ```
-                       -Z (north)
-     ┌──── window ──── bottle on its stand and cradles ──── window ────┐
-     │ buttress  pole                                     door (cog)   │
-     │ (slot)             books  landing  cork                         │
-     │ fireplace   sign          stairs                  door (snow)   │
-     │ (pi, 1-up)                chandelier                            │
-     │ window                    sign      chart table          window │
-     │ window    sign            chandelier                     window │
-     └──── banner ──── rose window over the front door ──── banner ────┘
-                       +Z (south, the courtyard)
+                             -Z (north)
+                    ____----  headboard  ----____
+                 /  window     BOTTLE      window  \
+          column    coins   on its stand   books, cork  column
+          |                     DAIS                       |
+          column            chandelier                column
+   west   | window                                  window |  east
+   (-X)   | buttress  pole                            door |  (+X)
+          | (slot)     welcome sign          sign    wheel |
+          | fireplace     chandelier    chart table   door |
+           \ round                                  round /
+            \______ banner  FRONT DOOR  banner _________/
+                (rose window over the door)
+                             +Z (south, the courtyard)
 ```
 
-* **Room**: inside x ±2200, z −4200 … 3000; floor, walls and the collision ceiling (2600) are
-  200-thick stone slabs (their faces toward the room are the boxes' outward faces), stone
-  pilasters up the side walls. Over the collision ceiling, drawn only and out of the camera's
-  reach (it stays under ~2540): the open roof (`ROOF`): oak tie beams 200 × 160 from 2600 to
-  2760 every 900 from z −3900 (so both candle rings hang from one), each carrying a king-post
-  truss (principal rafters, struts) to the ridge at 3800, a ridge beam and a purlin down each
-  slope, plaster panels under the slopes, the end walls rising into gables.
-* **South wall**: the inside of the castle's front door (`castle/building.js` `door()`; its
-  collider puts the face at z 2944), its two leaves swinging into the wall on their hinges
-  (`setDoorOpen(t)`, as Jonas goes out through it and comes in, see "Areas and transitions")
-  through the opening `shell()` leaves in the wall's faces, onto a dark passage drawn in with
-  the wood (behind the shut leaves it never shows), under the stained-glass rose window
-  (`castle/parts.js` `roundWindow`, the castle's rose texture, full-bright), two
-  crimson-and-gold banners (the castle's golden sun) at x ±700 from 2400 down to 1200, pleated,
-  cut to a point.
-* **Windows**: two tall arched windows in each side wall (z 1900, 700) and two in the north wall
-  (x ±1500): `castle/parts.js` `archWindow`, 320 × 1000 from a 600 sill, panes glowing pale gold
-  behind iron bars.
-* **West wall**: the chimney breast (stone collider x −2200 … −1750, z −1260 … −200, top 1700:
-  the mantel, with the 1-up and a flue up the wall beside it) with its hearth (drawn only, 700 ×
-  600, 120 deep: logs, embers and flickering flames, the inside lit warm from below) and Jonas's
-  crest (a white π on a red disc with a gold rim, over the hearth); the buttress (x −2200 …
-  −1750, z −2080 … −1620, top 1700) with the **wall-kick slot** between them (z −1620 … −1260,
-  360 wide, open to the east); the **banner pole** (`POLES`: r 30 at (−1500, −1850), up to 1550,
-  150 under the buttress top, level with its middle and 250 east of its face) with a small banner
-  near its top: the jump off its top toward the wall carries 730 … 850, clears the buttress's
-  edge and stops against the west wall over it, so any aim within 15° of straight at the wall
-  drops him mid-top, where he stays.
-* **East wall**: two arched stone alcoves (the arch standing 80 out of the wall; its piers
-  solid) with doors still being built (`door()`, faces at x 2144), a snowflake and a cog on the
-  plaques over them; out in the room the round **chart table** (oak, octagonal collider r 320,
-  top 90 at (1100, 700)) with a chart of the first course on it (home island, the skerries, the
-  lighthouse's islet, a dotted route), a ring of 8 coins round it.
+* **Plan** ("The Round Gallery", convex and tangent-continuous: no inside corner for the camera
+  to catch in): the nave's straight walls at x ±2200 from z −2000 to 1800, a half-round apse to
+  the north (`APSE`: centre (0, −2000), r 2200, 16 facets, its crown at z −4200), the south
+  corners rounded (`ROUNDS`: quarter circles of r 1200 centred at (±1000, 1800), 5 facets each)
+  into the flat south wall (x ±1000 at z 3000). `HALL` is the plan's bounding box; `inPlan(x, z,
+  pad)` its own test. Curved walls are flat facets with normals lerped round (they shade round).
+* **Walls**, bottom to top (`ELEVATION`; profiles in w into the room, v up): a marble bullnose
+  skirting (0 … 160, 34 proud), teal raised panels (`hall-dado`, 150 … 1002: one panel per ~640
+  of each free stretch of wall, fitted to it), a gold chair rail (990 … 1080, 42 proud), cream
+  plaster (1060 … 2600, tessellated ~320 × 380 so the bake can grade it) and a marble cornice: a
+  bead at the collision ceiling (2550 … 2600, 26 proud) and a quarter-round cove of r 200 out to
+  the vault's spring at 2800, unbroken round the whole room. The dado stops at the front
+  portal's pilaster bases (`PORTAL.pilasterU + baseR` either side of the door) and the skirting
+  runs on into them; both stop at the east doors' niches (±330); the rail runs on over both; all
+  three die into the chimney breast's and the buttress's sides (running 4 into them), and the
+  slot's back wall keeps its own. Each facet's plaster runs 2 on behind its neighbours, so no
+  hairline shows at the joints (nor round the windows' panes, which sit on their reveals' back
+  edges, nor under the ribs' feet, closed underneath). **Behind the bottle** (apse facets 6 … 9) the panelling rises to the headboard (1700,
+  one panel a facet), its rail stepped up there with gold returns (60 wide, 40 deep, 990 … 1790)
+  either side, plaster again from 1770: **plain panelling, forever** (no picture, emblem, window
+  or light on it), a dark teal ground for the glass and the lit lamp.
+* **Over the collision ceiling** (drawn only, out of the camera's reach: it stays under ~2540):
+  an elliptical barrel vault over the nave (springing at x ±2000, 2800, rising 1100, 16 segments,
+  z −2000 … 2800), a half-dome over the apse (a spheroid quarter, 16 × 6), plaster strips up to
+  the vault over the south rounds and in the lunette over the door; marble ribs across the vault
+  at z −2000 (the showcase arch over the apse's mouth: 320 wide, 150 deep, gold beads on both
+  faces), −1050, −100, 850 and 1800 (140 × 90), each end on a corbel (230 deep, 2600 … 2800),
+  and three on the dome's meridians (30°, 90°, 150°).
+* **Columns** (`COLUMNS`, 6, engaged: half in the wall): either side of the apse's mouth and of
+  the dais, and two in the apse at 30° and 150°; lathes over ±105° about the way into the room,
+  12 sides, smooth round and along: a cream marble base (0 … 262), a rose-marble shaft (to 2240,
+  its sheen weight 1, below), a gold capital and abacus (to 2610). Colliders: 8-sided prisms of
+  r 190 (`COLUMN`) to the ceiling.
+* **Windows** (`WINDOWS`, 8): round-headed, 360 × 1300 from a 1150 sill in each nave wall (z
+  −1525, −575) and in the middle of apse facets 5 and 10 (118.125° and 61.875°: flanking the
+  headboard, off the axis), 280 × 1200 from 1200 in the middle facet of each south round. Each
+  recessed behind the wall's plane: a splayed marble reveal 110 deep, narrowing 40 a side, a sill
+  inside it, a moulded surround (28 proud), a pale gold pane on its back edge (`hall-glow`,
+  brighter up), an iron mullion and transoms. No colliders: the walls stay flat, with no sill to stand on.
+* **South wall**: the inside of the castle's front door (`castle/building.js` `door()` with
+  `segs: 16`, the same door the grounds see: its collider puts the face at z 2944), its two
+  leaves swinging into the wall on their hinges (`setDoorOpen(t)`, as Jonas goes out through it
+  and comes in, see "Areas and transitions") through the opening the wall's dado leaves (cut with
+  the same 16 segments) onto a dark passage drawn in with the wood. Round it a **portal**: a
+  marble archivolt in voussoirs (from 70 to 190 out of the opening, 50 deep), a gold bead and a
+  gold keystone, on two round rose-marble pilasters (`PORTAL`: half columns at u ±470, their axis
+  20 in the wall, 12 sides, smooth, shaded round as well as baked: half as bright again facing
+  the room as toward the wall; cream bases, gilt capitals, to 410); over it the
+  stained-glass rose window (`castle/parts.js` `roundWindow`, 24 segments, full-bright), two
+  crimson-and-gold banners (the castle's golden sun) at x ±700 from 2400 down to 1200.
+* **West wall, beside the arrival**: the chimney breast (`CHIMNEY`: a cream marble pier x −2200 …
+  −1750, z 740 … 1800, its two corners in the room round (r 60), its top the mantel at 1700, with
+  the 1-up), the arched hearth (700 × 640, 140 deep: fire-lit reveals, a full-bright ember-glow
+  back grading up into soot, three round bark logs (`hall-paint`: the wood's texture would darken
+  them to soot) on embers, their sawn ends glowing, seven tongues of flame in three layers up to
+  340, a cream half-round hearthstone) in a rose-marble bullnose surround with a gilt keystone,
+  teal panels up its face either side of Jonas's crest (a white π on a red disc in a gold ring),
+  a bullnose mantel shelf round its top and the skirting round its foot either side of the
+  hearth; a plaster hood over the mantel to the ceiling (`HOOD`, solid); north of it the
+  **wall-kick slot** (`SLOT`, z 380 … 740, 360 wide, open to the east) and the buttress
+  (`BUTTRESS`: a cream marble pedestal x −2200 … −1750, z −80 … 380, top 1700, round corners, a
+  teal panel, a gold cap moulding); the brass **banner pole** (`POLES`: r 30 at (−1500, 150), up
+  to 1550, 150 under the buttress top, level with its middle and 250 east of its face) with a
+  small banner near its top: the jump off its top toward the wall carries 730 … 850, clears the
+  buttress's edge and stops against the wall over it, so any aim within 15° of straight at the
+  wall drops him mid-top, where he stays (and a coin waits).
+* **East wall**: two doors still being built (`EAST_DOORS`: `door()`, 360 × 600, faces at x
+  2144, z 150 and 1270) in teal arched niches with cream architraves (56 deep) and gold beads,
+  their piers solid (u ±(330 … 406), up to 460); a snowflake and a cog on the plaques over them
+  (at 1190, over the rail); a ship's wheel between them (`WHEEL`, at z 560, 1500 up: an oak rim, a
+  gold hub, eight spokes out to gold handles).
+* **Out in the room**: the round oak **chart table** (`CHART_TABLE`, (1050, 750), r 320, top 90,
+  an octagonal collider) with a chart of the first course on it, on a compass rose inlaid in the
+  floor (`RUGS`, r 640: gold, Falu red and teal rings, an eight-point star whose red north point
+  points at the bottle; off the entry axis), a ring of 8 coins round it on the rose's red ring;
+  a half-round rug before the hearth, half-round mats before the front door and the east doors;
+  three gold **candle rings** (`CHANDELIERS`, r 420, 12 candles each, at 2120, on the axis over
+  (0, 800), (0, −1000) and (0, −3000)) on a baluster, four chains and an iron rod to the vault.
 * **The ship in the bottle** (`bottle.js`): a giant glass bottle lying along x 0 (axis 760; body
-  r 520 from z −4190, just off the north wall so no corridor behind it can trap the camera, to
-  −2300, a shoulder to the neck, r 240 to −1440, a lip ring r 270 to −1400). Its colliders are
-  convex solids round the axis of **slippery** stone, each cross-section with a corner straight
-  up and down and a vertical face across its widest band (the body and shoulder 75° … 105°, the
-  neck and lip 70° … 110°): a wall there stops the camera's path check, where corners at the
-  widest point would leave a steep floor (which the path leaves to the height limit) and a
-  C-button swing could carry the camera into the glass. It lies on a dark oak **stand** that
-  runs its length from its end to the landing, rising round the glass to 45° either side of
-  straight down (its half-width follows the glass: 368 under the body, narrowing under the
-  shoulder to 170 under the neck; a lighter rail along its top), with two lighter carved
-  **cradles** across it (z −3600 and −2600, tops 420, level with the putty sea) whose cheeks
-  rise round the glass from there into its widest band (to 640, their outer sides sloping in
-  from 650 to 580). So no spot under the glass is lower than `HEADROOM` (400) under it: beside
-  the stand the glass is 440 or more over the floor, the stand's own top lies inside the glass
-  (its colliders flat-topped boxes; at worst a sliver under it, far too low to stand in), and no
-  cradle leaves a ledge under it. Inside, a putty sea (420) with a model of the first course:
-  pink granite islets, a red cottage on the green home island, a boat with a red sail and a
-  white jib, a white lighthouse with a red band whose lamp is the `hall-lamp` mesh, hidden until
-  that course's star is won (`setLit(on)`; `AREA_DEFS.hall.lamp` names the course, and
-  AreaSwitch lights it with the course's own lighthouse): a deep gold lamp (`0xffa828`) swelling
-  out of the dark lantern, so it stands out from the cream wall behind the glass, and two hazy
-  beams like the course's (a horizontal and a vertical fan each, 380 long, fading out) turning
-  round it at the course's 0.55 rad/s, inside the glass whichever way they point. The **landing** (wood, x ±450, z −1400
-  … −900, top 550: the neck's inner floor) at its mouth; the **stairs** up to it a smooth ramp
-  collider (`not_slippery`, 28.8°, from z 100) under 11 drawn steps (each tread's middle on the
-  ramp; dark risers, light treads) between two dark stringers 40 wide, their tops along the ramp
-  (the collider runs on under them); a giant **cork** (octagonal, r 190 at its foot narrowing to
-  160 at its top, 380, 90 from the landing; a darker ring round its foot) and three giant
-  **books** stacked like stairs against the landing's west side (tops 150, 300, 450).
-* **Two candle rings** (iron, r 380, 8 candles each, at 2050) hang on chains from the tie beams
-  over (0, 1500) and (0, −300).
-* **Meshes** (12): `hall-floor` (flagstones on a 200 grid), `hall-wall` (plaster), `hall-trim`
-  (stone), `hall-wood` (oak and iron; the front door's passage), `hall-door-left` and
-  `hall-door-right` (the front door's leaves, the wood's material, each turning about its
-  hinge), `hall-paint` (untextured vertex colours: the model, the crest, plaques, chart, candles,
-  cork and books), `hall-glow` (full-bright: the rose window's
-  glass from the rose texture, and the window panes, embers and flames, which all sample the rose
-  texture's pale gold middle), `hall-cloth` (the banners), `hall-bottle` (the glass: one
-  transparent surface, front faces only, no depth write, a highlight stripe in its vertex
-  colours; outer faces only, so it never lies over itself; opacity 0.22 face on, rising to 0.62
-  and paler where the view grazes it, from the angle between each face and the view in its
-  shader, so its outline reads against the cream walls and the dark stand), `hall-signs`
-  (signposts: `props/decor.js` `addSignpost`, exported for it), `hall-lamp` (full-bright, its
-  faces' glow its vertex colours' alpha: 1 on the lamp, fading along the beams; the course's beam
-  material, so one shader for both; set about the lighthouse's axis to turn round it in
-  `update(time)` while lit; drawn before the glass round it). Lighting baked from `HALL_SUN`
-  (0.1, 0.8, 0.6; ambient 0.55, diffuse 0.45); the floor 25 % darker within 400 of a wall, 15 %
-  brighter in pools under the windows, a little under the candle rings, and faintly coloured
-  under the rose window. The flames flicker: the glow mesh's `'flame'` attribute (0 steady, else
-  the flame's phase) scales their colour by a wobble of the uniform `update(time)` sets
-  (`material.userData.flameTime`). ~7.4k triangles, ~580 collider triangles (stone and wood; the
-  glass `slippery`, the stairs `not_slippery`: `castle/geom.js` `SolidBuilder.solid(polys,
-  terrain, surface?)`), built in ~40–80 ms in node, ~45 ms in the browser; 32 draw calls in the
-  hall (the E2E budget is 45).
+  r 520 from z −4130, its end on the apse's crown so no corridor behind it can trap the camera,
+  to −2300, a shoulder to the neck, r 240 to −1440, a lip ring r 270 to −1400). Its colliders
+  are convex solids round the axis of **slippery** stone, each cross-section with a corner
+  straight up and down and a vertical face across its widest band (the body and shoulder 75° …
+  105°, the neck and lip 70° … 110°): a wall there stops the camera's path check, where corners
+  at the widest point would leave a steep floor (which the path leaves to the height limit) and a
+  C-button swing could carry the camera into the glass. It lies on a **stand** that runs its
+  length from its end to the dais, rising round the glass to 45° either side of straight down
+  (its half-width follows the glass: 368 under the body, narrowing under the shoulder to 170
+  under the neck): teal raised panels (`hall-dado`) under a gold rail, its top deep teal; with
+  two gold **cradles** across it (z −4040, at the bottle's end, closing the wedge against the
+  apse wall, and −2700; tops 420, level with the putty sea; their blocks and caps soft-edged,
+  `castle/geom.js` `softBox`) whose cheeks rise round the glass from there into its widest band
+  (to 640, their outer sides sloping in from 650 to 580). So no spot under the glass is lower
+  than `HEADROOM` (400) under it: beside the stand the glass is 440 or more over the floor, the
+  stand's own top lies inside the glass (its colliders flat-topped boxes, their sides running 10
+  up into the glass's collider all along: no slit between the two, through which the camera,
+  slipping over the stand's top, would be lifted into the glass), and no cradle leaves a ledge
+  under it. The shoulder's collider ends 10 wider than the neck's, so no sliver of the neck's
+  end face (a wall facing north, whose push would shove the camera into the shoulder) stands out
+  where the two rings meet. Inside, a putty sea (420)
+  with a model of the first course: pink granite islets, a red cottage on the green home island,
+  a boat with a red sail and a white jib, a white lighthouse with a red band whose lamp is the
+  `hall-lamp` mesh, hidden until that course's star is won (`setLit(on)`; `AREA_DEFS.hall.lamp`
+  names the course, and AreaSwitch lights it with the course's own lighthouse): a deep gold lamp
+  (`0xffa828`) swelling out of the dark lantern, so it stands out from the teal headboard behind
+  the glass, and two hazy beams like the course's (a horizontal and a vertical fan each, 380
+  long, fading out) turning round it at the course's 0.55 rad/s, inside the glass whichever way
+  they point.
+* **The dais** (`DAIS`, replacing a straight stair: no straight central staircase, no runner): a
+  half-round stepped podium south of the mouth's plane (z −1400), 11 steps from its foot (r 1550)
+  to its top (r 560 at 550, the neck's inner floor; `LANDING` is its alias). Its collider is one
+  convex half-frustum of 12 facets (`stone|not_slippery`, 29°, 37 triangles, walkable from every
+  side, a vertical back on the mouth's plane); the drawn steps sit on it: riser i stands at r
+  1550 − 90 (i + 0.5) (rose marble, darker toward the floor), so tread i's middle
+  (`daisTread(i)`) lies on the slope; every tread below the top is drawn half the facets'
+  sagitta lower (up to 3.5: between its corners a facet lies lower than the round slope), so his
+  feet stay within about 26 of the tread he stands on all round (measured −25.8 … +24.6; his
+  shadow on it). Cream treads with a rounded nosing, 24 segments round, smooth, their marble
+  laid from above (no streaks fanning in to the middle; the hearthstone and the chart table's
+  top too); a gold and Falu ring inlaid on its top; a flat stepped back. Stepping off the back
+  drops him 300 … 550, as off the old landing: the camera, up behind him, loses him for about a
+  second until its remedy turns it to the side. A gold and rose half-ring (`DAIS_APRON`) is
+  inlaid in the floor round its foot.
+* **The cork and the books**, a little climb of their own in the apse's east flank: a giant
+  **cork** (`CORK`, (1300, −2150), r 190 narrowing to 160 at its top, 380; round, a darker ring
+  round its foot; an octagonal collider) and two giant **books** (`BOOKS`, z −2280 … −2020) stacked
+  like steps up to it (tops 130 and 255, the top book's east end tucked into the cork's foot):
+  red and teal covers overhanging cream page blocks with page lines at their west ends and the
+  sides toward the hall (their fore-edges), rounded spines on their north sides between the
+  boards' edges, with gold bands; hop up book, book, cork, a coin on each.
+* **Meshes** (13): `hall-floor` (glazed tiles on a 200 grid clipped to the plan inset 300, in a
+  rose border ring and an ivory fillet whose uvs sit on the tile's plain grout), `hall-wall`
+  (plaster: walls, vault, dome, strips, hood), `hall-dado` (teal raised panels: the wainscot, the
+  headboard, the stand's sides, the niches, the breast's and buttress's panels; explicit uvs, one
+  panel a repeat), `hall-trim` (pale marble, tinted cream or rose: skirting, cornice, ribs,
+  corbels, columns, window reveals and surrounds, the portal, the door surrounds, the
+  architraves, the dais, the breast, the mantel, the buttress, the hearthstone; its per-vertex
+  `darkGlow` holds the sheen's weight for the glossy marble still to come: 1 on the column and
+  pilaster shafts, 0.6 on the hearth's surround), `hall-wood` (oak and iron: the table, the wheel,
+  mullions, rods, chains; the front door's passage), `hall-door-left` and
+  `hall-door-right` (the front door's leaves, the wood's material, each turning about its hinge),
+  `hall-paint` (untextured vertex colours: gold work, cradles, the stand's rail and top, rugs and
+  inlays, the crest, plaques, chart, candles, cork, books, the fire's logs, the model in the
+  bottle), `hall-glow` (full-bright: the rose window's glass from the rose texture, and the panes,
+  the hearth's back, embers, the logs' ends and flames, which all sample the rose texture's pale
+  gold middle), `hall-cloth` (the
+  banners), `hall-bottle` (the glass: one transparent surface, front faces only, no depth write,
+  a highlight stripe in its vertex colours; outer faces only, so it never lies over itself;
+  opacity 0.22 face on, rising to 0.62 and paler where the view grazes it, from the angle between
+  each face and the view in its shader, so its outline reads against the walls and the stand),
+  `hall-signs` (signposts: `props/decor.js` `addSignpost`, exported for it), `hall-lamp`
+  (full-bright, its faces' glow its vertex colours' alpha: 1 on the lamp, fading along the beams;
+  the course's beam material, so one shader for both; set about the lighthouse's axis to turn
+  round it in `update(time)` while lit; drawn before the glass round it). The flames flicker:
+  the glow mesh's `'flame'` attribute (0 steady, else the flame's phase) scales their colour by a
+  wobble of the uniform `update(time)` sets (`material.userData.flameTime`). ~23.6k triangles,
+  827 collider triangles (stone 446, the dais `stone|not_slippery` 37, the glass `stone|slippery`
+  176, wood 168 with the signposts: `castle/geom.js` `SolidBuilder.solid(polys, terrain,
+  surface?)`), built in ~200 ms in node, ~150 ms in the browser; 33–34 draw calls in the hall (36
+  with the lamp lit; the E2E budget is 45).
+* **Light** (`light.js`, baked into the vertex colours: `makeHallLight(layout, windowSpots)`
+  returns the two pure functions `floor` and `wall` of a vertex's position and normal,
+  `bakeHall(geo, light)` multiplies a mesh's colours by one, clamped to 1.15 as one (all three
+  channels scaled together, so a bright pool keeps its hue: the fire's stays orange); the floor
+  gets the floor's light, everything else but the full-bright glow and lamp and the raw glass the
+  wall's;
+  the signs keep `bakedMesh` under `HALL_SUN`): a base of 0.62 plus 0.38 of the key light
+  (`HALL_SUN`, (−0.351, 0.803, 0.482): from high in the south-east, so the east wall bakes about
+  1.2 times as bright as the west), on the walls a weak fill from the apse's side (so the south
+  wall's round parts, turned from the sun, still shade round) and a warm bounce on the
+  down-facing vault and dome; ambient occlusion (the floor darker within 500 of the walls, the
+  walls darker at their foot and under the cornice, the vault at its spring); warm coloured
+  pools (under each candle ring, a big one round the fire and one more on the floor before it, a
+  halo round each window and a patch of floor in front of it; off the floor each counts as much
+  as the face turns toward it); the floor's light, all told, at 0.72 (it faces the key light
+  square on and lies under every pool: unscaled it baked a flat clamped white, brighter than any
+  wall; now the nave's middle bakes about 0.9 … 1.0, and the arrival's floor reads about 14 luma
+  over the plaster); and a warm/cool ramp (bright parts warm, dim parts cool, the vault never
+  cool). The rose window's coloured pool is tinted into the floor before the bake.
+* **Palette**: three hues plus gold. Cream and ivory (the plaster 0xfff0d6, the vault 0xfff4e2,
+  the trims 0xf0e6d2 on pale marble, the floor's tiles), teal (the panels' field, 0x1f5754 on the
+  stand, 0x2f6f6a in the rugs and niches), rose (the marble 0xe3a08e, the floor's border
+  0xc4745e, Falu red 0xa8322a its darkest accent), gold (0xe8b84a, 0xe2b252). Oak only on the
+  furniture; panes 0xffe6a0.
+* **Drawn only, at most 56 proud** (the camera keeps 60 off the walls; a deeper part needs a
+  collider, `tests/hall.test.js` checks every trim, paint and panel vertex near the walls): the
+  portal (archivolt 50, bead 40, keystone 56, pilasters 50 at the shaft and 56 at base and
+  capital), the east doors' architraves 56 and beads 40 (their piers solid below 460), the chair
+  rail 42, the skirting 34, the headboard's returns 40, window surrounds 28 (the sills inside the
+  reveals), the buttress's cap moulding 36, the mantel shelf 50 and the hearth's surround 44
+  (over their boxes' faces), the breast's keystone 52, column bases and capitals up to 41 past
+  their prisms, the wheel's rim 40 and hub 50, banners 34, plaques and crest 4, the cornice's bead
+  26. The one part past 56 is `door()`'s own keystone (shared with the castle): 66, over its
+  surround's collider but for its top 14.
 * **Entries**: `front` (0, 0, 1550) facing north with the room behind him for the camera,
-  walking in 10 ticks; `bottle` (0, 550, −1120) facing south, dropping 250, `camYaw` 0, with
-  `sfx: 'bottle_pop'` (AreaSwitch plays it as the wipe opens), 280 out from the mouth's face:
-  just off its re-arm apron (`DOOR.REACH + APRON`, 260), so turning round walks him straight
-  back in (a stick held on from the course waits to be let go first); the respawn drops in at
-  `front` from 400.
+  walking in 10 ticks (on up the dais's steps in about 90 ticks, the camera never trapped nor
+  hidden); `bottle` (0, 550, −1120) on the dais's top facing south, dropping 250, `camYaw` 0,
+  with `sfx: 'bottle_pop'` (AreaSwitch plays it as the wipe opens), 280 out from the mouth's
+  face: just off its re-arm apron (`DOOR.REACH + APRON`, 260), so turning round walks him
+  straight back in (a stick held on from the course waits to be let go first); the respawn drops
+  in at `front` from 400.
 * **Doors** (`DOORS`): `hall_front`, the inside of the front door (face z 2944, yaw π), back out
-  to the grounds' `porch`; `bottle` (the lip's end face, z −1400, on the landing at 550, `kind:
-  'bottle'`) into Midsummer Skerries' `arrival` (see "Midsummer Skerries"); `hall_east_1`,
-  `hall_east_2` (faces x 2144, yaw −π/2) `to: null` for now: no laugh, the handle rattling in
-  its frame (`laugh: false`: `door_rattle`) and their sign (`HALL_DOOR_SOON` 'This door is still
-  being built.' / 'Come back after the next update!').
-* **Pickups and signs**: 19 coins (`COINS`, each at its floor + 60, but the three hanging in the
-  wall-kick slot at 450, 900, 1350: the ring round the chart table, the slot, up the stairs and
-  onto the landing, the cork and the top two books), the 1-up on the mantel (`ONE_UP`), three
-  signs (`SIGNS`, each with its `y`): `hall_welcome` by the front door, `bottle` by the stairs,
-  `wallkick` in front of the fireplace.
+  to the grounds' `porch`; `bottle` (the lip's end face, z −1400, on the dais's top at 550,
+  `kind: 'bottle'`) into Midsummer Skerries' `arrival` (see "Midsummer Skerries"); `hall_east_1`,
+  `hall_east_2` (faces x 2144 at z 150 and 1270, yaw −π/2) `to: null` for now: no laugh, the
+  handle rattling in its frame (`laugh: false`: `door_rattle`) and their sign (`HALL_DOOR_SOON`
+  'This door is still being built.' / 'Come back after the next update!').
+* **Pickups and signs**: 25 coins (`COINS`, each at its floor + 60, but the three hanging in the
+  wall-kick slot at 450, 900, 1350: the ring round the chart table, the slot, three of the dais's
+  treads (2, 5, 8) and its top, the cork, the buttress's top (the pole jump's reward), the books,
+  and a trail of five round the west side of the apse behind the bottle), the 1-up on the mantel
+  (`ONE_UP`), three signs (`SIGNS`, each with its `y`), none between the arrival and the dais:
+  `hall_welcome` at (−750, 750) to the left of the way in, `bottle` at (1250, 0) behind the chart
+  table ("Climb the steps, walk into the neck of the bottle and join it!"), `wallkick` at the
+  slot's mouth.
 * **Look** (`HALL_ATMOSPHERE`): brown-amber fog 0x3b2a1d from 3500 to 16000 (also the clear
   colour: no sky), a warm actor sun 0xffe0b0 (0.5π) from (0, 0.72, 0.69), hemisphere 0xfff0da /
   0x6e5038 (0.55π).
 * **Sound** (`def.audio`, see "Audio"): its own loop, "Compass and Candle" (`castle_hall`); the
   `'hall'` ambience, a low room tone with the fire crackling in the hearth (`HEARTH_FIRE`, the
-  middle of the hearth's opening, (−1750, 300, −730)); every sound effect ringing in the hall
+  middle of the hearth's opening, (−1750, 320, 1270)); every sound effect ringing in the hall
   reverb (`reverb: true`).
 * **Preview**: `/preview.html?m=hall` (`src/dev/previews/hall.js`: the hall alone under its fog;
   `&col=1` the collider overlay, whose every face shows from inside the room; `&lamp=1` the
-  lamp lit; `&door=0..1` the front door that far open; `&view=entry|bottle|fire|roof`; `&t=`
+  lamp lit; `&door=0..1` the front door that far open;
+  `&view=overview|entry|bottle|fire|vault|roof|apse|toys` (`roof` the vault's old name); `&t=`
   freezes the flicker).
 
 ### Midsummer Skerries (`src/world/skerries/*`)
@@ -866,7 +1022,7 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
   the island and round the lantern.
 * **Star** (`STAR`, `placed`): `skerries_star` on the gallery's east side, 160 over its floor,
   idle from the start (`Star.place`). Taking it ends the course (the star exit, see "Areas and
-  transitions": back out of the bottle onto the hall's landing). 58 coins (`COINS`: the jetty,
+  transitions": back out of the bottle onto the hall's dais). 58 coins (`COINS`: the jetty,
   one over each stepping skerry, the long jump's arc, Great Rock, the blocks, the second terrace
   and the stair, three up the mast's axis (the climbing hero is 60 from it, inside the pickup
   radius), four round the gallery; six along the boardwalk, three up the chimney, three down the
@@ -1064,7 +1220,7 @@ Jonas shrinks into the ship in the bottle (`areas.heroScale`) about his feet, an
 into a door's opening (`areas.heroOffset`, see "Areas and transitions"). The blob shadow, a
 child of the group, shrinks with him but keeps to the floor: `BlobShadow.update(rs, parentQuat,
 parentScale)` divides its drop to the floor by the group's world scale, so a jump into the
-bottle's mouth leaves it on the landing, not hanging under him (`tests/model.test.js`).
+bottle's mouth leaves it on the dais's top, not hanging under him (`tests/model.test.js`).
 
 Hero design ("Jonas", a cartoon avatar of the player): a cheerful chibi guy — big round
 head (~40% of height), large friendly oval eyes behind thin dark round glasses (real
@@ -1146,7 +1302,10 @@ Keeping the hero in view (`src/camera/CameraCollider.js`, `src/camera/sight.js`)
 * The path: a move into a wall or ceiling stops in front of it and slides along it; a slide that
   would end on another one (an inside corner, the orbit slid onto that wall's plane) stops short
   (`_entering` counts a move ending within `ENTER_SLOP` of a face), so the camera never sits in
-  a wall's plane, where no wall push moves it out (`tests/camera.test.js`).
+  a wall's plane, where no wall push moves it out. The move is level (the height limit settles
+  y after it), so a sloping ceiling (an overhang's underside, the hall bottle's) is slid along
+  where it crosses the camera's height: slid down its slope, the move's level part would still
+  run on into it (`tests/camera.test.js`).
 * A C-left/C-right press first runs the swing ahead on a copy of the collider; if the hero
   would end up hidden behind something taller than him (a corner tower, a wall), the press
   is refused with `sfx 'camera_buzz'`. Low, see-through blockers (fences) never veto it.
@@ -2165,8 +2324,9 @@ Unknown names must be ignored silently.
   real-time runs such as `/?skipTitle=1`).
 * `/preview.html?m=world` shows the whole level without the player; `/preview.html?m=castle`
   the castle alone (`&col=1`, `&door=0..1` its front door that far open); `/preview.html?m=hall`
-  the Great Hall alone (`&col=1` its colliders, `&view=entry|bottle|fire|roof`, `&lamp=1`,
-  `&door=0..1`); `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
+  the Great Hall alone (`&col=1` its colliders,
+  `&view=overview|entry|bottle|fire|vault|roof|apse|toys`, `&lamp=1`, `&door=0..1`);
+  `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
   `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`).
 * `node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'`
   — the game straight in an area (`&entry=` for another of its entries; `__game.enterArea(name,
@@ -2175,7 +2335,7 @@ Unknown names must be ignored silently.
     '[{"eval":"__game.player.teleport(0,300,-460,Math.PI);__game.player.setAction(\"idle\");__game.camera.reset(__game.player)"},{"step":10,"input":{"stickY":1}},{"shot":"shots/door.png"}]'`
     (and standing open behind him on the porch: `?area=hall`, walk south into the inner door,
     shoot a few ticks after the switch);
-  * the hall from its landing, the bottle and its model behind him: `--url
+  * the hall from the dais's top, the bottle and its model behind him: `--url
     "/?test=1&mute=1&area=hall&entry=bottle" --actions '[{"step":20},{"shot":"shots/bottle.png"}]'`;
   * Jonas shrinking into the bottle: `--url "/?test=1&mute=1&area=hall" --actions
     '[{"eval":"__game.player.teleport(0,550,-61100,Math.PI);__game.player.setAction(\"idle\");__game.camera.reset(__game.player)"},{"step":20,"input":{"stickY":1}},{"shot":"shots/shrink.png"}]'`;

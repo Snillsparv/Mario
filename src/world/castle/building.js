@@ -429,11 +429,12 @@ function steps(kit, C, d) {
 //     its way round +y, into the wall) }, for doorLeaves() to make their meshes. Behind them a
 //     dark passage, deeper than a leaf is wide, goes into `passage` (a GeoBuilder); the wall the
 //     door stands in needs the opening cut to match (geom.js openingPolys with doorContour()).
-export function door(kit, frame, width, height, { passage = null } = {}) {
+//   segs: the arch's segments (default 8; the opening cut in its wall must use the same)
+export function door(kit, frame, width, height, { passage = null, segs = 8 } = {}) {
   const hw = width / 2;
   const spring = height - hw;
-  const inner = doorContour(width, height);
-  const outer = archContour(hw + 70, spring, 8);
+  const inner = doorContour(width, height, segs);
+  const outer = archContour(hw + 70, spring, segs);
   const { trim, wood, solids } = kit;
   trim.color(TINT.stone);
   const voussoirs = inner.slice(0, -1).map((_, i) => (i % 2 ? 0.9 : 1.04));
@@ -454,10 +455,10 @@ export function door(kit, frame, width, height, { passage = null } = {}) {
   });
 }
 
-// The door's opening: an arch of `width` and `height` (foot at the threshold), the leaves'
-// outline and the hole a swinging door's wall needs (openingPolys).
-export function doorContour(width, height) {
-  return archContour(width / 2, height - width / 2, 8);
+// The door's opening: an arch of `width` and `height` (foot at the threshold) in `segs`
+// segments, the leaves' outline and the hole a swinging door's wall needs (openingPolys).
+export function doorContour(width, height, segs = 8) {
+  return archContour(width / 2, height - width / 2, segs);
 }
 
 // Planks of the door's leaves within `contour` (`side` -1: the left one up to the seam, 1: the

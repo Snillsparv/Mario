@@ -28,16 +28,16 @@
 // his shadow on the landing under a jump), and a course's star lights its lighthouse and the
 // one in the hall's bottle (an area built later comes lit; GAME OVER puts them out). The hall's
 // east doors (not open yet) show their sign, without a laugh or a warp. Midsummer Skerries, the
-// first course: up the stairs into the bottle's neck (its own sound, the iris) he drops in onto
-// the jetty from the sky with the camera behind him and the course's look, and its card shows
-// on the first entry of a game only; the star (on the lighthouse gallery) takes him back out of
-// the bottle exactly 20 ticks after his dance (popping out with its sound), stays taken when he
-// comes back, and a stick held on through the exit waits to be let go (then a fresh push walks
-// him straight back into the armed bottle); so does the pause screen's leave (main's paused
-// branch: B, then unpause, then leave()), which is open while he reads a sign (it closes) but
-// not while he drops in or dies, so the pause screen offers it only then; a life lost there
-// drops him back in at the arrival; GAME OVER (main's order: the grounds back before the
-// resets and the title) gives the course its star, its coins and its dark lamp back.
+// first course: up the steps of the dais into the bottle's neck (its own sound, the iris) he
+// drops in onto the jetty from the sky with the camera behind him and the course's look, and
+// its card shows on the first entry of a game only; the star (on the lighthouse gallery) takes
+// him back out of the bottle exactly 20 ticks after his dance (popping out with its sound),
+// stays taken when he comes back, and a stick held on through the exit waits to be let go (then
+// a fresh push walks him straight back into the armed bottle); so does the pause screen's leave
+// (main's paused branch: B, then unpause, then leave()), which is open while he reads a sign
+// (it closes) but not while he drops in or dies, so the pause screen offers it only then; a
+// life lost there drops him back in at the arrival; GAME OVER (main's order: the grounds back
+// before the resets and the title) gives the course its star, its coins and its dark lamp back.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';

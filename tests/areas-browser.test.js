@@ -198,7 +198,8 @@ test('the full walk: in through the castle door (its leaves swing in), up the ha
     await step(34);
     assert.equal((await snap()).area, 'hall');
     assert.deepEqual(await looks(), { leaf: 0, passage: false, scale: 1 }, 'the castle door shut behind him');
-    // North up the hall, up the stairs, into the bottle's neck: he shrinks as the iris closes.
+    // North up the hall, up the steps of the dais, into the bottle's neck: he shrinks as the
+    // iris closes.
     warp = await page.evaluate(() => window.__walkTo(Math.PI, 400));
     assert.deepEqual(warp, { phase: 'close', to: 'skerries', entry: 'arrival', kind: 'bottle' });
     await step(9);
@@ -243,8 +244,8 @@ test('the full walk: in through the castle door (its leaves swing in), up the ha
     await step(60);
     s = await snap();
     assert.deepEqual([s.area, s.warp], ['hall', null]);
-    // South down the stairs and the hall to the inner door, and out onto the porch: the castle
-    // door stands open as the picture opens and shuts behind him as he walks out.
+    // South down the steps of the dais and the hall to the inner door, and out onto the porch:
+    // the castle door stands open as the picture opens and shuts behind him as he walks out.
     warp = await page.evaluate(() => window.__walkTo(0, 400));
     assert.deepEqual(warp, { phase: 'close', to: 'grounds', entry: 'porch', kind: 'door' });
     await step(18);
