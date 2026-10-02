@@ -9,23 +9,24 @@
 // beside the net shed (or climb the net mast) onto its loft and walk the plank bridge down onto
 // the islet; then climb its terraces and the signal mast, and jump from its top onto the
 // gallery. Water catches every missed jump. Home Island has a maypole, a cottage and a
-// flagpole on its meadow, butterflies over it and gulls circling, and Wreath Frogs hopping on
-// it: the course's critters.
+// flagpole on its meadow, butterflies over it and gulls circling, and the course's critters:
+// Wreath Frogs hopping on it and Mosquitoes over it; a Tin Crab hides on the sand bar in the
+// Sound and another on the islet.
 // Everything here is in the course's own local frame: 1 unit = 1 cm, sea level at y 0, +x
 // east, -z north (toward the lighthouse). world/areas.js places it at its origin (world =
 // local + origin); world/area.js shifts these anchors into world coordinates.
 //
 //                         -Z (north)
 //        ┌── net racks ── reef ── net racks ── reef ── net racks ──┐
-//        │        great rock ┐  ┌ islet: three terraces, firs      │
+//        │        great rock ┐  ┌ islet: three terraces, firs, crab│
 //        │        s5         └──┤  lighthouse (star), mast         │
 //        │                      └ stair, blocks, hut; beach  ╲     │
 //   west │  s4  (long jump)        sunken boat      plank bridge   │ east
 //   cliff│  s3                  the Sound      net shed ┐ East Rock│ cliff
-//        │      s2                 sand bar   chimney ──┘ boathouse│
+//        │      s2            sand bar (crab) chimney ──┘ boathouse│
 //        │        s1     boat  jetty                  boardwalk    │
-//        │           ┌── Home Island (frogs) ─┐ beach ──┘          │
-//        └───────────┴─ maypole, cottage ─────┴─────────────────────┘
+//        │      ┌ Home Island (frogs, mosquitoes) ┐ beach ──┘      │
+//        └──────┴─────── maypole, cottage ────────┴─────────────────┘
 //                         +Z (south): the mainland cliffs
 //
 // Ownership: like world/layout.js, the anchors are shared contract: the builders
@@ -379,6 +380,7 @@ export const SIGNS = [
       'Midsummer Skerries',
       'A star has landed on top of the old lighthouse, far out on the last rock.',
       "Hop across the skerries to the west, follow the fishermen's boardwalk to the east, or swim across the sound. The water is cold but friendly!",
+      'Watch out for the critters! A frog puffs up, a crab raises its claws, a mosquito whines: then they strike. Jump on them or punch them!',
       'Press pause if you want to leave the course.',
     ],
   },
@@ -416,15 +418,23 @@ export const BIRD_CIRCLES = [
 ];
 export const BIRD_TINT = 0xf4f2ec;
 
-// Midsummer critters (objects/Critters.js): Wreath Frogs on Home Island's meadow. Each guards
-// its fight circle round its home (x, y = its floor, z) on its own level, stays within fight +
-// its kind's leash pad (60 for a frog), and is clear of every route (tests/skerries.test.js):
-// its circle at least fight + 150 from every same-level route, 1200 from the arrival, on its
-// level and dry. yaw: the way its idle ring starts (and it faces at home); roam: the ring's size
-// (0.6 roam across); calm: a slower tell (frog_north, the first met, on the way back from the
-// jetty's foot); wade: may stand in shallow water; scale / stand: its size and how tall it
-// stands on its legs.
+// Midsummer critters (objects/Critters.js): Wreath Frogs and Mosquitoes on Home Island's
+// meadow, Tin Crabs on the sand bar in the Sound and on the islet's first terrace (its north-east
+// ring). Each guards its fight circle round its home (x, y = its floor, z) on its own level,
+// stays within fight + its kind's leash pad (frog 60, crab 40, mosquito 100), and is clear of
+// every route (tests/skerries.test.js): its circle at least fight + 150 from every same-level
+// route, 1200 from the arrival, on its level and dry (a crab's where it can stand: the sand bar
+// and the terrace's ring are smaller than its circle, and it never steps off them). yaw: the way
+// it faces at home (a frog's idle ring starts there); roam: a frog's ring size (0.6 roam across),
+// a mosquito's patrol (roam / 160 of its 320 by 220 figure of eight); calm: a slower tell
+// (frog_north, the first met, on the way back from the jetty's foot); wade: may stand in shallow
+// water (the sand bar, 88 under the sea); scale / stand: its size and how much taller it stands
+// on its legs (the bar's crab keeps its tin's bands out of the water).
 export const CRITTERS = [
   { id: 'frog_north', kind: 'frog', x: 150, y: HOME.top, z: 2650, yaw: -2.22, roam: 200, fight: 500, calm: 1.3 },
   { id: 'frog_west', kind: 'frog', x: -1350, y: HOME.top, z: 4100, yaw: 2.26, roam: 200, fight: 500 },
+  { id: 'mosquito_south', kind: 'mosquito', x: -150, y: HOME.top, z: 4300, yaw: Math.PI, roam: 160, fight: 400 },
+  { id: 'mosquito_cottage', kind: 'mosquito', x: 1000, y: HOME.top, z: 4450, yaw: Math.PI, roam: 140, fight: 350 },
+  { id: 'crab_bar', kind: 'crab', x: SANDBAR.x, y: SANDBAR.top, z: SANDBAR.z, yaw: Math.PI, roam: 100, fight: 330, wade: true, scale: 1.25, stand: 40 },
+  { id: 'crab_islet', kind: 'crab', x: 1180, y: TERRACES[0].top, z: -5480, yaw: 0.5, roam: 100, fight: 300 },
 ];

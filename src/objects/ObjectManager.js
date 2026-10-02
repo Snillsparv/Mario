@@ -4,8 +4,8 @@
 // (MysteryBox.js), the castle door (CastleDoor.js) and other doors (Door.js); and for AI RACE
 // mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs, the
 // mushroom-capped robot minions (Minions.js) and the server halls taking over the grounds
-// (ServerHalls.js); and a course's critters (Critters.js: layout.CRITTERS, Midsummer Skerries' Wreath
-// Frogs).
+// (ServerHalls.js); and a course's critters (Critters.js: layout.CRITTERS, Midsummer Skerries'
+// Wreath Frogs, Tin Crabs and Mosquitoes).
 //
 //   new ObjectManager({ scene, collision, events, layout, player, fx?, level?, view?, area? })
 //                                  view: the renderer (default scene.userData.view), to compile

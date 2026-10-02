@@ -646,16 +646,18 @@ test("walking off the gallery's gap, the signal mast catches him under its floor
   }
 });
 
-test("the critters: two Wreath Frogs on Home Island's meadow, each home on its floor, its fight circle level and dry, its leash on level, a knockback toward home safe from anywhere in it, every route at least fight + 150 away, 1200 from the arrival, the meadow's south edge kept clear, no two circles touching; their rings, their coins; the camera never loses him round them", () => {
+test("the critters: two Wreath Frogs and two Mosquitoes on Home Island's meadow, a Tin Crab on the sand bar (wading) and one on the islet's first terrace, each home on its floor, its fight circle on its level and dry (a crab's where it can stand: wading at most 95 deep only where it may wade; the islet's ring a little narrower than its circle), a meadow critter's leash on level, a knockback toward home safe from anywhere he can stand in it, every route at least fight + 150 away, 1200 from the arrival, the meadow's south edge kept clear, no two circles touching; the frogs' rings, the mosquitoes' patrols (on level, clear of walls), their coins; the camera never loses him round them", () => {
   const C = sk.CRITTERS;
-  assert.equal(C.length, 2);
-  assert.deepEqual(C.map((c) => c.kind), ['frog', 'frog']);
+  assert.equal(C.length, 6);
+  assert.deepEqual(C.map((c) => c.kind).sort(), ['crab', 'crab', 'frog', 'frog', 'mosquito', 'mosquito']);
   const LEASH = { frog: CRITTER.FROG.LEASH, crab: CRITTER.CRAB.LEASH, mosquito: CRITTER.MOSQUITO.LEASH };
   const floorAt = (x, z, y) => {
     const f = col.findFloor(x + O.x, y + 600 + O.y, z + O.z);
     return f.surface ? f.y - O.y : null;
   };
-  const dry = (x, z, y) => col.waterLevelAt(x + O.x, z + O.z) - O.y <= y - 10;
+  // Dry (water at least 10 under the floor), or for a wading critter at most WADE_DEEP over it.
+  const depth = (x, z, y) => col.waterLevelAt(x + O.x, z + O.z) - O.y - y;
+  const dry = (x, z, y, wade = false) => (wade ? depth(x, z, y) <= CRITTER.SHARED.WADE_DEEP : depth(x, z, y) <= -10);
   const level = (x, z, y, dy) => {
     const f = floorAt(x, z, y);
     return f !== null && Math.abs(f - y) <= dy;
@@ -666,17 +668,27 @@ test("the critters: two Wreath Frogs on Home Island's meadow, each home on its f
   const arrival = sk.ENTRIES.arrival;
   for (const c of C) {
     assert.ok(Math.abs(floorAt(c.x, c.z, c.y) - c.y) <= 1, `${c.id}: home on its floor`);
-    disc(c, c.fight, (x, z) => assert.ok(level(x, z, c.y, 12) && dry(x, z, c.y), `${c.id}: (${x}, ${z}) on level and dry`));
-    disc(c, c.fight + LEASH[c.kind], (x, z) => assert.ok(level(x, z, c.y, 12), `${c.id}: leash at (${x}, ${z}) on level`));
-    // From anywhere in the circle, knocked back toward home he lands on its level, dry.
+    const wade = c.wade === true;
+    assert.equal(wade, c.id === 'crab_bar', `${c.id}: wading only on the sand bar`);
+    // Its circle on its level and dry (a crab's: as far as it can stand, the islet's ring
+    // narrower than its circle by a step); a meadow critter's whole leash disc on level.
+    disc(c, c.kind === 'crab' ? 0.9 * c.fight : c.fight, (x, z) => assert.ok(level(x, z, c.y, 12) && dry(x, z, c.y, wade), `${c.id}: (${x}, ${z}) on level and dry`));
     disc(c, c.fight, (x, z) => {
+      if (level(x, z, c.y, 12)) assert.ok(dry(x, z, c.y, wade), `${c.id}: (${x}, ${z}) dry where it can stand (${depth(x, z, c.y).toFixed(0)} deep)`);
+    });
+    if (wade) assert.ok(depth(c.x, c.z, c.y) > 0, `${c.id}: it does wade`);
+    if (c.kind !== 'crab') disc(c, c.fight + LEASH[c.kind], (x, z) => assert.ok(level(x, z, c.y, 12), `${c.id}: leash at (${x}, ${z}) on level`));
+    // From anywhere in the circle he can stand, knocked back toward home he lands on its level,
+    // dry (wading at most WADE_DEEP at the bar).
+    disc(c, c.fight, (x, z) => {
+      if (!level(x, z, c.y, 12)) return;
       const d = Math.hypot(c.x - x, c.z - z);
       const ux = d > 1 ? (c.x - x) / d : 0;
       const uz = d > 1 ? (c.z - z) / d : 1;
       for (const k of [CRITTER.SHARED.KNOCK_NEAR, CRITTER.SHARED.KNOCK_FAR]) {
         const qx = x + ux * k;
         const qz = z + uz * k;
-        assert.ok(level(qx, qz, c.y, CRITTER.SHARED.KNOCK_DY) && dry(qx, qz, c.y), `${c.id}: knocked toward home from (${x}, ${z})`);
+        assert.ok(level(qx, qz, c.y, CRITTER.SHARED.KNOCK_DY) && dry(qx, qz, c.y, wade), `${c.id}: knocked toward home from (${x}, ${z})`);
       }
     });
     for (const k of CORRIDORS) {
@@ -695,17 +707,35 @@ test("the critters: two Wreath Frogs on Home Island's meadow, each home on its f
   assert.equal(area.objectsLayout.CRITTERS[0].fight, C[0].fight);
   const { om } = hero(0, sk.HOME.top, 3800, 0, { objects: true });
   assert.equal(om.critters.alive, C.length);
-  for (const r of om.critters.list) assert.ok(r.hopN >= 2, `${r.id}: ${r.hopN} ring points`);
+  for (const r of om.critters.list) if (r.kind === 0) assert.ok(r.hopN >= 2, `${r.id}: ${r.hopN} ring points`);
   assert.ok(C.length <= om.coins.drops.length, 'a coin slot for each');
+  // The mosquitoes' patrols (the closed form, sampled every 5 ticks for two minutes) over their
+  // level, no wall within 60 of them.
+  const M = CRITTER.MOSQUITO;
+  for (const c of C.filter((q) => q.kind === 'mosquito')) {
+    const k = c.roam / M.SWAY_X;
+    const seed = C.indexOf(c) * 7.13 + 2;
+    for (let L = 0; L <= 3600; L += 5) {
+      const x = c.x + M.SWAY_X * k * Math.sin(M.SWAY_RATE * L + seed);
+      const z = c.z + M.SWAY_Z * k * Math.sin(2 * M.SWAY_RATE * L + seed);
+      const y = c.y + M.HOVER + M.BOB * Math.sin(M.BOB_RATE * L);
+      assert.ok(level(x, z, c.y, 12), `${c.id}: over its level at ${L}`);
+      assert.equal(col.findWalls(x + O.x, y + O.y, z + O.z, 0, 60).walls.length, 0, `${c.id}: no wall by it at ${L}`);
+    }
+    const r = om.critters.byId(c.id);
+    assert.ok(Math.abs(r.seed - seed) < 1e-9, 'the seed as worked out here');
+  }
   // The camera round each home: walked toward it from 8 sides then strafing round it, and
-  // walked out from it 8 ways: never trapped, hidden at most 2 ticks.
+  // walked out from it 8 ways, while he is on its level (a walk off the sand bar or the islet's
+  // ring into the sea ends there: the critter has let him go): never trapped, hidden at most 2
+  // ticks.
   for (const c of C) {
     let occluded = 0;
     let trapped = 0;
     const run = (x, z, yaw, input, ticks) => {
       const h = hero(x, c.y, z, yaw);
       const cam = camera(h.p);
-      for (let t = 0; t < ticks; t++) {
+      for (let t = 0; t < ticks && !h.p.inWater && h.at().y > c.y - CRITTER.SHARED.LEVEL; t++) {
         const k = h.ctl.next(input(t));
         h.p.update(cam.playerInput(k), cam.getYaw());
         cam.update(k, h.p);

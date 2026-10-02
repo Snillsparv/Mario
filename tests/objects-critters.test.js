@@ -1,23 +1,36 @@
-// The Midsummer critters (objects/Critters.js, critters/frog.js, critterModel.js) in node: one
+// The Midsummer critters (objects/Critters.js, critters/*.js, critterModel.js) in node: one
 // instanced mesh for all of them and a hidden marker mesh, sharing the models' attributes; the
-// idle frogs on their rings (no collision queries, no sparkles, the same every run and after a
-// reset); engagement (its circle on its level, never while he is away), the release and the
-// hop home, a hop in the air landed first when it is let go or notices him; the tell (exactly
-// 20 ticks, 26 for a calm one, the lock 9 or more before the first damage tick, the yaw locked
-// with the target, the orange marker at the target, starting well over his shadow's size at
-// full brightness), one wedge a leap, its peak; away and hold (every away action, the water, a
-// blink after a hit, a dialog, a warp through ObjectManager); the token and its gap; defeat by a
-// stomp (bounce(72)) or an attack in every live state, the hero winning a tie, a frog stomped
-// in the air dropping to its floor, the wreath flying up and bursting into gold, one coin after
-// the poof, a struck one knocked off the camera's line, the daze's three twinkles; the
-// knock-safe rule at a drop and at the water; the leash, the water and the drop for its hops and
-// its target (half way, else the windup called off) and the strike window; the lost-life edge
-// and reset(); the blob shadows; the three models (triangles, normals, sizes, the crab's
-// planted feet, the eyes and flowers clear of what they sit on, each part in its own model's
-// branch of the shader); the allocation rules of the hot paths; the fairness table with the
-// real Player (still: hit; a sidestep: no hit; mashing B: it is struck; a jump: a stomp); the
-// sounds and the shared sound gate; the state vocabulary; the bump (at its leash's rim, against
-// a wall, in its windup, off a dying hero).
+// idle critters (the frogs on their rings, the crab in its tin, the mosquito on its closed-form
+// patrol: no collision queries, no sparkles, the same every run and after a reset); engagement
+// (its circle on its level, never while he is away), the release and the hop home, a hop in the
+// air landed first when it is let go or notices him; the frog's tell (exactly 20 ticks, 26 for a
+// calm one, the lock 9 or more before the first damage tick, the yaw locked with the target, the
+// orange marker at the target, starting well over his shadow's size at full brightness), one
+// wedge a leap, its peak; away and hold (every away action, the water, a blink after a hit, a
+// dialog, a warp through ObjectManager; the crab's and the mosquito's tells called off too); the
+// token and its gap; defeat by a stomp (bounce(72) off a frog, the default off the others) or an
+// attack in every live state, the hero winning a tie (inside a strike too), a frog stomped in the
+// air dropping to its floor, the wreath flying up and bursting into gold, one coin after the
+// poof, a struck one knocked off the camera's line, the daze's three twinkles; the knock-safe
+// rule at a drop and at the water; the leash, the water and the drop for the frog's hops and its
+// target (half way, else the windup called off) and the strike window; the lost-life edge and
+// reset(); the blob shadows; the three models (triangles, normals, sizes, the crab's planted
+// feet, the eyes and flowers clear of what they sit on, each part in its own model's branch of
+// the shader); the allocation rules of the hot paths; the Tin Crab (it wakes, sidles into its
+// window at both sizes, the tell, the locked lunge, one wedge from its claw, never into deep
+// water or off a drop) and the Mosquito (it spots him, parks 220 from him and aims only from
+// 200 to 240, never backing off, held in its leash, sliding along a wall; T locked on its first
+// aim tick, the needle hurting only low over the floor and only on the marked spot, a punch at
+// its tip winning while it dives, stuck in the turf when it misses; the idle whine rare and
+// quiet); the fairness tables with the real Player (the frog: still, hit; a sidestep, no hit;
+// mashing B, it is struck; a jump, a stomp; the crab at both ends of its window and both sizes;
+// the mosquito parked where it aims); the sounds and the shared sound gate; the state
+// vocabulary; the bump (at its leash's rim, against a wall, in its windup, off a dying hero;
+// the crab and the stuck mosquito pushed aside, never mid-strike; a crab pressed against its rim
+// sliding round him a little each tick; a hovering mosquito once his head reaches it); the
+// knockback round a critter standing in his way home; the token with a crab and a frog; let go
+// mid-strike; the hit shapes; the crab's tell never hidden behind him from the camera; a wading
+// crab at the sand bar's depth (its bands over the water hidden, its dented tin floating).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -36,15 +49,18 @@ import { NO_BOUNCE } from '../src/player/Player.js';
 import { CourseBuilder, ScriptedController } from '../src/player/physics/testCourse.js';
 import { Player } from '../src/player/Player.js';
 
-const { FROG, SHARED } = CRITTER;
+const { FROG, CRAB, MOSQUITO, SHARED } = CRITTER;
 const SIZE = 30000;
-const SEEN = new Set(); // every frog state seen in these tests (the vocabulary test)
+const KIND = ['frog', 'crab', 'mosquito'];
+// Every state seen in these tests, per kind (the vocabulary test).
+const SEEN = { frog: new Set(), crab: new Set(), mosquito: new Set() };
 
 // Flat floor at y 0; optional: water (surface 50 over a floor at -400) where x > waterFromX, a
 // drop { z, side, depth } (the floor `depth` lower past z: where z > it with side 1, where z < it
 // with side -1; a face down to it), a tall wall along x = wallX (facing -x), shallow water `wade`
-// deep over the whole floor, a ledge { x0, x1, z0, z1, y } (a raised floor, over the water too).
-function world({ waterFromX = Infinity, drop = null, wallX = null, wade = 0, ledge = null } = {}) {
+// deep over the whole floor, a ledge { x0, x1, z0, z1, y } (a raised floor, over the water too),
+// a pool { x, depth } (water `depth` deep over the same level floor where x > pool.x).
+function world({ waterFromX = Infinity, drop = null, wallX = null, wade = 0, ledge = null, pool = null } = {}) {
   const w = new CollisionWorld();
   const tris = (...p) => w.addTriangles(p);
   const floor = (x0, x1, z0, z1, y) => tris(x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z1, x1, y, z0, x0, y, z0);
@@ -65,7 +81,7 @@ function world({ waterFromX = Infinity, drop = null, wallX = null, wade = 0, led
   }
   if (wallX !== null) tris(wallX, 0, -SIZE, wallX, 0, SIZE, wallX, 2000, -SIZE, wallX, 0, SIZE, wallX, 2000, SIZE, wallX, 2000, -SIZE);
   if (ledge) floor(ledge.x0, ledge.x1, ledge.z0, ledge.z1, ledge.y);
-  w.setWaterLevelFn((x) => (x > waterFromX ? 50 : wade > 0 ? wade : NO_WATER));
+  w.setWaterLevelFn((x) => (x > waterFromX ? 50 : pool && x > pool.x ? pool.depth : wade > 0 ? wade : NO_WATER));
   w.finalize();
   return w;
 }
@@ -116,6 +132,8 @@ function fakePlayer(x = 0, y = 0, z = 0) {
 }
 
 const frogSpot = (over = {}) => ({ id: 'frog', kind: 'frog', x: 0, y: 0, z: 0, yaw: 0, roam: 200, fight: 500, ...over });
+const crabSpot = (over = {}) => ({ id: 'crab', kind: 'crab', x: 0, y: 0, z: 0, yaw: 0, roam: 100, fight: 330, ...over });
+const mosquitoSpot = (over = {}) => ({ id: 'mosquito', kind: 'mosquito', x: 0, y: 0, z: 0, yaw: 0, roam: 160, fight: 400, ...over });
 
 // A crew of critters on its own: step() ticks them with the given hero (and his remembered
 // last tick, as ObjectManager keeps it) and the camera's yaw set by setCam(yaw) (null: none);
@@ -137,7 +155,7 @@ function crew(spots, { collision = world(), sparkles = null, events = new Events
     for (let i = 0; i < n; i++) {
       player.tick++;
       critters.update(player, hero, ++tick, hold, cam);
-      for (const c of critters.list) if (c.kind === MODEL.FROG) SEEN.add(c.state);
+      for (const c of critters.list) SEEN[KIND[c.kind]].add(c.state);
       critters.animate(1, tick / 30);
       hero.y = player.pos.y;
       hero.vy = player.vel.y;
@@ -177,7 +195,7 @@ function markerSize(critters, alpha, clock) {
   return new THREE.Vector3().setFromMatrixScale(critters.markers.getMatrixAt(0, _mm)).x;
 }
 
-test('construction: one instanced mesh for every critter and a hidden marker mesh, its own program; the models shared between managers; unknown kinds throw; crabs and mosquitoes stay calm until they get their steps', () => {
+test('construction: one instanced mesh for every critter and a hidden marker mesh, its own program; the models shared between managers; unknown kinds throw; a crab wakes within 15 ticks of him coming into its circle, a mosquito (hovering 150 over its home) spots him within 9', () => {
   const k = crew([frogSpot(), frogSpot({ id: 'b', x: 2000 })]);
   const { critters } = k;
   const mesh = critters.mesh;
@@ -205,30 +223,30 @@ test('construction: one instanced mesh for every critter and a hidden marker mes
   assert.notEqual(g1.attributes.aAnim, g2.attributes.aAnim);
   assert.notEqual(g1.attributes.aAnim2.array, g2.attributes.aAnim2.array);
   assert.throws(() => crew([{ ...frogSpot(), kind: 'goblin' }]), /unknown kind/);
-  // A crab and a mosquito (no steps yet): calm and still with him inside their circles.
-  const still = crew([
-    { id: 'crab', kind: 'crab', x: 0, y: 0, z: 0, yaw: 0, roam: 100, fight: 300 },
-    { id: 'mosquito', kind: 'mosquito', x: 1000, y: 0, z: 0, yaw: 0, roam: 160, fight: 400 },
-  ]);
-  const p = fakePlayer(100, 0, 100);
-  for (let t = 0; t < 600; t++) {
-    p.pos.x = t % 2 ? 100 : 1050;
-    still.step(p);
-    assert.equal(still.critters.list[0].state, 'hidden');
-    assert.equal(still.critters.list[1].state, 'patrol');
-  }
-  assert.equal(still.critters.engaged, 0);
-  assert.equal(still.critters.mesh.count, 2, 'both drawn');
-  assert.equal(still.critters.list[1].y, CRITTER.MOSQUITO.HOVER, 'the mosquito hovers over its home');
+  // A crab and a mosquito: calm with him away, drawn; he steps into their circles.
+  const both = crew([crabSpot(), mosquitoSpot({ x: 3000 })]);
+  const [crab, mosquito] = both.critters.list;
+  assert.deepEqual([crab.state, mosquito.state], ['hidden', 'patrol']);
+  assert.equal(both.critters.mesh.count, 2, 'both drawn');
+  assert.equal(mosquito.y, MOSQUITO.HOVER, 'the mosquito hovers over its home');
+  const p = fakePlayer(0, 0, 3000);
+  both.step(p, 30);
+  assert.equal(both.critters.engaged, 0);
+  p.pos.z = 300;
+  assert.ok(both.until(p, () => crab.state === 'wake', 30) <= 15, 'the crab wakes');
+  const q = fakePlayer(3000, 0, 3000);
+  both.step(q, 30);
+  q.pos.z = 380;
+  assert.ok(both.until(q, () => mosquito.state === 'spot', 30) <= 9, 'the mosquito spots him');
 });
 
-test('idle: far from him the frogs hop round their rings (ring point k along yaw0 + k * 60 degrees, 0.6 roam out; points by a wall dropped, the rest in order) with no collision queries, no sparkles; two crews run the same, a reset crew replays a fresh one', () => {
+test('idle: far from him the frogs hop round their rings (ring point k along yaw0 + k * 60 degrees, 0.6 roam out; points by a wall dropped, the rest in order), the crab sits in its tin and the mosquito flies its patrol (the closed form on the life counter), with no collision queries, no sparkles; two crews run the same, a reset crew replays a fresh one', () => {
   const collision = world({ wallX: 150 });
   const q = counting(collision);
   const throwing = { twinkle: () => assert.fail('no sparkles'), clods: () => assert.fail('no sparkles'), burst: () => assert.fail('no sparkles') };
-  const spots = [frogSpot({ id: 'free', x: -3000, yaw: 0.4 }), frogSpot({ id: 'walled', x: 0, yaw: 0 })];
+  const spots = [frogSpot({ id: 'free', x: -3000, yaw: 0.4 }), frogSpot({ id: 'walled', x: 0, yaw: 0 }), crabSpot({ x: 3000 }), mosquitoSpot({ x: -1500, z: -3000, roam: 140 })];
   const k = crew(spots, { collision, sparkles: throwing });
-  const [free, walled] = k.critters.list;
+  const [free, walled, tin, buzz] = k.critters.list;
   // Ring points: free keeps all six; by the wall (x 150 facing -x) the points at 60 and 120
   // degrees (x 104) are within 60 of it and dropped.
   const R = FROG.RING * 200;
@@ -249,7 +267,16 @@ test('idle: far from him the frogs hop round their rings (ring point k along yaw
   let hops = 0;
   for (let t = 0; t < 1800; t++) {
     k.step(player);
+    // The crab in its tin at home; the mosquito on its patrol curve at the life counter now.
+    assert.ok(tin.state === 'hidden' && tin.x === tin.hx && tin.z === tin.hz && tin.y === tin.hy, `the crab at home (${tin.state})`);
+    const L = k.critters.life;
+    const sway = 140 / MOSQUITO.SWAY_X;
+    assert.equal(buzz.state, 'patrol');
+    assert.ok(Math.abs(buzz.x - (buzz.hx + MOSQUITO.SWAY_X * sway * Math.sin(MOSQUITO.SWAY_RATE * L + buzz.seed))) < 1e-9, `patrol x at ${L}`);
+    assert.ok(Math.abs(buzz.z - (buzz.hz + MOSQUITO.SWAY_Z * sway * Math.sin(2 * MOSQUITO.SWAY_RATE * L + buzz.seed))) < 1e-9, `patrol z at ${L}`);
+    assert.ok(Math.abs(buzz.y - (buzz.hy + MOSQUITO.HOVER + MOSQUITO.BOB * Math.sin(MOSQUITO.BOB_RATE * L))) < 1e-9, `patrol y at ${L}`);
     for (const c of k.critters.list) {
+      if (c.kind !== MODEL.FROG) continue;
       if (c.n === 0) {
         let on = false;
         for (let i = 0; i < c.hopN; i++) if (Math.abs(c.x - c.hopX[i]) < 1e-6 && Math.abs(c.z - c.hopZ[i]) < 1e-6 && Math.abs(c.y - c.hopY[i]) < 1e-6) on = true;
@@ -262,6 +289,7 @@ test('idle: far from him the frogs hop round their rings (ring point k along yaw
   assert.equal(k.critters.engaged, 0);
   assert.equal(k.critters.hits, 0);
   assert.equal(q.count, 0, 'no collision queries while idle');
+  assert.deepEqual(k.sfx, [], 'no idle calls with him this far');
   // The same again, from another crew; and after a reset.
   const k2 = crew(spots, { collision: world({ wallX: 150 }) });
   const p2 = fakePlayer(-1500, 0, 3000);
@@ -765,25 +793,29 @@ test('a defeat that shows: stomped in the air it drops to its floor as it flatte
       const n = sparks.length;
       s.step(s.player);
       const tw = sparks.slice(n).filter((e) => e.kind === 'twinkle');
-      if (tw.length) sets.push({ t: f.t, tw });
+      // (Where it was as they showed: it lands on his feet, then is bumped off them.)
+      if (tw.length) sets.push({ t: f.t, x: f.x, z: f.z, tw });
     }
     assert.deepEqual(sets.map((e) => e.t), [1, 13, 25]);
-    for (const { tw } of sets) {
+    for (const { x, z, tw } of sets) {
       assert.equal(tw.length, 3);
       for (const e of tw) {
         assert.deepEqual(e.tint, TINT.petal);
-        assert.ok(Math.abs(Math.hypot(e.x - f.x, e.z - f.z) - 40) < 1e-6, 'round its head');
+        assert.ok(Math.abs(Math.hypot(e.x - x, e.z - z) - 40) < 1e-6, 'round its head');
       }
-      const a = tw.map((e) => Math.atan2(e.x - f.x, e.z - f.z));
+      const a = tw.map((e) => Math.atan2(e.x - x, e.z - z));
       assert.ok(Math.abs(Math.abs(wrapAngle(a[1] - a[0])) - (2 * Math.PI) / 3) < 1e-6, 'spaced round it');
     }
-    assert.ok(Math.abs(wrapAngle(Math.atan2(sets[1].tw[0].x - f.x, sets[1].tw[0].z - f.z) - Math.atan2(sets[0].tw[0].x - f.x, sets[0].tw[0].z - f.z))) > 0.5, 'turning');
+    const ang = (k) => Math.atan2(sets[k].tw[0].x - sets[k].x, sets[k].tw[0].z - sets[k].z);
+    assert.ok(Math.abs(wrapAngle(ang(1) - ang(0))) > 0.5, 'turning');
   }
 });
 
-test('knock-safe: at the edge of a drop or the water, a hit that would knock him off sends him toward home instead; on open floor it knocks him straight away from the frog', () => {
-  const hitAt = (collision, hero, src) => {
-    const k = crew([frogSpot()], { collision });
+test('knock-safe: at the edge of a drop or the water, a hit that would knock him off sends him toward home instead, round the critter where it stands in that way (never through it, and it is never shoved along by him flying back); on open floor it knocks him straight away from the frog', () => {
+  // (The frog stands on its ring point 0: 120 from home along its yaw, south-west of home with
+  // yaw -135 degrees, out of his way home from the north and the east.)
+  const hitAt = (collision, hero, src, spot = { yaw: (-3 * Math.PI) / 4 }) => {
+    const k = crew([frogSpot(spot)], { collision });
     const c = k.critters.list[0];
     const p = fakePlayer(hero.x, 0, hero.z);
     k.step(p, 1, true); // (the tick's hero, held: nothing else happens)
@@ -801,6 +833,59 @@ test('knock-safe: at the edge of a drop or the water, a hit that would knock him
   // A drop of 300 at z 500: knocked south he would fall; he flies north, toward home.
   const drop = hitAt(world({ drop: { z: 500, side: 1, depth: 300 } }), { x: 0, z: 400 }, { x: 0, z: 250 });
   assert.ok(drop.z > 400 + 90 && Math.abs(drop.x) < 1e-9, `redirected: ${JSON.stringify(drop)}`);
+  // ... with the frog standing in that way (ring point 0 at (0, 120), 280 ahead of him: he would
+  // land on it): turned round it to the first way clear of it (KNOCK_ROUND at a time, away from
+  // its side), still homeward and landing safely on the level.
+  {
+    const round = hitAt(world({ drop: { z: 500, side: 1, depth: 300 } }), { x: 10, z: 400 }, { x: 10, z: 250 }, { yaw: 0 });
+    const vx = (10 - round.x) / SHARED.REDIRECT;
+    const vz = (400 - round.z) / SHARED.REDIRECT;
+    const home = Math.atan2(-10, -400);
+    const turned = wrapAngle(Math.atan2(vx, vz) - home);
+    const its = wrapAngle(Math.atan2(-10, 120 - 400) - home);
+    const k = Math.round(turned / SHARED.KNOCK_ROUND);
+    assert.ok(Math.abs(Math.hypot(vx, vz) - 1) < 1e-9 && k !== 0 && Math.abs(turned - k * SHARED.KNOCK_ROUND) < 1e-9, `turned ${turned.toFixed(3)}`);
+    assert.ok(Math.sign(turned) === -Math.sign(its), `away from its side (${its.toFixed(3)})`);
+    const ahead = -10 * vx + (120 - 400) * vz;
+    const side = -10 * vz - (120 - 400) * vx;
+    assert.ok(ahead <= 0 || Math.abs(side) >= CRITTER_RIG.frog.BUMP_R, `clear of it: ${ahead.toFixed(0)} ahead, ${side.toFixed(0)} aside`);
+    assert.ok(400 + vz * SHARED.KNOCK_FAR < 500, 'landing on the level');
+  }
+  // ... the way round it on its far side first, unless that lands him in the water (east of x
+  // 60): then round the near side.
+  {
+    const far = hitAt(world({ waterFromX: 60, drop: { z: 500, side: 1, depth: 300 } }), { x: 0, z: 400 }, { x: 0, z: 250 }, { yaw: -Math.atan2(10, 120) });
+    const vx = (0 - far.x) / SHARED.REDIRECT;
+    const vz = (400 - far.z) / SHARED.REDIRECT;
+    assert.ok(vx < -0.4 && vz < 0, `round its other side, west, homeward: ${vx.toFixed(2)}, ${vz.toFixed(2)}`);
+  }
+  // A crab pinching him at the edge of the drop from between him and home: he flies round it, and
+  // it is not shoved along by him flying back over it (no bump while he is knocked back).
+  {
+    const k = crew([crabSpot({ yaw: 0 })], { collision: world({ drop: { z: 300, side: 1, depth: 300 } }) });
+    const c = k.critters.list[0];
+    const p = fakePlayer(0, 0, 180);
+    k.until(p, () => c.state === 'pinch', 200);
+    k.until(p, () => p.hits.length > 0 || c.state !== 'pinch', 10);
+    assert.equal(p.hits.length, 1, 'pinched');
+    const v = { x: (p.pos.x - p.hits[0].from.x) / SHARED.REDIRECT, z: (p.pos.z - p.hits[0].from.z) / SHARED.REDIRECT };
+    const w = { x: c.x - p.pos.x, z: c.z - p.pos.z };
+    const l = Math.hypot(p.pos.x, p.pos.z);
+    const h = { x: -p.pos.x / l, z: -p.pos.z / l };
+    assert.ok(w.x * h.x + w.z * h.z > 0 && Math.abs(w.x * h.z - w.z * h.x) < CRITTER_RIG.crab.BUMP_R, 'straight home he would fly through it');
+    assert.ok(v.z < 0, 'toward home');
+    assert.ok(w.x * v.x + w.z * v.z <= 0 || Math.abs(w.x * v.z - w.z * v.x) >= CRITTER_RIG.crab.BUMP_R, `round it: ${JSON.stringify(v)}, it at ${JSON.stringify(w)}`);
+    // He flies back past it (knocked back: 'hurt') as its claws stick in the sand: it stays
+    // where it is.
+    k.until(p, () => c.state === 'stuck', 10);
+    p.action = 'hurt';
+    const at = { x: c.x, z: c.z };
+    for (let t = 0; t < 8; t++) {
+      Object.assign(p.pos, { x: c.x + 20 - 5 * t, z: c.z + 10 });
+      k.step(p);
+      assert.deepEqual({ x: c.x, z: c.z }, at, 'not shoved');
+    }
+  }
   // ... and through a whole strike with a drop behind him: the hit comes from behind him, so he
   // flies on toward home, not off the edge.
   const s = facing(240, { collision: world({ drop: { z: -100, side: -1, depth: 300 } }) });
@@ -816,6 +901,8 @@ test('movement: a frog never lands past fight + 60, in the water or off a drop: 
   // behind it: every back-hop away from him is refused there, and it stays dry, on its level.
   for (const [what, collision, spot, at, dry] of [
     ['water', world({ waterFromX: 100 }), { yaw: Math.PI }, { x: -100, z: -120 }, (c) => c.x < 100],
+    // (Shallow water over the same level floor: only the water stops it.)
+    ['pool', world({ pool: { x: 100, depth: 30 } }), { yaw: Math.PI }, { x: -100, z: -120 }, (c) => c.x < 100],
     ['drop', world({ drop: { z: 180, side: 1, depth: 150 } }), { yaw: 0 }, { x: 0, z: 20 }, (c) => c.z < 180],
   ]) {
     const k = crew([frogSpot(spot)], { collision });
@@ -925,7 +1012,7 @@ test('movement: a frog never lands past fight + 60, in the water or off a drop: 
   assert.ok(near.frog.vz > 0, 'from 120 it hops back first');
 });
 
-test("lifecycle: a lost life sends the live frogs home calm (to ring point 0) and keeps the defeated gone; a defeat under way still drops its coin; reset() brings every one back and forgets his last action; a wading critter's coin floats over the water", () => {
+test("lifecycle: a lost life sends the live ones home calm (a frog to ring point 0, a crab into its tin at home, a mosquito onto its patrol) and keeps the defeated gone; a defeat under way still drops its coin; reset() brings every one back and forgets his last action; a wading critter's coin floats over the water", () => {
   const k = crew([frogSpot({ id: 'a', x: -300, z: 300 }), frogSpot({ id: 'b', x: 2000, z: 300 }), frogSpot({ id: 'c', x: 4000, z: 300 })]);
   const [a, b, c] = k.critters.list;
   const p = fakePlayer(-300, 0, 0);
@@ -973,9 +1060,39 @@ test("lifecycle: a lost life sends the live frogs home calm (to ring point 0) an
   const coin = om.spawnCoin(0, 0, 0, 80);
   assert.equal(coin.y, 80);
   assert.equal(om.spawnCoin(500, 0, 0).y, 60, 'a dry coin hovers at 60');
+  // A crab in its windup and a mosquito in its aim when he loses his life: home and calm.
+  const two = crew([crabSpot({ z: 180, yaw: Math.PI }), mosquitoSpot({ x: 3000, z: 225, yaw: Math.PI, roam: 1 })]);
+  const [crab, buzz] = two.critters.list;
+  const r = fakePlayer(0, 0, 0);
+  two.until(r, () => crab.state === 'windup', 60);
+  assert.equal(crab.state, 'windup');
+  r.action = 'spawn';
+  two.step(r);
+  assert.deepEqual([crab.state, crab.x, crab.z, crab.engaged], ['hidden', crab.hx, crab.hz, 0]);
+  assert.equal(two.critters.attacker, -1);
+  r.action = 'idle';
+  r.pos.x = 3000;
+  r.invincibleUntil = 0;
+  two.until(r, () => buzz.state === 'aim' && buzz.t === 5, 120);
+  assert.ok(buzz.markOn === 1 && two.critters.attacker === 1, 'aiming, its ring showing');
+  r.action = 'spawn';
+  two.step(r);
+  assert.equal(buzz.state, 'patrol');
+  assert.equal(buzz.markOn, 0);
+  assert.ok(Math.abs(buzz.y - (buzz.hy + MOSQUITO.HOVER + MOSQUITO.BOB * Math.sin(MOSQUITO.BOB_RATE * two.critters.life))) < 1e-9, 'on its patrol curve');
+  assert.equal(two.critters.attacker, -1);
+  // A wading crab's coin floats over the water too.
+  const bar = crew([crabSpot({ wade: true })], { collision: world({ wade: 60 }) });
+  const t = fakePlayer(0, 0, 3000);
+  t.attack = { x: 0, y: 30, z: 0, radius: 40 };
+  bar.step(t);
+  t.attack = null;
+  bar.step(t, 60);
+  assert.equal(bar.coins.length, 1);
+  assert.equal(bar.coins[0].minY, 60 + SHARED.WADE_COIN);
 });
 
-test('the models: triangles within their caps, unit normals, their sizes (the frog 115-130 across its hind feet and under 90 tall, the crab 165-180 across its legs with its tin top at 76-80, the mosquito 210-240 long with a 170-200 wingspan); the crab standing tall keeps its feet planted and its hips rising with its body; the mosquito\'s pupils clear of its head, the wreath\'s flowers clear of its leaves; every part posed in its own model\'s branch of the shader, the crab\'s leg lift and the wreath\'s squash undo as worked out here, the mosquito\'s eyes a deep red in the aim', () => {
+test('the models: triangles within their caps, unit normals, their sizes (the frog 115-130 across its hind feet and under 90 tall, the crab 165-180 across its legs with its tin top at 76-80, the mosquito 210-240 long with a 170-200 wingspan); the crab standing tall keeps its feet planted and its hips rising with its body; the mosquito\'s pupils clear of its head, the wreath\'s flowers clear of its leaves; every part posed in its own model\'s branch of the shader, the crab\'s leg lift and the wreath\'s squash undo as worked out here, its raised claws opening toward the front, the mosquito\'s eyes a deep red in the aim', () => {
   const b = critterBase();
   const pos = b.position.array;
   const nrm = b.normal.array;
@@ -1082,6 +1199,9 @@ test('the models: triangles within their caps, unit normals, their sizes (the fr
   assert.ok(wreath.includes('scl.y*=sqrt(q.x/q.y)') && !/R=mat3\(/.test(wreath), 'the squash undone in the scale');
   assert.ok(wreath.includes(`${CRITTER_RIG.frog.WREATH_RISE.toFixed(1)}*lift*(2.-lift)`), 'the rise');
   assert.ok(branch.crab.includes('critRotX(-.6*aAnim.w)'), 'the jaw opens upward');
+  // ... and a claw raised past its rest (the tell) turns about its upright (about a radian more at
+  // RAISE), so the opening faces him and the camera behind him, not edge on.
+  assert.ok(branch.crab.includes('critRotY(side*(.3*aAnim.z+.9*max(aAnim.z-.4,0.)))'), 'the raised claws turned to open toward the front');
   assert.ok(branch.mosquito.includes('vEye=aAnim2.x'), 'the eye glow');
   // The fragment: the mosquito's eyes go a deep red in the aim, everything but the black pupils.
   const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.lambert.vertexShader, fragmentShader: THREE.ShaderLib.lambert.fragmentShader };
@@ -1138,7 +1258,7 @@ test('blob shadows: one slot per critter after the others, under each one on its
 
 // The per-tick and per-frame code must not use what V8 allocates for (see objects.test.js).
 test('critter hot paths avoid allocating constructs', () => {
-  const hot = ['update', '_move', '_hop', '_fly', '_launch', '_markAt', '_standable', '_struck', '_stomped', '_hurt', '_safe', '_touches', '_engage', '_bump', '_knock', '_tumble', '_poofStep', '_every', '_twinkle', '_burst', '_clods', 'animate'];
+  const hot = ['update', '_move', '_hop', '_fly', '_launch', '_markAt', '_standable', '_struck', '_stomped', '_rise', '_at', '_near', '_parried', '_bounce', '_hurt', '_safe', '_touches', '_engage', '_bump', '_knock', '_tumble', '_poofStep', '_every', '_twinkle', '_burst', '_clods', 'animate'];
   for (const name of hot) {
     const src = Critters.prototype[name].toString();
     assert.doesNotMatch(src, /Math\.(hypot|max|min)\(/, name);
@@ -1156,14 +1276,33 @@ test('critter hot paths avoid allocating constructs', () => {
   assert.doesNotMatch(steps, /Math\.(hypot|max|min)\(/);
   assert.doesNotMatch(steps, /for \((const|let|var) [^;]* of /);
   assert.doesNotMatch(steps, /\.(find|some|forEach)\(/);
+  // The crab's and the mosquito's steps: the whole of each file (the mosquito's needle length,
+  // worked out once at load, aside).
+  const fns = {
+    crab: ['home', 'walk', 'hidden', 'clack', 'notice', 'wake', 'canWindup', 'strafe', 'toWindup', 'windup', 'pinch', 'stuck', 'cancel', 'release', 'returnStep', 'hide', 'defeat', 'dented', 'dent', 'tumble', 'step'],
+    mosquito: ['curve', 'flutter', 'hover', 'fly', 'home', 'patrol', 'notice', 'canAim', 'chase', 'toAim', 'aim', 'dive', 'endStrike', 'recoil', 'toRise', 'rise', 'cooldown', 'stuck', 'pull', 'cancel', 'release', 'returnStep', 'defeat', 'down', 'splat', 'fall', 'deflate', 'step'],
+  };
+  for (const [kind, names] of Object.entries(fns)) {
+    let src = readFileSync(new URL(`../src/objects/critters/${kind}.js`, import.meta.url), 'utf8');
+    src = src.replace('const TIP_LEN = Math.hypot(', 'const TIP_LEN = (');
+    for (const name of names) assert.ok(src.includes(`function ${name}(`), `${kind} ${name}`);
+    assert.doesNotMatch(src, /Math\.(hypot|max|min)\(/, kind);
+    assert.doesNotMatch(src, /for \((const|let|var) [^;]* of /, kind);
+    assert.doesNotMatch(src, /\.(find|some|forEach)\(/, kind);
+  }
 });
 
-// The fairness table (the dodge model's rows, docs/ARCHITECTURE.md "Critters"): the real Player
-// on a flat course with a real ObjectManager holding one frog `d` north of him (in front, the
-// camera looking north). He stands still until its windup starts, then plays `input(t)` (t: ticks
-// since the windup started). Returns how it ended (HIT, STRUCK, STOMP or miss), the ticks of the
-// windup, its lock and his first damage.
-function dodge(d, input) {
+// The fairness tables (the dodge model's rows, docs/ARCHITECTURE.md "Critters"): the real
+// Player on a flat course with a real ObjectManager holding one critter (`spot`) north of him (in
+// front, the camera looking north). He stands still until its tell starts (a windup, the
+// mosquito's aim), then plays `input(t)` (t: ticks since the tell started). Returns how it ended
+// (HIT, STRUCK, STOMP, the mosquito STUCK in the turf, or miss), the ticks of the tell's start,
+// its lock (the frog's and the mosquito's ring showing, the crab's heading locking) and his
+// first damage, and how far from him the tell started.
+const TELL = { windup: 1, aim: 1 };
+const STRUCK = { tumble: 1, deflate: 1 };
+const STOMPED = { squash: 1, dent: 1, splat: 1 };
+function dodge(spot, input) {
   const run = (play) => {
     const b = new CourseBuilder();
     b.floor(-5000, -5000, 5000, 5000, 0);
@@ -1173,40 +1312,46 @@ function dodge(d, input) {
     player.teleport(0, 0, 0, 0);
     player.setAction('idle');
     const ctl = new ScriptedController();
-    const om = new ObjectManager({ scene: new THREE.Scene(), collision, events, layout: { CRITTERS: [frogSpot({ z: d + 120, yaw: Math.PI })], groundHeight: () => 0 }, player });
-    const frog = om.critters.list[0];
-    const out = { windup: -1, lock: -1, damage: -1, end: 'miss' };
-    for (let t = 0; t < 160; t++) {
+    const om = new ObjectManager({ scene: new THREE.Scene(), collision, events, layout: { CRITTERS: [spot], groundHeight: () => 0 }, player });
+    const c = om.critters.list[0];
+    const out = { windup: -1, at: -1, lock: -1, damage: -1, end: 'miss' };
+    for (let t = 0; t < 300; t++) {
       const health = player.health;
       player.update(ctl.next(play(t)), 0);
       om.update({ player });
-      if (frog.state === 'windup' && out.windup < 0) out.windup = t;
-      if (frog.markOn === 1 && out.lock < 0) out.lock = t;
+      SEEN[KIND[c.kind]].add(c.state);
+      if (TELL[c.state] === 1 && out.windup < 0) {
+        out.windup = t;
+        out.at = Math.hypot(c.x - player.pos.x, c.z - player.pos.z);
+      }
+      if (out.lock < 0 && (c.markOn === 1 || (c.kind === MODEL.CRAB && c.state === 'windup' && c.t === CRAB.LOCK))) out.lock = t;
       if (player.health < health && out.damage < 0) {
         out.damage = t;
         out.end = 'HIT';
         break;
       }
-      if (frog.state === 'tumble') out.end = 'STRUCK';
-      if (frog.state === 'squash') out.end = 'STOMP';
+      if (STRUCK[c.state] === 1) out.end = 'STRUCK';
+      if (STOMPED[c.state] === 1) out.end = 'STOMP';
+      if (c.kind === MODEL.MOSQUITO && c.state === 'stuck') out.end = 'STUCK';
       if (out.end !== 'miss' || (out.windup >= 0 && t > out.windup + 60)) break;
     }
     return out;
   };
   const first = run(() => ({}));
   const u0 = first.windup;
-  assert.ok(u0 > 0, `a windup from ${d}`);
+  assert.ok(u0 > 0, `a tell from ${JSON.stringify(spot)}`);
   return run((t) => (t < u0 ? {} : input(t - u0)));
 }
 
-test('fairness (the real Player): at both ends of its window, standing still he is hit; a full sidestep at tick 22 of the tell misses; walking in mashing B he knocks it over first; a jump at tick 20 stomps it, one at tick 0 is never hit; the lock at least 9 ticks before any hit', () => {
+test('fairness (the real Player): the frog at both ends of its window, standing still he is hit; a full sidestep at tick 22 of the tell misses; walking in mashing B he knocks it over first; a jump at tick 20 stomps it, one at tick 0 is never hit; the lock at least 9 ticks before any hit', () => {
   for (const d of [FROG.WIN_MIN, FROG.WIN_MAX]) {
+    const spot = frogSpot({ z: d + 120, yaw: Math.PI });
     const rows = {
-      still: dodge(d, () => ({})),
-      side22: dodge(d, (t) => (t < 22 ? {} : { stickX: 1 })),
-      mashB: dodge(d, (t) => ({ stickY: 0.6, B: t % 5 === 0 })),
-      jump20: dodge(d, (t) => (t < 20 ? {} : { stickY: 0.5, A: t < 37 })),
-      jump0: dodge(d, (t) => ({ stickY: 0.5, A: t < 17 })),
+      still: dodge(spot, () => ({})),
+      side22: dodge(spot, (t) => (t < 22 ? {} : { stickX: 1 })),
+      mashB: dodge(spot, (t) => ({ stickY: 0.6, B: t % 5 === 0 })),
+      jump20: dodge(spot, (t) => (t < 20 ? {} : { stickY: 0.5, A: t < 37 })),
+      jump0: dodge(spot, (t) => ({ stickY: 0.5, A: t < 17 })),
     };
     const summary = JSON.stringify(rows);
     assert.equal(rows.still.end, 'HIT', `${d} still: ${summary}`);
@@ -1274,9 +1419,13 @@ test('bump: walking into a frog he never stands inside it (never closer than 0.8
     let farthest = 0;
     let wallward = -Infinity;
     for (let t = 0; t < 260; t++) {
+      p.vel.x = p.vel.z = 0;
       if (!stop || stop(p)) {
         p.pos.x += dir.x;
         p.pos.z += dir.z;
+        // (His pace, as the real Player reports it.)
+        p.vel.x = dir.x;
+        p.vel.z = dir.z;
       }
       const ground = c.n === 0;
       k.step(p);
@@ -1349,9 +1498,902 @@ test('bump: walking into a frog he never stands inside it (never closer than 0.8
   }
 });
 
-test('the state vocabulary: every frog state seen above is in STATES.frog; HITTABLE is exactly every kind\'s non-defeat states', () => {
-  for (const s of SEEN) assert.ok(STATES.frog[s], `${s} in STATES.frog`);
-  for (const s of ['idle', 'notice', 'approach', 'windup', 'leap', 'dazed', 'cooldown', 'return', 'squash', 'poof', 'tumble', 'gone']) assert.ok(SEEN.has(s), `${s} seen`);
+// ---------------------------------------------------------------- the Tin Crab and the Mosquito
+
+// A crab `d` in front of him (north, facing him), the hero standing still at the origin; and a
+// mosquito whose home is `d` in front of him (roam 1: it hovers right over its home until it
+// sees him). `collision` and `sparkles` go to the crew, the rest to the spot.
+function facingCrab(d, { collision = world(), sparkles = null, ...over } = {}) {
+  const k = crew([crabSpot({ z: d, yaw: Math.PI, fight: 400, ...over })], { collision, sparkles });
+  return { ...k, player: fakePlayer(0, 0, 0), crab: k.critters.list[0] };
+}
+function facingMosquito(d = 400, { collision = world(), sparkles = null, ...over } = {}) {
+  const k = crew([mosquitoSpot({ z: d, yaw: Math.PI, roam: 1, fight: 500, ...over })], { collision, sparkles });
+  return { ...k, player: fakePlayer(0, 0, 0), buzz: k.critters.list[0] };
+}
+// A rig point of a critter in the world now (a copy).
+const rigPoint = (critters, c, p) => ({ ...critters._at(c, p[0], p[1], p[2]) });
+// Does a sphere at q (radius r) touch his body (a capsule from his feet up)?
+const touching = (p, q, r) => Math.hypot(q.x - p.pos.x, q.z - p.pos.z) <= PLAYER_RADIUS + r && q.y >= p.pos.y + SHARED.HERO_LOW - r && q.y <= p.pos.y + SHARED.HERO_HIGH + r;
+
+test("the Tin Crab's tell: from any still-hero distance (120 to 300) at both its sizes it winds up with him 175 to 185 (times its size) away; the tell 24 ticks, its heading locked at tick 14 and held through the pinch; the first damage 24 or more ticks after the windup starts and 9 after the lock, from its claw in front of it, one wedge a pinch, never on the pinch's first tick; its lunge 72 at both sizes; sidestepping from the lock he is not hit", () => {
+  for (const scale of [1, 1.25]) {
+    for (let d = 120; d <= 300; d += 30) {
+      const s = facingCrab(d, { scale });
+      s.until(s.player, () => s.crab.state === 'windup', 300);
+      assert.equal(s.crab.state, 'windup', `x${scale} from ${d}`);
+      const at = dist(s.crab, s.player);
+      assert.ok(at >= CRAB.WIN_MIN * scale - 1e-6 && at <= CRAB.WIN_MAX * scale + 1e-6, `x${scale} from ${d}: wound up ${at.toFixed(1)} away`);
+    }
+    // A whole strike at him standing still (his blink after a hit taken away: only the strike's
+    // own rule keeps it to one wedge).
+    const s = facingCrab(180 * scale, { scale });
+    const c = s.crab;
+    const out = { windup: -1, lock: -1, pinch: -1, hits: [], yaws: [] };
+    for (let t = 0; t < 200 && c.state !== 'cooldown'; t++) {
+      s.player.invincibleUntil = 0;
+      const n = s.player.hits.length;
+      s.step(s.player);
+      if (c.state === 'windup' && out.windup < 0) out.windup = t;
+      if (c.state === 'windup' && c.t === CRAB.LOCK) out.lock = t;
+      if (c.state === 'pinch' && out.pinch < 0) out.pinch = t;
+      if (out.lock >= 0 && (c.state === 'windup' || c.state === 'pinch')) out.yaws.push(c.yaw);
+      for (let h = n; h < s.player.hits.length; h++) out.hits.push({ t, pinchT: out.pinch >= 0 ? t - out.pinch : -1, x: c.x, z: c.z, from: s.player.hits[h].from });
+    }
+    assert.equal(out.lock - out.windup, CRAB.LOCK, 'the lock');
+    assert.equal(out.pinch - out.windup, CRAB.WINDUP, 'the tell\'s length');
+    assert.ok(out.yaws.every((y) => y === c.lockYaw), 'its heading held from the lock');
+    assert.equal(out.hits.length, 1, `x${scale}: one wedge`);
+    const h = out.hits[0];
+    assert.ok(h.t - out.windup >= 24 && out.lock <= h.t - 9 && h.pinchT >= CRAB.HURT_FROM, `x${scale}: damage ${h.t - out.windup} after the windup (pinch tick ${h.pinchT})`);
+    const f = CRAB.CLAW_FRONT * scale;
+    assert.ok(Math.hypot(h.from.x - (h.x + Math.sin(c.lockYaw) * f), h.from.z - (h.z + Math.cos(c.lockYaw) * f)) < 1e-6, 'from its claw');
+    // Sidestepping at 8 a tick from the lock: no hit.
+    const side = facingCrab(180 * scale, { scale });
+    for (let t = 0; t < 200 && side.crab.state !== 'cooldown'; t++) {
+      if (side.crab.state === 'pinch' || (side.crab.state === 'windup' && side.crab.t >= CRAB.LOCK)) side.player.pos.x += 8;
+      side.step(side.player);
+    }
+    assert.equal(side.player.hits.length, 0, `x${scale}: sidestepped`);
+    // The lunge: 72 along its heading over the pinch, at every size (where the fairness rows
+    // were measured); and only its ticks HURT_FROM on hurt: him right in front of its claw as
+    // the pinch starts, he is not hurt on its first tick (touching it), and is on its second.
+    {
+      const q = facingCrab(180 * scale, { scale });
+      const k = q.crab;
+      q.until(q.player, () => k.state === 'pinch', 200);
+      const at = { x: k.x, z: k.z };
+      // (He steps in front of its claw, where it will be on the pinch's first tick.)
+      const ahead = (CRAB.CLAW_FRONT + 10) * scale + CRAB.PINCH_SPEED;
+      Object.assign(q.player.pos, { x: k.x + Math.sin(k.lockYaw) * ahead, z: k.z + Math.cos(k.lockYaw) * ahead });
+      q.step(q.player);
+      assert.equal(k.t, 1);
+      const claw = { x: k.x + Math.sin(k.lockYaw) * CRAB.CLAW_FRONT * scale, y: k.y + (CRAB.CLAW_Y + q.critters._rise(k)) * scale, z: k.z + Math.cos(k.lockYaw) * CRAB.CLAW_FRONT * scale };
+      assert.ok(touching(q.player, claw, CRAB.CLAW_R * scale), 'his body in its claw');
+      assert.equal(q.player.hits.length, 0, `x${scale}: not on pinch tick 1`);
+      q.step(q.player);
+      assert.equal(q.player.hits.length, 1, `x${scale}: hurt on pinch tick ${CRAB.HURT_FROM}`);
+      q.player.pos.z = -5000;
+      q.until(q.player, () => k.state !== 'pinch', 10);
+      assert.ok(Math.abs(Math.hypot(k.x - at.x, k.z - at.z) - 72) < 1e-6 && CRAB.PINCH * CRAB.PINCH_SPEED === 72, `x${scale}: lunged ${Math.hypot(k.x - at.x, k.z - at.z).toFixed(1)}`);
+    }
+  }
+});
+
+test("the Mosquito's chase and aim: with him standing still 400 away it flies in (at up to 9 a tick) and parks, its aim starting 220 ± 20 from him; from any still distance it aims only 200 to 240 from him (never from nearer); with his feet off its level no tell at all; T (his feet) and its heading lock on aim tick 1, the ring there from then to the dive's end (growing from MARK_FROM to 2 MARK_R); it rises 80 and draws back 40 from T; the first damage 24 or more ticks after the aim starts and 9 after the lock", () => {
+  const s = facingMosquito(400);
+  const b = s.buzz;
+  const out = { aim: -1, lock: -1, end: -1, hits: [], at: -1, marks: [], sizes: [] };
+  let parked = 0;
+  let fastest = 0;
+  for (let t = 0; t < 200 && out.end < 0; t++) {
+    const was = b.state;
+    const x0 = b.x;
+    const z0 = b.z;
+    s.step(s.player);
+    if (b.state === 'chase' && b.x === x0 && b.z === z0) parked++;
+    if (b.state === 'chase') fastest = Math.max(fastest, Math.hypot(b.x - x0, b.z - z0));
+    if (b.state === 'aim' && out.aim < 0) {
+      out.aim = t;
+      out.at = dist(b, s.player);
+    }
+    if (b.markOn === 1 && out.lock < 0) out.lock = t;
+    if (out.lock >= 0) {
+      out.marks.push(b.markOn === 1 ? { x: b.tx, z: b.tz } : null);
+      if (b.markOn === 1) out.sizes.push(markerSize(s.critters, 1, t / 30));
+    }
+    if (was === 'aim' && b.t >= 12 && b.state === 'aim') {
+      assert.ok(Math.abs(b.y - b.sy0 - MOSQUITO.AIM_UP) < 1e-6, 'risen 80');
+      assert.ok(Math.abs(Math.hypot(b.x - b.tx, b.z - b.tz) - Math.hypot(b.sx0 - b.tx, b.sz0 - b.tz) - MOSQUITO.AIM_BACK) < 1e-6, 'drawn back 40');
+    }
+    if (s.player.hits.length > out.hits.length) out.hits.push(t);
+    if (was === 'dive' && b.state !== 'dive') out.end = t;
+  }
+  assert.ok(parked >= 1, 'it parked first');
+  assert.ok(Math.abs(fastest - 9) < 1e-6, `it flies in at up to 9 a tick (${fastest.toFixed(2)})`);
+  assert.ok(Math.abs(out.at - 220) <= 20, `aimed ${out.at.toFixed(1)} away`);
+  assert.equal(out.lock - out.aim, 1, 'T locked on aim tick 1');
+  assert.equal(out.hits.length, 1);
+  assert.ok(out.hits[0] - out.aim >= 24 && out.lock <= out.hits[0] - 9, `damage ${out.hits[0] - out.aim} after the aim started`);
+  assert.ok(out.marks.slice(0, out.end - out.lock).every((m) => m && Math.hypot(m.x, m.z) < 1e-9), 'the ring at his feet from the lock to the dive\'s end');
+  assert.equal(out.marks.at(-1), null, 'gone after');
+  assert.ok(Math.abs(out.sizes[0] - MOSQUITO.MARK_FROM) < 1e-6 && Math.abs(out.sizes.at(-1) - 2 * MOSQUITO.MARK_R) < 1e-6, `the ring ${out.sizes[0]} .. ${out.sizes.at(-1)}`);
+  assert.ok(MOSQUITO.MARK_FROM >= 100, 'well over his shadow');
+  // From any still distance: aims only 200 to 240 from him (the plan's window, where every
+  // fairness row was measured); nearer (100, 140, 180: it never backs off) it just hovers.
+  assert.deepEqual([MOSQUITO.WIN_MIN, MOSQUITO.WIN_MAX], [200, 240]);
+  let aims = 0;
+  for (let d = 100; d <= 460; d += 40) {
+    const q = facingMosquito(d);
+    let n = 0;
+    for (let t = 0; t < 300; t++) {
+      const was = q.buzz.state;
+      q.step(q.player);
+      q.player.invincibleUntil = 0;
+      if (q.buzz.state === 'aim' && was !== 'aim') {
+        n++;
+        const at = dist(q.buzz, q.player);
+        assert.ok(at >= 200 && at <= 240, `from ${d}: aimed ${at.toFixed(1)} away`);
+      }
+    }
+    if (d < 200) assert.equal(n, 0, `from ${d}: it never aims`);
+    aims += n;
+  }
+  assert.ok(aims >= 8, `${aims} aims`);
+  // His feet off its level (a ledge 60 up: on its level for the chase, not for T, LEVEL_DY 40):
+  // it parks but never starts its tell (no aim sound, no token), looking again now and then.
+  const ledge = facingMosquito(400, { collision: world({ ledge: { x0: -200, x1: 200, z0: -200, z1: 100, y: 60 } }) });
+  Object.assign(ledge.player.pos, { y: 60 });
+  ledge.player.floor = { y: 60, surface: {} };
+  ledge.step(ledge.player, 300);
+  assert.equal(ledge.buzz.state, 'chase', 'parked');
+  assert.ok(dist(ledge.buzz, ledge.player) >= 200 && dist(ledge.buzz, ledge.player) <= 240, 'in its window');
+  assert.ok(SEEN.mosquito.has('aim'));
+  assert.deepEqual(ledge.sfx.filter((e) => e.name === 'mosquito_aim'), [], 'no tell');
+  assert.equal(ledge.critters.attacker, -1);
+});
+
+test("the Mosquito's needle hurts only low over the floor and only on the marked spot: on the ring, the tip touching him higher up does not hurt, he is hit once it is at most TIP_HURT up; 170 from T toward it, under the dive line (the tip passes him low, inside his body: without the gate a hit), he is not, and it sticks in the turf by T; a punch just past its needle's tip wins while it dives, not while it aims", () => {
+  // He steps to `off` from T toward it once T has locked; the dive's ticks: the tip, whether it
+  // touches him, his hits.
+  const dive = (off) => {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    const ticks = [];
+    s.until(s.player, () => b.state === 'aim' && b.t === 2, 200);
+    const ux = b.x - b.tx;
+    const uz = b.z - b.tz;
+    const l = Math.hypot(ux, uz);
+    Object.assign(s.player.pos, { x: b.tx + (ux / l) * off, z: b.tz + (uz / l) * off });
+    s.until(s.player, () => b.state === 'dive', 40);
+    while (b.state === 'dive') {
+      const n = s.player.hits.length;
+      s.step(s.player);
+      const tip = rigPoint(s.critters, b, CRITTER_RIG.mosquito.NEEDLE_TIP);
+      ticks.push({ state: b.state, tip, touch: touching(s.player, tip, MOSQUITO.TIP_R), hit: s.player.hits.length > n });
+    }
+    return { s, b, ticks };
+  };
+  {
+    const { ticks } = dive(MOSQUITO.MARK_R + PLAYER_RADIUS - 5);
+    const hit = ticks.findIndex((k) => k.hit);
+    assert.ok(hit >= 0, 'hit on the ring\'s edge');
+    // (The hit's tick ends the dive: its tip there is the last place drawn before it bounced.)
+    assert.ok(ticks.slice(0, hit).some((k) => k.touch && k.tip.y > MOSQUITO.TIP_HURT), 'touching him higher up first, unhurt');
+    for (const k of ticks.slice(0, hit)) assert.ok(!(k.touch && k.tip.y <= MOSQUITO.TIP_HURT), 'never touching him low without the hit');
+  }
+  {
+    const { s, b, ticks } = dive(170);
+    assert.equal(s.player.hits.length, 0, 'off the ring: not hit');
+    assert.ok(ticks.some((k) => k.touch && k.tip.y <= MOSQUITO.TIP_HURT), 'the tip passed him low, inside his body');
+    assert.equal(b.state, 'stuck');
+    const tip = rigPoint(s.critters, b, CRITTER_RIG.mosquito.NEEDLE_TIP);
+    assert.ok(Math.hypot(tip.x - b.tx, tip.z - b.tz) < 30 && tip.y < b.ty, 'stuck in the turf by T');
+  }
+  // A punch just past the needle's tip (30 beyond it along the needle, radius 35): out of reach
+  // of its body and the needle's middle, so it misses while it aims, and wins while it dives.
+  const past = (s, b) => {
+    const tip = rigPoint(s.critters, b, CRITTER_RIG.mosquito.NEEDLE_TIP);
+    const mid = rigPoint(s.critters, b, CRITTER_RIG.mosquito.NEEDLE_MID);
+    const l = Math.hypot(tip.x - mid.x, tip.y - mid.y, tip.z - mid.z);
+    return { x: tip.x + ((tip.x - mid.x) / l) * 30, y: tip.y + ((tip.y - mid.y) / l) * 30, z: tip.z + ((tip.z - mid.z) / l) * 30, radius: 35 };
+  };
+  for (const [state, t, want] of [['aim', 14, 'aim'], ['dive', 2, 'deflate']]) {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.until(s.player, () => b.state === state && b.t === t, 200);
+    s.player.attack = past(s, b);
+    s.step(s.player);
+    assert.equal(b.state, want, `punched past its tip in its ${state}`);
+  }
+  // The struck capsule itself, in one pose: diving it runs on to the needle's tip (an attack just
+  // past the tip strikes it), aiming only to the needle's middle (the same attack misses).
+  {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.until(s.player, () => b.state === 'dive' && b.t === 1, 200);
+    const atk = past(s, b);
+    assert.equal(s.critters._struck(b, atk), true, 'diving: struck at its tip');
+    b.state = 'aim';
+    assert.equal(s.critters._struck(b, atk), false, 'aiming: not');
+    b.state = 'dive';
+  }
+});
+
+test('every live state of the crab and the mosquito falls to one punch (the crab hidden, sidling, winding up, pinching, stuck; the mosquito patrolling, chasing, aiming, diving, stuck); a stomp on either is a plain bounce (bounce(undefined)) and squashes it: the crab dented, the mosquito splatted (poofing right there), each with one coin after the poof, 11 ticks after the stomp (while the camera following his bounce still has it in view)', () => {
+  const punch = (s, c) => {
+    s.player.attack = { x: c.x, y: c.y + 30, z: c.z, radius: 40 };
+    s.step(s.player);
+    s.player.attack = null;
+  };
+  for (const [state, t] of [['hidden', 0], ['wake', 3], ['strafe', 2], ['windup', 5], ['pinch', 2], ['stuck', 5], ['cooldown', 5]]) {
+    const s = facingCrab(state === 'strafe' ? 300 : 180);
+    if (state === 'hidden') s.player.pos.z = -2000;
+    else s.until(s.player, () => s.crab.state === state && s.crab.t >= t, 200);
+    s.player.invincibleUntil = 1e9;
+    assert.equal(s.crab.state, state);
+    punch(s, s.crab);
+    assert.equal(s.crab.state, 'tumble', `struck while ${state}`);
+  }
+  for (const [state, t] of [['patrol', 0], ['spot', 3], ['chase', 2], ['aim', 5], ['dive', 2], ['stuck', 5]]) {
+    const s = facingMosquito(state === 'chase' ? 480 : 400);
+    const b = s.buzz;
+    if (state === 'patrol') s.player.pos.z = -3000;
+    else if (state === 'stuck') {
+      s.until(s.player, () => b.state === 'aim' && b.t === 2, 200);
+      s.player.pos.x = 300;
+      s.until(s.player, () => b.state === 'stuck' && b.t >= t, 60);
+    } else s.until(s.player, () => b.state === state && b.t >= t, 200);
+    s.player.invincibleUntil = 1e9;
+    assert.equal(b.state, state);
+    punch(s, b);
+    assert.equal(b.state, 'deflate', `struck while ${state}`);
+    if (state !== 'patrol') continue;
+    // Off like a balloon let go from its hover: still in the air as it has deflated, it falls to
+    // its floor and poofs there, its coin on the floor.
+    const seen = new Set();
+    for (let t = 0; t < 120 && b.state !== 'gone'; t++) {
+      s.step(s.player);
+      seen.add(b.state);
+    }
+    assert.deepEqual([...seen], ['deflate', 'fall', 'poof', 'gone']);
+    assert.equal(s.coins.length, 1);
+    assert.ok(Math.abs(s.coins[0].y - b.hy) < 1e-9, 'its coin on its floor');
+  }
+  // Stomps: falling onto its top (the crab hidden in its tin, then standing; the mosquito
+  // hovering, high over its floor).
+  const stomp = (s, c, top) => {
+    Object.assign(s.player.pos, { x: c.x + 20, y: top - 5, z: c.z });
+    s.player.vel.y = -12;
+    s.player.action = 'freefall';
+    Object.assign(s.hero, { y: top + 10, vy: -12, air: true });
+    s.step(s.player);
+    s.player.pos.y += 2000;
+    s.player.vel.y = 0;
+  };
+  const R = CRITTER_RIG;
+  for (const standing of [false, true]) {
+    const s = facingCrab(180, { scale: 1.25, stand: 40 });
+    const c = s.crab;
+    if (standing) s.until(s.player, () => c.state === 'strafe', 60);
+    else s.player.pos.z = -2000;
+    const rise = R.crab.LIFT_SPAN * (c.b1 - 1);
+    assert.ok(standing ? Math.abs(rise - 40 / 1.25) < 1 : Math.abs(rise - (40 / 1.25 - R.crab.LIFT_SPAN)) < 1e-9, `its lift ${rise}`);
+    stomp(s, c, c.y + (R.crab.TOP + rise) * c.scale);
+    assert.deepEqual(s.player.bounces, [undefined], 'a plain bounce');
+    assert.equal(c.state, 'dent');
+    const stomped = s.critters.life;
+    s.step(s.player, 40);
+    assert.equal(c.state, 'gone');
+    assert.equal(s.coins.length, 1);
+    assert.equal(s.coins[0].life - stomped, CRAB.DENT + SHARED.POOF, 'its coin');
+    assert.ok(CRAB.DENT + SHARED.POOF <= 12, 'soon');
+  }
+  const s = facingMosquito(400);
+  const b = s.buzz;
+  s.player.pos.z = -3000;
+  s.step(s.player, 5);
+  stomp(s, b, b.y + R.mosquito.TOP);
+  assert.deepEqual(s.player.bounces, [undefined], 'a plain bounce');
+  assert.equal(b.state, 'splat');
+  const stomped = s.critters.life;
+  const y0 = b.y;
+  const seen = new Set();
+  for (let t = 0; t < 80 && b.state !== 'gone'; t++) {
+    s.step(s.player);
+    seen.add(b.state);
+    assert.ok(b.y >= y0, 'poofing where it was (no fall)');
+  }
+  assert.deepEqual([...seen], ['splat', 'poof', 'gone']);
+  assert.equal(s.coins.length, 1);
+  assert.ok(Math.abs(s.coins[0].y - b.hy) < 1e-9, 'its coin on its floor');
+  assert.equal(s.coins[0].life - stomped, MOSQUITO.SPLAT + SHARED.POOF, 'its coin');
+  assert.ok(MOSQUITO.SPLAT + SHARED.POOF <= 12, 'soon');
+});
+
+test('moving: a crab never sidles into the water (at a wading spot: over 95 deep) or off a drop, nor past fight + 40 from home; a mosquito never flies past fight + 100, slides along a wall, and never backs off: walking in on it from 400 to 150 it never moves away from him, and once he is within 230 of it, it hovers where it is', () => {
+  // He walks a loop round the crab's circle (blinking: no strikes in between), the water, a
+  // pool 30 deep over the same level floor, a 150 drop, or (wading) water 100 deep past a 10 step
+  // down, beyond its edge; a wading crab walks into a pool 60 deep.
+  for (const [what, collision, over, ok, wets] of [
+    ['water', world({ waterFromX: 100 }), {}, (c) => c.x < 100],
+    ['pool', world({ pool: { x: 100, depth: 30 } }), {}, (c) => c.x < 100],
+    ['drop', world({ drop: { z: 180, side: 1, depth: 150 } }), {}, (c) => c.z < 180],
+    ['deep wading', world({ wade: 90, drop: { z: 180, side: 1, depth: 10 } }), { wade: true }, (c) => c.z < 180],
+    ['wading pool', world({ pool: { x: 100, depth: 60 } }), { wade: true }, () => true, (c) => c.x > 100],
+  ]) {
+    const k = crew([crabSpot(over)], { collision });
+    const c = k.critters.list[0];
+    const p = fakePlayer(0, 0, 0);
+    p.invincibleUntil = Infinity;
+    let walked = 0;
+    let wet = 0;
+    for (let t = 0; t < 1500; t++) {
+      const a = t / 70;
+      p.pos.x = 300 * Math.sin(a);
+      p.pos.z = 300 * Math.cos(a * 1.3);
+      const x0 = c.x;
+      const z0 = c.z;
+      k.step(p);
+      walked += Math.hypot(c.x - x0, c.z - z0);
+      if (wets && wets(c)) wet++;
+      assert.ok(ok(c) && c.y === 0, `${what}: (${c.x.toFixed(0)}, ${c.y}, ${c.z.toFixed(0)}) at tick ${t}`);
+      assert.ok(Math.hypot(c.x - c.hx, c.z - c.hz) <= 330 + CRAB.LEASH + 1e-6, `${what}: in its leash`);
+    }
+    assert.ok(walked > 1000, `${what}: it sidled ${walked.toFixed(0)}`);
+    if (wets) assert.ok(wet > 50, `${what}: it waded in (${wet} ticks)`);
+  }
+  // A wading crab knocked over toward deep water (160 deep past z 30, beyond a drop of 100):
+  // it tumbles no further than where it may wade (glancing off along the edge, away from him),
+  // and its coin floats where he picks it up standing in the shallows (CoinField: feet - 40 ..
+  // feet + 200).
+  {
+    const k = crew([crabSpot({ wade: true })], { collision: world({ wade: 60, drop: { z: 30, side: 1, depth: 100 } }) });
+    const c = k.critters.list[0];
+    const p = fakePlayer(0, 0, -120);
+    p.invincibleUntil = Infinity;
+    k.step(p);
+    p.attack = { x: c.x, y: 30, z: c.z - 20, radius: 40 };
+    k.step(p);
+    p.attack = null;
+    assert.equal(c.state, 'tumble');
+    for (let t = 0; t < 60 && c.state !== 'gone'; t++) {
+      k.step(p);
+      assert.ok(c.z < 30 && c.floorY === 0, `in the shallows: ${c.z.toFixed(0)}, floor ${c.floorY}`);
+    }
+    assert.ok(c.z > 10, `it tumbled to the edge (${c.z.toFixed(0)})`);
+    assert.ok(Math.abs(c.x) > 10, `and glanced off along it (${c.x.toFixed(0)})`);
+    assert.equal(k.coins.length, 1);
+    const y = Math.max(k.coins[0].y + 60, k.coins[0].minY);
+    assert.ok(y - 0 >= -40 && y - 0 <= 200, `his feet on its floor reach its coin at ${y}`);
+  }
+  // The mosquito: he runs out to its circle's rim and round and back in again (no strikes).
+  {
+    const s = facingMosquito(0, { fight: 400 });
+    const b = s.buzz;
+    s.player.invincibleUntil = Infinity;
+    for (let t = 0; t < 1500; t++) {
+      const a = t / 50;
+      const r = 300 + 170 * Math.sin(t / 37);
+      Object.assign(s.player.pos, { x: r * Math.sin(a), z: r * Math.cos(a) });
+      s.step(s.player);
+      assert.ok(Math.hypot(b.x - b.hx, b.z - b.hz) <= 400 + MOSQUITO.LEASH + 1e-6, `in its leash at tick ${t}`);
+    }
+    assert.ok(SEEN.mosquito.has('chase'));
+  }
+  // Driven to its leash: he stands far out (900 from its home, so its stand point lies 680 out)
+  // for 19 ticks at a time, one tick back inside fight + 80 between (so it is never let go): it
+  // chases him out to its leash (fight + 100) and never past it.
+  {
+    const s = facingMosquito(0, { fight: 400 });
+    const b = s.buzz;
+    s.player.invincibleUntil = Infinity;
+    s.player.pos.z = 300;
+    s.until(s.player, () => b.state === 'chase', 30);
+    let far = 0;
+    for (let t = 0; t < 400; t++) {
+      s.player.pos.z = t % 20 === 19 ? 470 : 900;
+      s.step(s.player);
+      const h = Math.hypot(b.x - b.hx, b.z - b.hz);
+      assert.ok(h <= 400 + MOSQUITO.LEASH + 1e-6, `${h.toFixed(1)} from home at tick ${t}`);
+      far = Math.max(far, h);
+    }
+    assert.ok(far > 400 + MOSQUITO.LEASH - 1, `out to its leash (${far.toFixed(1)})`);
+    assert.equal(b.state, 'chase', 'still after him');
+  }
+  // A wall (x 150, facing -x) between it and him: it flies up against the wall and slides along it.
+  {
+    const s = facingMosquito(0, { collision: world({ wallX: 150 }) });
+    const b = s.buzz;
+    s.player.invincibleUntil = Infinity;
+    Object.assign(s.player.pos, { x: 380, z: 0 });
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    for (let t = 0; t < 400; t++) {
+      if (t > 60) s.player.pos.z = 250 * Math.sin((t - 60) / 40);
+      s.step(s.player);
+      assert.ok(b.x <= 150 - MOSQUITO.WALL_R + 1e-6, `out of the wall: ${b.x.toFixed(1)}`);
+      if (t > 60) {
+        zMin = Math.min(zMin, b.z);
+        zMax = Math.max(zMax, b.z);
+      }
+    }
+    assert.ok(b.x > 150 - MOSQUITO.WALL_R - 5 && zMax - zMin > 200, `slid along it: x ${b.x.toFixed(1)}, z ${zMin.toFixed(0)} .. ${zMax.toFixed(0)}`);
+  }
+  // He walks in on it from 400 to 150 at 8 a tick (blinking: no aim): it never moves away from
+  // him, and once he is within CHASE_FROM it stays put.
+  {
+    const s = facingMosquito(400, { fight: 410 });
+    const b = s.buzz;
+    s.player.invincibleUntil = Infinity;
+    let close = 0;
+    for (let z = 0; z <= 250; z += 8) {
+      s.player.pos.z = z;
+      const x0 = b.x;
+      const z0 = b.z;
+      const near = dist(b, s.player) <= MOSQUITO.CHASE_FROM;
+      s.step(s.player);
+      if (b.state === 'patrol') continue;
+      const ax = x0 - s.player.pos.x;
+      const az = z0 - s.player.pos.z;
+      const away = ((b.x - x0) * ax + (b.z - z0) * az) / Math.hypot(ax, az);
+      assert.ok(away <= 1e-9, `moved ${away.toFixed(2)} away from him`);
+      if (near) {
+        close++;
+        assert.ok(b.x === x0 && b.z === z0, 'hovering where it is');
+      }
+    }
+    for (let t = 0; t < 60; t++) {
+      const x0 = b.x;
+      const z0 = b.z;
+      s.step(s.player);
+      assert.ok(b.x === x0 && b.z === z0, 'still where it is');
+    }
+    assert.ok(close >= 10 && dist(b, s.player) < 200, `${close} ticks with him within reach, now ${dist(b, s.player).toFixed(0)} from him`);
+  }
+});
+
+test('away and hold for the crab and the mosquito: a windup or an aim under way is called off when he goes away (token back, cooldown 30), and a pinch or a dive in flight does no damage', () => {
+  for (const [what, make, tell, strike] of [
+    ['crab', () => facingCrab(180), 'windup', 'pinch'],
+    ['mosquito', () => facingMosquito(400), 'aim', 'dive'],
+  ]) {
+    {
+      const s = make();
+      const c = s.critters.list[0];
+      s.until(s.player, () => c.state === tell && c.t === 5, 200);
+      assert.equal(s.critters.attacker, 0, `${what}: the token taken`);
+      s.player.action = 'reading';
+      s.step(s.player);
+      assert.notEqual(c.state, tell, `${what}: called off`);
+      assert.equal(s.critters.attacker, -1, `${what}: token back`);
+      assert.ok(c.cooldown >= 29, `${what}: cooldown ${c.cooldown}`);
+      assert.equal(c.markOn, 0);
+    }
+    {
+      const s = make();
+      const c = s.critters.list[0];
+      s.until(s.player, () => c.state === strike, 200);
+      s.player.action = 'reading';
+      s.step(s.player, 20);
+      assert.equal(s.player.hits.length, 0, `${what}: no damage in flight`);
+    }
+  }
+});
+
+test('the crab and the mosquito sound: the crab clacks as it wakes (ticks 0 and 6) and through its windup (ticks 0, 6, 12, 18), snaps at pinch tick 2, goes tonk when defeated; the mosquito whines (pitch 1.3) as it spots him, sounds its aim at aim tick 0 and its dive at dive tick 0, a doinng at stuck ticks 0, 20 and 40 (quiet after the first) and a thwop (pitch 1.6) as it pulls free 60 ticks in, pops (deflating when punched); its idle whine is rare and quiet: at most 10 in a minute with him 1000 from its home, none at 1500', () => {
+  const at = (sfx, name) => sfx.filter((e) => e.name === name).map((e) => [e.state, e.t, e.pitch ?? 1, e.quiet ?? 0, e.deflate ?? 0]);
+  {
+    const s = facingCrab(180);
+    s.until(s.player, () => s.crab.state === 'cooldown', 200);
+    assert.deepEqual(at(s.sfx, 'crab_clack'), [['wake', 0, 1, 0, 0], ['wake', 6, 1, 0, 0], ['windup', 0, 1, 0, 0], ['windup', 6, 1, 0, 0], ['windup', 12, 1, 0, 0], ['windup', 18, 1, 0, 0]]);
+    assert.deepEqual(at(s.sfx, 'crab_snap'), [['pinch', CRAB.HURT_FROM, 1, 0, 0]]);
+    s.player.attack = { x: s.crab.x, y: 30, z: s.crab.z, radius: 40 };
+    s.step(s.player);
+    assert.deepEqual(at(s.sfx, 'crab_tonk'), [['tumble', 0, 1, 0, 0]]);
+  }
+  {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.until(s.player, () => b.state === 'aim' && b.t === 2, 200);
+    s.player.pos.x = 300;
+    s.until(s.player, () => b.state === 'cooldown', 200);
+    assert.deepEqual(at(s.sfx, 'mosquito_whine'), [['spot', 0, 1.3, 0, 0]]);
+    assert.deepEqual(at(s.sfx, 'mosquito_aim'), [['aim', 0, 1, 0, 0]]);
+    assert.deepEqual(at(s.sfx, 'mosquito_dive'), [['dive', 0, 1, 0, 0]]);
+    assert.deepEqual(at(s.sfx, 'mosquito_stuck'), [['stuck', 0, 1, 0, 0], ['stuck', 20, 1, 1, 0], ['stuck', 40, 1, 1, 0], ['pull', 0, 1.6, 0, 0]]);
+    const stuck = s.sfx.filter((e) => e.name === 'mosquito_stuck');
+    assert.equal(stuck[3].life - stuck[0].life, 60, 'stuck 60 ticks (the counter window)');
+    s.player.attack = { x: b.x, y: b.y, z: b.z, radius: 40 };
+    s.step(s.player);
+    assert.deepEqual(at(s.sfx, 'mosquito_pop'), [['deflate', 0, 1, 0, 1]]);
+    for (const e of s.sfx) assert.ok(Math.abs(e.pos.y - b.y - 60) < 400, 'at it, lifted');
+  }
+  // The idle whine: with him still 1000 from its home (it patrols within 160 of it), quiet, at
+  // most 10 in 1800 ticks; at 1500, none.
+  const idle = (d) => {
+    const k = crew([mosquitoSpot()]);
+    k.step(fakePlayer(0, 0, d), 1800);
+    return k.sfx;
+  };
+  const whines = idle(1000);
+  assert.ok(whines.length >= 3 && whines.length <= 10, `${whines.length} idle whines`);
+  for (const e of whines) assert.deepEqual([e.name, e.quiet, e.state], ['mosquito_whine', 1, 'patrol']);
+  assert.deepEqual(idle(1500), []);
+});
+
+test('bump: walking into a crab (hidden: it wakes; or after him) or a stuck mosquito he never stands inside it (never nearer than 0.8 of PLAYER_RADIUS + its BUMP_R, times its size; a stuck mosquito\'s STUCK_R); never hurt; a pinching crab and an aiming or diving mosquito are never pushed, a hovering one only once his body reaches it (his head over its underside)', () => {
+  // He walks at it, wherever it is, until it is pressed against its leash's rim (pushed straight
+  // out it would leave its leash, so it slides round him), then back out of its circle. It moves
+  // at most BUMP_STEP a tick more than his pace (plus its own sidling): never a jump.
+  for (const scale of [1, 1.25]) {
+    const k = crew([crabSpot({ scale })]);
+    const c = k.critters.list[0];
+    const p = fakePlayer(0, 0, -600);
+    p.invincibleUntil = Infinity;
+    const reach = PLAYER_RADIUS + CRITTER_RIG.crab.BUMP_R * scale;
+    const most = SHARED.BUMP_STEP + 8 + Math.hypot(CRAB.SIDE_SPEED, CRAB.IN_SPEED) * scale;
+    let closest = Infinity;
+    let woke = false;
+    let farthest = 0;
+    let fastest = 0;
+    for (let t = 0; t < 400; t++) {
+      const l = Math.hypot(c.x - p.pos.x, c.z - p.pos.z);
+      p.vel.x = t < 250 ? (8 * (c.x - p.pos.x)) / l : 0;
+      p.vel.z = t < 250 ? (8 * (c.z - p.pos.z)) / l : -8;
+      p.pos.x += p.vel.x;
+      p.pos.z += p.vel.z;
+      const x0 = c.x;
+      const z0 = c.z;
+      k.step(p);
+      if (c.state === 'wake') woke = true;
+      closest = Math.min(closest, dist(c, p));
+      farthest = Math.max(farthest, Math.hypot(c.x - c.hx, c.z - c.hz));
+      fastest = Math.max(fastest, Math.hypot(c.x - x0, c.z - z0));
+    }
+    assert.ok(woke, 'bumped awake');
+    // (Even pressed against its rim: it slides round him a little each tick, the least turn it
+    // may take, so it keeps nearly arm's length.)
+    assert.ok(closest >= 0.95 * reach, `x${scale}: closest ${closest.toFixed(1)} (reach ${reach})`);
+    assert.ok(farthest > 330 + CRAB.LEASH - 5, `x${scale}: pressed to its rim (${farthest.toFixed(0)})`);
+    assert.ok(fastest <= most + 1e-6, `x${scale}: at most ${fastest.toFixed(1)} a tick (${most.toFixed(1)})`);
+    assert.equal(k.critters.hits, 0);
+  }
+  // A stuck mosquito: he walks into it from where he stood.
+  {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.until(s.player, () => b.state === 'aim' && b.t === 2, 200);
+    s.player.pos.x = 300;
+    s.until(s.player, () => b.state === 'stuck', 60);
+    s.player.invincibleUntil = Infinity;
+    const reach = PLAYER_RADIUS + CRITTER_RIG.mosquito.STUCK_R;
+    const x0 = b.x;
+    let closest = Infinity;
+    for (let t = 0; t < 50 && b.state === 'stuck'; t++) {
+      const dx = b.x - s.player.pos.x;
+      const dz = b.z - s.player.pos.z;
+      const l = Math.hypot(dx, dz);
+      s.player.pos.x += (dx / l) * 8;
+      s.player.pos.z += (dz / l) * 8;
+      s.step(s.player);
+      if (b.state === 'stuck') closest = Math.min(closest, dist(b, s.player));
+    }
+    assert.ok(closest >= 0.8 * reach, `closest ${closest.toFixed(1)}`);
+    assert.ok(Math.abs(b.x - x0) > 20, 'pushed aside');
+  }
+  // Never pushed mid-strike, nor in the mosquito's aim: the hero right on it (his feet `y` under
+  // its origin), the bump does nothing.
+  const still = (s, c, y = 0) => {
+    Object.assign(s.player.pos, { x: c.x + 10, y: c.y - y, z: c.z });
+    s.critters.player = s.player;
+    s.critters.heroFloorY = 0;
+    s.critters.away = false;
+    const x0 = c.x;
+    const z0 = c.z;
+    s.critters._bump(c);
+    return c.x === x0 && c.z === z0;
+  };
+  {
+    const s = facingCrab(180);
+    s.until(s.player, () => s.crab.state === 'pinch', 200);
+    assert.ok(still(s, s.crab), 'a pinching crab');
+  }
+  for (const state of ['aim', 'dive']) {
+    const s = facingMosquito(400);
+    s.until(s.player, () => s.buzz.state === state, 200);
+    assert.ok(still(s, s.buzz, 100), `a mosquito in its ${state}`);
+  }
+  // Hovering: pushed once his head reaches its underside (UNDER below its origin), not while it
+  // is still over his head; out to PLAYER_RADIUS + BUMP_R (short of its stomp reach).
+  {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.player.pos.z = -3000;
+    s.until(s.player, () => b.state === 'patrol', 5);
+    const R = CRITTER_RIG.mosquito;
+    assert.ok(still(s, b, SHARED.HERO_HIGH + R.UNDER + 1), 'his head under it');
+    assert.ok(!still(s, b, SHARED.HERO_HIGH + R.UNDER - 1), 'his head into it');
+    assert.ok(PLAYER_RADIUS + R.BUMP_R < PLAYER_RADIUS + R.STOMP_REACH, 'pushed short of its stomp reach');
+  }
+});
+
+test('fairness (the real Player): the crab at both sizes and both ends of its window (175 and 185 times its size): standing still he is hit; a sidestep (half or full stick) 18 ticks into the tell is never hit; walking in mashing B he knocks it over first. The mosquito, its aim started where it parks: standing still he is hit; a sidestep at 18 leaves it stuck in the turf; walking in mashing B it is struck or stuck, never hitting him; mashing B where he stands he swats it; a jump 4 ticks into the aim is never hit, one at 12 stomps it. The lock always at least 9 ticks before any hit', () => {
+  const lockOk = (rows, what) => {
+    for (const r of Object.values(rows)) if (r.damage >= 0) assert.ok(r.lock >= 0 && r.lock <= r.damage - 9, `${what}: lock ${r.lock}, damage ${r.damage}`);
+  };
+  for (const scale of [1, 1.25]) {
+    for (const d of [CRAB.WIN_MIN, CRAB.WIN_MAX]) {
+      const spot = crabSpot({ z: d * scale, yaw: Math.PI, scale, fight: 400 });
+      const rows = {
+        still: dodge(spot, () => ({})),
+        half18: dodge(spot, (t) => (t < 18 ? {} : { stickX: 0.5 })),
+        full18: dodge(spot, (t) => (t < 18 ? {} : { stickX: 1 })),
+        mashB: dodge(spot, (t) => ({ stickY: 0.6, B: t % 5 === 0 })),
+      };
+      const what = `crab x${scale} at ${d}`;
+      const summary = JSON.stringify(rows);
+      assert.ok(Math.abs(rows.still.at - d * scale) < 1, `${what}: wound up ${rows.still.at}`);
+      assert.equal(rows.still.end, 'HIT', `${what} still: ${summary}`);
+      assert.notEqual(rows.half18.end, 'HIT', `${what} half sidestep: ${summary}`);
+      assert.notEqual(rows.full18.end, 'HIT', `${what} full sidestep: ${summary}`);
+      assert.equal(rows.mashB.end, 'STRUCK', `${what} mashing B: ${summary}`);
+      lockOk(rows, what);
+    }
+  }
+  const spot = mosquitoSpot({ z: 400, yaw: Math.PI, fight: 500 });
+  const rows = {
+    still: dodge(spot, () => ({})),
+    side18: dodge(spot, (t) => (t < 18 ? {} : { stickX: 1 })),
+    mashB: dodge(spot, (t) => ({ stickY: 0.6, B: t % 5 === 0 })),
+    stillMashB: dodge(spot, (t) => ({ B: t % 5 === 0 })),
+    jump4: dodge(spot, (t) => (t < 4 ? {} : { stickY: 0.5, A: t < 21 })),
+    jump12: dodge(spot, (t) => (t < 12 ? {} : { stickY: 0.5, A: t < 29 })),
+  };
+  const summary = JSON.stringify(rows);
+  assert.ok(Math.abs(rows.still.at - 220) <= 20, `aimed ${rows.still.at}`);
+  assert.equal(rows.still.end, 'HIT', `still: ${summary}`);
+  assert.equal(rows.side18.end, 'STUCK', `sidestep: ${summary}`);
+  assert.ok(rows.mashB.end === 'STRUCK' || rows.mashB.end === 'STUCK', `mashing B: ${summary}`);
+  assert.equal(rows.stillMashB.end, 'STRUCK', `mashing B where he stands: ${summary}`);
+  assert.notEqual(rows.jump4.end, 'HIT', `jump at 4: ${summary}`);
+  assert.equal(rows.jump12.end, 'STOMP', `jump at 12: ${summary}`);
+  lockOk(rows, 'mosquito');
+});
+
+test('let go: 20 ticks after he leaves fight + 80 the crab sidles home and hides in its tin there, the mosquito flies back onto its patrol curve (an aim under way called off)', () => {
+  {
+    const s = facingCrab(300);
+    const c = s.crab;
+    s.until(s.player, () => c.state === 'strafe' && c.t === 20, 200);
+    const away = Math.hypot(c.x - c.hx, c.z - c.hz);
+    assert.ok(away > 30, `it sidled ${away.toFixed(0)} from home`);
+    s.player.pos.z = -2000;
+    assert.equal(s.until(s.player, () => c.state === 'return', 60), SHARED.RELEASE, 'let go');
+    s.until(s.player, () => c.state === 'hidden', 200);
+    assert.equal(c.state, 'hidden');
+    assert.ok(Math.hypot(c.x - c.hx, c.z - c.hz) < CRAB.HOME_NEAR, 'home');
+    assert.ok(Math.abs(c.b1) < 1e-9 && c.b0 < 0.2, 'down in its tin');
+  }
+  {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.until(s.player, () => b.state === 'aim' && b.t === 3, 200);
+    s.player.pos.z = -2000;
+    s.step(s.player, SHARED.RELEASE);
+    assert.equal(b.state, 'return', 'let go, its aim called off');
+    assert.equal(s.critters.attacker, -1);
+    s.until(s.player, () => b.state === 'patrol', 300);
+    assert.equal(b.state, 'patrol');
+    s.step(s.player);
+    const L = s.critters.life;
+    assert.ok(Math.abs(b.z - (b.hz + MOSQUITO.SWAY_Z * (1 / MOSQUITO.SWAY_X) * Math.sin(2 * MOSQUITO.SWAY_RATE * L + b.seed))) < 1e-9, 'on its curve');
+  }
+});
+
+test('the token with a crab and a frog: the pinch gives it back at its end (with the gap) and the crab winds up again; a crab and a frog both after him never wind up at once, each winding up again and again', () => {
+  {
+    const s = facingCrab(180);
+    const c = s.crab;
+    s.until(s.player, () => c.state === 'pinch', 200);
+    assert.equal(s.critters.attacker, 0, 'the crab has it');
+    s.until(s.player, () => c.state !== 'pinch', 10);
+    assert.equal(c.state, 'stuck');
+    assert.equal(s.critters.attacker, -1, 'given back at the pinch\'s end');
+    assert.equal(s.critters.gapUntil, s.critters.life + SHARED.GAP, 'with the gap');
+    const n = s.until(s.player, () => c.state === 'windup', 400);
+    assert.equal(c.state, 'windup', `a second windup ${n} ticks on`);
+    assert.equal(s.critters.attacker, 0);
+  }
+  // Both about him (their circles overlapping on him), he sidesteps to and fro (never hit long).
+  const k = crew([frogSpot({ id: 'f', x: -150, z: 400 }), crabSpot({ id: 'c', x: 160, z: 220, yaw: Math.PI, fight: 400 })]);
+  const p = fakePlayer(0, 0, 0);
+  const TELLS = [{ windup: 1, leap: 1 }, { windup: 1, pinch: 1 }];
+  const windups = [0, 0];
+  for (let t = 0; t < 2000; t++) {
+    const before = k.critters.list.map((c) => c.state);
+    k.step(p);
+    p.pos.x = 250 * Math.sin(t / 30);
+    p.invincibleUntil = 0;
+    const now = k.critters.list.map((c) => c.state);
+    assert.ok(!(TELLS[0][now[0]] === 1 && TELLS[1][now[1]] === 1), `tick ${t}: ${now}`);
+    for (let i = 0; i < 2; i++) if (now[i] === 'windup' && before[i] !== 'windup') windups[i]++;
+  }
+  assert.ok(windups[0] >= 3 && windups[1] >= 3, `windups ${windups}`);
+});
+
+test('let go mid-strike: he leaves fight + 80 as the crab winds up and the mosquito aims, and stays away: the pinch and the dive finish first (and the stomp window after them), then it goes home with the token given back and no ring left', () => {
+  for (const [what, make, tell, leaveAt, strike] of [
+    ['crab', () => facingCrab(180), 'windup', 7, { pinch: 1, stuck: 1 }],
+    ['mosquito', () => facingMosquito(400), 'aim', 8, { dive: 1, stuck: 1, recoil: 1, pull: 1 }],
+  ]) {
+    const s = make();
+    const c = s.critters.list[0];
+    s.until(s.player, () => c.state === tell && c.t === leaveAt, 200);
+    // (Far behind him: off the line of its strike, out of its circle.)
+    s.player.pos.z = -1500;
+    const left = s.critters.life;
+    let struck = false;
+    let before = c.state;
+    for (let t = 0; t < 300 && c.state !== 'return'; t++) {
+      before = c.state;
+      s.step(s.player);
+      if (strike[c.state] === 1) struck = true;
+    }
+    assert.ok(struck, `${what}: its strike went on`);
+    assert.equal(c.state, 'return', `${what}: let go`);
+    assert.ok(strike[before] !== 1 && before !== tell, `${what}: let go after its strike (from ${before})`);
+    assert.ok(s.critters.life - left > SHARED.RELEASE + 1, `${what}: the release waited`);
+    assert.equal(s.critters.attacker, -1, `${what}: the token back`);
+    assert.equal(c.markOn, 0, `${what}: no ring`);
+    assert.equal(s.player.hits.length, 0);
+  }
+});
+
+test('hit shapes (scalar math): the crab\'s struck capsule rides its lift (an attack over a hidden crab misses what strikes a standing one); a stuck mosquito is a little fatter (STUCK_R); every kind is stomped with his feet down to STOMP_LOW under its origin (times its size), not lower', () => {
+  {
+    const k = crew([crabSpot()]);
+    const c = k.critters.list[0];
+    const atk = { x: c.x, y: c.y + 115, z: c.z, radius: 10 };
+    assert.equal(c.state, 'hidden');
+    assert.equal(k.critters._struck(c, atk), false, 'hidden: its top low in its tin');
+    c.b1 = 1;
+    assert.equal(k.critters._struck(c, atk), true, 'standing');
+  }
+  {
+    const s = facingMosquito(400);
+    const b = s.buzz;
+    s.until(s.player, () => b.state === 'aim' && b.t === 2, 200);
+    // (One pose for both: level, facing +z; the attack 44 off the middle of its body's axis.)
+    b.pitch = 0;
+    b.yaw = 0;
+    const R = CRITTER_RIG.mosquito;
+    const atk = { x: b.x + 44, y: b.y - 10, z: b.z, radius: 1 };
+    assert.equal(s.critters._struck(b, atk), false, 'aiming: R ' + R.BODY_R);
+    b.state = 'stuck';
+    assert.equal(s.critters._struck(b, atk), true, 'stuck: R ' + R.STUCK_R);
+    b.state = 'aim';
+  }
+  assert.equal(SHARED.STOMP_LOW, 40);
+  for (const [spot, scale] of [[frogSpot(), 1], [crabSpot({ scale: 1.25 }), 1.25], [mosquitoSpot(), 1]]) {
+    const k = crew([spot]);
+    const c = k.critters.list[0];
+    const R = CRITTER_RIG[KIND[c.kind]];
+    const top = c.y + (R.TOP + k.critters._rise(c)) * c.scale;
+    const p = fakePlayer(c.x + 10, 0, c.z);
+    p.vel.y = -60;
+    p.action = 'freefall';
+    const hero = { y: top + 5, vy: -60, air: true };
+    for (const [dy, want] of [[-SHARED.STOMP_LOW * scale + 1, true], [-SHARED.STOMP_LOW * scale - 1, false]]) {
+      p.pos.y = c.y + dy;
+      assert.equal(k.critters._stomped(c, p, hero), want, `${KIND[c.kind]}: his feet ${dy} under its origin`);
+    }
+  }
+});
+
+test("the crab never starts its tell hidden behind him from the camera: with the camera looking along the line through him at it, it sidles out at least OFF_LINE off that line first (or, kept on it, winds up after LINE_WAIT ticks); without a camera it winds up as soon as he is in its window", () => {
+  const off = (s) => {
+    const c = s.crab;
+    const a = Math.atan2(c.x - s.player.pos.x, c.z - s.player.pos.z);
+    return Math.abs(wrapAngle(a - s.cam()));
+  };
+  // The camera behind him looking north at it (it stands 180 north of him).
+  {
+    const s = facingCrab(180);
+    let cam = 0;
+    s.setCam(cam);
+    s.cam = () => cam;
+    s.until(s.player, () => s.crab.state === 'strafe', 30);
+    const n = s.until(s.player, () => s.crab.state === 'windup', 200);
+    assert.equal(s.crab.state, 'windup');
+    assert.ok(n >= 3, `it sidled ${n} ticks first`);
+    assert.ok(off(s) >= CRAB.OFF_LINE - 1e-9, `${off(s).toFixed(3)} off the camera's line`);
+  }
+  // The camera swinging to keep it right behind him: it winds up after LINE_WAIT ticks.
+  {
+    const s = facingCrab(180);
+    s.until(s.player, () => s.crab.state === 'strafe', 30);
+    const n = s.until(s.player, () => {
+      s.setCam(Math.atan2(s.crab.x - s.player.pos.x, s.crab.z - s.player.pos.z));
+      return s.crab.state === 'windup';
+    }, 200);
+    assert.equal(s.crab.state, 'windup');
+    assert.equal(n, CRAB.LINE_WAIT, 'after LINE_WAIT ticks of sidling');
+  }
+  // No camera (the tests' tables): at once.
+  {
+    const s = facingCrab(180);
+    s.until(s.player, () => s.crab.state === 'strafe', 30);
+    assert.equal(s.until(s.player, () => s.crab.state === 'windup', 200), 1);
+  }
+});
+
+test('a wading crab at the sand bar\'s depth (88; stand 40, times 1.25): hidden, its yellow band and all above it over the water, its eyes on him when he swims about (never woken by a swimmer); stomped or knocked over, its dented tin floats up, its top always over the water through the dent, the tumble and the poof', () => {
+  const water = 88;
+  const spot = crabSpot({ wade: true, scale: 1.25, stand: 40, yaw: 0 });
+  // The tin's yellow band's lowest point and its top (rig space, from the model).
+  const b = critterBase();
+  const yellow = new THREE.Color(0xf3c433).toArray();
+  let band = Infinity;
+  let tinTop = -Infinity;
+  for (let v = 0; v < b.position.count; v++) {
+    if (b.aPart.array[v * 3 + 2] !== MODEL.CRAB || b.aPart.array[v * 3] !== CRITTER_PARTS.crab.TIN) continue;
+    const y = b.position.array[v * 3 + 1];
+    tinTop = Math.max(tinTop, y);
+    if (Math.abs(b.color.array[v * 3] - yellow[0]) + Math.abs(b.color.array[v * 3 + 1] - yellow[1]) + Math.abs(b.color.array[v * 3 + 2] - yellow[2]) < 1e-5) band = Math.min(band, y);
+  }
+  assert.ok(band > 45 && band < 55 && tinTop > 76, `band from ${band}, top ${tinTop}`);
+  const C = CRITTER_RIG.crab;
+  const over = (c, y) => c.y + (y + C.LIFT_SPAN * (c.b1 - 1)) * c.scale * c.sq * c.vis - water;
+  {
+    const k = crew([spot], { collision: world({ wade: water }) });
+    const c = k.critters.list[0];
+    assert.ok(over(c, band) >= 0, `hidden: its yellow band ${over(c, band).toFixed(1)} over the water`);
+    // He swims about 300 east of it (away: in the water): it watches him, stays in its tin.
+    const p = fakePlayer(300, -40, 0);
+    p.inWater = true;
+    k.step(p, 60);
+    assert.equal(c.state, 'hidden', 'never woken by a swimmer');
+    assert.ok(Math.abs(wrapAngle(c.yaw - Math.PI / 2)) < 0.05, `its tin turned to him (${c.yaw.toFixed(2)})`);
+    assert.ok(c.b0 > 0.6, 'its eyes out');
+  }
+  for (const how of ['stomp', 'punch']) {
+    const k = crew([spot], { collision: world({ wade: water }) });
+    const c = k.critters.list[0];
+    const p = fakePlayer(0, 0, -150);
+    k.until(p, () => c.state === 'strafe', 40);
+    p.invincibleUntil = Infinity;
+    if (how === 'stomp') {
+      const top = c.y + (C.TOP + k.critters._rise(c)) * c.scale;
+      Object.assign(p.pos, { x: c.x + 20, y: top - 5, z: c.z });
+      p.vel.y = -12;
+      p.action = 'freefall';
+      Object.assign(k.hero, { y: top + 10, vy: -12, air: true });
+    } else p.attack = { x: c.x, y: c.y + 30, z: c.z - 20, radius: 40 };
+    k.step(p);
+    p.attack = null;
+    p.pos.y = 3000;
+    assert.equal(c.state, how === 'stomp' ? 'dent' : 'tumble');
+    const stood = c.b1;
+    let floated = false;
+    for (let t = 0; t < 60 && c.state !== 'gone'; t++) {
+      k.step(p);
+      if (c.state === 'gone') break;
+      assert.ok(over(c, tinTop) >= 20, `${how}: its tin's top ${over(c, tinTop).toFixed(1)} over the water (${c.state} ${c.t})`);
+      // (Standing on its legs as it dents, not sagging: its feet float up no more than they must.)
+      assert.ok(c.b1 >= stood - 1e-9, `${how}: standing (${c.b1.toFixed(3)} of ${stood.toFixed(3)})`);
+      if (c.y > c.floorY + 1) floated = true;
+    }
+    assert.ok(floated, `${how}: it floated up`);
+    assert.equal(k.coins.length, 1);
+  }
+});
+
+test('the state vocabulary: every state of every kind seen above is in its STATES, and each of its STATES was seen; HITTABLE is exactly every kind\'s non-defeat states', () => {
+  for (const kind of KIND) {
+    for (const s of SEEN[kind]) assert.ok(STATES[kind][s], `${s} in STATES.${kind}`);
+    for (const s of Object.keys(STATES[kind])) assert.ok(SEEN[kind].has(s), `${kind} ${s} seen`);
+  }
   const want = new Set();
   for (const kind of Object.values(STATES)) for (const [s, m] of Object.entries(kind)) if (m !== 'D') want.add(s);
   assert.deepEqual(new Set(Object.keys(HITTABLE)), want);

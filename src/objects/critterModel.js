@@ -60,43 +60,30 @@ const CRAB = CRITTER_PARTS.crab;
 const MOSQUITO = CRITTER_PARTS.mosquito;
 
 // Landmarks and hit shapes (rig space, before the spot's scale).
-//   TOP          stomps land on this height over the feet (the crab's TOP_HIDDEN in its tin),
-//                his feet's axis within PLAYER_RADIUS + STOMP_REACH of its own
+//   TOP          stomps land on this height over its origin (the feet; the mosquito's thorax),
+//                his feet's axis within PLAYER_RADIUS + STOMP_REACH of its own (and his feet no
+//                lower than Critters' STOMP_LOW under its origin)
 //   BODY_*       the body capsule the hero's attacks strike: an upright one from BODY_LOW to
 //                BODY_HIGH over the feet, radius BODY_R (the mosquito's runs along its body
-//                axis from TAIL to NEEDLE_MID, or to NEEDLE_TIP while it dives)
+//                axis from TAIL to NEEDLE_MID, or to NEEDLE_TIP while it dives; STUCK_R while
+//                it is stuck)
 //   HIT_*        the frog's landing: a sphere HIT_Y over its feet
 //   WREATH       the frog's wreath's centre; WREATH_RISE how far it flies up (straight up, in
 //                world units, whatever the frog does) when it pops off
-//   CLAW_*       the crab's pinch: a sphere CLAW_FRONT ahead, CLAW_Y up
-//   BUMP_R       he bumps it at PLAYER_RADIUS + BUMP_R
+//   BUMP_R       he bumps it at PLAYER_RADIUS + BUMP_R (a stuck mosquito at STUCK_R; a hovering
+//                one when his head reaches its underside, UNDER below its thorax: its BUMP_R
+//                short of its STOMP_REACH, so a jump beside it still comes down on it)
 //   PIVOT        the height its pitch and roll turn about
 //   SQUASH_XZ    a squash to height k widens it 1 + (1 - k) * SQUASH_XZ
 //   SHADOW       its blob shadow's size
-//   LIFT_SPAN    the crab's legs lift its body this much from hidden (0) to standing (1)
+//   LIFT_SPAN    the crab's legs lift its body this much from hidden (0) to standing (1): every
+//                height of it above (its TOP, BODY_HIGH) rides up and down with that lift
 //   LEG_W        a crab leg vertex moves with the body by clamp(y / LEG_W, 0, 1): the hips and
 //                knees all the way, the feet not at all (they stay planted as it stands up)
 export const CRITTER_RIG = {
   frog: { TOP: 75, STOMP_REACH: 40, BODY_LOW: 15, BODY_HIGH: 55, BODY_R: 45, HIT_Y: 40, HIT_R: 45, BUMP_R: 45, PIVOT: 30, WREATH: [0, 74, -6], WREATH_RISE: 300, SQUASH_XZ: 0.6, SHADOW: 130 },
-  crab: {
-    TOP: 82,
-    TOP_HIDDEN: 48,
-    STOMP_REACH: 45,
-    BODY_LOW: 10,
-    BODY_HIGH: 75,
-    BODY_HIGH_HIDDEN: 40,
-    BODY_R: 58,
-    BUMP_R: 58,
-    CLAW_FRONT: 56,
-    CLAW_Y: 42,
-    CLAW_R: 32,
-    LIFT_SPAN: 34,
-    LEG_W: 26,
-    PIVOT: 40,
-    SQUASH_XZ: 0.375,
-    SHADOW: 160,
-  },
-  mosquito: { NEEDLE_TIP: [0, -21, 129], NEEDLE_MID: [0, -10, 80], TAIL: [0, -10, -70], BODY_R: 40, STUCK_R: 45, BUMP_R: 45, TOP: 30, STOMP_REACH: 40, PIVOT: 0, SQUASH_XZ: 0.46, SHADOW: 110 },
+  crab: { TOP: 82, STOMP_REACH: 45, BODY_LOW: 10, BODY_HIGH: 75, BODY_R: 58, BUMP_R: 58, LIFT_SPAN: 34, LEG_W: 26, PIVOT: 40, SQUASH_XZ: 0.375, SHADOW: 160 },
+  mosquito: { NEEDLE_TIP: [0, -21, 129], NEEDLE_MID: [0, -10, 80], TAIL: [0, -10, -70], BODY_R: 40, STUCK_R: 45, BUMP_R: 30, UNDER: 25, TOP: 30, STOMP_REACH: 40, PIVOT: 0, SQUASH_XZ: 0.46, SHADOW: 110 },
 };
 
 // The per-instance channels per kind (Critters.js record fields; see the shader below).
@@ -611,8 +598,10 @@ export function makeCritterGeometry(capacity) {
 //     about its base.
 //   Tin Crab (aAnim: gait phase, stride, claw raise, pincer open; aAnim2: eyes, lift, glow):
 //     the TIN and the BODY ride the lift (h = LIFT_SPAN * (lift - 1)); a STALK stretches with
-//     its eyes (0.05 in .. 1.1 alert); a CLAW rises and spreads about the shoulder; its FINGER
-//     (the upper jaw) opens upward about its hinge, riding the claw; a LEG's foot steps (sideways, a shear about the
+//     its eyes (0.05 in .. 1.1 alert); a CLAW rises and spreads about the shoulder, turning on
+//     its upright as it rises past its rest (raised in the tell, its pincer's opening faces the
+//     front: never edge on to him and the camera behind him); its FINGER (the upper jaw) opens
+//     upward about its hinge, riding the claw; a LEG's foot steps (sideways, a shear about the
 //     hip, the tripod's halves in turn) and stays planted as the body rises: the lift reaches a
 //     leg vertex by its modelled height (clamp(y / LEG_W, 0, 1)).
 //   Mosquito (aAnim: wing phase, flap, curl, leg phase; aAnim2: eye glow, quiver, glow): the
@@ -647,7 +636,7 @@ if(part<2.5||part>4.5){mat3 W=critRotZ(aAnim.z);vec3 w0=vec3(0.,10.,0.);off=W*(p
 }else if(aPart.z<1.5){
 float h=${CRITTER_RIG.crab.LIFT_SPAN.toFixed(1)}*(aAnim2.y-1.);//TIN BODY
 if(part>1.5&&part<2.5)scl.y=aAnim2.x;//STALK
-else if(part>2.5&&part<4.5){mat3 C=critRotY(side*.3*aAnim.z)*critRotX(-aAnim.z);
+else if(part>2.5&&part<4.5){mat3 C=critRotY(side*(.3*aAnim.z+.9*max(aAnim.z-.4,0.)))*critRotX(-aAnim.z);
 if(part<3.5)R=C;//CLAW
 else{vec3 sh=vec3(side*40.,34.,30.);R=C*critRotX(-.6*aAnim.w);off=C*(pivot-sh)+sh-pivot;}//FINGER
 }else if(part>4.5){float w=clamp(position.y/${CRITTER_RIG.crab.LEG_W.toFixed(1)},0.,1.),lp=aAnim.x+side,k=(1.-w)*aAnim.y;off.x=sin(lp)*12.*k;off.y=max(cos(lp),0.)*10.*k;h*=w;}//LEG

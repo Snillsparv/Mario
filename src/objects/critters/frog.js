@@ -25,7 +25,7 @@
 // `c` the frog's record. Numbers: FROG (CRITTER.FROG); every choice is noise on the manager's
 // life counter, so a reset manager replays exactly.
 
-import { TAU, approachAngle as turn } from '../../core/math.js';
+import { TAU, approachAngle as turn, smoothstep } from '../../core/math.js';
 import { CRITTER_RIG } from '../critterModel.js';
 
 const RIG = CRITTER_RIG.frog;
@@ -80,8 +80,6 @@ export const FROG = {
   WALL_Y: 30,
   WALL_R: 45,
 };
-
-const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 
 // The windup and lock ticks of this frog (a calm spot's tell is slower).
 const windupTicks = (c) => Math.round(FROG.WINDUP * c.calm);
@@ -278,8 +276,9 @@ function approach(self, c, player) {
   }
   const L = self.life;
   if (L >= c.next - FROG.CROUCH) {
-    c.a0 = -0.3 * smooth((L - c.next + FROG.CROUCH) / FROG.CROUCH);
-    c.sq = 1 - 0.08 * smooth((L - c.next + FROG.CROUCH) / FROG.CROUCH);
+    const k = smoothstep(0, FROG.CROUCH, L - c.next + FROG.CROUCH);
+    c.a0 = -0.3 * k;
+    c.sq = 1 - 0.08 * k;
   }
   if (L < c.next) return;
   const d = Math.sqrt(d2);
@@ -377,6 +376,7 @@ function cancel(self, c, puzzled) {
 function leap(self, c) {
   if (c.t === 1) self._sound(c, 'frog_leap', 1);
   const landed = airTick(self, c, true);
+  if (self._parried(c)) return;
   c.a0 = c.t <= 6 ? 1 : 0.25;
   c.a1 *= 0.7;
   c.glow *= 0.7;
@@ -406,7 +406,7 @@ function dazed(self, c) {
   c.a0 *= 0.6;
   c.a1 *= 0.8;
   c.glow = 0;
-  c.sq = 0.7 + 0.3 * smooth(c.t / 14);
+  c.sq = 0.7 + 0.3 * smoothstep(0, 14, c.t);
   c.a2 = 0.22 * Math.sin(c.t * 0.7) * (1 - c.t / FROG.DAZED);
   if (c.t % FROG.TWINKLE_EVERY === 1) {
     for (let k = 0; k < 3; k++) {

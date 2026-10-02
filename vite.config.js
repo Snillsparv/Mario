@@ -7,7 +7,7 @@ import padRelay from './tools/padRelay.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.57 MB minified, ~507 kB gzipped (plus
+// first frame, so splitting would only add requests. ~1.58 MB minified, ~512 kB gzipped (plus
 // the ~13 kB title-logo worker); the size warning is set a little above that.
 const GAME_CHUNK_LIMIT_KB = 1600;
 

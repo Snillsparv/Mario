@@ -1332,7 +1332,7 @@ test("GAME OVER from the course: main brings the grounds back before the resets 
   assert.equal(lighthouse.lit, false, 'the lamp out');
 });
 
-test("Midsummer Skerries' critters: every arrival and GAME OVER bring them all back home (the hall and the grounds have none); main's tick holds them while a warp runs, and a frog's leap landing on him as he leaves the course does him no harm", () => {
+test("Midsummer Skerries' critters: every arrival and GAME OVER bring all six back home, calm (a frog, a mosquito and a crab knocked over first; the hall and the grounds have none); main's tick holds them while a warp runs, and a frog's leap landing on him as he leaves the course does him no harm", () => {
   const MAIN = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   // (main's tick() passes the warp to the current area's objects)
   const from = MAIN.indexOf('function tick(');
@@ -1345,14 +1345,23 @@ test("Midsummer Skerries' critters: every arrival and GAME OVER bring them all b
   g.until(() => g.player.grounded, 80);
   const crit = g.areas.current.objects.critters;
   assert.equal(crit.alive, sk.CRITTERS.length);
-  // Punch frog_north over (beside it, facing it); it is gone.
+  // Punch one of each kind over (beside it, facing it: frog_north, mosquito_south as it flies
+  // by, crab_bar on its sand bar); they are gone.
   const knockOver = () => {
-    const f = crit.byId('frog_north');
-    g.place(f.x, f.y, f.z + 90, Math.PI);
-    for (let t = 0; t < 12; t++) g.tick({ B: t === 1 });
-    assert.equal(f.state, 'tumble');
-    g.until(() => f.state === 'gone', 60);
-    assert.equal(crit.alive, sk.CRITTERS.length - 1);
+    for (const id of ['frog_north', 'mosquito_south', 'crab_bar']) {
+      const f = crit.byId(id);
+      g.place(f.x, f.floorY, f.z + 90, Math.PI);
+      for (let t = 0; t < 12; t++) g.tick({ B: t === 1 });
+      assert.ok(f.state === 'tumble' || f.state === 'deflate', `${id} knocked over (${f.state})`);
+      g.until(() => f.state === 'gone', 80);
+    }
+    assert.equal(crit.alive, sk.CRITTERS.length - 3);
+  };
+  const home = () => {
+    for (const c of crit.list) {
+      assert.equal(c.state, ['idle', 'hidden', 'patrol'][c.kind], `${c.id} calm`);
+      assert.ok(Math.hypot(c.x - c.hx, c.z - c.hz) < 200, `${c.id} at home`);
+    }
   };
   knockOver();
   // Out to the hall (no critters there) and back in: all of them home again.
@@ -1362,13 +1371,14 @@ test("Midsummer Skerries' critters: every arrival and GAME OVER bring them all b
   assert.equal(g.areas.current.objects.critters, null, 'none in the hall');
   g.areas.enter('skerries');
   assert.equal(crit.alive, sk.CRITTERS.length, 'back after the arrival');
-  for (const c of crit.list) assert.equal(c.state, 'idle');
+  home();
   // GAME OVER brings them back too.
   g.until(() => g.player.grounded, 80);
   knockOver();
   g.areas.enter('grounds', 'start');
   g.areas.resetCourses();
   assert.equal(crit.alive, sk.CRITTERS.length, 'back after GAME OVER');
+  home();
   // Leaving while frog_west leaps at him: the warp holds it, no wedge lost.
   g.areas.enter('skerries');
   g.until(() => g.player.grounded, 80);

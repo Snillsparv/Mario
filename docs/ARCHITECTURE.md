@@ -934,7 +934,9 @@ to East Rock, wall-kick up the chimney beside the net shed (or climb the net mas
 loft and walk the plank bridge down onto the islet. Then climb its terraces and the signal
 mast, and jump from its top onto the gallery. Water catches every missed jump. Home Island's
 meadow has a maypole, a red cottage and a flagpole, butterflies over it and white gulls
-overhead.
+overhead; the course's critters (see "Critters") live on it, on the sand bar and on the islet,
+and the welcome sign on the jetty warns of them (each kind's tell, and to jump on them or punch
+them) before its last page says how to leave.
 
 `world/skerries/layout.js` holds the anchors in the course's local frame (sea level at y 0, +x
 east, −z north toward the lighthouse; world = local + (60000, 0, 0)); `world/skerries/build.js`
@@ -1183,12 +1185,12 @@ cliff│  s3                 the Sound       net shed ┐ East Rock │ cliff
 #### Critters (`src/objects/Critters.js`, `src/objects/critters/*`, `src/objects/critterModel.js`)
 
 The course's enemies: small original critters of the midsummer archipelago, each living on its
-own patch of the course and guarding the **fight circle** round its home. Today the **Wreath
-Frogs** ("kransgroda") hop on Home Island's meadow; the **Tin Crab** ("burkkrabba", a hermit
-crab in an old herring tin) and the **Mosquito** ("mygga") have their models already (the
-preview shows them) but are placed later, with their own steps (`critters/crab.js`,
-`mosquito.js`). They are fair for a child, telegraphed, and beaten with Jonas's own stomp and
-attacks; a defeated one drops a coin (a coin heals a wedge).
+own patch of the course and guarding the **fight circle** round its home. The **Wreath Frogs**
+("kransgroda") hop and the **Mosquitoes** ("mygga") hover over Home Island's meadow, and a
+**Tin Crab** ("burkkrabba", a hermit crab in an old herring tin) hides on the sand bar in the
+Sound, another on the islet's first terrace. They are fair for a child, telegraphed, and
+beaten with Jonas's own stomp and attacks; a defeated one drops a coin (a coin heals a wedge).
+The castle grounds and the Great Hall have none.
 
 ```js
 // layout.CRITTERS (course-local; world/area.js shifts x, y, z like the other point lists):
@@ -1204,29 +1206,37 @@ critters.animate(alpha, clock)   // instance matrices and channels, shadows, mar
 critters.reset()                 // ObjectManager.reset() (GAME OVER) and enter() (every arrival)
 critters.sendHome()              // a lost life (the 'spawn' edge, seen in update)
 critters.alive, .engaged, .hits, .list, .byId(id), .mesh, .markers
-critters.debugPose(i, state, t, look)  // previews: record i at home, t ticks into a state,
-                                 // look(record) setting its channels (the preview's POSES)
-CRITTER = { SHARED, FROG, CRAB, MOSQUITO }   // every number (the difficulty knobs)
+CRITTER = { SHARED, FROG, CRAB, MOSQUITO }   // every number (the difficulty knobs; each kind's
+                                 // table lives with its steps in critters/<kind>.js)
 AWAY, STATES, HITTABLE           // see below
 ```
 
 * **Fair for a child** (each rule tested):
-  * F1 nothing hurts by touch: only a strike (the frog's landing, its last 6 leap ticks), 1
-    wedge (of 8), at most once a strike, through `player.takeDamage(1, fromPos)`. Touching one
-    is a harmless **bump**: a live critter he walks into (on its level, his feet below its top),
-    never during its strike, moves aside. A calm one notices him; its kind may have it skip
-    away (`bumped()`: a frog after him on the ground hops off, a windup called off first);
-    otherwise it is pushed out to arm's length (`PLAYER_RADIUS` + its `BUMP_R`) along the line
-    from him, or, where it may not go (its leash, a wall stopping it short, off its floor, the
-    water), round him 45 then 90 degrees to either side, toward home first: it slides round the
-    leash's rim or along the wall. Even while he dies it is pushed off his feet (a leap that
-    takes his last wedge also comes down short of him). Jonas never stands inside one.
+  * F1 nothing hurts by touch: only a strike (the frog's landing, its last 6 leap ticks; the
+    crab's pinch, its last 3 lunge ticks; the mosquito's needle, low over the floor and on the
+    marked spot), 1 wedge (of 8), at most once a strike, through `player.takeDamage(1,
+    fromPos)`. Touching one is a harmless **bump**: a live critter he walks or jumps into (on its
+    level, his body reaching its body: his feet below its top, and his head above a hovering
+    mosquito's underside, `UNDER` 25 below its thorax), never in its strike or the mosquito's
+    aim (its tell flies a set path), nor while he is knocked back (`hurt`: the hit throws him
+    round it, below), moves aside. A calm one notices him; its kind may have it skip away
+    (`bumped()`: a frog after him on the ground hops off, a windup called off first); otherwise
+    it is pushed out to arm's length (`PLAYER_RADIUS` + its `BUMP_R`, times its size; a hovering
+    mosquito's 30, short of its stomp reach, so a jump beside it still comes down on it; a
+    stuck one's `STUCK_R` 45) along the line from him, or, where it may not go (its leash, a
+    wall stopping it short, off its floor, the water), round him by the least turn it may take,
+    22.5 degrees at a time up to 90 to either side, toward home first: pressed on along the
+    leash's rim or a wall it slides round him a little each tick, keeping nearly arm's length. It
+    moves at most `BUMP_STEP` (24) a tick more than he does: never a jump. Even while he dies it
+    is pushed off his feet (a leap that takes his last wedge also comes down short of him).
+    Jonas never stands inside one.
   * F2 every strike is told for at least 20 ticks (motion, glow, sound); its target or heading
     locks at least 9 ticks before it can hurt; an orange **danger marker** on the ground shows
-    where it lands.
-  * F3 one attacker at a time: a token taken as a windup starts and given back as the strike
-    ends (a frog: on landing; a cancel, a defeat, a lost life), then `SHARED.GAP` (40) ticks
-    before the next windup.
+    where the frog lands and where the mosquito's needle comes down.
+  * F3 one attacker at a time: a token taken as a windup (an aim) starts and given back as the
+    strike ends (the frog's landing, the crab's pinch's end, the mosquito's dive's end: a hit,
+    stuck or a miss; a cancel, a defeat, a lost life), then `SHARED.GAP` (40) ticks before the
+    next windup.
   * F4 nothing happens while he is **away**: `hold` (a dialog, or a warp: main passes
     `warping: areas.busy`, ObjectManager holds the critters with it as with `dialogOpen`), in the
     water, or `AWAY[action]` (19 actions: exactly where `Player.bounce()` refuses, the automatic
@@ -1234,19 +1244,26 @@ AWAY, STATES, HITTABLE           // see below
     windup, a windup under way is called off (token back, cooldown 30), a strike in flight does
     no damage. No windup either while he blinks after a hit (`heroInvincible`, 2 s).
   * F5 he wins a tie: his attack (`player.getAttack()`, read once a tick) and his stomp are
-    tested before the critter's own step.
+    tested before the critter's own step, and again inside a strike where it has carried the
+    critter that tick (`_parried`: a lunge or a dive into his punch, a leap or a dive up under
+    his falling feet) before it may hurt him.
   * F6 knock-safe hits: at a hit his natural landing (145 and 290 along the knockback, which
     carries him about 286) is probed (2 `findFloor`, 2 `waterLevelAt`); where it would be off
-    his level (60), on nothing or in the water, `fromPos` sends him toward the critter's home
-    instead.
+    his level (60), on nothing or in the water (at the bar: over 95 deep), `fromPos` sends him
+    toward the critter's home instead; where the critter stands in that way (ahead of him within
+    the flight, nearer it than arm's length: a crab that pinched him at the rim from the home
+    side), the way is turned round it, `KNOCK_ROUND` (0.5 rad) at a time up to three times, its
+    far side first, to the first way that is clear of it and lands safely (2 more `findFloor`
+    and 2 `waterLevelAt` a way): he never flies through it, and it is never shoved along by him.
   * F7 never near a route (below); F8 one stomp or one hit defeats any critter in any live
     state, and it drops exactly one coin.
-* **Engagement**: a calm critter (frog: `idle`, `return`) whose circle he is in, on its level
-  (his floor within 60 of its home's), not away, notices him (one caught in an idle hop lands it
-  first). An engaged one is let go after 20 ticks of him beyond fight + 80, off its level or
-  away (never mid-strike or in the daze after it, nor in the air: a hop lands first) and goes
-  home. Its body never leaves fight + its kind's leash (frog 60; a hop bumped in the air is held
-  inside it too).
+* **Engagement**: a calm critter (frog `idle`, `return`; crab `hidden`, `return`, `hide`;
+  mosquito `patrol`, `return`) whose circle he is in, on its level (his floor within 60 of its
+  home's), not away, notices him (a frog caught in an idle hop lands it first). An engaged one
+  is let go after 20 ticks of him beyond fight + 80, off its level or away (never mid-strike or
+  in the stomp window or the recoil after it, nor in the air: a hop lands first) and goes home.
+  Its body never leaves fight + its kind's leash (frog 60, crab 40, mosquito 100; a frog's hop
+  bumped in the air is held inside it too).
 * **Lifecycle**: a lost life (the hero's `'spawn'` edge, seen in `update`; never the global
   `'lifeLost'`, which every area's manager hears) sends the live ones home, calm, the token
   free; the defeated stay gone, and one being defeated finishes and drops its coin. Every
@@ -1256,69 +1273,159 @@ AWAY, STATES, HITTABLE           // see below
 * **Determinism and cost**: no `Math.random`, no wall clock, no rng stream: every choice is
   `noise(seed + life counter)` (Minions' noise), so a reset manager replays exactly and the
   butterflies' and gulls' rng sequences are untouched. Idle critters make no collision queries
-  (a frog's idle ring is checked once in the constructor), no sparkles; an engaged frog one
-  `findWalls` per air tick and one `findFloor` per hop and at the lock. Allocation: collision
-  results and `'sfx'` payloads only (tests guard the hot paths).
-* **Sound**: positional `'sfx' { name, pos (lifted 60), pitch?, quiet? }` (see "Events");
-  every call but the idle ones always plays and sets the shared gate (`lastSfxLife`); an idle
-  call (`quiet: 1`) waits 45 ticks after any critter sound and only plays with him within 2000.
+  (a frog's idle ring is checked once in the constructor; a hidden crab sits still; a
+  mosquito's patrol is a closed form on the life counter), no sparkles. Engaged (at most one at
+  a time: the circles never overlap): a frog one `findWalls` per air tick and one `findFloor`
+  per hop and at the lock; a crab one `findWalls` and one `findFloor` (and the water) per moving
+  tick; a mosquito one `findWalls` per moving tick and one `findFloor` (and the water) as it
+  would start its aim. A bump tick tries up to 9 ways round him (a `findWalls`, a `findFloor`
+  and the water each), a hit up to 6 turned knockbacks, a tumble at an edge up to 5 ways.
+  Allocation: collision results and `'sfx'` payloads only (tests guard the hot paths).
+* **Sound**: positional `'sfx' { name, pos (lifted 60), pitch?, quiet?, deflate? }` (see
+  "Events"); every call but the idle ones always plays and sets the shared gate
+  (`lastSfxLife`); an idle call (`quiet: 1`: the frog's croak with him within 2000, the
+  mosquito's whine within 1200, every 180 to 300 ticks) waits 45 ticks after any critter sound,
+  so a loud whine always means it has seen him.
 * **Rendering**: all of a course's critters are **one InstancedMesh** `'critters'` (one draw
   call) over one geometry holding the three models: each instance shows only its own (`aPart.z`
   against `aAnim2.w`: the type mask), its moving parts posed in the vertex shader from two
   per-instance channels (`CRITTER_ANIM`: the frog's legs, sac, head wobble, breath, blink,
-  wreath lift and glow). Smooth Gouraud shading (the lathes' and cylinders' own normals, turned
-  with each part; never recomputed), a warm rim and the glow (`aEmit`), the fog at 0.6 like
-  the minions'. Material `MeshLambertMaterial` with program cache key `'skerryCritters'`, lit
-  by the course's actor sun and hemisphere. The models' attributes are built once per session
+  wreath lift and glow; the crab's gait, stride, claw raise, pincer, eye stalks, lift (with its
+  spot's stand) and glow; the mosquito's wing beat and flap, abdomen curl, legs, red eyes,
+  quiver and glow). Smooth Gouraud shading (the lathes' and cylinders' own normals, turned with
+  each part; never recomputed), a warm rim and the glow (`aEmit`), the fog at 0.6 like the
+  minions'. Material `MeshLambertMaterial` with program cache key `'skerryCritters'`, lit by the
+  course's actor sun and hemisphere. The models' attributes are built once per session
   (`critterBase()`) and shared by every manager's geometry. The **danger markers** are a second
   small InstancedMesh `'critterMarkers'` (the AI RACE markers' texture with a wider, solid ring,
   normally blended in a bright sRGB orange pulsing 0.7..1, steady at full brightness for the
   first 0.3 of its growth, drawn with the blob shadows, renderOrder 0.6), visible only while one
   shows (one more draw call). One blob shadow slot each (after the minions' and the boss
-  star's), hidden when it is gone; white twinkles, gold bursts and clods (new `TINT` petal,
-  buttercup, sand, fluff) only at moments he caused.
+  star's), hidden when it is gone; white twinkles, gold bursts and clods (`TINT` petal,
+  buttercup, sand, fluff; dirt and scrap) only at moments he caused.
 * **The Wreath Frog** (`critters/frog.js`, `FROG`): a fat, glossy lime frog (its back #8DC23A,
   light against the meadow from the raised follow camera) wearing a midsummer flower wreath of
   daisies, buttercups and harebells (never gold; each flower standing clear of the leaves, turned
   up and out toward the raised camera, its yellow eye a little proud), open, friendly gold eyes
   (each a lathe whose pole looks forward: a wide black oval pupil under half the eye across,
   paler gold round it, a white glint up on the same side of both), a pink throat sac; about 120
-  across its hind feet, its head (the stomp top) at 75, under 800 triangles. Calm (`idle`) it breathes, blinks and hops round a ring of up to six points about
-  its home (0.6 of its roam out; points on its floor, dry and clear of walls), croaking quietly
-  now and then. When he comes in it notices him (`notice`: a croak, pitch 1.25, a hop and a
-  white twinkle), then **approaches** in cycles of a crouch, a 12-tick hop and a rest: toward
-  him while he is beyond 290 (to land about 240 from him), away when he is nearer than 160, and
-  inside that window it rests and **winds up** (20 ticks, 26 for a `calm` frog: it crouches,
-  its sac puffs up glowing, it shakes from tick 12, `frog_puff`); at the lock (tick 14, 18 when
-  calm) its facing and the target T (his feet, at most 400 away, inside the leash, on its level
-  and dry, else half way, else it gives up with a puzzled croak) lock together and the marker
-  appears at T, growing from 110 across (well over his own shadow) to 150. The **leap** (20
-  ticks, `frog_leap`) lands exactly on T, its peak 135 over flat ground; only its ticks 15 to 20
-  hurt (its body sphere, 40 up, r 45, against his capsule). It lands (`frog_land`, the token
-  back) **dazed** for 36 ticks (squashed and wobbling, three white twinkles circling its head,
-  a new three every 12 ticks, a sleepy croak: the stomp window), cools off for 45 and comes
-  again. Walked into on the ground while after him it hops off (a windup called off). A
-  **stomp** bounces him with `player.bounce(72)`, a trampoline belly (he rises 684, about twice
-  a plain stomp), and squashes it flat in 2 ticks (stomped in the air, it drops to its floor as
-  it flattens), then it poofs; a hit knocks it tumbling (8 a tick, up at 22: its arc peaks
-  about 80 up), off the camera's line of sight when it would fly on behind him (`KNOCK_TURN`
-  0.7 rad aside). Either way its wreath pops off (`frog_pop`, petals) and flies straight up in
-  the world, spinning and shrinking, `WREATH_RISE` 300 over 10 ticks, then bursts into gold
-  sparkles: the wreath turned into the coin, which lies where the frog was (a stomp's at the
-  same tick). Early and high, so the follow camera rising with his bounce still sees it.
-  Measured with the real Player (the fairness test, at both ends of the window): standing
-  still he is hit; a sidestep up to 22 ticks into the tell is never hit; walking in mashing B
-  he knocks it over first; a jump as it takes off stomps it.
+  across its hind feet, its head (the stomp top) at 75, under 800 triangles. Calm (`idle`) it
+  breathes, blinks and hops round a ring of up to six points about its home (0.6 of its roam
+  out; points on its floor, dry and clear of walls), croaking quietly now and then. When he comes
+  in it notices him (`notice`: a croak, pitch 1.25, a hop and a white twinkle), then
+  **approaches** in cycles of a crouch, a 12-tick hop and a rest: toward him while he is beyond
+  290 (to land about 240 from him), away when he is nearer than 160, and inside that window it
+  rests and **winds up** (20 ticks, 26 for a `calm` frog: it crouches, its sac puffs up glowing,
+  it shakes from tick 12, `frog_puff`); at the lock (tick 14, 18 when calm) its facing and the
+  target T (his feet, at most 400 away, inside the leash, on its level and dry, else half way,
+  else it gives up with a puzzled croak) lock together and the marker appears at T, growing from
+  110 across (well over his own shadow) to 150. The **leap** (20 ticks, `frog_leap`) lands
+  exactly on T, its peak 135 over flat ground; only its ticks 15 to 20 hurt (its body sphere, 40
+  up, r 45, against his capsule). It lands (`frog_land`, the token back) **dazed** for 36 ticks
+  (squashed and wobbling, three white twinkles circling its head, a new three every 12 ticks, a
+  sleepy croak: the stomp window), cools off for 45 and comes again. Walked into on the ground
+  while after him it hops off (a windup called off). A **stomp** bounces him with
+  `player.bounce(72)`, a trampoline belly (he rises 684, about twice a plain stomp), and
+  squashes it flat in 2 ticks (stomped in the air, it drops to its floor as it flattens), then
+  it poofs; a hit knocks it tumbling (8 a tick, up at 22: its arc peaks about 80 up), off the
+  camera's line of sight when it would fly on behind him (`KNOCK_TURN` 0.7 rad aside). Either
+  way its wreath pops off (`frog_pop`, petals) and flies straight up in the world, spinning and
+  shrinking, `WREATH_RISE` 300 over 10 ticks, then bursts into gold sparkles: the wreath turned
+  into the coin, which lies where the frog was (a stomp's at the same tick). Early and high, so
+  the follow camera rising with his bounce still sees it. Measured with the real Player (the
+  fairness test, at both ends of the window): standing still he is hit; a sidestep up to 22
+  ticks into the tell is never hit; walking in mashing B he knocks it over first; a jump as it
+  takes off stomps it.
+* **The Tin Crab** (`critters/crab.js`, `CRAB`): a coral hermit crab living in an old oval
+  herring tin (a plain grey tin with cobalt and yellow bands, no lettering, its peeled lid curled
+  up at the back), claws ending in two-jawed pincers (the right one bigger), eyes on stalks;
+  about 175 across its legs, its tin's top at 78 standing, under 750 triangles. Its legs lift
+  its body from the tin on the ground (`hidden`, lift 0) to standing (1) and taller in the tell
+  (1.25): every height of it (its stomp top 82 standing, 48 hidden; its body capsule) rides that
+  lift, plus its spot's `stand`, and its feet stay planted (the shader moves a leg vertex by its
+  modelled height). Calm it sits **hidden** in its tin (at a wading spot sitting up a little on
+  its legs, `WADE_LIFT` 0.65, so at the sand bar its yellow band and its peeking eyes are over
+  the water), its eye stalks peeking out now and then and following him (the tin turning)
+  while he is about (on its level, or swimming there: watched, never woken). When he comes in it
+  **wakes** (14
+  ticks: up on its legs, two clacks, a spray of sand), then **sidles** round him facing him,
+  sideways at 7 a tick, turning back now and then or where it may not go, closing in or easing
+  off at 3 a tick until he is 175 to 185 away (times its size), and, once it is not hidden
+  behind him from the camera (at least `OFF_LINE` 0.45 rad off the camera's line through him: a
+  child walking straight at it has it right behind him, so it sidles out first; or after
+  `LINE_WAIT` 45 ticks of sidling), **winds up** (24 ticks: it
+  rises tall, its claws go up and wide, turning as they rise so the pincers open toward him and
+  the camera, glowing, the pincers working, a clack and a white twinkle at each claw every 6
+  ticks); its heading locks at tick 14. The **pinch** lunges 4
+  ticks along it at 18 a tick (at every size) and snaps (`crab_snap`) at its tick 2: only its
+  ticks 2 to 4 hurt (a claw sphere 56 in front, 42 up, r 32, times its size). Then its claws are
+  **stuck** in the sand for 28 ticks (nose down, the tin up, legs scrabbling: the stomp
+  window), it cools off for 40 and comes again; let go, it sidles home and **hides**. It never
+  steps more than 40 off its floor, onto a deadly floor or into the water (a `wade` crab: at
+  most 95 deep), nor past its leash. A **stomp** (a plain bounce) dents its tin in 3 ticks:
+  squashed, it rattles like a can and its stalks droop, rattling on as it poofs, its coin 11
+  ticks after the stomp (while the camera following his bounce still has it in view); a hit
+  knocks it tumbling, the tin spinning, dented as it lands, never into water deeper than it may
+  wade (at such an edge, or a drop, it glances off along it, away from him); either way a
+  `crab_tonk`, sand and bits of tin, its coin (at the bar floating 50 over the water). At a
+  wading spot the dented tin floats up, its top kept `FLOAT` (30) over the water through the
+  dent, the tumble and the poof (it stays standing on its legs, its feet hanging in the water),
+  never crumpling out of sight. No flip onto its back. Measured with the real Player, at
+  both ends of its window and at both its sizes: standing still he is hit; a sidestep at half
+  or full stick 18 ticks into the tell is never hit; walking in mashing B he knocks it over
+  first.
+* **The Mosquito** (`critters/mosquito.js`, `MOSQUITO`): a big cartoon mosquito in a
+  charcoal-and-white "tiger" livery (no yellow or tan: never a bee; dark against the cliffs
+  behind it from the follow camera), a long needle with a red tip, white cartoon eyes with black
+  pupils (a deep red only while it aims, so red always means "now"), glassy wings and long
+  dangling legs; about 230 from needle tip to abdomen, under 600 triangles. Calm it **patrols**
+  a figure of eight 150 over its home (320 by 220 times its roam / 160, a closed form on the
+  life counter, bobbing), whining quietly now and then. When he comes in it **spots** him (a
+  loud whine), then **chases**: toward its stand point 220 from him, speeding up to 9 a tick,
+  only while it is further than 230 from him: it never backs off, so nearer it just hovers.
+  Parked 200 to 240 from him, his feet on its level and dry (1 `findFloor` and the water; else no
+  tell at all: it waits 30 ticks and looks again), it **aims** (24 ticks, `mosquito_aim`, a
+  'ting' as it locks): on its first tick T (his feet) and its heading lock and the ring appears
+  at T, growing from 110 across to 170 (2 `MARK_R`); it rises 80 and draws back 40 from T, the
+  needle pitched at T, the abdomen curling, wings beating faster, eyes and needle glowing red.
+  The **dive** (`mosquito_dive`) runs the needle's tip along the locked line at 24 a tick to 20
+  under T's floor; it hurts only with its tip at most 100 over the floor **and** him on the
+  marked spot (his feet within `MARK_R` 85 + `PLAYER_RADIUS` of T): a child who steps off the
+  ring is never clipped by a needle aimed at where he stood. While it dives its struck shape
+  runs on to the needle's tip (a punch into it wins); otherwise its body capsule runs from its
+  tail to the needle's middle. Hit, it bounces off in a backward somersault and cools off for
+  60; missed, it is **stuck** in the turf for 60 ticks (55 degrees down, its body about 85 over
+  the floor, wings buzzing, legs kicking, a tug and a 'doinng' every 20: the counter window,
+  where it is bumped a little further off him), pulls free with a 'thwop' and cools off for 45;
+  let go, it flies back onto its patrol. Hovering, it is bumped aside when he walks or jumps
+  into it (his head reaching its body), short of its stomp reach. A **stomp** (a plain bounce)
+  splats it (an accordion squash, 3 ticks) and it poofs right there, its coin on the floor
+  under it 11 ticks after the stomp (in view of the camera rising after him); a hit sends it off
+  like a balloon let go, zig-zagging, rolling and shrinking (`mosquito_pop` with `deflate`),
+  then it falls and poofs; its coin on the floor where it came down. (While it dives, a punch
+  wins as soon as it reaches the needle's tip: with him standing still and mashing B it pops
+  about 225 from him, its tip about 100 off: the plan's swat into the incoming needle.)
+  Measured with the real Player, its aim started where it parks: standing still he is hit; a
+  sidestep 18 ticks into the aim leaves it stuck; walking in mashing B it is struck (or stuck
+  behind him), never hitting him; mashing B where he stands he swats the incoming needle; a jump
+  4 ticks into the aim is never hit, one at 12 stomps it as it dives.
 * **Homes** (`layout.CRITTERS`, tested in `tests/skerries.test.js`: each on its floor, its
-  circle on its level and dry, a knockback toward home safe from anywhere in it, every
-  same-level route corridor (`tests/helpers/skerriesCorridors.js`) at least fight + 150 away,
-  1200 from the arrival, the meadow's circles north of z 4800, no two circles touching, the real
-  follow camera never trapped round them):
+  circle on its level and dry (a crab's where it can stand: the bar's 88 deep, wading allowed
+  there only; the islet's ring a little narrower than its circle), a meadow critter's leash on
+  level, a knockback toward home safe from anywhere he can stand in it, every same-level route
+  corridor (`tests/helpers/skerriesCorridors.js`) at least fight + 150 away, 1200 from the
+  arrival, the meadow's circles north of z 4800, no two circles touching, the mosquitoes'
+  patrols over their level and clear of walls, the real follow camera never trapped round
+  them):
 
   | id | kind | home (x, z), floor | fight / leash | notes |
   |---|---|---|---|---|
   | `frog_north` | frog | (150, 2650), meadow 150 | 500 / 560 | `calm` 1.3: the first one met, coming back from the jetty's foot; the maypole's approach 738 away |
   | `frog_west` | frog | (−1350, 4100), meadow 150 | 500 / 560 | by the butterflies west of the maypole; the maypole 832 away |
+  | `mosquito_south` | mosquito | (−150, 4300), meadow 150 | 400 / 500 | over the south meadow; roam 160 |
+  | `mosquito_cottage` | mosquito | (1000, 4450), meadow 150 | 350 / 450 | south of the red cottage; roam 140 |
+  | `crab_bar` | crab | (700, 400), sand bar −88 | 330 / 370 | `wade`, `scale` 1.25, `stand` 40 (its tin's bands clear of the water): the Sound's wading rest stop; hidden while he swims |
+  | `crab_islet` | crab | (1180, −5480), first terrace 300 | 300 / 340 | the terrace's north-east ring, a reward for exploring it |
 
 * **Originality**: original designs with English names (the Swedish ones only here). The tin
   is brandless (plain bands, no lettering, no fish). Mechanics only (stomp, punch, a coin); no
@@ -1327,25 +1434,62 @@ AWAY, STATES, HITTABLE           // see below
 * **Preview**: `/preview.html?m=critters` (`&kind=frog|crab|mosquito|all`,
   `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N` ticks into the pose's state, `&yaw=`,
   `&dist=`, `&spin=1`): the three side by side on grass by a strip of water, lit as the course's
-  actors, the camera on the middle of what is posed (from the ground to the highest top).
+  actors, the camera on the middle of what is posed (each one where its pose took it, with its
+  reach round it and its danger ring, from the ground to the highest top) and far enough back
+  that all of it fits the frame. Every
+  pose comes from the critters' own steps: each kind is a manager of its own with a stand-in
+  hero in its window, stepped into the pose's state (he steps aside once it has locked on for
+  the stuck poses, drops onto it for the defeats).
 * **Tests**: `tests/objects-critters.test.js` (node: the meshes and the shared models; the idle
-  rings with no queries and no sparkles, the same every run and after a reset; engagement and
-  release, a hop in the air landed first; the tell's exact length (calm too), the lock and the
-  locked yaw, the marker (its size, colour and steady start, strike after strike), one wedge by
-  its own rule, the leap's peak; every away case and the warp hold through ObjectManager; the
-  token; defeat in every live state, the tie, the coin; a stomp in the air, the wreath's flight
-  and burst, a tumble off the camera's line, the daze's twinkles; the knock-safe rule; the leash,
-  the water and the drop for its hops and its target (half way, the puzzled cancel) and the
-  strike window; the lost-life edge and reset; the blob shadows; the three models' sizes,
-  triangles and normals, the crab's planted feet, the eyes and flowers clear of what they sit
-  on, each part in its own model's branch of the shader; the hot paths; the fairness rows with
-  the real Player; the sounds and the shared gate; the bump at the leash's rim, against a wall,
-  in a windup and off a dying hero; the state vocabulary), `tests/skerries.test.js` (the homes, above), `tests/skerries-routes.test.js`
-  (no route wakes one), `tests/skerries-critters.test.js` (frog_north on the real course: it
-  notices him, hits him once, lets him go, is stomped and heals him with its coin; a life lost
-  by frog_west sends the frogs home), `tests/areas.test.js` (back after every arrival and GAME
-  OVER; none in the hall or on the grounds; no hit while a warp runs), `tests/audio-sfx.test.js`
-  (the frog's sounds).
+  critters with no queries and no sparkles (the frogs' rings, the crab in its tin, the
+  mosquito's patrol as its closed form), the same every run and after a reset; engagement and
+  release (the crab sidling home into its tin, the mosquito back onto its patrol), a hop in the
+  air landed first; the frog's tell (its exact length, calm too), the lock and the locked yaw,
+  the marker (its size, colour and steady start, strike after strike), one wedge by its own
+  rule, the leap's peak; every away case and the warp hold through ObjectManager, the crab's
+  and the mosquito's tells called off too; the token; defeat in every live state of every kind,
+  the tie, the coin, a plain bounce off the crab and the mosquito (the crab's and the
+  mosquito's coin 11 ticks after a stomp, the mosquito poofing where it was; a punched one
+  deflating, falling and poofing on its floor); a stomp in the air, the wreath's flight and
+  burst, a tumble off the camera's line, the daze's twinkles; the knock-safe rule, turned round
+  a critter standing in his way home (its far side first, else its near side; never through
+  it, a stuck crab never shoved by him flying back); the frog's leash, water (a pool on its own
+  level too) and drop for its hops and its target (half way, the puzzled cancel) and the strike
+  window; the crab's window from any distance at both sizes, its locked heading and claw, its
+  lunge of 72 at both sizes hurting only from pinch tick 2, never into deep water (a pool on its
+  level; a wading one into a shallow pool, never deeper than 95, and knocked over at a deep edge
+  it glances off along it) or off a drop; its tell never hidden behind him from the camera (it
+  sidles off the camera's line first, or winds up after `LINE_WAIT`); a wading crab at the sand
+  bar's depth (hidden, its yellow band over the water, its eyes on a swimmer who never wakes it;
+  stomped or knocked over, its dented tin floating over the water, standing on its legs); the
+  mosquito parking and aiming only 200 to 240 from him (the plan's numbers), up to 9 a tick,
+  never backing off, held in its leash (driven out to it), sliding along a wall, no tell with his
+  feet off its level, its needle hurting only low and on the ring, its struck capsule running to
+  the needle's tip only in the dive, stuck for 60; the token with a crab (back at the pinch's
+  end; a crab and a frog both after him never wind up at once); let go mid-strike (the pinch,
+  the dive and the stomp window finish first, the token back, no ring left); the hit shapes (the
+  crab's capsule riding its lift, a stuck mosquito's `STUCK_R`, every kind's `STOMP_LOW`); the
+  lost-life edge and reset; the blob shadows; the three models' sizes, triangles and normals,
+  the crab's planted feet, the eyes and flowers clear of what they sit on, each part in its own
+  model's branch of the shader, the raised claws turned to open forward; the hot paths; the
+  fairness rows with the real Player for all three; the sounds and the shared gate, the idle
+  whine rare and quiet; the bump at the leash's rim (a crab chased onto its rim sliding round
+  him at nearly arm's length, never more than `BUMP_STEP` a tick past his pace), against a wall,
+  in a windup and off a dying hero, the crab and the stuck mosquito pushed aside, a hovering
+  mosquito once his head reaches it, never mid-strike or in the aim; the state vocabulary),
+  `tests/skerries.test.js` (the homes, above),
+  `tests/skerries-routes.test.js` (no route wakes one), `tests/skerries-critters.test.js` (on the
+  real course: frog_north notices him, hits him once, lets him go, is stomped and heals him with
+  its coin; a life lost by frog_west sends the frogs home; mosquito_south's ring under him and
+  its hit, stuck in the turf when he steps aside and popped with a punch, never a wedge to a
+  B-masher, bumped aside (never inside him) as he walks in under it and stomped with a held jump
+  from beside it; crab_bar hidden while he swims round the bar (its yellow band over the water,
+  its eyes on him), awake as he stands up on it, knocked over by a ground pound and stomped
+  (its tin floating over the water all the way), its coin picked up standing; crab_islet's
+  pinch by the terrace's rim sending him back onto the terrace, never through the crab),
+  `tests/areas.test.js` (all six
+  back after every arrival and GAME OVER; none in the hall or on the grounds; no hit while a
+  warp runs), `tests/audio-sfx.test.js` (the thirteen critter sounds).
 
 ## Player (`src/player/Player.js`)
 
@@ -2555,14 +2699,19 @@ ambience itself, not through `'sfx'`), and Rustmaw's tail grab's
 `face_grab, face_stretch, face_boing, face_boop` (with `pitch`, `volume` and `pan`), and the
 critters' (`Critters.js`, positional): the Wreath Frog's `frog_croak` (pitch 1.25 as it notices
 him, 0.7 puzzled, 0.8 dazed; `quiet` its idle croak), `frog_puff` (the windup), `frog_leap`,
-`frog_land`, `frog_pop` (a defeat; the wreath flying off).
+`frog_land`, `frog_pop` (a defeat; the wreath flying off); the Tin Crab's `crab_clack` (as it
+wakes and through its windup; `quiet` a softer pair), `crab_snap` (the pinch), `crab_tonk` (a
+defeat: the tin bonked); the Mosquito's `mosquito_whine` (pitch 1.3 as it spots him; `quiet`
+its idle whine), `mosquito_aim` (a 'ting' and the rising whine of its tell), `mosquito_dive`,
+`mosquito_stuck` (its needle in the turf; `quiet` the later tugs, pitch 1.6 pulling free),
+`mosquito_pop` (a defeat; `deflate` when punched: a 'pfrrrt').
 Unknown names must be ignored silently.
 
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,566,291
-  bytes, ~507 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1600 kB,
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,584,238
+  bytes, ~512 kB gzip, plus the ~13 kB title-logo worker; the size warning limit is 1600 kB,
   `GAME_CHUNK_LIMIT_KB` in `vite.config.js`), then the phone's `pad.html` built separately into
   the same folder (~85 kB, its own copy of the touch controller and protocol). `npm run
   preview` serves it with the phone relay.
@@ -2577,8 +2726,9 @@ Unknown names must be ignored silently.
   `&view=overview|entry|bottle|fire|vault|roof|apse|toys`, `&lamp=1`, `&door=0..1`);
   `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
   `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`);
-  `/preview.html?m=critters` the course's critters (`&kind=frog|crab|mosquito|all`,
-  `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N`, `&yaw=`, `&dist=`, `&spin=1`).
+  `/preview.html?m=critters` the course's critters, each pose reached through their own steps
+  (`&kind=frog|crab|mosquito|all`, `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N`,
+  `&yaw=`, `&dist=`, `&spin=1`).
 * `node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'`
   — the game straight in an area (`&entry=` for another of its entries; `__game.enterArea(name,
   entry)` switches at once mid-run). More recipes:

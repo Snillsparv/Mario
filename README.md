@@ -94,7 +94,9 @@ the gulls.
   from its top, onto the shed's loft; then walk the **plank bridge** down to the lighthouse's
   rock (jump the gap in its middle at a run). Missed a jump? The water is friendly: swim to a
   rock and jump out (pull back and press jump at the surface).
-* Wreath frogs live on the meadow of Midsummer Skerries. Watch them puff up, then jump on them!
+* Wreath frogs and mosquitoes live on the meadow of Midsummer Skerries, and a tin crab guards
+  the sand bar's rest stop in the Sound (another hides on the islet). Watch their tell, then
+  jump on them or punch them!
 * On the lighthouse's rock, hop up the two stone blocks (or double jump up the rock face), climb
   the wooden stair, then the tall **signal mast** in front of the lighthouse: climb all the way
   up (the camera turns round to show the lighthouse ahead), stand on your hands on its top, push

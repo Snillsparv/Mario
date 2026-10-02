@@ -342,8 +342,9 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     t.diagnostic(`skerries: ${f.calls} draw calls, ${f.triangles} triangles, built in ${built.toFixed(1)} ms`);
     assert.ok(f.calls < 55, `${f.calls} draw calls`);
     assert.ok(built < 450, `the first entry's hitch: built in ${built} ms`);
-    // Its critters: the two Wreath Frogs on the meadow (one instanced draw).
-    assert.equal(await page.evaluate(() => window.__game.areas.current.objects.critters.alive), 2);
+    // Its critters: two Wreath Frogs and two Mosquitoes on the meadow, two Tin Crabs (one
+    // instanced draw for all six).
+    assert.equal(await page.evaluate(() => window.__game.areas.current.objects.critters.alive), 6);
     assert.ok(skyBlue(f.pixels[0]) || f.pixels.some(skyBlue), `sky over the bay: ${JSON.stringify(f.pixels)}`);
     const sizes = await page.evaluate(async () => {
       const textures = await import('/src/world/skerries/textures.js');
@@ -380,7 +381,7 @@ test('?area=skerries: Midsummer Skerries, its card and sky; its star takes him b
     // Back in, then out from the pause screen, paused while reading the welcome sign (whose
     // last page says to): the way out is offered, and B closes the sign and leaves.
     await page.evaluate(() => window.__game.enterArea('skerries'));
-    assert.equal(await page.evaluate(() => window.__game.areas.current.objects.critters.alive), 2, 'the frogs back at home');
+    assert.equal(await page.evaluate(() => window.__game.areas.current.objects.critters.alive), 6, 'the critters back at home');
     await step(60);
     await page.evaluate(() => {
       const g = window.__game;

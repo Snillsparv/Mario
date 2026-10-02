@@ -11,7 +11,9 @@
 // the engine's shared hall instead of making a convolver of its own when given one); and the
 // areas' (a door still being built rattling, diving into the ship in the bottle and popping
 // back out of it, a gull over the skerries); and the critters' (a Wreath Frog's croak, pitched
-// for its notice and quiet for its idle call, its puff, leap, landing and pop).
+// for its notice and quiet for its idle call, its puff, leap, landing and pop; a Tin Crab's
+// clack, snap and tonk; a Mosquito's whine (quieter still idle), its rising aim, falling dive,
+// the stuck needle's doinng and its pop, a deflating pfrrrt when punched).
 // Measured levels (offline renders) are in src/dev/previews/audio.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -172,7 +174,11 @@ const DIALOG = ['dialog_open', 'text_blip', 'dialog_next', 'dialog_close'];
 const AI_RACE = ['button_press', 'alarm', 'kaiju_roar', 'fireball_charge', 'fireball_launch', 'fireball_explode', 'burn', 'fire_crackle', 'steam', 'thunder'];
 const HAT_AND_MINIONS = ['box_hit', 'powerup', 'wing_flap', 'stomp', 'minion_emerge', 'minion_bite', 'minion_wreck', 'minions_stinger', 'evil_laugh'];
 const AREAS = ['door_rattle', 'bottle_dive', 'bottle_pop', 'gull'];
-const CRITTER_SFX = ['frog_croak', 'frog_puff', 'frog_leap', 'frog_land', 'frog_pop'];
+const CRITTER_SFX = [
+  ...['frog_croak', 'frog_puff', 'frog_leap', 'frog_land', 'frog_pop'],
+  ...['crab_clack', 'crab_snap', 'crab_tonk'],
+  ...['mosquito_whine', 'mosquito_aim', 'mosquito_dive', 'mosquito_stuck', 'mosquito_pop'],
+];
 const LONG = { thunder: 4.1, evil_laugh: 3.5 }; // the rolling thunder and the echoing laugh may run past the usual 3 s
 
 test('the combo, flying-kick, sign-dialog, AI RACE, area and critter sounds exist', () => {
@@ -573,7 +579,7 @@ test("the areas' sounds: sane budgets and lengths, shaped as designed", () => {
   assert.ok(counts.size > 1, 'gulls differ');
 });
 
-test("the critters' sounds: each a recipe with its playback rules, sane budgets and lengths; the croak pitched up for the notice and quiet for the idle call; never a minion's", () => {
+test("the critters' sounds: each a recipe with its playback rules, sane budgets and lengths; the croak pitched up for the notice and quiet for the idle call, the idle whine quieter still, the tugs and the clacks softer when quiet; the mosquito's aim rising and its dive falling, its punched pop a deflating pfrrrt; never a minion's", () => {
   for (const n of CRITTER_SFX) {
     assert.ok(SFX_INFO[n], `${n} has playback rules`);
     const { budget, dur } = run(n);
@@ -598,4 +604,23 @@ test("the critters' sounds: each a recipe with its playback rules, sane budgets 
   assert.ok(chimes.length >= 3, 'chimes');
   for (let i = 1; i < 3; i++) assert.ok(firstFreq(chimes[i]) > firstFreq(chimes[i - 1]), 'rising');
   for (const n of CRITTER_SFX) assert.ok(!n.startsWith('minion_'));
+  // Quiet calls: the idle whine at 0.35 of the level (the loud one means it has seen him), the
+  // stuck needle's later tugs and a quiet clack at 0.6.
+  for (const [n, k] of [['mosquito_whine', 0.35], ['mosquito_stuck', 0.6], ['crab_clack', 0.6]]) {
+    const loud = run(n);
+    const soft = run(n, { quiet: 1 });
+    assert.ok(Math.abs(soft.budget / loud.budget - k) < 0.02, `${n} quiet: ${soft.budget.toFixed(3)} vs ${loud.budget.toFixed(3)}`);
+  }
+  // The aim's whine rises (with a ting as it locks on), the dive's falls into a thump.
+  const saws = (r) => r.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'sawtooth').map((o) => o.frequency.events.map((e) => e[1]));
+  for (const f of saws(run('mosquito_aim'))) assert.ok(f.at(-1) > f[0] * 2, `the aim rises: ${f}`);
+  const dive = saws(run('mosquito_dive'));
+  assert.ok(dive.length === 1 && dive[0].at(-1) < dive[0][0] * 0.3, `the dive falls: ${dive}`);
+  // Punched, the pop is a deflating 'pfrrrt' (a sawtooth falling, no chimes); stomped, chimes.
+  const deflated = run('mosquito_pop', { deflate: 1 });
+  const stomped = run('mosquito_pop');
+  const chimesOf = (r) => r.ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'square').length;
+  assert.ok(chimesOf(stomped) >= 3 && chimesOf(deflated) === 0, 'chimes only when stomped');
+  const pfrt = saws(deflated)[0];
+  assert.ok(pfrt.at(-1) < pfrt[0] * 0.4, `the pfrrrt falls: ${pfrt}`);
 });
