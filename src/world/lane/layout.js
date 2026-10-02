@@ -140,9 +140,9 @@ const villa = (id, cx, front, garage, extras) => ({
 export const VILLAS = [
   villa('north_1', -4890, -1600, 450, { bays: [-300], windows: [450, -650], brick: 0xb05a3c, roof: 0x2e2c2c }),
   villa('north_2', -2450, -1650, 400, { arches: [-450], bays: [350], door: -150, brick: 0x9c4a34, roof: 0x2e2c2c }),
-  villa('north_3', 200, -1650, 450, { arches: [-450], bays: [200], balcony: true, brick: 0xb05a3c, roof: 0x4a3a32 }),
+  villa('north_3', 200, -1650, 450, { arches: [-450], bays: [200], balcony: true, brick: 0xa65036, roof: 0x4a3a32 }),
   villa('north_4', 2770, -1720, 300, { bays: [-350], windows: [350], brick: 0xa85438, roof: 0x4a3a32 }),
-  villa('north_5', 5190, -1930, 350, { arches: [-450], bays: [150], door: -250, doorTint: 0x6a4a32, brick: 0xb05a3c, roof: 0x4a3a32 }),
+  villa('north_5', 5190, -1930, 420, { arches: [-450], bays: [400], door: -250, doorTint: 0x6a4a32, brick: 0xb4603e, roof: 0x4a3a32 }),
 ];
 
 // ---------------------------------------------------------------- the west end
@@ -256,15 +256,21 @@ export const SOUTH_2 = chain('south_2', 2500, 4150, 1450, 2650, { boards: 0xd8b6
 // Its wing behind it (ridge along z: turned a quarter, its front toward +x).
 export const SOUTH_2_WING = { ...chain('south_2_wing', 3400, 4150, 2650, 3350, { boards: 0xd8b65e, roof: 0x3a302c }), w: 700, d: 750, yaw: Math.PI / 2, ridge: pitchRidge(CHAIN.eave, 750, CHAIN.pitch), windows: [0] };
 
-// The dad's front garden: the grass-paver path from the kerb to the door, the round bed (stones
-// round it, the red-leaf tree in it: a climbable pole), the rhododendron at the house's west
-// corner; his drive (asphalt) east of the house to the carport; the two wheelie bins against
-// the house's east gable (BINS: their middles; BIN: the body's size, its lid's top at `top`).
+// The dad's front garden: the grass-paver path from the kerb to the door, the round bed (a ring of
+// `stones` round it, red leaves fallen in it, the red-leaf tree in it: a small ornamental tree,
+// its trunk a climbable pole, its crown about as high as the house's eaves), the rhododendron at
+// the house's west corner, a potted plant by the door; his drive (asphalt) east of the house to
+// the carport; the two wheelie bins against the house's east gable (BINS: their middles; BIN:
+// the body's size, its lid's top at `top`) by the car charger (DAD.charger); behind the house a
+// patio of grey slabs. The link's own short drive in front of its garage door.
 export const DAD_PATH = { x0: -90, x1: 90, z0: 450, z1: DAD.z0 };
-export const ROUND_BED = { x: 1050, z: 850, r: 300 };
-export const RED_TREE = { x: ROUND_BED.x, z: ROUND_BED.z, y0: GROUND, y1: 442, radius: 30, trunkTop: 420, canopy: { r: 360, y0: 500, y1: 940 } };
+export const ROUND_BED = { x: 1050, z: 850, r: 300, stones: 14 };
+export const RED_TREE = { x: ROUND_BED.x, z: ROUND_BED.z, y0: GROUND, y1: 442, radius: 30, trunkTop: 420, canopy: { r: 290, y0: 330, y1: 700 } };
 export const RHODODENDRON = { x: -960, z: 1180, r: 260, h: 300 };
+export const POT = { x: -165, z: 1290 };
 export const DAD_DRIVE = { x0: DAD.x1, x1: CARPORT.x1, z0: 450, z1: CARPORT.z0 };
+export const LINK_DRIVE = { x0: LINK.x0, x1: LINK.x1, z0: 450, z1: LINK.z0 };
+export const PATIO = { x0: -900, x1: 0, z0: DAD.z1, z1: 3100 };
 export const BIN = { x: 110, z: 90, h: 160, top: GROUND + 160 };
 export const BINS = [{ x: 1665, z: 1600 }, { x: 1665, z: 1710 }];
 
@@ -305,10 +311,11 @@ export const TREES = [
   { x: -7700, z: -900, r: 650, h: 1700 },
   { x: -9500, z: -1600, r: 800, h: 2000 },
 ];
-// The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` over the
-// band), and the ring of trees drawn round the outside of the boundary (EDGE_FOREST: `count`
-// firs `from`..`to` outside it), so the camera never looks out on nothing.
-export const FOREST = { count: 34, x0: -7000, x1: 7500, z0: -4300, z1: -5600, seed: 0x5ba77 };
+// The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` firs and
+// `birches` birches over the band), and the ring of trees drawn round the outside of the
+// boundary (EDGE_FOREST: `count` firs `from`..`to` outside it), so the camera never looks out on
+// nothing.
+export const FOREST = { count: 34, birches: 10, x0: -7000, x1: 7500, z0: -4300, z1: -5600, seed: 0x5ba77 };
 export const EDGE_FOREST = { count: 70, from: 900, to: 2200, seed: 0x5ba78 };
 
 // Lampposts (grey, an arm and a flat lamp head; their colliders prisms): L1 at the junction and
@@ -323,13 +330,19 @@ export const LAMPS = [
   { id: 'L6', x: 2600, z: -1240, yaw: 2.42 },
   { id: 'L7', ...footpathAt(200, 330), yaw: -2.2 },
 ];
-// White flagpoles with a gold knob (climbable; the flags come later).
+// White flagpoles with a gold knob (climbable), each flying its `flag`: north_2's the blue and
+// yellow cross flag (FLAG: len along the wind by h), the others long blue and yellow pennants
+// (PENNANT), all streaming before the same light breeze (WIND: the way they stream, the waves
+// running down them: amp at the tip, k per unit along, speed per second).
 export const FLAGPOLE = { r: 14, top: 1350 };
 export const FLAGPOLES = [
-  { id: 'F1', x: -2900, z: -1150, y0: TERRACE },
-  { id: 'F2', x: 5100, z: 350, y0: GROUND },
-  { id: 'F3', x: -7700, z: 100, y0: GROUND },
+  { id: 'F1', x: -2900, z: -1150, y0: TERRACE, flag: 'flag' },
+  { id: 'F2', x: 5100, z: 350, y0: GROUND, flag: 'pennant' },
+  { id: 'F3', x: -7700, z: 100, y0: GROUND, flag: 'pennant' },
 ];
+export const FLAG = { len: 300, h: 188 };
+export const PENNANT = { len: 520, h: 64, droop: 70 };
+export const WIND = { dir: [0.96, 0.28], amp: 34, k: 0.012, speed: 4.2 };
 // The dad's mailbox by the street: a black house-shaped box on a post (body 90 x 70, 130 high,
 // on a post `post` high, a 30-degree roof to `ridge`), facing the street; it is a sign of its own.
 export const MAILBOX = { x: 230, z: 640, yaw: Math.PI, post: 110, body: [90, 70, 130] };
@@ -339,6 +352,90 @@ MAILBOX.ridge = MAILBOX.eaves + 30;
 // pedestrian sign on its grey post on the footpath's west side; the low barrier across it.
 export const CABINET = footpathAt(60, 520);
 export const PATH_SIGN = footpathAt(520, 320);
+
+// ---------------------------------------------------------------- cars, the hoop, the trampoline
+
+// Cars parked on the drives (generic shapes, plate-less, no badges), each a kind (CAR_KINDS: l
+// long, w wide, its body up to `belt`, its cabin up to `roof`, the bonnet `hood` long, the
+// windscreen `screen` deep, the cabin's back `tail` in from the rear at its foot and `tailTop`
+// at the roof, wheels of radius `wheel`) at (x, z), its nose toward yaw (0: +z), in its colour.
+// Solid (the body and the cabin): a hop onto a bonnet, a grab of a roof's edge. The dad's two
+// stand side by side before the carport, noses out (the bins and the way up to them clear on
+// their west); the west neighbour's at the link; on the villas' drives (not north_4's: its
+// coins) and at the double garage, noses in.
+export const CAR_KINDS = {
+  suv: { l: 660, w: 270, belt: 140, roof: 250, hood: 175, screen: 95, tail: 25, tailTop: 55, wheel: 58 },
+  cross: { l: 630, w: 265, belt: 130, roof: 235, hood: 165, screen: 110, tail: 35, tailTop: 95, wheel: 55 },
+  hatch: { l: 590, w: 255, belt: 115, roof: 215, hood: 155, screen: 120, tail: 30, tailTop: 85, wheel: 50 },
+  estate: { l: 690, w: 260, belt: 115, roof: 210, hood: 180, screen: 115, tail: 20, tailTop: 45, wheel: 50 },
+  van: { l: 700, w: 285, belt: 135, roof: 290, hood: 70, screen: 90, tail: 10, tailTop: 20, wheel: 55 },
+};
+const parked = (kind, x, noseZ, yaw, tint) => ({ kind, x, z: noseZ - Math.cos(yaw) * (CAR_KINDS[kind].l / 2), yaw, tint });
+export const CARS = [
+  parked('cross', 1900, 1760 - CAR_KINDS.cross.l, Math.PI, 0x4f7898),
+  parked('suv', 2300, 1760 - CAR_KINDS.suv.l, Math.PI, 0x2c3a52),
+  parked('cross', -1360, 1300, 0, 0xeeeee8),
+  parked('hatch', -4440, -1560, Math.PI, 0xb6babe),
+  parked('cross', -2050, -1610, Math.PI, 0x45484c),
+  parked('hatch', 650, -1610, Math.PI, 0x1f2124),
+  parked('van', 5480, -1890, Math.PI, 0x24272b),
+  { kind: 'estate', x: 5245 - CAR_KINDS.estate.l / 2, z: -115, yaw: Math.PI / 2, tint: 0x8e9296 },
+];
+
+// The basketball hoop on north_5's front wall west of its garage door, a children's one: a black
+// post `out` in front of the wall, a white board (w by h, its foot at `board` up, at the top of
+// the rendered floor) on an arm to the wall, an orange ring of `ring` radius at `rim` up; the
+// board and its arm are one solid block from the wall (a perch: a double jump from the drive
+// grabs its edge, a hop from the van's roof lands on it).
+export const HOOP = { x: 5270, z: VILLAS[4].front, out: 70, board: GROUND + 390, w: 130, h: 110, rim: GROUND + 400, ring: 32 };
+
+// The trampoline in north_5's front garden (objects/Trampoline.js bounces Jonas off its mat:
+// within r of its middle, his feet coming down at y, its top), drawn by props.js: a dark mat in a
+// padded blue ring on six legs, solid from the terrace up to its top. The secret 1-up floats
+// high over it: only a bounce with the jump button held (BOUNCE_HELD_VY) rises to it.
+export const TRAMPOLINE = { x: 4580, y: TERRACE + 90, z: -1650, r: 250, vy: 50, legs: 6 };
+export const TRAMPOLINES = [TRAMPOLINE];
+export const ONE_UP = { x: TRAMPOLINE.x, y: 1020, z: TRAMPOLINE.z };
+
+// ---------------------------------------------------------------- gardens, the forest's edge
+
+// A tree or two in the gardens (drawn by props.js, their trunks solid): an apple tree on
+// north_4's terrace, a birch behind the corner house, a red-leaved shrub by the double garage.
+export const GARDEN_TREES = [
+  { kind: 'apple', x: 2200, z: -1250, r: 480, h: 850 },
+  { kind: 'birch', x: -4050, z: 2780, r: 380, h: 1500 },
+  { kind: 'shrub', x: 5450, z: 330, r: 160, h: 260 },
+];
+// Flower beds on the terraces (cosmos: tufts of leaves with pink and white flowers): north_3's
+// behind its box hedge, north_4's along its wall.
+export const FLOWER_BEDS = [
+  { x0: -1000, x1: -300, z0: -1350, z1: -1050, n: 14, seed: 41 },
+  { x0: 1880, x1: 2300, z0: -900, z1: -780, n: 7, seed: 43 },
+];
+// TV antennas on the chain houses' ridges (x along each ridge; drawn only).
+export const ANTENNAS = [
+  { house: 'south_1', x: -2900 },
+  { house: 'south_dad', x: -900 },
+  { house: 'south_2', x: 3800 },
+];
+// Two houses down the side road in the fog (drawn only, out of bounds): `t` along it, `s`
+// across it (s > 0 its west side).
+export const SIDE_BLOCKS = [
+  { t: 900, s: 1100, w: 1600, d: 1100, tint: 0xece6d8 },
+  { t: 2300, s: 1150, w: 1500, d: 1100, tint: 0xd8b65e },
+];
+
+// Butterflies over the dad's lawn and north_3's flower beds (ObjectManager), and small brown
+// birds (BIRD_TINT) circling over the forest.
+export const BUTTERFLY_SPOTS = [
+  { x: 500, z: 900 },
+  { x: -650, z: -1200 },
+];
+export const BIRD_CIRCLES = [
+  { x: -2500, z: -5200, y: 2600, radius: 1300 },
+  { x: 3000, z: -5600, y: 2900, radius: 1100 },
+];
+export const BIRD_TINT = 0x5a5048;
 
 // ---------------------------------------------------------------- the boundary
 
@@ -489,7 +586,8 @@ export const COINS = [
 
 // Signs: the dad's mailbox (post: false, the mailbox is the sign: no signpost drawn, its own
 // collider within the sign's box), read from the street; the corner sign at the junction facing
-// up the lane; the footpath's beside the blue sign, facing the turning area.
+// up the lane; the footpath's beside the blue sign, facing the turning area; the trampoline's at
+// the turning area's rim below north_5's steps.
 export const SIGNS = [
   {
     id: 'sparrow_mailbox',
@@ -514,6 +612,14 @@ export const SIGNS = [
     y: GROUND,
     yaw: -2.43,
     pages: ['The footpath to the next street.', 'That is an adventure for another day!'],
+  },
+  {
+    id: 'trampoline',
+    x: 4780,
+    y: GROUND,
+    z: -1150,
+    yaw: -0.96,
+    pages: ['Up the steps: a trampoline!', 'Jump onto it and keep the jump button held to bounce sky high.'],
   },
 ];
 

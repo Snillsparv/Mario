@@ -12,6 +12,7 @@ import { Events } from '../src/core/events.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { Butterflies } from '../src/objects/Butterflies.js';
 import { Birds } from '../src/objects/Birds.js';
+import { Trampolines } from '../src/objects/Trampoline.js';
 import { Sparkles, TINT } from '../src/objects/Sparkles.js';
 import { CoinField } from '../src/objects/CoinField.js';
 import { SpriteBatch } from '../src/objects/SpriteBatch.js';
@@ -361,6 +362,7 @@ test('hot object paths avoid allocating constructs', () => {
     'CoinField.animate': CoinField.prototype.animate,
     'CoinField.collect': CoinField.prototype.collect,
     'SpriteBatch.push': SpriteBatch.prototype.push,
+    'Trampolines.update': Trampolines.prototype.update,
     'ObjectManager._step': ObjectManager.prototype._step,
     'ObjectManager.animate': ObjectManager.prototype.animate,
     'ObjectManager._draw': ObjectManager.prototype._draw,
@@ -372,6 +374,23 @@ test('hot object paths avoid allocating constructs', () => {
     assert.doesNotMatch(src, /for \((const|let|var) [^;]* of /, name);
   }
   assert.equal(SpriteBatch.prototype.push.length, 0, 'push() takes no numbers');
+});
+
+test('a trampoline bounces the hero on the tick his feet come down on its mat (within its radius, at its top), not while he stands on it, beside it or on a floor elsewhere at its height', () => {
+  const tr = new Trampolines({ spots: [{ x: 100, y: 240, z: -50, r: 250, vy: 50 }] });
+  const calls = [];
+  const hero = (x, y, z, grounded) => ({ pos: { x, y, z }, grounded, bounce: (vy, sound) => calls.push([vy, sound]) > 0 });
+  const air = { y: 300, vy: -20, air: true };
+  tr.update(hero(100, 240, -50, true), air);
+  tr.update(hero(300, 242, 50, true), air); // on its pad, inside r
+  assert.deepEqual(calls, [[50, 'boing'], [50, 'boing']]);
+  assert.equal(tr.bounces, 2);
+  tr.update(hero(100, 240, -50, true), { ...air, air: false }); // standing on it
+  tr.update(hero(100, 240, -50, true), null); // just placed there (no last tick)
+  tr.update(hero(100, 270, -50, false), air); // still in the air over it
+  tr.update(hero(400, 240, -50, true), air); // beside it, at its height
+  tr.update(hero(100, 150, -50, true), air); // under it
+  assert.equal(calls.length, 2);
 });
 
 test('sparkles recycle a fixed pool of particle records', () => {

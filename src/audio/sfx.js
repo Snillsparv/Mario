@@ -874,6 +874,15 @@ export const SFX = {
     return 0.3;
   },
 
+  // Bounced off a trampoline: the mat's soft thump, a big springy boing bending up and the
+  // frame's springs ringing after it.
+  boing(ctx, out, t, { p }) {
+    thud(ctx, out, t, { freq: 120 * p, to: 70 * p, dur: 0.1, gain: 0.26, click: 0.3 });
+    boing(ctx, out, t + 0.02, { from: 170 * p, to: 430 * p, dur: 0.34, gain: 0.3, rate: 18 });
+    tone(ctx, out, t + 0.06, { wave: 'triangle', freq: 900 * p, to: 1100 * p, dur: 0.18, gain: 0.05, attack: 0.004 });
+    return 0.4;
+  },
+
   // A minion bursting out of the ground: a dull thump and a burst of earth (a low rush, clods
   // pattering down), then its servos chittering as it shakes itself off.
   minion_emerge(ctx, out, t, { p }) {
@@ -1526,6 +1535,7 @@ export const SFX_INFO = {
   powerup: { gap: 0.5, duck: { music: 0.3, amb: 0.7, seconds: 1.3 } },
   wing_flap: { gap: 0.2, max: 2 },
   stomp: { gap: 0.08 },
+  boing: { gap: 0.1, max: 2 },
   minion_emerge: { range: 1.5, gap: 0.1, max: 3 }, // a warning: heard across the ~2000 they surface at
   minion_bite: { gap: 0.06, max: 3 },
   minion_wreck: { gap: 0.05, max: 3 },

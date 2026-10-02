@@ -3,7 +3,9 @@
 // lane/houses.js, the dad's front door by lane/door.js and the props (street furniture,
 // greenery, the mailbox, the fences, the forest, the signposts) by lane/props.js.
 //
-//   buildLane(layout) -> { name: 'lane', object3D, colliders, setDoorOpen(t, id), reset() }
+//   buildLane(layout) -> { name: 'lane', object3D, colliders, update(time), setDoorOpen(t, id),
+//                          reset() }
+//     update        per frame (world/area.js), the clock in seconds: the flags wave
 //     setDoorOpen   the dad's front door (id 'lane_home', or none), 0 shut .. 1 standing open
 //                   (core/AreaSwitch.js swings it as Jonas comes out of it and goes back in)
 //
@@ -15,21 +17,24 @@
 // terraces (TERRACE) behind a retaining wall of split-face blocks (a paler coping along its
 // top), cut by each villa's cobbled drive notch and its steps (drawn steps on a not-slippery
 // ramp), their back gardens rising to the forest's bank. Out past the junction the road runs on
-// into the fog with the side road; outside the boundary the forest bank and a ring of firs (the
-// drawn edge the camera sees).
+// into the fog with the side road; outside the boundary the forest bank (rising on far into the
+// fog, so its crest never shows an edge against the sky) and a ring of firs (the drawn edge the
+// camera sees).
 //
 // Unlit worldMaterial meshes with the lighting baked into vertex colours under the low golden
-// sun (LANE_SUN, a warm tint), one mesh per material, twelve: lane-asphalt (the road, the
+// sun (LANE_SUN, a warm tint), one mesh per material, thirteen: lane-asphalt (the road, the
 // turning area, the pavement, the drives and the footpath), -grass (lawns, terraces, verges, the
 // bank), -blocks (the terraces' walls, the steps, the kerbs, the round bed's stones), -brick (the
 // castle's stone bricks tinted: the villas' upper floors, the chain houses' white brick plinths
 // and gable ends), -render (white render, and every flat-coloured detail by vertex tint: frames,
-// panes, doors, poles, the bins, the mailbox, soffits and fascias, the vestibule behind the dad's
-// door), -boards (the skerries' painted planks upright: the chain houses' boards, gables, the
-// fences), -roof (pan tiles, the flat roofs' felt), -cobbles (the drives' cobbles, the north-west
-// villa's flagstones, the round bed's soil), -leaves (hedges, thujas, canopies, firs), -wood
-// (trunks, tree bark), -signs, and -door (the dad's door's leaf, render's material, turning on
-// its hinge).
+// panes, doors, poles, the bins, the mailbox and its sparrow, the cars, the hoop, the trampoline,
+// the red-leaf tree's crown and the leaves fallen in its bed, soffits and fascias, the vestibule
+// behind the dad's door), -boards (the skerries' painted planks upright: the chain
+// houses' boards, gables, the fences), -roof (pan tiles, the flat roofs' felt), -cobbles (the
+// drives' cobbles, the north-west villa's flagstones, the patio, the flower beds' soil), -leaves
+// (hedges, thujas, canopies, firs), -wood (trunks, tree bark), -cloth (the flags, both faces,
+// waving: props.js waveFlags), -signs, and -door (the dad's door's leaf, render's material,
+// turning on its hinge).
 //
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): the road and
 // every hard surface (stone), the lawns and the terraces' tops (grass), the terraces' walls and
@@ -44,14 +49,14 @@ import { stoneTexture, woodTexture } from '../castle/textures.js';
 import { flagstoneTexture, grassTexture, masonryTexture } from '../terrainTextures.js';
 import { MeshBuilder, bakedMesh } from '../props/geom.js';
 import { leafTexture, woodTexture as signWoodTexture } from '../props/textures.js';
-import { faluPlankTexture } from '../skerries/textures.js';
+import { faluPlankTexture, sailTexture } from '../skerries/textures.js';
 import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
-import { buildProps } from './props.js';
+import { buildProps, waveFlags } from './props.js';
 
-// World units per texture repeat (projected UVs).
-const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300 };
+// World units per texture repeat (projected UVs; the cloth's UVs are set per face).
+const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
 
 // Vertex tints (sRGB).
 const TINT = {
@@ -71,6 +76,7 @@ const TINT = {
   cobbles: 0xb8ae9e,
   flags: 0xd8d4cc,
   railing: 0x2a2a2a,
+  patio: 0xa8a6a0,
 };
 
 const UP = [0, 1, 0];
@@ -80,7 +86,10 @@ const GROUND_RECT = { x0: -16000, x1: 16000, z0: -8000, z1: 10000, tile: 2000 };
 const SAMPLE = 150; // the kerbs' run is tested for the road's edge this often
 const ARC_STEP = 300; // the terraces' fronts along the turning area: straight this long
 const KERB_LIFT = 1.5; // the kerbs' tops over the lawn and the pavement beside them
-const BANK = { depth: 1200, beyond: 2600, far: 200 }; // the bank: up to its top, then on
+// The bank: up to its top over `depth`, on a little higher `beyond`, then rising on `far` more
+// to `crest` over its top, out in the fog.
+const BANK = { depth: 1200, beyond: 2600, far: 200, out: 9000, crest: 2600 };
+const CARPORT_SHADE = 0.62; // the drive's asphalt under the carport's roof
 
 export function buildLane(layout) {
   const kit = { solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} }, groundAt: layout.groundHeight };
@@ -106,12 +115,13 @@ function assemble(kit, layout, leaf) {
   const group = new THREE.Group();
   group.name = 'lane';
   const materials = {};
-  const add = (name, map) => {
-    const material = worldMaterial({ map });
+  const add = (name, map, opts) => {
+    const material = worldMaterial({ map, ...opts });
     const mesh = new THREE.Mesh(bakeLighting(kit[name].toGeometry(), lit), material);
     mesh.name = `lane-${name}`;
     group.add(mesh);
     materials[name] = material;
+    return mesh;
   };
   add('asphalt', asphaltTexture());
   add('grass', grassTexture());
@@ -123,6 +133,7 @@ function assemble(kit, layout, leaf) {
   add('cobbles', flagstoneTexture());
   add('leaves', leafTexture());
   add('wood', woodTexture());
+  const wave = waveFlags(add('cloth', sailTexture(), { side: THREE.DoubleSide }).geometry, layout);
   group.add(bakedMesh('lane-signs', kit.signs.wood, worldMaterial({ map: signWoodTexture() }), lit));
   // The dad's front door's leaf, in render's material, turning on its hinge (setDoorOpen).
   const door = doorLeaf(leaf, materials.render, (geo) => bakeLighting(geo, lit));
@@ -134,6 +145,10 @@ function assemble(kit, layout, leaf) {
     name: 'lane',
     object3D: group,
     colliders,
+    // Per frame: the flags wave (no allocation).
+    update(time) {
+      wave(time);
+    },
     // The dad's front door (the course's one swinging door), 0 shut .. 1 standing open.
     setDoorOpen(t, id = null) {
       if (id === null || id === 'lane_home') door.setOpen(t);
@@ -261,13 +276,14 @@ function roadPieces({ ROAD, ROAD_DRAWN, TURN, SIDE_ROAD: S }) {
   return pieces;
 }
 
-// The hard surfaces a step up at GROUND (each its outline, builder and tint): the pavement, the
-// drives and the notches' cobbles, the dad's grass-paver path and his drive, the drive east of
-// the turning area to the double garage, the north-west villa's flagstones, the footpath.
+// The hard surfaces a step up at GROUND (each its outline, builder, tint and shade): the
+// pavement, the drives and the notches' cobbles, the dad's grass-paver path, his drive (darker
+// under the carport) and the link's, the drive east of the turning area to the double garage,
+// the north-west villa's flagstones, the footpath, the dad's patio.
 function hardSurfaces(L, road) {
   const out = [];
-  const add = (outline, mat, tint) => {
-    for (const piece of cutOut(outline, road)) out.push({ outline: piece, mat, tint });
+  const add = (outline, mat, tint, shade = 1) => {
+    for (const piece of cutOut(outline, road)) out.push({ outline: piece, mat, tint, shade });
   };
   // The pavement: along the bend and the straight, on its north side, up to the turning area.
   const line = L.ROAD.line.slice(1);
@@ -279,7 +295,10 @@ function hardSurfaces(L, road) {
     add([[d0, L.wallZAt(d0)], [d1, L.wallZAt(d1)], [d1, v.front], [d0, v.front]], 'cobbles', TINT.cobbles);
   }
   add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'grass', TINT.path);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.CARPORT.z1), 'asphalt', TINT.drive);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', TINT.drive);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.CARPORT.z1), 'asphalt', TINT.drive, CARPORT_SHADE);
+  add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', TINT.drive);
+  add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', TINT.patio);
   add(rectOf(L.TURN.x + 800, L.EAST_GARAGE.cx - L.EAST_GARAGE.d / 2, L.EAST_GARAGE.cz - L.EAST_GARAGE.w / 2, L.EAST_GARAGE.cz + L.EAST_GARAGE.w / 2), 'asphalt', TINT.drive);
   const F = frame(L.NORTH_WEST);
   const D = L.NORTH_WEST_DRIVE;
@@ -314,8 +333,8 @@ function ground(kit, L, road) {
     if (solid(piece)) solids.face(at(piece, 0), UP, 'stone');
   }
   const hard = hardSurfaces(L, road);
-  for (const { outline, mat, tint } of hard) {
-    kit[mat].color(tint);
+  for (const { outline, mat, tint, shade } of hard) {
+    kit[mat].color(tint, shade);
     kit[mat].poly(at(outline, G), { facing: UP, shade: outline.map(([x, z]) => swath(x, z)) });
     if (solid(outline)) solids.face(at(outline, G), UP, 'stone');
   }
@@ -354,6 +373,7 @@ function kerbs(kit, L, road) {
   const G = L.GROUND;
   const drops = [
     { x0: L.DAD_DRIVE.x0, x1: L.DAD_DRIVE.x1, south: true },
+    { x0: L.LINK_DRIVE.x0, x1: L.LINK_DRIVE.x1, south: true },
     ...L.PLOTS_N.map((p) => ({ x0: p.drive[0], x1: p.drive[1], south: false })),
     { x0: L.TURN.x + 800, x1: L.TURN.x + 2000, south: false, z0: -900, z1: 150 },
   ];
@@ -558,34 +578,38 @@ function steps(kit, L, p, stepsZ) {
 // ---------------------------------------------------------------- outside the boundary
 
 // The forest's bank behind the back gardens: from their back edge up to NORTH.bankTop over
-// BANK.depth and on beyond (and west of the plots, up from the lawn behind the north-west
-// villa); its firs are props.js's.
+// BANK.depth, on beyond and then up again far out into the fog to its crest (and west of the
+// plots, up from the lawn behind the north-west villa); its firs are props.js's.
 function bank(kit, L) {
   const { grass } = kit;
   const N = L.NORTH;
   const strips = [
-    { from: [L.PLOTS_N[0].x0, N.backZ], to: [GROUND_RECT.x1, N.backZ], foot: N.backTop },
     { from: [-9600, -2200], to: [-6400, -4000], foot: L.GROUND },
     { from: [-6400, -4000], to: [L.PLOTS_N[0].x0, N.backZ], foot: L.GROUND },
+    { from: [L.PLOTS_N[0].x0, N.backZ], to: [GROUND_RECT.x1, N.backZ], foot: N.backTop },
   ];
+  const rowsOf = (foot) => [[0, foot], [BANK.depth * 0.5, foot + (N.bankTop - foot) * 0.75], [BANK.depth, N.bankTop], [BANK.depth + BANK.beyond, N.bankTop + BANK.far], [BANK.depth + BANK.beyond + BANK.out, N.bankTop + BANK.crest]];
+  // A band of quads between two edges (a(r), b(r): the points r rows out) facing out along n.
+  const band = (a, b, rows, n) => {
+    for (let r = 0; r + 1 < rows.length; r++) {
+      grass.color(r === 0 ? TINT.backLawn : TINT.bank);
+      grass.poly([a(r), b(r), b(r + 1), a(r + 1)], { facing: [-n[0] * 0.4, 1, -n[1] * 0.4], shade: r === 0 ? [1, 1, 0.9, 0.9] : 0.9 });
+    }
+  };
+  let last = null;
   for (const { from, to, foot } of strips) {
     const dx = to[0] - from[0];
     const dz = to[1] - from[1];
     const l = Math.hypot(dx, dz);
     // Outward: the strip's left (north and west of the play space).
-    const [nx, nz] = [dz / l, -dx / l];
-    const n = Math.ceil(l / 1500);
-    const rows = [[0, foot], [BANK.depth * 0.5, foot + (N.bankTop - foot) * 0.75], [BANK.depth, N.bankTop], [BANK.depth + BANK.beyond, N.bankTop + BANK.far]];
-    for (let i = 0; i < n; i++) {
-      const p = (k, r) => {
-        const t = (i + k) / n;
-        return [from[0] + dx * t + nx * rows[r][0], rows[r][1], from[1] + dz * t + nz * rows[r][0]];
-      };
-      for (let r = 0; r + 1 < rows.length; r++) {
-        grass.color(r === 0 ? TINT.backLawn : TINT.bank);
-        grass.poly([p(0, r), p(1, r), p(1, r + 1), p(0, r + 1)], { facing: [-nx * 0.4, 1, -nz * 0.4], shade: r === 0 ? [1, 1, 0.9, 0.9] : 0.9 });
-      }
-    }
+    const n = [dz / l, -dx / l];
+    const rows = rowsOf(foot);
+    const out = (x, z, m) => (r) => [x + m[0] * rows[r][0], rows[r][1], z + m[1] * rows[r][0]];
+    const k = Math.ceil(l / 1500);
+    for (let i = 0; i < k; i++) band(out(from[0] + (dx * i) / k, from[1] + (dz * i) / k, n), out(from[0] + (dx * (i + 1)) / k, from[1] + (dz * (i + 1)) / k, n), rows, n);
+    // The wedge between this strip and the one before it where they turn a corner.
+    if (last && (last[0] !== n[0] || last[1] !== n[1])) band(out(from[0], from[1], last), out(from[0], from[1], n), rows, [last[0] + n[0], last[1] + n[1]]);
+    last = n;
   }
 }
 

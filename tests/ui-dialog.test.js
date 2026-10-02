@@ -77,7 +77,7 @@ describe('dialog text', () => {
     const shut = hall.DOORS.filter((d) => d.locked).map((d) => d.locked);
     assert.ok(shut.length >= 1, "the snowflake's east door");
     assert.equal(skerries.SIGNS.length, 3);
-    assert.equal(lane.SIGNS.length, 3);
+    assert.equal(lane.SIGNS.length, 4);
     for (const sign of [...hall.SIGNS, ...shut, ...skerries.SIGNS, ...lane.SIGNS]) {
       assert.ok(sign.pages.length >= 2, sign.id);
       for (const page of sign.pages) {

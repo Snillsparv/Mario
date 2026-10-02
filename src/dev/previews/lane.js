@@ -2,14 +2,18 @@
 // course's fog and the grounds' sky dome).
 //   &col=1   overlay collider triangles (front faces only: floors green, walls blue, ceilings
 //            red) to check winding (the boundary's invisible walls show from inside only)
-//   &view=overview|arrival|home|roof|west|junction|turn|north|gap   camera presets (default:
-//            overview, high over the turning area looking west down the lane; arrival: where the
-//            camera starts, over the lawn looking at the dad's front door and the star over the
-//            ridge; home: the dad's house front with the mailbox; roof: the climb (the bins, the
-//            carport, the roof and the star); west: the bend, the north-west villa and the
-//            motorhome; junction: the lamppost, the big trees and the corner house; turn: the
-//            turning area, the double garage, the footpath; north: the villas' fronts and walls;
-//            gap: up a side yard between two villas)
+//   &view=overview|arrival|home|roof|west|junction|turn|north|gap|mailbox|drive|trampoline|
+//            flags|hoop|high   camera presets (default: overview, high over the turning area
+//            looking west down the lane; arrival: where the camera starts, over the lawn looking
+//            at the dad's front door and the star over the ridge; home: the dad's house front
+//            with the mailbox; roof: the climb (the bins, the carport, the roof and the star);
+//            west: the bend, the north-west villa and the motorhome; junction: the lamppost, the
+//            big trees and the corner house; turn: the turning area, the double garage, the
+//            footpath; north: the villas' fronts and walls; gap: up a side yard between two
+//            villas; mailbox: close on the sparrow on the mailbox; drive: the dad's drive with
+//            its two cars; trampoline: north_5's garden with the trampoline and the hoop; flags:
+//            north_2's flag over its wall; hoop: the hoop and the van; high: high over the
+//            middle of the lane looking north over the forest's bank)
 //   &door=0..1  the dad's front door that far open
 //   &t=secs  freeze the clock
 import * as layout from '../../world/lane/layout.js';
@@ -29,6 +33,12 @@ const VIEWS = {
   turn: { pos: [1600, 700, 200], look: [4500, 300, -200] },
   north: { pos: [-1200, 450, 900], look: [-1200, 400, -2000] },
   gap: { pos: [-1125, 450, -700], look: [-1125, 400, -3200] },
+  mailbox: { pos: [330, 330, 330], look: [220, 270, 640] },
+  drive: { pos: [2100, 520, 150], look: [2050, 180, 1500] },
+  trampoline: { pos: [3900, 900, -300], look: [4700, 400, -1700] },
+  flags: { pos: [-2300, 400, 300], look: [-2850, 1150, -1150] },
+  hoop: { pos: [4700, 700, -900], look: [5250, 450, -1900] },
+  high: { pos: [0, 4200, 2500], look: [0, 1200, -6000] },
 };
 
 export async function setup({ THREE, scene, params }) {
@@ -45,6 +55,7 @@ export async function setup({ THREE, scene, params }) {
     update(dt, t) {
       const time = frozen !== null ? Number(frozen) : t;
       sky.update(time, window.__preview?.camera);
+      lane.update(time);
     },
   };
 }

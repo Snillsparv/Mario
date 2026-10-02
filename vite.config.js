@@ -7,10 +7,10 @@ import padRelay from './tools/padRelay.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.63 MB minified (1,629,736 bytes), ~530
+// first frame, so splitting would only add requests. ~1.64 MB minified (1,644,515 bytes), ~536
 // kB gzipped (plus the ~13 kB title-logo worker). The size warning was 1600 (1,584,238 bytes
-// before it); raised to 1700 for the second course, Sparrow Lane (world/lane/*, about 45 kB):
-// the hard budget (1,700,000 bytes) is the limit.
+// before it); raised to 1700 for the second course, Sparrow Lane (world/lane/*, about 60 kB
+// with its details): the hard budget (1,700,000 bytes) is the limit.
 const GAME_CHUNK_LIMIT_KB = 1700;
 
 // The phone's controller page (pad.html) is built on its own, right after the game, into the

@@ -112,9 +112,10 @@ function rememberTakeOff(p) {
   p.comboJump = p.forwardVel >= T.LONG_JUMP_COMBO_SPEED ? { fv: p.forwardVel, y: p.pos.y } : null;
 }
 
-// arg.bounce (player.bounce: stomped on an enemy): rises at that speed keeping the forward
-// speed and drift, with no jump cut on releasing A (p.stompBounce, cleared on the next action).
-// Like a landing, the stomp ends the fall: fall damage counts from the bounce's own peak.
+// arg.bounce (player.bounce: stomped on an enemy, or a trampoline): rises at that speed keeping
+// the forward speed and drift, with no jump cut on releasing A (p.stompBounce, cleared on the
+// next action), sounding arg.sound ('stomp' unless given). Like a landing, the stomp ends the
+// fall: fall damage counts from the bounce's own peak.
 const jump = airAction(
   (p, arg) => {
     if (arg?.bounce) {
@@ -124,7 +125,7 @@ const jump = airAction(
       p.stompBounce = true;
       p.peakY = p.pos.y;
       p.fallCeiling = Infinity;
-      p.sfx('stomp');
+      p.sfx(arg.sound ?? 'stomp');
       return;
     }
     rememberTakeOff(p);

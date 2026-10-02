@@ -5,7 +5,8 @@
 // mode the "AI RACE" floor button, the robot beast on the castle roof, its fireballs, the
 // mushroom-capped robot minions (Minions.js) and the server halls taking over the grounds
 // (ServerHalls.js); and a course's critters (Critters.js: layout.CRITTERS, Midsummer Skerries'
-// Wreath Frogs, Tin Crabs and Mosquitoes).
+// Wreath Frogs, Tin Crabs and Mosquitoes) and trampolines (Trampoline.js: layout.TRAMPOLINES,
+// Sparrow Lane's).
 //
 //   new ObjectManager({ scene, collision, events, layout, player, fx?, level?, view?, area? })
 //                                  view: the renderer (default scene.userData.view), to compile
@@ -30,6 +31,8 @@
 //                                  (minion and critter drops)
 //   critters                       the course's critters (Critters.js), or null without
 //                                  layout.CRITTERS
+//   trampolines                    the course's trampolines (Trampoline.js), or null without
+//                                  layout.TRAMPOLINES
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
 //   setDarkness(t)                 AI RACE crossfade 0..1: butterflies and birds hide, the button glows
 //   (AI RACE's meltdown, fx/Meltdown.js: on 'meltdown' { phase: 'white' } the button's cap light
@@ -66,6 +69,8 @@
 // 'castle_sealed' sign instead of opening, so the storm never follows the hero indoors.
 // Cannon (layout.CANNON, Cannon.js): standing on its loading pad puts Pip in the barrel
 // (player.enterCannon); the barrel follows his aim and recoils when he fires ('cannonFire').
+// Trampolines (layout.TRAMPOLINES, Trampoline.js): landing on a mat bounces him back up
+// (player.bounce with a 'boing'; no mesh of their own: the course draws them).
 //
 // Everything animates on the simulation clock (ticks + alpha), so pausing the game freezes the
 // objects too. Before the first update() (the title screen shows the level behind it), and
@@ -118,6 +123,7 @@ import { ServerHalls } from './ServerHalls.js';
 import { BossStar } from './BossStar.js';
 import { Cannon } from './Cannon.js';
 import { Critters } from './Critters.js';
+import { Trampolines } from './Trampoline.js';
 
 const STAR_SHADOW = 150;
 const STAR_GLOW = 360;
@@ -195,6 +201,8 @@ export class ObjectManager {
     this.critters = layout.CRITTERS?.length
       ? new Critters({ spots: layout.CRITTERS, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowBase: critterShadow0, onCoin: (x, y, z, minY) => this.spawnCoin(x, y, z, minY) })
       : null;
+    // A course's trampolines (Trampoline.js): the hero's landings on their mats.
+    this.trampolines = layout.TRAMPOLINES?.length ? new Trampolines({ spots: layout.TRAMPOLINES }) : null;
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -457,6 +465,7 @@ export class ObjectManager {
     // The critters: no windup and no damage while a dialog is up or a warp runs (a struck one
     // flies off the camera's line of sight).
     if (this.critters !== null) this.critters.update(player, hero, this.tick, this.dialogOpen || this.warping, this.cameraYaw);
+    if (this.trampolines !== null) this.trampolines.update(player, hero);
     if (this.beast !== null) {
       if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
       this.beast.update(player, this.tick);

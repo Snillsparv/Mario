@@ -13,7 +13,12 @@
 // wall tops (a hop) and up north_3's steps, up the side yard between north_2 and north_3, onto
 // the motorhome's roof (a double jump; a single one falls short from anywhere in front of it),
 // round the junction's lamppost and up it, round the turning area, up north_4's drive, along the
-// footpath, and along south_1's hedge top (a single jump up onto it).
+// footpath, and along south_1's hedge top (a single jump up onto it). And the details: the
+// trampoline (with the jump button held every bounce rises to 852, a 'boing' each time, and takes
+// the 1-up high over it; a jump from its mat, bouncing without the button or a triple jump on the
+// terrace beside it falls short of the 1-up; bouncing off it every way never leaves the
+// boundary), the hoop's board as a perch (a hop from the van's roof), and the dad's cars (a jump
+// from the drive onto the blue car's roof, a hop from there onto the carport's).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -35,7 +40,7 @@ const { DAD, GROUND, TERRACE } = lane;
 function hero(x, y, z, yaw) {
   const events = new Events();
   const log = [];
-  for (const name of ['coin', 'starCollected']) events.on(name, (e) => log.push({ name, ...e }));
+  for (const name of ['coin', 'starCollected', 'oneUp', 'sfx']) events.on(name, (e) => log.push(name === 'sfx' ? { name, sound: e.name } : { name, ...e }));
   const p = new Player({ collision: area.collision, events, spawn: { x: x + O.x, y: y + O.y, z: z + O.z, yaw }, signs: area.signs });
   p.teleport(x + O.x, y + O.y, z + O.z, yaw);
   p.setAction('idle');
@@ -276,4 +281,106 @@ test("the hedge walk: a single jump from the lawn up onto south_1's hedge (165 h
   h.walk([[-3300, (H.z0 + H.z1) / 2], [-2000, (H.z0 + H.z1) / 2]], 0.4);
   assert.ok(Math.abs(h.at().y - H.top) < 1, `along its top: ${JSON.stringify(h.at())}`);
   assert.equal(h.coins(), 3, 'its coins');
+});
+
+// The peaks (feet heights) of each arc he flies while `input` runs for n ticks.
+function arcs(h, input, yaw, n) {
+  const peaks = [];
+  let vy = h.p.vel.y;
+  for (let t = 0; t < n; t++) {
+    h.tick(input(t), yaw);
+    if (vy > 0 && h.p.vel.y <= 0) peaks.push(h.at().y);
+    vy = h.p.vel.y;
+  }
+  return peaks;
+}
+
+test('the trampoline: with the jump button held every bounce rises to 852 with a boing and takes the 1-up; a jump from the mat, bounces without the button or a triple jump beside it fall short; bouncing off it every way stays in bounds', () => {
+  const T = lane.TRAMPOLINE;
+  const U = lane.ONE_UP;
+  const ones = (h) => h.log.filter((e) => e.name === 'oneUp').length;
+  // From the terrace beside it a hop onto the mat, the button held from then on.
+  const h = hero(T.x - T.r - 120, TERRACE, T.z, E);
+  h.rest(2);
+  const peaks = arcs(h, (t) => ({ stickY: Math.hypot(h.at().x - T.x, h.at().z - T.z) < T.r - 80 ? 0 : 0.5, A: true }), E, 240);
+  const bounces = peaks.slice(1);
+  assert.ok(bounces.length >= 5, `${peaks.length} arcs`);
+  for (const y of bounces) assert.ok(Math.abs(y - 852) <= 10, `a bounce to ${y.toFixed(0)}: ${peaks.map((p) => p.toFixed(0))}`);
+  assert.equal(ones(h), 1, 'the 1-up');
+  const sounds = h.log.filter((e) => e.name === 'sfx').map((e) => e.sound);
+  assert.ok(sounds.filter((n) => n === 'boing').length >= bounces.length && !sounds.includes('stomp'), `a boing a bounce: ${sounds}`);
+  // A jump from the mat (standing on it): its arc stays far under the 1-up.
+  const j = hero(T.x, T.y, T.z, E);
+  j.rest(2);
+  j.tick({ A: true }, E);
+  const [first] = arcs(j, () => ({ A: true }), E, 25);
+  assert.ok(first < U.y - 200 - 50 && ones(j) === 0, `a jump from the mat peaks at ${first.toFixed(0)}`);
+  // Dropped onto it without the button: the bounces stay low.
+  const d = hero(T.x, T.y + 300, T.z, E);
+  d.p.setAction('freefall');
+  const low = arcs(d, () => ({}), E, 150);
+  assert.ok(low.length >= 3 && Math.max(...low) < U.y - 200 - 100 && ones(d) === 0, `bounces without the button: ${low.map((p) => p.toFixed(0))}`);
+  // A running triple jump on the terrace (up the yard west of it) peaks short of it.
+  const tj = hero(3980, TERRACE, -1700, N);
+  tj.rest(1);
+  for (let t = 0; t < 10; t++) tj.tick({ stickY: 1 }, N);
+  const tops = [];
+  for (let k = 0; k < 3; k++) {
+    tj.tick({ stickY: 1, A: false }, N);
+    tj.tick({ stickY: 1, A: true }, N);
+    let peak = 0;
+    for (let t = 0; t < 60 && !(tj.p.grounded && t > 2); t++) {
+      tj.tick({ stickY: 1, A: true }, N);
+      peak = Math.max(peak, tj.at().y);
+    }
+    tops.push(peak);
+  }
+  assert.ok(tops[2] > tops[1] && tops[2] - TERRACE > 600 && tops[2] < U.y - 200, `the triple jump's peaks ${tops.map((p) => p.toFixed(0))}`);
+  // Bouncing with the button held and the stick pushed every way: always in bounds, unhurt.
+  for (let k = 0; k < 8; k++) {
+    const yaw = (k / 8) * Math.PI * 2;
+    const b = hero(T.x, T.y + 300, T.z, yaw);
+    b.p.setAction('freefall');
+    for (let t = 0; t < 200; t++) {
+      b.tick({ stickY: 1, A: true }, yaw);
+      assert.ok(lane.inBounds(b.at().x, b.at().z), `toward ${k}: in bounds at ${JSON.stringify(b.at())}`);
+    }
+    assert.equal(b.p.health, MAX_HEALTH);
+  }
+});
+
+test("the hoop's board, a perch: a hop from the van's roof toward it lands on its top (the stick part way or all the way), and a jump off it lands unhurt", () => {
+  const H = lane.HOOP;
+  const van = lane.CARS.find((c) => c.kind === 'van');
+  const roof = GROUND + lane.CAR_KINDS.van.roof;
+  for (const push of [0.5, 1]) {
+    const yaw = Math.atan2(H.x - (van.x - 80), H.z + 40 - (van.z - 160));
+    const h = hero(van.x - 80, roof, van.z - 160, yaw);
+    h.rest(2);
+    h.tick({ stickY: push, A: true }, yaw);
+    for (let t = 0; t < 60; t++) h.tick({ stickY: push, A: true }, yaw);
+    h.rest(30);
+    const q = h.at();
+    assert.ok(Math.abs(q.y - H.board - H.h) < 1 && h.p.grounded && Math.abs(q.x - H.x) <= H.w / 2, `stick ${push}: on the board ${JSON.stringify(q)}`);
+    jump(h, S, { after: 30 });
+    assert.ok(h.at().y < roof && h.p.health === MAX_HEALTH, `down again: ${JSON.stringify(h.at())}`);
+  }
+});
+
+test("the dad's cars: from the drive a hop onto the blue car's bonnet, another onto its roof and one more from there onto the carport's (a way up besides the bins)", () => {
+  const ev = lane.CARS[0];
+  const K = lane.CAR_KINDS[ev.kind];
+  const nose = ev.z - K.l / 2;
+  const h = hero(ev.x, GROUND, nose - 180, S);
+  h.rest(2);
+  jump(h, S, { after: 0 });
+  h.rest();
+  assert.ok(Math.abs(h.at().y - GROUND - K.belt) < 1 && h.p.grounded, `on its bonnet: ${JSON.stringify(h.at())}`);
+  jump(h, S, { push: 0.6, after: 0 });
+  h.rest();
+  assert.ok(Math.abs(h.at().y - GROUND - K.roof) < 1 && h.p.grounded, `on its roof: ${JSON.stringify(h.at())}`);
+  h.walk([[ev.x, ev.z + 180]], 0.4);
+  jump(h, S, { push: 0.6, after: 0 });
+  h.rest();
+  assert.ok(Math.abs(h.at().y - lane.CARPORT.top) < 1 && h.at().z > lane.CARPORT.z0, `on the carport: ${JSON.stringify(h.at())}`);
 });

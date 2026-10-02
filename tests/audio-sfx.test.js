@@ -404,6 +404,16 @@ test('box_hit is a bright crystal clink over a low bump; stomp a thunk that spri
   assert.ok(f[1] > f[0] * 2 && f[2] < f[1], `spring bends up and settles: ${f}`);
 });
 
+test("the trampoline's boing (Sparrow Lane): a sane budget, length and rate limit; a low thud dropping under a sine that bends up past an octave and settles back a little", () => {
+  const { budget, dur, voices } = run('boing');
+  assert.ok(budget > 0.08 && budget * LEVELS.sfx < 0.95 && dur >= 0.25 && dur <= 0.6, `budget ${budget.toFixed(2)}, length ${dur}`);
+  assert.ok(SFX_INFO.boing.gap > 0 && SFX_INFO.boing.max >= 1);
+  const sines = voices.filter((v) => !v.noise && v.src.type === 'sine').map((v) => v.src.frequency.events.map((e) => e[1]));
+  assert.ok(sines.some((f) => f.at(-1) < f[0] * 0.7 && f[0] < 200), `a dropping thud: ${sines.map((f) => f.map(Math.round))}`);
+  const spring = sines.find((f) => f.length === 3);
+  assert.ok(spring && spring[1] > spring[0] * 2 && spring[2] < spring[1] && spring[2] > spring[0] * 2, `the boing bends up and settles: ${spring}`);
+});
+
 test('powerup: a rising run into a held D major chord (the flying theme\'s key)', () => {
   const { ctx } = run('powerup');
   const tri = ctx.nodes.filter((n) => n.kind === 'osc' && n.type === 'triangle').sort((a, b) => a.startAt - b.startAt);

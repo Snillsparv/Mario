@@ -496,7 +496,8 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
     assert.equal(await page.evaluate(() => window.__game.hud.card?.text), 'SPARROW LANE', 'the course card');
     assert.equal(await page.evaluate(() => window.__game.level.parts.find((p) => p.name === 'sky').object3D.visible), true, 'the sky dome');
     const built = await page.evaluate(() => window.__game.areas.buildMs.lane);
-    // From the arrival and four views over the course: fewer than 50 draw calls each.
+    // From the arrival and four views over the course (with everything in: the cars, the flags,
+    // the trampoline, the birds and butterflies): fewer than 55 draw calls each.
     const views = { arrival: null, roof: [1750, 370, 2300, -Math.PI / 2], turn: [2000, 0, 0, Math.PI / 2], bend: [-3600, 0, 0, -Math.PI / 2], junction: [-7600, 22, 1500, -1.17] };
     for (const [name, at] of Object.entries(views)) {
       if (at) {
@@ -510,7 +511,7 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
       }
       const f = await frame(page);
       t.diagnostic(`lane ${name}: ${f.calls} draw calls, ${f.triangles} triangles`);
-      assert.ok(f.calls < 50, `${name}: ${f.calls} draw calls`);
+      assert.ok(f.calls < 55, `${name}: ${f.calls} draw calls`);
     }
     t.diagnostic(`lane: built in ${built.toFixed(1)} ms`);
     const sizes = await page.evaluate(async () => {

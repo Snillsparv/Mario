@@ -463,21 +463,22 @@ export class Player {
     return attackZone(this, this.attack);
   }
 
-  // Bounce up off an enemy Pip landed on (called by objects after the tick): action 'jump'
-  // rising at vy (BOUNCE_HELD_VY or more while A is held), keeping the forward speed, with
-  // sfx 'stomp'; the stomp ends the fall (fall damage counts from the bounce's own peak). In
-  // flight it noses the flight up instead. Ignored while swimming, on a tree
-  // or ledge (automatic actions), reading and during the spawn drop. Returns whether it bounced.
-  bounce(vy = T.BOUNCE_VY) {
+  // Bounce up off an enemy Pip landed on, or off a trampoline (called by objects after the
+  // tick): action 'jump' rising at vy (BOUNCE_HELD_VY or more while A is held), keeping the
+  // forward speed, with sfx `sound` ('stomp'; a trampoline's 'boing'); the bounce ends the fall
+  // (fall damage counts from the bounce's own peak). In flight it noses the flight up instead.
+  // Ignored while swimming, on a tree or ledge (automatic actions), reading and during the spawn
+  // drop. Returns whether it bounced.
+  bounce(vy = T.BOUNCE_VY, sound = 'stomp') {
     const group = ACTIONS[this.action].group;
     if (group === 'submerged' || group === 'automatic' || NO_BOUNCE.has(this.action)) return false;
     if (this.action === 'flying') {
       this.flyPitch = Math.min(this.flyPitch, T.BOUNCE_FLY_PITCH);
-      this.sfx('stomp');
+      this.sfx(sound);
       return true;
     }
     const v = Number.isFinite(vy) ? vy : T.BOUNCE_VY;
-    this.setAction('jump', { bounce: this.input.A.down ? Math.max(v, T.BOUNCE_HELD_VY) : v });
+    this.setAction('jump', { bounce: this.input.A.down ? Math.max(v, T.BOUNCE_HELD_VY) : v, sound });
     return true;
   }
 

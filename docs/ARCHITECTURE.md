@@ -180,6 +180,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
 | Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures) | WorldPart, built by `area.js` |
 | Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
+| Trampolines | `src/objects/Trampoline.js` (the spring only: its course draws it) | Trampolines, built by ObjectManager (see "Objects") |
 | Collision | `src/collision/*` | below |
 | Layout | `src/world/layout.js` | anchors are shared contract |
 | Terrain + water | `src/world/terrain.js`, `src/world/terrain/*` (tessellate, floorBlocks, walls, shading, MeshBuffer), `src/world/water.js`, `src/world/terrainTextures.js` | WorldPart |
@@ -348,7 +349,8 @@ plus `isWater(x, z)`, whether there is open water there (the water's surface abo
 so not on a rock, the jetty or a beach above the waterline: the sea's laps); the grounds' is
 their `def.audio` as it is):
 `objectsLayout` is what an ObjectManager reads (COINS, RED_COINS, SIGNS, STAR, ONE_UP, DOORS,
-BUTTERFLY_SPOTS, BIRD_CIRCLES shifted, BIRD_TINT as it is, and `groundHeight(x, z)`, the floor
+BUTTERFLY_SPOTS, BIRD_CIRCLES, CRITTERS, TRAMPOLINES shifted, BIRD_TINT as it is, and
+`groundHeight(x, z)`, the floor
 under a point probed from `probeY`, so a coin's shadow never lands on the roof), `respawn` the
 entry `def.respawn` names with its drop (player.setWorld's spawn), `waterFn` the collision
 world's water (the renderer's, per area).
@@ -1528,8 +1530,10 @@ residential cul-de-sac on a golden October afternoon, Jonas's own street. He com
 own black front door onto the grass-paver path of his long red house; the course's star waits
 over the ridge of his roof, in view from the first second. Up the hill across the street stand
 split-level villas behind grey block walls, along his side long low chain houses linked by flat
-roofs; a turning area at the east end, the junction at the west. Nothing here hurts: no
-critters, no water, no death floor.
+roofs; a turning area at the east end, the junction at the west. Cars stand on the drives (his
+own two by the carport), flags fly over the gardens, a little blue sparrow stands on his
+mailbox, and in a garden up the hill a trampoline throws him up toward a secret 1-up. Nothing
+here hurts: no critters, no water, no death floor.
 
 `world/lane/layout.js` holds the anchors in the course's local frame, the **street frame**: +x
 along the lane's long straight toward the turning area, +z across it toward the dad's side, −z up
@@ -1569,7 +1573,9 @@ trees' leaves).
   space's end) and the lawn. The lawn is drawn as 2000 tiles with every road and hard surface
   (and the terraces) cut out of them (castle/geom.js `subtractConvex`, after a separating-axis
   test, each piece rid of repeated corners), so nothing lies over anything; the same pieces are
-  its colliders (grass; the road and hard surfaces stone) wherever Jonas can be. Granite kerbs
+  its colliders (grass; the road and hard surfaces stone) wherever Jonas can be (the dad's drive
+  darker under the carport's roof, the link's own short drive, the dad's patio of grey slabs
+  behind the house). Granite kerbs
   run along every edge of the road's pieces that is the road's edge (a face from the road up and
   a strip on top), dropped (asphalt grey) in front of the drives; their 22 needs no collider (under
   the knee probe). Out past the junction the road runs on into the fog with the side road (drawn
@@ -1582,7 +1588,9 @@ trees' leaves).
   by its drive notch (cobbles at 22 from the wall back to the villa's garage door, block walls
   either side) and its steps (five drawn steps on a smooth `not_slippery` ramp up from the
   pavement, a dark railing on their drive side); where two blocks' fronts differ, the one nearer
-  the street shows its side. Behind them the forest's bank rises to 1500 (drawn only).
+  the street shows its side. Behind them the forest's bank rises to 1500 and on, far out into
+  the fog, to a crest 4100 high (drawn only; the wedges where its strips turn a corner filled),
+  so no camera sees its far edge against the sky.
 * **The houses** (`HOUSES`, `houses.js`): a record is a footprint `w` along its own u by `d` along
   its w, turned by `yaw` (u runs (cos yaw, −sin yaw), w (sin yaw, cos yaw); its front the +w face),
   so the west end's houses, set at an angle to the street, are built like any other (`frame(h)`).
@@ -1590,37 +1598,79 @@ trees' leaves).
   to 412 with the garage door at drive level, red-brown brick to the eaves at 822, plain, arched
   and bay windows, an arched front door at its garden's level, a hipped roof of pan tiles, 27°, to
   1204, wide eaves (110) over a dark soffit; north_3 a balcony on its west gable, solid, 390 over
-  its side yard); **north_west** (white render to its eaves at 462, a light grey pyramid roof with
+  its side yard; north_5 the basketball hoop, see "Props"); **north_west** (white render to its eaves at 462, a light grey pyramid roof with
   two roof windows, a double garage, a low wing behind it, a flagstone drive in front) with the
   **motorhome** on its drive (a white box with a dark window band on four wheels, solid to 522:
   a running double jump grabs its edge, a single one from the drive falls short). **Chain houses**
   (south_west, south_1, `DAD`, south_2 and its wing, east_house): a white brick plinth (135), boards
   to the eaves at 412 (or white brick gable ends with boards in their triangles), black-framed
-  windows with a pale glint and white curtains, a black front door, a low gable roof (20°) along
-  u, 60 overhangs; south_west a glazed veranda on its west gable, a brown picket fence and a rail
+  windows with a pale glint and white curtains, a black front door with a little black wall
+  lamp beside it, a low gable roof (20°) along u, 60 overhangs, TV antennas on three ridges
+  (`ANTENNAS`, drawn only); south_west a glazed veranda on its west gable, a brown picket fence and a rail
   fence (slabs). The **link** (south_1 … the dad's, a block to its flat roof at 370) and the
   **carport** (`CARPORT`, the dad's … south_2: its roof slab 345 … 370 on three posts, open toward
-  the drive, a back wall of yellow boards: 323 of room under it). **east_garage** (a double garage
+  the drive, a back wall of yellow boards: 323 of room under it; wood underfoot).
+  **east_garage** (a double garage
   facing the turning area: white render, a white board gable, two dark panel doors, a white brick
   pier) in front of east_house. Each house is one convex collider (its walls and its hipped or
   gable roof); the drawn overhangs have none.
 * **The dad's house** (`DAD`, x −1100 … 1600, z 1330 … 2605): Falu-red boards, its eaves at 412,
   its ridge at 644 over z 1967.5; the black front door (`DAD.door`, 150 × 315 at x 0 in a white
   frame: `door.js`, one leaf hinged on its left seen from the path, swinging 1.35 rad into a dark
-  vestibule 170 deep, its own mesh), six windows, the white brick gable ends; in the front garden
-  the path, the round bed (a stone ring, raised 14) with the red-leaf tree (a climbable pole to
-  442 under a red canopy drawn in render's white, not in the green leaf texture), the
-  rhododendron (solid), the mailbox; the two wheelie bins against the east gable (`BINS`, solid to
-  182); his drive runs on under the carport.
+  vestibule 170 deep, its own mesh, a wall lamp beside it), six windows, the white brick gable
+  ends; in the front garden the path, the round bed (`ROUND_BED`: raised 14, red leaves fallen on
+  it, ringed with 14 small grey stones) with the red-leaf tree (`RED_TREE`, a small ornamental
+  tree: its trunk a climbable pole to 442, six stems out to a round crown of nine blobs in three
+  reds from 330 to 700, about the house's height, drawn in render's white, not in the green leaf
+  texture, open over the trunk's top where Jonas stands), the rhododendron (solid), a blue pot by
+  the door (`POT`), the mailbox; the two wheelie bins against the east gable (`BINS`, solid to
+  182) under the car charger (`DAD.charger`); his drive runs on under the carport, his two cars on
+  it (see "Props").
 * **Props** (`props.js`): lampposts L1 … L7 (grey, an arm and a flat head; prism colliders, but
-  for the climbable L1 and L6), white flagpoles F1 … F3 with gold knobs (climbable), hedges (solid
-  leafy boxes with a soft crown, their tops walkable: south_1's 165 high along the street,
-  south_2's along the turning area, the back hedges at 242, north_3's low box hedge on its
-  terrace), thujas (steep frustum colliders), the three big trees at the junction (solid trunks
-  under lumpy canopies), the mailbox, the footpath's cabinet and blue sign and its barrier, the
-  forest's firs on the bank (`FOREST`, 34, skerries/props.js `fir()`) and a ring of firs round the
-  outside of the boundary (`EDGE_FOREST`, 70), drawn only, so the camera never looks out on
-  nothing.
+  for the climbable L1 and L6), white flagpoles F1 … F3 with gold knobs (climbable) flying their
+  flags (`FLAGPOLES[].flag`: north_2's blue and yellow cross flag, `FLAG` 300 × 188; long blue and
+  yellow pennants on F2 and F3, `PENNANT`; all in `lane-cloth`, streaming along `WIND` and waving:
+  `waveFlags(geometry, layout)` returns the per-frame update the part's `update(time)` runs, each
+  vertex swung across the wind the more the farther down its flag, in a wave running down it,
+  from typed arrays, allocating nothing), hedges (solid leafy boxes with a soft crown, their
+  tops walkable: south_1's 165 high along the street, south_2's along the turning area, the back
+  hedges at 242, north_3's low box hedge on its terrace), thujas (steep frustum colliders), the
+  three big trees at the junction (solid trunks under lumpy canopies), the garden trees
+  (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, a birch behind the
+  corner house, a red-leaved shrub by the double garage; trunks and the shrub solid), cosmos beds
+  on north_3's and north_4's terraces (`FLOWER_BEDS`: tufts of leaves with pink and white
+  flowers, drawn only), the mailbox (a black house-shaped box on a post: a brass slot, a door, a
+  blank name plate; the little blue sparrow standing on its ridge at the street end: a blue body
+  over a white belly, a round head, dark eyes, an orange beak, folded wings, its tail cocked),
+  the **cars** (`CARS`, `CAR_KINDS`: generic and plate-less, an SUV, crossovers, hatchbacks, an
+  estate and a van: a body up to the belt with its nose and boot rounded off, a glass cabin
+  narrowing up to a roof in the body's colour with a pillar down each side, four wheels, pale
+  headlights and red tail lights, a soft shadow under it; solid, the body and the cabin each
+  convex: a hop onto a bonnet, a grab of a roof's edge. The dad's dark blue SUV and blue
+  crossover side by side before the carport, noses out, the way to the bins clear on their
+  west; the west neighbour's white one at the link; a silver hatchback, a dark grey crossover, a
+  black hatchback and a black van noses in on north_1's, north_2's, north_3's and north_5's
+  drives (not north_4's: its coins); a grey estate at the double garage), north_5's
+  **basketball hoop** (`HOOP`, a children's one: a post against the wall, a white board 412 …
+  522 on an arm, an orange ring and a net; the board and its arm one solid block from the wall: a
+  perch, a hop from the van's roof lands on it), the **trampoline** (see below), the motorhome
+  (its cab's windscreen, headlights and bumper, a door on its road side, a stripe down both
+  sides, a ladder up its back), the footpath's cabinet, the blue sign (a white walking figure
+  on it) and its barrier, the forest's firs and birches on the bank (`FOREST`, 34 firs,
+  skerries/props.js `fir()`, and 10 birches, white bark ringed dark under yellowing canopies)
+  and a ring of firs round the outside of the boundary (`EDGE_FOREST`, 70), drawn only, so the
+  camera never looks out on nothing, and two houses down the side road in the fog
+  (`SIDE_BLOCKS`, drawn only).
+* **The trampoline and the 1-up** (`TRAMPOLINE`, `TRAMPOLINES`, `ONE_UP`): in north_5's front
+  garden on the terrace (x 4580, z −1650): a dark mat in a padded blue ring on six legs, r 250,
+  solid from the terrace up to its top at 240 (`props.js`); its spring is
+  `objects/Trampoline.js` (see "Objects"): every landing on the mat throws him back up with a
+  `boing` (`player.bounce(50, 'boing')`), to 578 (feet) without the jump button and to **852**
+  every time with it held (`BOUNCE_HELD_VY`), steering from one bounce to the next. The 1-up
+  floats at y 1020 over the mat's middle (the gem takes feet from 200 under it): only a held
+  bounce reaches it; a jump from the mat (~507), bounces without the button or a running triple
+  jump on the terrace beside it (~780) fall short. A sign at the turning area's rim under
+  north_5's steps points the way (`trampoline`).
 * **Boundary** (`BOUNDS`, `inBounds(x, z)`): invisible walls from −200 up to 4500, facing in, along
   a polygon a little inside the drawn edges (the forest bank, the hedges, the barrier, the firs):
   the camera stops at them too.
@@ -1641,10 +1691,12 @@ trees' leaves).
   street both ways, round the turning area (7), along north_2's and north_3's wall tops, up
   north_3's steps, up north_4's drive, up the side yard between north_2 and north_3, on the
   motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
-  the bins, on the carport's roof and up the roof's south-west slope. No 1-up yet, no red coins.
+  the bins, on the carport's roof and up the roof's south-west slope. The 1-up over the
+  trampoline; no red coins.
 * **Signs** (`SIGNS`): `sparrow_mailbox` (`post: false`: the mailbox is the sign, no signpost is
   drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
-  the junction facing up the lane, `lane_footpath` beside the blue sign. Only "Jonas" is named.
+  the junction facing up the lane, `lane_footpath` beside the blue sign, `trampoline` at the
+  turning area's rim. Only "Jonas" is named.
 * **Poles** (`POLES`, each with its own side, `camYaw`): L1 (looking along the west leg), L6 (at
   the dad's roof), F1, F2 (west up the lane), F3, the red-leaf tree (the roof ahead). Falls from
   them count from their foot.
@@ -1652,30 +1704,42 @@ trees' leaves).
   to 24000, a low warm actor sun 0xffdcb0 (0.66π) from the bake's `LANE_SUN` (−0.16, 0.40, 0.90:
   low in the south-west, so the villas' street faces and the turning area glow while the chain
   houses' fronts stand in soft shade), a warm hemisphere. Lighting baked from `LANE_SUN` with a
-  warm tint (ambient 0.6, diffuse 0.55, at most 1.1), the walls darker toward their feet.
-* **Meshes** (12): `lane-asphalt`, `-grass`, `-blocks` (masonry: the terraces' walls, the steps,
-  the kerbs, the round bed's stones), `-brick` (the castle's stone bricks tinted: the villas' upper
-  floors, the white brick plinths and gable ends), `-render` (white render and every flat-coloured
-  detail by vertex tint: frames, panes, doors, poles, the bins, the mailbox, the motorhome,
-  soffits, fascias, the vestibule, the red canopy), `-boards` (the skerries' painted planks
-  upright: the chain houses' boards and gables, the fences, the barrier), `-roof` (pan tiles; the
-  flat roofs' felt), `-cobbles` (the flagstone texture: the notches' cobbles, the north-west
-  villa's flagstones, the round bed's soil), `-leaves`, `-wood` (trunks), `-signs` and `-door` (the
-  dad's door's leaf, render's material). ~13k triangles, ~1.5k collider triangles (stone, grass,
-  wood; the steps `not_slippery`), built in ~200 ms in node (~95 ms in the browser); the course's
-  objects (coins, sparkles, shadows, the star) within 9 meshes; 35 … 37 draw calls from the
-  arrival, the roof, the turning area, the bend and the junction (the E2E budget is 50).
+  warm tint (ambient 0.6, diffuse 0.55, at most 1.1), with a little painted occlusion: the walls
+  darker toward their feet and under the eaves, the soffits dark, the drive under the carport
+  0.62, hedges and canopies darker underneath, a soft shadow under each car; each villa's brick
+  its own shade. Butterflies over the dad's lawn and north_3's flower beds
+  (`BUTTERFLY_SPOTS`), small brown birds (`BIRD_TINT` 0x5a5048) circling over the forest
+  (`BIRD_CIRCLES`).
+* **Meshes** (13): `lane-asphalt`, `-grass` (also the bank), `-blocks` (masonry: the terraces'
+  walls, the steps, the kerbs, the round bed's stones), `-brick` (the castle's stone bricks
+  tinted: the villas' upper floors, the white brick plinths and gable ends), `-render` (white
+  render and every flat-coloured detail by vertex tint: frames, panes, doors, poles, the bins,
+  the mailbox and its sparrow, the cars, the hoop, the trampoline, the motorhome, the antennas,
+  soffits, fascias, the vestibule, the red-leaf tree's crown and its fallen leaves, the shrub,
+  the flowers), `-boards` (the skerries' painted planks upright: the chain houses' boards and
+  gables, the fences, the barrier), `-roof` (pan tiles; the flat roofs' felt), `-cobbles` (the
+  flagstone texture: the notches' cobbles, the north-west villa's flagstones, the patio, the
+  flower beds' soil), `-leaves`, `-wood` (trunks), `-cloth` (the skerries' sailcloth, both faces:
+  the flags, waving), `-signs` and `-door` (the dad's door's leaf, render's material). The part's
+  `update(time)` waves the flags. ~21k triangles, ~1.8k collider triangles (stone, grass, wood;
+  the steps `not_slippery`), built in ~200–300 ms in node; the course's objects (coins,
+  sparkles, shadows, the star, the 1-up, butterflies, birds) within 9 meshes; 36 … 38 draw
+  calls from the arrival, the roof, the turning area, the bend and the junction (the E2E budget
+  is 55; ~27k triangles drawn with Jonas and the HUD), built in ~130 ms in the browser.
 * **Sound** (`def.audio`, see "Audio"): Midsummer Skerries' polska (`skerries`) again; the `'lane'`
   ambience (the grounds' breeze, leaves and distant birds without their waterfall and moat
-  laps); no reverb. Footsteps: stone on the road, the hard surfaces and the roofs, grass on the
-  lawns and terraces, wood on the fences and the mailbox.
+  laps); no reverb; the trampoline's `boing`. Footsteps: stone on the road, the hard surfaces,
+  the roofs and the cars, grass on the lawns, the terraces and the trampoline's mat, wood on the
+  carport, the fences, the mailbox and the hoop's board.
 * **Privacy and originality** (the repository is public): no photograph's pixels (every texture is
   painted in code), no real street name, no house numbers (the houses go by neutral ids: north_1 …
   north_5, north_west, south_west, south_1, south_dad, south_2, east_garage, east_house), no names
-  but Jonas's, no licence plates, no brands; the hall's plaque is this game's own little house.
+  but Jonas's, no licence plates (the cars are generic shapes without plates or badges), no
+  brands; the mailbox's name plate is blank; the hall's plaque is this game's own little house.
 * **Preview**: `/preview.html?m=lane` (`src/dev/previews/lane.js`: the course under its fog with
   the grounds' sky dome; `&col=1` the collider overlay; `&door=0..1` the dad's door that far
-  open; `&view=overview|arrival|home|roof|west|junction|turn|north|gap`; `&t=` freezes the clock).
+  open; `&view=overview|arrival|home|roof|west|junction|turn|north|gap|mailbox|drive|trampoline|
+  flags|hoop|high`; `&t=` freezes the clock, the flags wave with it).
 * **Tests**: `tests/lane.test.js` (node, the course as `buildArea` places it with the real Player,
   camera and objects: the budgets, the arrival (on the path, the camera in front of him clear
   after the walk-in, the star in the picture, the respawn drop onto the path unhurt), no water and
@@ -1686,9 +1750,17 @@ trees' leaves).
   signpost), the six poles grabbed from every open side with the camera swinging to `camYaw` and
   jumps off them unhurt, the side yards walked with the follow camera and C-button swings never
   in a solid, the privacy scan of its sources and signs, the look (the sun, the villas' fronts lit
-  over the dad's, his walls Falu red, his roof dark)); `tests/lane-routes.test.js` (scripted
-  input: the star climb, the front eave, the red-leaf tree's flip, and the routes round the
-  street, each collecting exactly its coins); `tests/areas.test.js` (through the east door into
+  over the dad's, his walls Falu red, his roof dark, the red-leaf tree's crown about the house's
+  height in several reds), the details (the 1-up over the trampoline's mat, the butterflies and
+  birds, the flags waving with their hoists still and allocating nothing per frame) and the cars
+  (each on its drive with a floor on its roof and bonnet, clear of the coins and of the way to
+  the bins)); `tests/lane-routes.test.js` (scripted input: the star climb, the front eave, the
+  red-leaf tree's flip, and the routes round the street, each collecting exactly its coins; the
+  trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
+  and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
+  perch from the van's roof, the dad's cars as steps up to the carport);
+  `tests/objects.test.js` (the trampoline's spring); `tests/audio-sfx.test.js` (`boing`);
+  `tests/areas.test.js` (through the east door into
   the lane and back with the doors swinging, a stick held through, the door ids, the star exit,
   the leave, GAME OVER); `tests/areas-browser.test.js` (E2E: `?area=lane`, the full walk through
   it).
@@ -2599,8 +2671,9 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   Rustmaw's head in frame; anything that needs the field of view reads `camera.fov`.
 * **Attacks and stomps** (player): `player.getAttack()` -> `null` or `{ x, y, z, radius,
   kind }` while a punch, kick, jump kick, dive, belly slide (while fast), ground-pound
-  landing or flight can hit something this tick (`kind` is the action name). `player.bounce(vy = 50)`: bounce up off an enemy Jonas landed on
-  (action `'jump'`, sfx `stomp`).
+  landing or flight can hit something this tick (`kind` is the action name). `player.bounce(vy = 50,
+  sound = 'stomp')`: bounce up off an enemy Jonas landed on, or off a trampoline (action
+  `'jump'`, sfx `sound`: a stomp's `stomp`, a trampoline's `boing`).
 * **Minions** (objects): 10 s after Rustmaw has risen, Sporebots burrow out of the ground
   (dust burst) around Jonas (700-1600 away, on land), up to 5 at a time, a new one every ~5 s.
   A Sporebot is a small original mushroom-shaped machine, ~120 across and ~130 tall
@@ -2795,6 +2868,7 @@ objects.setAiRaceButton(on)                 // the title's game choice: false = 
 objects.enter(player)                       // the hero was just placed in this area (see below)
 objects.door, objects.doors                 // the castle door (or null); every door (Door.js)
 objects.critters                            // a course's critters (Critters.js), or null
+objects.trampolines                         // a course's trampolines (Trampoline.js), or null
 objects.spawnCoin(x, y, z, minY?)           // a run-time coin (minion and critter drops), at
                                             // least at minY (CoinField.spawnCoin)
 ```
@@ -2809,6 +2883,14 @@ mesh). The states are lowercase strings (`STATES`: per kind, each calm, engaged 
 dialogOpen || warping`, draws in `_draw`, and `reset()` and `enter()` reset it. Its coins come
 out of the drop slots (`COIN_DROPS` 6: one per critter); its blob shadows take one slot each
 after the minions' and the boss star's.
+
+Trampolines (`layout.TRAMPOLINES`, `[{ x, y, z, r, vy }]`: a mat's middle, its top at `y`;
+Sparrow Lane's): `objects.trampolines` is a `Trampolines` (`Trampoline.js`), the spring only (the
+course draws the trampoline and makes it solid; it has no mesh of its own). It ticks in `_step`
+after the critters with the hero's remembered last tick: on the tick his feet come down on a
+mat (airborne the tick before, standing now within `r` of its middle and within 4 of its top)
+it calls `player.bounce(vy, 'boing')` (with A held he rises at `BOUNCE_HELD_VY`), so he bounces
+again on every landing until he steers off. `update()` allocates nothing.
 
 `enter(player)` (an arrival): the hero's remembered last tick is dropped (`hero.valid`, so no
 stomp or box bump is read from a tick in another place), a dialog flag left up is cleared, and
@@ -2898,7 +2980,8 @@ their leaves start to swing) and `door_close` (AreaSwitch, as the leaves meet be
 hall's unbuilt doors' `door_rattle` (all sent into the shared hall reverb,
 `SFX_INFO` `hall`), the bottle mouth's `bottle_dive` and the hall's `bottle` entry's
 `bottle_pop` (AreaSwitch, as the wipe opens on it), the skerries' `gull` (played by the `'sea'`
-ambience itself, not through `'sfx'`), and Rustmaw's tail grab's
+ambience itself, not through `'sfx'`), Sparrow Lane's trampoline's `boing` (the Player's, as
+`player.bounce(vy, 'boing')` throws him back up), and Rustmaw's tail grab's
 `tail_grab, boss_haul, boss_whoosh, boss_throw, boss_slam, boss_crash, boss_splash`
 (`boss_whoosh` once per whirl turn, its `pitch` rising with the spin), AI RACE's meltdown's
 `meltdown_klaxon, meltdown_ignite, meltdown_flash, meltdown_blast, meltdown_ring`, and the face screen's
@@ -2916,12 +2999,12 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,629,736
-  bytes with Sparrow Lane, ~530 kB gzip, plus the ~13 kB title-logo worker; the size warning
-  limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for the second
-  course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built separately into
-  the same folder (~85 kB, its own copy of the touch controller and protocol). `npm run
-  preview` serves it with the phone relay.
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,644,515
+  bytes with Sparrow Lane and its details, ~536 kB gzip, plus the ~13 kB title-logo worker; the
+  size warning limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for
+  the second course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built
+  separately into the same folder (~85 kB, its own copy of the touch controller and protocol).
+  `npm run preview` serves it with the phone relay.
 * `node tools/shot.mjs --url "/preview.html?m=<area>&cam=x,y,z&look=x,y,z" --out shots/x.png`
   — headless screenshot of a preview page (prints browser errors).
 * `node tools/shot.mjs --url "/?test=1" --actions '[{"step":30,"input":{"stickY":1}},{"shot":"shots/a.png"},{"eval":"__game.snapshot()"}]'`
@@ -2934,7 +3017,7 @@ Unknown names must be ignored silently.
   `/preview.html?m=skerries` Midsummer Skerries (`&col=1`, `&lit=1`,
   `&view=arrival|skerries|islet|gallery|bay|east|chimney|bridge|meadow|wreck`);
   `/preview.html?m=lane` Sparrow Lane (`&col=1`, `&door=0..1`,
-  `&view=overview|arrival|home|roof|west|junction|turn|north|gap`);
+  `&view=overview|arrival|home|roof|west|junction|turn|north|gap|mailbox|drive|trampoline|flags|hoop|high`);
   `/preview.html?m=critters` the course's critters, each pose reached through their own steps
   (`&kind=frog|crab|mosquito|all`, `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N`,
   `&yaw=`, `&dist=`, `&spin=1`).

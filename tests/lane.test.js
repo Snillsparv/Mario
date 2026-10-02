@@ -1,6 +1,8 @@
 // Sparrow Lane (world/lane/*), built as the game builds it (world/area.js buildArea at the
 // course's origin) with the real Player, CameraController and ObjectManager: its budgets (meshes,
-// triangles, colliders, build time; the course's own objects too), the arrival out of the dad's
+// triangles, colliders, build time; the course's own objects too), the details (the 1-up over the
+// trampoline, the butterflies and the birds, the cars parked on the drives, solid and clear of the
+// way to the bins, the flags waving without allocating), the arrival out of the dad's
 // front door (on the path, facing the street, the camera in front of him over the lawn after the
 // walk-in, clear, the star over the ridge in the picture; a lost life's drop onto the path
 // unhurt), no water anywhere and a floor everywhere inside the boundary, the boundary holding
@@ -14,11 +16,13 @@
 // a solid, seldom trapped) and C-button swings there, under the carport and on the roof, the
 // privacy and originality rules in the course's sources, and the look (the sun from the
 // south-west, the villas' street faces lit, the chain houses' in shade, the dad's walls Falu red
-// under a dark roof).
+// under a dark roof, the red-leaf tree a small one, its crown in several reds about the house's
+// height).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { readFileSync, readdirSync } from 'node:fs';
+import { Session } from 'node:inspector/promises';
 import { buildArea } from '../src/world/area.js';
 import { AREA_DEFS } from '../src/world/areas.js';
 import * as lane from '../src/world/lane/layout.js';
@@ -98,8 +102,8 @@ const meshes = [];
 area.root.traverse((o) => o.isMesh && meshes.push(o));
 const mesh = (name) => meshes.find((m) => m.name === name);
 
-test('budgets: at most 12 meshes named lane-* with baked colours, under 32k triangles and 5k collider triangles, built in under 800 ms; the course\'s objects within 9 meshes', () => {
-  assert.ok(meshes.length <= 12, `${meshes.length} meshes`);
+test('budgets: at most 13 meshes named lane-* with baked colours, under 42k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
+  assert.ok(meshes.length <= 13, `${meshes.length} meshes`);
   let tris = 0;
   for (const m of meshes) {
     const g = m.geometry;
@@ -108,18 +112,101 @@ test('budgets: at most 12 meshes named lane-* with baked colours, under 32k tria
     assert.ok(g.attributes.position.count > 0, `${m.name} has vertices`);
     tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
   }
-  assert.ok(tris < 32000, `${tris} triangles`);
+  assert.ok(tris < 42000, `${tris} triangles`);
   const colliders = area.parts.flatMap((p) => p.colliders);
   const colliderTris = colliders.reduce((n, c) => n + c.positions.length / 9, 0);
-  assert.ok(colliderTris < 5000, `${colliderTris} collider triangles`);
+  assert.ok(colliderTris < 6500, `${colliderTris} collider triangles`);
   assert.deepEqual([...new Set(colliders.map((c) => c.terrain))].sort(), ['grass', 'stone', 'wood']);
   assert.deepEqual([...new Set(colliders.map((c) => c.surface).filter(Boolean))], ['not_slippery'], 'the steps');
-  assert.ok(buildMs < 800, `built in ${buildMs.toFixed(0)} ms`);
+  assert.ok(buildMs < 1200, `built in ${buildMs.toFixed(0)} ms`);
   assert.deepEqual(area.parts.map((p) => p.name), ['lane']);
   const { om } = hero(0, GROUND, 900, 0, { objects: true });
   let n = 0;
   om.group.traverse((o) => o.isMesh && n++);
   assert.ok(n > 0 && n <= 9, `${n} object meshes`);
+});
+
+// Bytes allocated per call of fn once it is warm (V8 heap sampling).
+async function bytesPerCall(fn, n = 20000) {
+  for (let i = 0; i < n; i++) fn(i);
+  const session = new Session();
+  session.connect();
+  await session.post('HeapProfiler.enable');
+  await session.post('HeapProfiler.startSampling', { samplingInterval: 32, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true });
+  for (let i = 0; i < n; i++) fn(i);
+  const { profile } = await session.post('HeapProfiler.stopSampling');
+  session.disconnect();
+  let total = 0;
+  const walk = (node) => {
+    total += node.selfSize;
+    node.children.forEach(walk);
+  };
+  walk(profile.head);
+  return total / n;
+}
+
+test('the details: the 1-up high over the trampoline, butterflies over the dad\'s lawn and north_3\'s beds, brown birds over the forest; the flags wave (their tips swing, their hoists stay) without allocating', async () => {
+  const T = lane.TRAMPOLINE;
+  assert.deepEqual(lane.TRAMPOLINES, [T]);
+  assert.deepEqual([lane.ONE_UP.x, lane.ONE_UP.z], [T.x, T.z]);
+  // The trampoline's mat: a floor at its top over the terrace, all round its middle.
+  for (const [dx, dz] of [[0, 0], [T.r - 20, 0], [0, -(T.r - 20)], [-(T.r - 20), 0], [0, T.r - 20]]) {
+    assert.equal(col.findFloor(T.x + dx + O.x, T.y + 100 + O.y, T.z + dz + O.z).y - O.y, T.y, `the mat at (${dx}, ${dz})`);
+  }
+  assert.equal(lane.groundHeight(T.x, T.z), lane.TERRACE);
+  const { om } = hero(0, GROUND, 900, 0, { objects: true });
+  assert.ok(om.oneUp && om.oneUp.alive, 'the 1-up');
+  assert.deepEqual([om.oneUp.pos.x - O.x, om.oneUp.pos.y - O.y, om.oneUp.pos.z - O.z], [T.x, lane.ONE_UP.y, T.z]);
+  assert.ok(om.trampolines && om.trampolines.spots.length === 1, 'the trampoline\'s spring');
+  assert.equal(om.butterflies.list.length, lane.BUTTERFLY_SPOTS.length * 3);
+  assert.equal(lane.BUTTERFLY_SPOTS.length, 2);
+  assert.ok(om.birds.birds.length > 0 && lane.BIRD_CIRCLES.every((c) => c.z < lane.NORTH.backZ && !lane.inBounds(c.x, c.z)), 'birds over the forest');
+  assert.equal(area.objectsLayout.BIRD_TINT, 0x5a5048);
+  // The flags: lane-cloth (both faces) moves with the clock, its hoists still.
+  const cloth = mesh('lane-cloth');
+  assert.equal(cloth.material.side, THREE.DoubleSide);
+  const pos = cloth.geometry.attributes.position;
+  const at = (t) => {
+    area.update(t);
+    return Float32Array.from(pos.array);
+  };
+  const [a, b] = [at(0.4), at(1.3)];
+  let moved = 0;
+  for (let i = 0; i < pos.count; i++) {
+    const f = lane.FLAGPOLES.reduce((m, q) => (Math.hypot(a[i * 3] - q.x, a[i * 3 + 2] - q.z) < Math.hypot(a[i * 3] - m.x, a[i * 3 + 2] - m.z) ? q : m));
+    const d = Math.hypot(a[i * 3] - b[i * 3], a[i * 3 + 2] - b[i * 3 + 2]);
+    const out = Math.hypot(a[i * 3] - f.x, a[i * 3 + 2] - f.z);
+    assert.equal(a[i * 3 + 1], b[i * 3 + 1], 'no vertex moves up or down');
+    if (out < lane.FLAGPOLE.r + 2) assert.ok(d < 0.01, `a hoist still: ${d}`);
+    if (out > 200 && d > 2) moved++;
+  }
+  assert.ok(moved > pos.count / 4, `${moved} of ${pos.count} vertices waving`);
+  const bytes = await bytesPerCall((i) => area.update(i * 0.016));
+  assert.ok(bytes < 16, `${bytes.toFixed(1)} bytes per frame`);
+});
+
+test('the cars parked on the drives: each on its drive and solid (a floor on its roof and on its bonnet), none in the way to the bins, the coins or the drives\' mouths', () => {
+  assert.equal(lane.CARS.length, 8);
+  for (const c of lane.CARS) {
+    const K = lane.CAR_KINDS[c.kind];
+    const y0 = lane.groundHeight(c.x, c.z);
+    assert.ok(lane.inBounds(c.x, c.z) && Math.abs(y0 - GROUND) < 1e-6, `${c.kind} at (${c.x}, ${c.z}) on a drive`);
+    const along = [Math.sin(c.yaw), Math.cos(c.yaw)];
+    const roof = col.findFloor(c.x - along[0] * 40 + O.x, 1000, c.z - along[1] * 40 + O.z);
+    assert.ok(Math.abs(roof.y - O.y - y0 - K.roof) < 1, `${c.kind} at (${c.x}, ${c.z}): its roof at ${roof.y - O.y}`);
+    const front = K.l / 2 - (K.hood + 45) / 2; // (between the windscreen's foot and the nose)
+    const bonnet = col.findFloor(c.x + along[0] * front + O.x, 1000, c.z + along[1] * front + O.z);
+    assert.ok(Math.abs(bonnet.y - O.y - y0 - K.belt) < 1, `${c.kind} at (${c.x}, ${c.z}): its bonnet at ${bonnet.y - O.y}`);
+    // No coin over it or within 60 of it.
+    for (const k of lane.COINS) {
+      const u = Math.abs((k.x - c.x) * along[0] + (k.z - c.z) * along[1]) - K.l / 2;
+      const w = Math.abs((k.x - c.x) * along[1] - (k.z - c.z) * along[0]) - K.w / 2;
+      assert.ok(Math.hypot(Math.max(0, u), Math.max(0, w)) > 60, `${c.kind} at (${c.x}, ${c.z}): clear of the coin at (${Math.round(k.x)}, ${Math.round(k.z)})`);
+    }
+  }
+  // The way up the dad's drive to the bins is clear.
+  const B = lane.BINS[0];
+  for (const y of [40, 150, 260]) assert.equal(col.raycast(world(B.x, y, 900), { x: 0, y: 0, z: 1 }, B.z - 900 - lane.BIN.z / 2 - 5, { floors: false, ceilings: false }), null, `the way to the bins at ${y}`);
 });
 
 test('the arrival: out of the dad\'s front door onto the path facing the street; after the walk-in the camera stands in front of him over the lawn, clear, with the star over the ridge in the picture; a lost life drops him onto the path unhurt', () => {
@@ -225,6 +312,7 @@ test('the boundary holds: jump, crouch and attack spam from all over the course 
     [3980, lane.TERRACE, -2800],
     [0, 237, -3750], // the forest's edge
     [lane.footpathAt(1150).x, GROUND, lane.footpathAt(1150).z], // the footpath's barrier
+    [lane.TRAMPOLINE.x, lane.TRAMPOLINE.y, lane.TRAMPOLINE.z], // the trampoline
     [-250, DAD.ridge, DAD.ridgeZ], // the dad's ridge
     [lane.TURN.x, 0, lane.TURN.z], // the turning area
     [7200, GROUND, 1100], // the east end
@@ -350,7 +438,7 @@ test('every sign is read from in front of its face, never from behind; the mailb
   assert.equal(box.post, false);
   const pos = mesh('lane-signs').geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) assert.ok(Math.hypot(pos.getX(i) - box.x, pos.getZ(i) - box.z) > 300, 'no signpost at the mailbox');
-  assert.equal(lane.SIGNS.filter((s) => s.post !== false).length * 2, lane.SIGNS.length + 1, 'two signposts');
+  assert.equal(lane.SIGNS.filter((s) => s.post !== false).length, lane.SIGNS.length - 1, 'every other sign on a signpost');
 });
 
 test('six climbable poles, each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it; jumping off one never hurts', () => {
@@ -460,7 +548,7 @@ test('privacy and originality: the course\'s sources name no one but Jonas on it
     // (Swedish plates: three letters, two digits and a digit or letter.)
     assert.ok(!/\b[A-Z]{3} ?\d{2}[0-9A-Z]\b/.test(src), `${f}: no licence plates`);
   }
-  const words = new Set(['Sparrow', 'Lane', 'SPARROW', 'LANE', 'Welcome', 'Jonas', 'A', 'Something', 'Try', 'Villas', 'Every', 'The', 'That']);
+  const words = new Set(['Sparrow', 'Lane', 'SPARROW', 'LANE', 'Welcome', 'Jonas', 'A', 'Something', 'Try', 'Villas', 'Every', 'The', 'That', 'Up', 'Jump']);
   for (const s of lane.SIGNS) {
     for (const page of s.pages) {
       assert.ok(!/\d/.test(page) && !/plate/i.test(page), `${s.id}: no numbers or plates in "${page}"`);
@@ -509,4 +597,21 @@ test('the look: the sun low in the south-west; the villas\' street faces lit, th
   const roof = mean('lane-roof', [0, 1, 0], () => true);
   const dadRoof = mean('lane-roof', [0, 0.94, -0.34], (x, y, z) => x > DAD.x0 - 100 && x < DAD.x1 + 100 && z > DAD.z0 - 100 && z < DAD.ridgeZ + 1);
   assert.ok(dadRoof < 0.12, `the dad's roof ${dadRoof.toFixed(3)} (all roofs' tops ${roof.toFixed(3)})`);
+  // The red-leaf tree: a small ornamental tree, its round crown about the house's height (from a
+  // little under its eaves to a little over its ridge, no wider than the round bed) in several
+  // reds.
+  const T = lane.RED_TREE;
+  const r = mesh('lane-render').geometry.attributes;
+  const tones = new Set();
+  let [lo, hi, wide] = [Infinity, -Infinity, 0];
+  for (let i = 0; i < r.position.count; i++) {
+    const [x, y, z] = [r.position.getX(i), r.position.getY(i), r.position.getZ(i)];
+    const d = Math.hypot(x - T.x, z - T.z);
+    const [cr, cg, cb] = [r.color.getX(i), r.color.getY(i), r.color.getZ(i)];
+    if (d > lane.ROUND_BED.r + 100 || y < 300 || cr < 2 * cg) continue;
+    [lo, hi, wide] = [Math.min(lo, y), Math.max(hi, y), Math.max(wide, d)];
+    tones.add(`${Math.round((10 * cg) / cr)},${Math.round((10 * cb) / cr)}`);
+  }
+  assert.ok(lo > DAD.eave - 100 && hi < DAD.ridge + 80 && wide < lane.ROUND_BED.r + 60, `the crown from ${lo.toFixed(0)} to ${hi.toFixed(0)}, ${wide.toFixed(0)} wide`);
+  assert.ok(tones.size >= 3, `${tones.size} reds: ${[...tones]}`);
 });

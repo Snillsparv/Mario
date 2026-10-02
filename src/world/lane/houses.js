@@ -4,6 +4,7 @@
 //   frame(h) -> { at(u, y, w), dir(du, dy, dw), face(name) }   // a house's own frame
 //   house(kit, h)          // by h.kit: 'villa' | 'chain' | 'garage'
 //   link(kit, l), carport(kit, c)   // the flat-roofed link and carport between the chain houses
+//   wallLamp(b, f, u, v)   // a little black lamp on a wall frame (beside the front doors)
 //
 // A house record: { cx, cz, w, d, yaw, y0, eave, ridge | pitch, ... } (layout.js): its footprint
 // w along its own u by d along its w, turned by yaw (local u runs (cos yaw, -sin yaw), local w
@@ -19,13 +20,15 @@
 // roof windows (dark quads on the front slope). chain: the long low houses along the dad's side:
 // a white brick plinth, vertical boards up to the eaves (or white brick gable ends with boards in
 // their triangles), black window frames round dark panes (a pale glint over them, white curtains
-// either side), a front door (or, for the dad's house, the opening door.js fills); a low gable
-// roof along u. garage: white render walls under a gable roof along w, its front a gable of white
-// boards with two dark panel doors and a white brick pier between them.
+// either side), a front door with a wall lamp beside it (or, for the dad's house, the opening
+// door.js fills); a low gable roof along u. garage: white render walls under a gable roof along
+// w, its front a gable of white boards with two dark panel doors and a white brick pier between
+// them.
 //
 // Colliders: each house one convex solid, its walls and its roof (to the eaves, then the hip or
-// gable up to the ridge); the drawn overhangs have none. The link a solid block to its flat roof,
-// the carport its roof slab, its posts and its back wall (stone; the roofs' tops are walkable).
+// gable up to the ridge); the drawn overhangs have none. The link a solid block to its flat roof
+// (stone), the carport its roof slab, its posts and its back wall (wood; the roofs' tops are
+// walkable).
 
 import { archContour, localBoxPolys, wallFrame } from '../castle/geom.js';
 
@@ -201,6 +204,7 @@ function chain(kit, h) {
     kit.render.panel(front, rect(h.door - 70, 0, h.door + 70, 225), 1);
     kit.render.color(TINT.door);
     kit.render.panel(front, rect(h.door - 58, 0, h.door + 58, 215), 2);
+    wallLamp(kit.render, front, h.door + 110, 200);
   }
   if (h.veranda) veranda(kit, F, h);
   gableRoof(kit, F, h, 'u');
@@ -266,9 +270,9 @@ export function carport(kit, C) {
   const dx = (C.x0 + C.x1) / 2 + 200;
   boards.poly([[dx - 70, y0, C.z1 - 21], [dx + 70, y0, C.z1 - 21], [dx + 70, y0 + 215, C.z1 - 21], [dx - 70, y0 + 215, C.z1 - 21]], { facing: [0, 0, -1], shade: 0.7 });
   flatRoof(kit, C.x0, C.x1, C.z0, C.z1, C.top, C.slab);
-  solids.box(C.x0, C.x1, under, C.top, C.z0, C.z1, 'stone', { bottom: true });
-  for (const x of C.posts) solids.box(x - C.post / 2, x + C.post / 2, y0, under, C.z0, C.z0 + C.post, 'stone');
-  solids.box(C.x0, C.x1, y0, under, C.z1 - 20, C.z1, 'stone');
+  solids.box(C.x0, C.x1, under, C.top, C.z0, C.z1, 'wood', { bottom: true });
+  for (const x of C.posts) solids.box(x - C.post / 2, x + C.post / 2, y0, under, C.z0, C.z0 + C.post, 'wood');
+  solids.box(C.x0, C.x1, y0, under, C.z1 - 20, C.z1, 'wood');
 }
 
 // A flat roof slab from y top - slab to top: felt on top, a dark fascia round its edge, its
@@ -390,6 +394,14 @@ function gablePolys(F, a, b, y0, eave, ridge, axis) {
 }
 
 // ---------------------------------------------------------------- doors and windows
+
+// A little black wall lamp on a wall frame at (u, v): a box with a pale glass front.
+export function wallLamp(b, f, u, v) {
+  b.color(TINT.door);
+  b.solid(localBoxPolys(f, u - 10, u + 10, v, v + 30, 0, 16), { faceShade: (n) => (n[1] < -0.5 ? 0.5 : 1) });
+  b.color(0xe8dcb0);
+  b.panel(f, rect(u - 6, v + 6, u + 6, v + 24), 17);
+}
 
 // A garage door: a grey panel with three darker joints across it.
 function garageDoor(b, f, u, { w, h }, tint = TINT.garageLight) {

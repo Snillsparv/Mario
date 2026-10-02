@@ -125,17 +125,22 @@ house, with the mailbox (a little blue sparrow keeps watch over it: read it) by 
 the hill across the street stand villas behind grey stone walls, with steps, drives and side
 yards up to the forest; along his side long low houses joined by flat-roofed carports; a turning
 area at the far end with a double garage and a footpath, the junction with its big trees and a
-motorhome at the other. Nothing here can hurt him.
+motorhome at the other. Cars stand on the drives (his own two in front of the carport) and flags
+fly over the gardens. Nothing here can hurt him.
 
 * The course's **star** twinkles over the ridge of Jonas's roof. Climb a **wheelie bin** by the
   carport, jump onto the carport's flat roof and hop across onto the roof's slope, then walk up to
   the ridge. Or jump right at the front wall to grab the eaves, or climb the little red-leaf tree
-  in the round bed, stand on your hands on its top and flip onto the roof.
+  in the round bed, stand on your hands on its top and flip onto the roof. The cars on the drive
+  make steps too: onto the blue car's bonnet, its roof, then the carport.
 * 50 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
   the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
   double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof.
 * The lampposts at the junction and the turning area, the three flagpoles and the red-leaf tree
   can be climbed: a handstand on top shows the lane.
+* Up the steps at the turning area there is a **trampoline** in a garden: jump onto it and keep
+  the jump button held to bounce sky high, up to the secret **1-up** floating over it. The
+  basketball hoop beside it makes a fine perch (hop over from the van's roof).
 * The star takes Jonas back into the Great Hall in front of the little house's door; so does
   pausing and pressing **J** (B), and walking back into his own front door.
 

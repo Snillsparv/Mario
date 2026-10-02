@@ -1,6 +1,6 @@
 // The dad's black front door (lane/layout.js DAD.door), written into the course's kit
-// (lane/build.js): its white frame and threshold in the wall's opening (houses.js leaves it), the
-// dark vestibule behind it, and the leaf itself, built apart to swing.
+// (lane/build.js): its white frame and threshold in the wall's opening (houses.js leaves it), a
+// wall lamp beside it, the dark vestibule behind it, and the leaf itself, built apart to swing.
 //
 //   frontDoor(kit, layout) -> leaf    // { builder, hinge, turn }: the leaf's own GeoBuilder (in
 //                                     // the course's frame, shut), the point it turns about
@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import { GeoBuilder, localBoxPolys, wallFrame } from '../castle/geom.js';
+import { wallLamp } from './houses.js';
 
 const TINT = { leaf: 0x222222, frame: 0xf2f0ea, hall: 0x2a2420, handle: 0xc8a050, threshold: 0x9a968e, glass: 0x4a5a66 };
 const FRAME = { w: 16, out: 6 };
@@ -36,6 +37,7 @@ export function frontDoor(kit, { DAD }) {
   render.solid(localBoxPolys(f, -hw - FRAME.w, hw + FRAME.w, D.h, D.h + FRAME.w, -4, FRAME.out));
   render.color(TINT.threshold);
   render.poly([f.at(-hw, 1, FRAME.out), f.at(hw, 1, FRAME.out), f.at(hw, 1, -LEAF.thick), f.at(-hw, 1, -LEAF.thick)], { facing: [0, 1, 0] });
+  wallLamp(render, f, hw + FRAME.w + 50, 220);
   vestibule(render, f, hw, D.h);
   // The leaf: black boards, a narrow pane, a brass handle; its back and edges for when it
   // stands open.
