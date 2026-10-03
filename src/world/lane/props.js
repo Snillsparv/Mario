@@ -6,7 +6,7 @@
 // the trampoline, into kit.paint: render's own builder in the classic look), colliders into
 // kit.solids, the signposts into kit.signs.
 //
-//   buildProps(kit, layout)
+//   buildProps(kit, layout), propsSteps(kit, layout) (a few builders a step: lane/build.js laneSteps)
 //   waveFlags(geometry, layout) -> update(time)   // lane-cloth's flags waving in the breeze
 //
 // Grey lampposts with a bent arm and a flat lamp head; white flagpoles with a gold knob, flying
@@ -110,24 +110,37 @@ const WHEEL_SIDES = 8;
 const CAR_CLEAR = 28; // a car's body above the ground
 
 export function buildProps(kit, layout) {
+  const steps = propsSteps(kit, layout);
+  while (!steps.next().done);
+}
+
+// buildProps a few builders at a time (a generator: lane/build.js laneSteps).
+export function* propsSteps(kit, layout) {
   for (const l of layout.LAMPS) lamppost(kit, layout, l);
   for (const f of layout.FLAGPOLES) flagpole(kit, layout, f);
   for (const b of layout.BINS) bin(kit, layout, b);
+  yield;
   for (const h of layout.HEDGES) hedge(kit, h);
   for (const t of layout.THUJAS) thuja(kit, layout, t);
+  yield;
   for (const t of layout.TREES) broadTree(kit, layout, t);
   for (const t of layout.GARDEN_TREES) gardenTree(kit, layout, t);
+  yield;
   dadsGarden(kit, layout);
   mailbox(kit, layout);
   for (const c of layout.CARS) car(kit, layout, c);
+  yield;
   hoop(kit, layout);
   trampoline(kit, layout);
   motorhome(kit, layout);
   for (const b of layout.FLOWER_BEDS) flowerBed(kit, layout, b);
   for (const a of layout.ANTENNAS) antenna(kit, layout, a);
+  yield;
   for (const f of layout.FENCES) fence(kit, layout, f);
   footpathProps(kit, layout);
+  yield;
   forest(kit, layout);
+  yield;
   sideBlocks(kit, layout);
   for (const sign of layout.SIGNS) if (sign.post !== false) addSignpost(kit.signs, layout, sign);
 }

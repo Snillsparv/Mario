@@ -29,9 +29,10 @@
 // w, its front a gable of white boards with two dark panel doors and a white brick pier between
 // them.
 //
-// The realistic look draws the chain houses with ids, the villas' windows and the garage doors
-// itself (world/lane/real/house.js, villas.js): those draw into kit.drawn('chain' |
-// 'villaWindows' | 'garageDoors') there, a kit drawing nothing; the colliders are made the same.
+// The realistic look draws the chain houses with ids, the villas' walls (with their windows,
+// doors, bays and balconies) and the garage doors itself (world/lane/real/house.js, villas.js):
+// those draw into kit.drawn('chain' | 'villas' | 'villaWindows' | 'garageDoors') there, a kit
+// drawing nothing; the colliders are made the same.
 //
 // Colliders: each house one convex solid, its walls and its roof (to the eaves, then the hip or
 // gable up to the ridge); the drawn overhangs have none. The link a solid block to its flat roof
@@ -108,7 +109,11 @@ export function house(kit, h) {
 }
 
 function villa(kit, h) {
-  const { render, brick, roof, paint } = kit;
+  const { roof } = kit;
+  // (The realistic look draws the walls, the door, the bays and the balcony itself, with real
+  // openings: world/lane/real/villas.js; the roof and the colliders stay these.)
+  const walls = kit.drawn('villas');
+  const { render, brick, paint } = walls;
   const F = frame(h);
   const y0 = h.y0 ?? 22;
   const wallH = h.eave - y0;
@@ -147,7 +152,7 @@ function villa(kit, h) {
   if (renderTop < wallH) {
     for (const u of h.windows ?? []) villaWindow(glazed, front, u, W, false);
     for (const u of h.arches ?? []) villaWindow(glazed, front, u, W, true);
-    for (const u of h.bays ?? []) bayWindow(kit, front, u, W);
+    for (const u of h.bays ?? []) bayWindow(walls, front, u, W);
     // A window or two on the back and the sides.
     for (const name of ['back', 'left', 'right']) villaWindow(glazed, F.face(name).frame, 0, W, false);
   } else {

@@ -72,9 +72,13 @@ export function lawnMask(L) {
     const [bx, bz] = L.ROAD_DRAWN[i + 1];
     segs.push([ax, az, bx - ax, bz - az, (bx - ax) ** 2 + (bz - az) ** 2]);
   }
+  // The road's distance matters only below `reach` (the kerbs' and the pavement's): each row
+  // asks the segments that come that near it (`near`, by z), the others being farther anyway.
+  const reach = Math.max(L.ROAD.half + L.KERB.w, L.PAVEMENT.to) + m;
+  let near = segs;
   const roadAt = (x, z) => {
     let best = Infinity;
-    for (const [ax, az, ex, ez, l2] of segs) {
+    for (const [ax, az, ex, ez, l2] of near) {
       const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2));
       const dx = x - ax - ex * t;
       const dz = z - az - ez * t;
@@ -86,6 +90,7 @@ export function lawnMask(L) {
   const turn = (L.TURN.r + L.KERB.w + m) ** 2;
   for (let j = 0; j < H; j++) {
     const z = z0 + (j + 0.5) * sz;
+    near = segs.filter(([, az, , ez]) => Math.min(az, az + ez) - reach < z && Math.max(az, az + ez) + reach > z);
     const cross = [];
     for (let e = 0; e < B.length; e++) {
       const [ax, az] = B[e];
@@ -107,7 +112,7 @@ export function lawnMask(L) {
         if (px * P.dir[0] + pz * P.dir[1] > P.from - m && Math.abs(-px * P.dir[1] + pz * P.dir[0]) < P.half + m) continue;
         const k = j * W + i;
         grow[k] = 1;
-        heights[k] = L.groundHeight(x, z);
+        heights[k] = L.offRoadHeight(x, z); // (off the road and the turning area)
       }
     }
   }
@@ -115,12 +120,12 @@ export function lawnMask(L) {
   // sides, the steps; the back gardens' ramp keeps them) or near the lawn's edge.
   const step = Math.ceil(30 / sx);
   const mask = new Uint8Array(W * H * 4);
+  const level = (a, b, h) => a >= 0 && a < W && b >= 0 && b < H && grow[b * W + a] === 1 && Math.abs(heights[b * W + a] - h) <= 12;
   for (let j = 0; j < H; j++) {
     for (let i = 0; i < W; i++) {
       const k = j * W + i;
       const h = heights[k];
-      const near = (a, b) => a >= 0 && a < W && b >= 0 && b < H && grow[b * W + a] === 1 && Math.abs(heights[b * W + a] - h) <= 12;
-      const ok = grow[k] === 1 && near(i + step, j) && near(i - step, j) && near(i, j + step) && near(i, j - step);
+      const ok = grow[k] === 1 && level(i + step, j, h) && level(i - step, j, h) && level(i, j + step, h) && level(i, j - step, h);
       mask[k * 4] = ok ? 255 : 0;
       mask[k * 4 + 1] = Math.max(0, Math.min(255, Math.round(h / 4)));
       mask[k * 4 + 3] = 255;

@@ -79,7 +79,7 @@ test('the realistic build\'s colliders are the classic build\'s to the byte, and
   assert.equal(JSON.stringify(b.collision.poles), JSON.stringify(a.collision.poles), 'the poles');
 });
 
-test('it draws exactly the classic faces but those it draws itself, the panes in glass, the painted parts in paint and the dad\'s path in path, plus a dim room behind every bay window; unbaked, no NaN', () => {
+test('it draws exactly the classic faces but those it draws itself, the panes in glass, the painted parts in paint and the dad\'s path in path, and no room of its own (every window\'s is the worker\'s); unbaked, no NaN', () => {
   // (The classic meshes the realistic look draws nothing of are left out: the leaves and the wood.)
   const drawn = Object.keys(C).filter((name) => C[name].geometry.attributes.position.count > 0);
   assert.deepEqual(Object.keys(R).sort(), [...drawn, 'lane-glass', 'lane-paint', 'lane-path'].sort());
@@ -91,10 +91,10 @@ test('it draws exactly the classic faces but those it draws itself, the panes in
   const split = [...triangles(R['lane-render']), ...triangles(R['lane-glass']), ...triangles(R['lane-paint'], ROOM)];
   assert.deepEqual(split.sort(), triangles(C['lane-render']).sort(), 'render = render + glass + paint');
   assert.deepEqual([...triangles(R['lane-grass']), ...triangles(R['lane-path'])].sort(), triangles(C['lane-grass']).sort(), 'grass = grass + path');
-  // The rooms: two triangles behind each bay window's panes (the other windows are the worker's).
+  // No room panel: every window with a room behind it, the villas' bays too, is the worker's (its
+  // rooms are boxes behind real openings).
   const rooms = triangles(R['lane-paint']).length - triangles(R['lane-paint'], ROOM).length;
-  const bays = lane.VILLAS.reduce((n, v) => n + (v.bays?.length ?? 0), 0);
-  assert.equal(rooms, 2 * bays, `${rooms} room triangles behind ${bays} bay windows`);
+  assert.equal(rooms, 0, `${rooms} room triangles`);
   // What it draws itself is drawn by nobody else: the classic build's own (the realistic one
   // keeps a round turning area's faces, not the 16-gon's; the forest's cones, the hedges' boxes,
   // the cars' boxes and the chain houses' walls are gone).
@@ -232,7 +232,20 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
       assert.equal(D['lane-detail-tiles'].castShadow, false, 'the tile courses cast none themselves');
       // The grass: its grid moves with the camera, a cell at a time; the wind's phase with the clock.
       const grass = D['lane-detail-grass'];
-      assert.ok(grass.geometry.isInstancedBufferGeometry && grass.geometry.instanceCount === 128 * 128 && grass.frustumCulled === false);
+      assert.ok(grass.geometry.isInstancedBufferGeometry && grass.geometry.attributes.cell.count === 128 * 128 && grass.frustumCulled === false);
+      // Its cells nearest the grid's middle first: drawn, the disc within the blades' reach (the
+      // corners beyond it faded out anyway); a shorter reach (the governor's) draws fewer.
+      const cells = grass.geometry.attributes.cell;
+      const off = (i) => (cells.getX(i) - 63.5) ** 2 + (cells.getY(i) - 63.5) ** 2;
+      for (let i = 1; i < cells.count; i++) assert.ok(off(i) >= off(i - 1), 'nearest first');
+      const all = grass.geometry.instanceCount;
+      assert.ok(all < 128 * 128 && all > Math.PI * (760 / 12) ** 2, `${all} cells within reach`);
+      look.grass(0.5);
+      assert.ok(grass.geometry.instanceCount < all * 0.3 && grass.visible, 'half the reach: a quarter the cells');
+      look.grass(0);
+      assert.ok(grass.geometry.instanceCount === 0 && !grass.visible, 'none');
+      look.grass(1);
+      assert.equal(grass.geometry.instanceCount, all);
       const camera = new THREE.PerspectiveCamera();
       camera.position.set(AREA_DEFS.lane.origin.x + 500, 300, AREA_DEFS.lane.origin.z + 900);
       camera.lookAt(AREA_DEFS.lane.origin.x + 500, 0, AREA_DEFS.lane.origin.z + 2000);

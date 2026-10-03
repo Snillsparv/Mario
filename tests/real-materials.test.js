@@ -76,7 +76,12 @@ test('the detail\'s own: the leaf cards lit by their own normal on both faces, t
   for (const name of ['foliage', 'fir-leaves']) {
     const s = compiled(D[name]);
     assert.ok(!s.fragmentShader.includes('normal *= faceDirection;') && s.fragmentShader.includes('vec3 normal = normalize( vNormal );'), `${name}: no back-face flip`);
-    assert.ok(s.fragmentShader.includes('#include <lights_fragment_end>\n  #if NUM_DIR_LIGHTS > 0') && s.fragmentShader.includes('reflectedLight.directDiffuse += directLight.color * diffuseColor.rgb * diffuseColor.rgb * 4.0 * uTranslucency'), `${name}: the sun through the leaves, after the direct light`);
+    const lights = s.fragmentShader.indexOf('#include <lights_fragment_end>');
+    assert.ok(lights > 0 && s.fragmentShader.indexOf('reflectedLight.directDiffuse += foliageSun.color * diffuseColor.rgb * diffuseColor.rgb * 4.0 * uTranslucency') > lights, `${name}: the sun through the leaves, after the direct light`);
+    // The sun's light as lit in the loop (its shadow in it), not the last light's after it.
+    const loop = s.fragmentShader.indexOf('getDirectionalLightInfo( directionalLight, directLight );');
+    assert.ok(loop > 0 && s.fragmentShader.indexOf('#if UNROLLED_LOOP_INDEX == 0\nfoliageSun = directLight;\n#endif') > loop, `${name}: the first directional light (the sun) kept in the loop`);
+    assert.ok(s.fragmentShader.indexOf('reflectedLight.indirectSpecular *= sheen;') > lights, `${name}: no sheen on a card seen from behind (light through it, not a reflection)`);
     assert.ok(s.vertexShader.includes('attribute float sway;') && s.vertexShader.includes('transformed.xz += uWind.xy * sway'), `${name}: sways`);
     assert.equal(s.uniforms.uWind, wind, `${name}: the shared wind`);
     assert.ok(s.fragmentShader.includes(CLAMP_GLSL));

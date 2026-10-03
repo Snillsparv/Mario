@@ -500,6 +500,11 @@ export function roadDistance(x, z, line = ROAD.line) {
 // everything else at GROUND, and outside the boundary to the north the forest bank (drawn).
 export function groundHeight(x, z) {
   if (roadDistance(x, z) <= ROAD.half || Math.hypot(x - TURN.x, z - TURN.z) <= TURN.r) return 0;
+  return offRoadHeight(x, z);
+}
+// The ground off the road and the turning area (groundHeight's, for a caller that knows the
+// point is off them: the realistic look's lawn mask).
+export function offRoadHeight(x, z) {
   const plot = PLOTS_N.find((p) => x >= p.x0 && x <= p.x1);
   if (plot && z < wallZAt(x)) {
     const inDrive = x >= plot.drive[0] && x <= plot.drive[1] && z > villaOf(plot).front;

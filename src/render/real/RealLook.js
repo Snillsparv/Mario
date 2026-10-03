@@ -14,11 +14,22 @@
 //   look.pixelRatio(dpr, width, height)   // the drawing buffer's pixel ratio (tier.js)
 //   look.haze                       // the uniforms every realistic material's haze shares
 //   look.useProbe(materials)        // these take the probe as their envMap (the glass)
+//   look.warmProbe(renderer)        // a blank probe of its size on them meanwhile (RealAreas:
+//                                   // before their programs compile)
+//   look.takeProbe(view)            // the probe, taken (else on the first frame drawn)
 //   look.attach(view), look.detach(view)   // N64Renderer.setLook's, around its snapshot
 //   look.draw(view, storm, flash, melt, graded)   // one frame (N64Renderer.draw's branch)
 //   look.sceneTarget(renderer)      // the HDR target at the drawing buffer's size (null on the
 //                                   // direct path)
-//   look.describe(width, height) -> 'real 1600x900 msaa4 high'   // the F1 overlay's line
+//   look.describe(width, height) -> 'real 1600x900 msaa4 high'   // the F1 overlay's line (the
+//                                   // level drawn, 'mid 85%'..., and 'auto' while governed)
+//   look.levels, look.level         // tier.js ladder(tier) and the level drawn (its render
+//                                   // size, MSAA, shadow, grass: setLevel(index, view))
+//   look.governor                   // a tier.js Governor, or null (RealAreas sets one but under
+//                                   // ?test=1 and with ?tier=): look.govern(view, now) per frame
+//                                   // steps the level, cross-fading (view.crossfade), and keeps
+//                                   // it for the next visit; below the ladder look.onSlow()
+//   look.grass                      // (r) => the grass's reach (world/lane/real/look.js sets it)
 //   look.dispose()
 //
 // A frame: the shadow map (the sun's box round the view's focus, snapped to whole shadow texels
@@ -29,15 +40,16 @@
 // at the retro filter's 240 lines, through the output pass into the view's retro target and
 // post/N64Pass.js (a real street on a 1998 TV). The low tier draws straight to the canvas
 // (`direct`: three tone maps per material; no HDR target, no output pass) unless graded or
-// retro. The probe is taken on the first frame after each attach (Jonas hidden; none on the low
-// tier, whose glass reflects the sky's environment); the HDR targets are freed on detach and made
+// retro. The probe is taken once (RealAreas takes it as it readies the build, else the first
+// frame drawn does; Jonas hidden; none on the low tier, whose glass reflects the sky's
+// environment) and kept for every later visit; the HDR targets are freed on detach and made
 // again on the next frame drawn.
 
 import * as THREE from 'three';
 import { OutputPass } from './OutputPass.js';
 import { makeSky, skyEnvironment, skyUniforms } from './sky.js';
-import { captureProbe } from './probe.js';
-import { TIERS, lookPixelRatio } from './tier.js';
+import { captureProbe, blankProbe } from './probe.js';
+import { TIERS, lookPixelRatio, ladder, saveLevel } from './tier.js';
 
 const SUN_DISTANCE = 8000; // the shadow camera's distance from the focus, toward the sun
 const SHADOW_NEAR = 10;
@@ -53,8 +65,9 @@ export class RealLook {
     this.sky = makeSky(this.haze, { clouds: preset.sky.clouds });
     this.output = new OutputPass();
     this.env = null; // the sky's PMREM (made on the first attach, kept)
-    this.probe = null; // the reflection probe's PMREM (taken again on every attach)
+    this.probe = null; // the reflection probe's PMREM (a blank stand-in till taken: warmProbe)
     this.probeMaterials = [];
+    this.probeTaken = false;
     this.probeDirty = true;
     this.hdr = null; // the scene's HDR target (drawing buffer size)
     this.retroHdr = null; // ...at the retro filter's 240 lines
@@ -66,6 +79,13 @@ export class RealLook {
     this.axisX = new THREE.Vector3().setFromMatrixColumn(basis, 0);
     this.axisY = new THREE.Vector3().setFromMatrixColumn(basis, 1);
     this.snapped = new THREE.Vector3();
+    this.levels = ladder(tier);
+    this.index = 0;
+    this.level = this.levels[0];
+    this.governor = null;
+    this.grass = null;
+    this.onSlow = null;
+    this.last = 0; // the last frame's time (govern)
   }
 
   useProbe(materials) {
@@ -87,13 +107,59 @@ export class RealLook {
     renderer.toneMappingExposure = preset.exposure;
     sun.castShadow = true;
     const shadow = sun.shadow;
-    shadow.mapSize.set(tier.shadow, tier.shadow);
     shadow.radius = preset.shadow.radius;
     shadow.bias = preset.shadow.bias;
     shadow.normalBias = preset.shadow.normalBias;
-    Object.assign(shadow.camera, { left: -tier.box, right: tier.box, top: tier.box, bottom: -tier.box, near: SHADOW_NEAR, far: SHADOW_FAR });
+    shadow.camera.near = SHADOW_NEAR;
+    shadow.camera.far = SHADOW_FAR;
+    this.fitShadow(sun);
+    this.probeDirty = !this.probeTaken; // (taken once: the street does not change)
+    this.last = 0;
+  }
+
+  // The level's shadow map and box.
+  fitShadow(sun) {
+    const { shadow: size, box } = this.level;
+    const shadow = sun.shadow;
+    if (shadow.mapSize.x !== size) {
+      shadow.map?.dispose();
+      shadow.map = null;
+      shadow.mapSize.set(size, size);
+    }
+    Object.assign(shadow.camera, { left: -box, right: box, top: box, bottom: -box });
     shadow.camera.updateProjectionMatrix();
-    this.probeDirty = true;
+  }
+
+  // Draws at levels[index] from now (view: the renderer it is set on, if any).
+  setLevel(index, view = null) {
+    this.index = index;
+    this.level = this.levels[index];
+    if (this.hdr && this.hdr.samples !== this.level.samples) {
+      this.hdr.dispose();
+      this.hdr = null;
+    }
+    this.grass?.(this.level.grass);
+    if (view?.look === this) {
+      this.fitShadow(view.sun);
+      view.refit();
+    }
+  }
+
+  // Per frame drawn (N64Renderer.render): the governor's verdict on the time since the last.
+  govern(view, now) {
+    const ms = now - this.last;
+    const first = this.last === 0;
+    this.last = now;
+    if (!this.governor || first) return;
+    const index = this.governor.frame(ms);
+    if (index === null) return;
+    if (index >= this.levels.length) {
+      this.onSlow?.();
+      return;
+    }
+    view.crossfade(0.3);
+    this.setLevel(index, view);
+    saveLevel(this.tier, index);
   }
 
   detach(view) {
@@ -105,7 +171,7 @@ export class RealLook {
 
   // The pixel ratio a width x height CSS picture is drawn at (the tier's cap).
   pixelRatio(dpr, width, height) {
-    return lookPixelRatio(this.tier, dpr, width, height);
+    return lookPixelRatio(this.level, dpr, width, height) * this.level.scale;
   }
 
   // The scene's HDR target at the drawing buffer's size (on the direct path null, unless
@@ -113,7 +179,7 @@ export class RealLook {
   sceneTarget(renderer, always = false) {
     if (this.tier.direct && !always) return null;
     renderer.getDrawingBufferSize(this.size);
-    this.hdr = this.fitTarget(this.hdr, this.size.x, this.size.y, this.tier.samples);
+    this.hdr = this.fitTarget(this.hdr, this.size.x, this.size.y, this.level.samples);
     return this.hdr;
   }
 
@@ -135,7 +201,7 @@ export class RealLook {
 
   // The sun (and its shadow box) over `focus`, snapped to whole shadow texels across the light.
   placeSun(sun, focus) {
-    const texel = (2 * this.tier.box) / this.tier.shadow;
+    const texel = (2 * this.level.box) / this.level.shadow;
     const { axisX, axisY, sunDir, snapped } = this;
     const x = Math.round(focus.dot(axisX) / texel) * texel;
     const y = Math.round(focus.dot(axisY) / texel) * texel;
@@ -145,9 +211,21 @@ export class RealLook {
     sun.position.copy(snapped).addScaledVector(sunDir, SUN_DISTANCE);
   }
 
+  // A blank probe of the real one's size on the probe's materials (their programs then compile
+  // as they will draw, and the prefilter's are made), until takeProbe.
+  warmProbe(renderer) {
+    if (this.probe || !this.probeMaterials.length || !this.tier.probe) return;
+    this.probe = blankProbe(renderer, this.tier.probe);
+    for (const m of this.probeMaterials) {
+      m.envMap = this.probe.texture;
+      m.needsUpdate = true;
+    }
+  }
+
   // The reflection probe: the street from probeAt, Jonas hidden, the sun's box round it.
   takeProbe(view) {
     this.probeDirty = false;
+    this.probeTaken = true;
     if (!this.probeAt || !this.probeMaterials.length || !this.tier.probe) return;
     const { renderer, scene, sun } = view;
     this.snapped.set(this.probeAt.x, this.probeAt.y, this.probeAt.z);
@@ -206,9 +284,8 @@ export class RealLook {
   }
 
   describe(width, height) {
-    const { tier } = this;
-    const path = tier.direct ? 'direct' : `msaa${tier.samples}`;
-    return `real ${width}x${height} ${path} ${tier.name}`;
+    const path = this.tier.direct ? 'direct' : `msaa${this.level.samples}`;
+    return `real ${width}x${height} ${path} ${this.level.name}${this.governor ? ' auto' : ''}`;
   }
 
   dispose() {

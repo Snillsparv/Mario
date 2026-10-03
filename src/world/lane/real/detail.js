@@ -5,9 +5,10 @@
 // buffers in meshes on the main thread.
 //
 //   buildLaneDetail(L, tier) -> { meshes, firs, grass, triangles }
-//     meshes: [{ name, material, cast, buffers }]   one per material (look.js DETAIL names
-//             them), buffers: { position, normal, uv, color, sway? } (Float32Arrays, uvs in world
-//             units but the leaf cards' atlas uvs); cast: casts the sun's shadow
+//     meshes: [{ name, material, cast, buffers, sphere }]   one per material (look.js DETAIL
+//             names them), buffers: { position, normal, uv, color, sway? } (Float32Arrays, uvs in
+//             world units but the leaf cards' atlas uvs); cast: casts the sun's shadow; sphere:
+//             its bounding sphere [x, y, z, r] (as three.js computes it)
 //     firs:   { parts: [{ material, buffers }], matrices, colors, cast, far }   one fir (unit
 //             height and radius) and the forest's instances (a 4 x 4 matrix and a tint each),
 //             far: the tree line's { matrices, colors } (casting none)
@@ -16,9 +17,9 @@
 //     triangles: the meshes' and the instances' total
 //   detailBuffers(detail) -> [ArrayBuffer]          everything to transfer
 //
-// tier: 'high' | 'mid' | 'low' (render/real/tier.js): on low half the leaf clusters, no tile
-// courses, no blades, plainer windows and cars, fewer materials and shadow casters (LOW_MERGE,
-// LOW_CASTERS).
+// tier: 'high' | 'mid' | 'low' (render/real/tier.js): on mid 70 % of the leaf clusters; on low
+// half of them, no tile courses, no blades, plainer windows and cars, fewer materials and shadow
+// casters (LOW_MERGE, LOW_CASTERS).
 
 import { Geo } from './geo.js';
 import { mailbox, kerbs, roadDecals, bedStones } from './garden.js';
@@ -27,13 +28,14 @@ import { chainHouse } from './house.js';
 import { cars } from './cars.js';
 import { grassClump, lawnMask } from './grass.js';
 import { lampposts, flagpoles, fences, bins } from './street.js';
-import { villaWindows, garageDoors, hipTrim } from './villas.js';
+import { villaHouses, garageDoors, hipTrim } from './villas.js';
 import { trampoline, hoop, motorhome, cabinet, treeLine } from './extras.js';
 
 // Each material's builder; `cast` false: casts no shadow (the ground's, the glass, the rooms').
 const MATERIALS = {
   boards: true,
   brick: true,
+  render: true,
   paint: true,
   metal: true,
   enamel: true,
@@ -63,7 +65,7 @@ const MATERIALS = {
 // The low tier (phones): small plain parts share a few materials (fewer draw calls), and only
 // the houses and the cars cast the sun's shadow.
 const LOW_MERGE = { enamel: 'gloss', lamp: 'gloss', tail: 'gloss', trim: 'tyre', rim: 'metal', steel: 'metal', bird: 'paint' };
-const LOW_CASTERS = new Set(['boards', 'brick', 'paint', 'roof', 'shadow', 'carPaint', 'carGlass', 'tyre']);
+const LOW_CASTERS = new Set(['boards', 'brick', 'render', 'paint', 'roof', 'shadow', 'carPaint', 'carGlass', 'tyre']);
 
 export function buildLaneDetail(L, tier = 'high') {
   const kit = {};
@@ -81,7 +83,7 @@ export function buildLaneDetail(L, tier = 'high') {
   bins(kit, L);
   plants(kit, L);
   for (const h of L.HOUSES) if (h.kit === 'chain') chainHouse(kit, L, h, { tiled: L.LANE_REAL.tiles.includes(h.id) });
-  villaWindows(kit, L);
+  villaHouses(kit, L);
   garageDoors(kit, L);
   hipTrim(kit, L);
   cars(kit, L);
@@ -93,7 +95,8 @@ export function buildLaneDetail(L, tier = 'high') {
   let triangles = 0;
   for (const [name, cast] of Object.entries(MATERIALS)) {
     if (!kit[name].count || (low && LOW_MERGE[name])) continue;
-    meshes.push({ name, material: name, cast: cast && (!low || LOW_CASTERS.has(name)), buffers: kit[name].buffers() });
+    const buffers = kit[name].buffers();
+    meshes.push({ name, material: name, cast: cast && (!low || LOW_CASTERS.has(name)), buffers, sphere: sphereOf(buffers.position) });
     triangles += kit[name].count / 3;
   }
   // The forest's firs and the far tree line: one fir, instanced (the far ones casting none).
@@ -105,6 +108,23 @@ export function buildLaneDetail(L, tier = 'high') {
   const clump = grassClump(tier);
   const grass = clump && { clump: clump.buffers(), mask: lawnMask(L) };
   return { meshes, firs, grass, triangles };
+}
+
+// The bounding sphere three.js would compute (the box's middle, the farthest point), made here
+// so the main thread never walks the buffers.
+function sphereOf(p) {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < p.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k], p[i + k]);
+      hi[k] = Math.max(hi[k], p[i + k]);
+    }
+  }
+  const c = [0, 1, 2].map((k) => (lo[k] + hi[k]) / 2);
+  let r2 = 0;
+  for (let i = 0; i < p.length; i += 3) r2 = Math.max(r2, (p[i] - c[0]) ** 2 + (p[i + 1] - c[1]) ** 2 + (p[i + 2] - c[2]) ** 2);
+  return [...c, Math.sqrt(r2)];
 }
 
 export function detailBuffers(detail) {

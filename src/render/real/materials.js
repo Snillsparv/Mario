@@ -54,10 +54,13 @@
 //
 // Leaf cards: a card is a clump of leaves, not a sheet, so both its faces are lit with its own
 // normal (bent out of the plant's middle and up: the mass shades as a volume), not flipped for
-// the back face; the sun shines through them (the shadowed direct light, filtered by the leaf
-// twice over: green leaves glow greener, red ones redder; a little through any card, more
-// looking toward the sun); each vertex sways along the wind by its `sway` (units: the cards'
-// tips, never their roots), in waves that run over the plants.
+// the back face; the sun shines through them (the sun's shadowed light, kept as the lights' loop
+// lit it: after the loop three leaves the last directional light in directLight, the storm's
+// key; filtered by the leaf twice over: green leaves glow greener, red ones redder; a little
+// through any card, more looking toward the sun); a card seen from behind its normal (against
+// the light) gets no sheen, its light being the one through it; each vertex sways along the
+// wind by its `sway` (units: the cards' tips, never their roots), in waves that run over the
+// plants.
 //
 // Grass: one clump of blades instanced over a square grid of cells round a point ahead of the
 // camera (an attribute `cell`: each instance's cell in the grid), each clump put in its cell at a
@@ -147,13 +150,33 @@ const FOLIAGE_VERT = /* glsl */ `#include <begin_vertex>
   }`;
 
 const FOLIAGE_FRAG = /* glsl */ `#include <lights_fragment_end>
+  {
+    // A card seen from behind its bent normal (the canopy's far side, against the light) shows
+    // light passed through the leaves, not a reflection: no sheen there (at that grazing angle
+    // the sky's reflection would bleach it white); elsewhere a leaf's sheen is soft.
+    float sheen = 0.6 * smoothstep(-0.15, 0.35, dot(normal, geometryViewDir));
+    reflectedLight.directSpecular *= sheen;
+    reflectedLight.indirectSpecular *= sheen;
+  }
   #if NUM_DIR_LIGHTS > 0
     {
-      float back = pow(clamp(dot(-geometryViewDir, directLight.direction), 0.0, 1.0), 3.0);
-      float through = clamp(dot(-normal, directLight.direction), 0.0, 1.0);
-      reflectedLight.directDiffuse += directLight.color * diffuseColor.rgb * diffuseColor.rgb * 4.0 * uTranslucency * (0.35 * through + back);
+      float back = pow(clamp(dot(-geometryViewDir, foliageSun.direction), 0.0, 1.0), 3.0);
+      float through = clamp(dot(-normal, foliageSun.direction), 0.0, 1.0);
+      reflectedLight.directDiffuse += foliageSun.color * diffuseColor.rgb * diffuseColor.rgb * 4.0 * uTranslucency * (0.35 * through + back);
     }
   #endif`;
+
+// The lights' loop, keeping the first directional light as it was lit (its shadow in its colour:
+// the sun, shadow casters coming first) for the light through the leaves (after the loop
+// directLight is the last one's: the storm's key light, dark in the sun).
+const DIR_LOOP = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
+const FOLIAGE_LIGHTS = (() => {
+  const c = THREE.ShaderChunk.lights_fragment_begin;
+  const at = c.indexOf(DIR_LOOP);
+  const call = c.indexOf('RE_Direct(', at);
+  const end = c.indexOf(';', call) + 1;
+  return 'IncidentLight foliageSun;\n' + c.slice(0, end) + '\n#if UNROLLED_LOOP_INDEX == 0\nfoliageSun = directLight;\n#endif' + c.slice(end);
+})();
 
 export function foliageMaterial(map, { roughness = 0.6, translucency = 0.6, coverage = false, envMapIntensity = 0.7, wind }, haze) {
   const material = new THREE.MeshStandardMaterial({ map, roughness, metalness: 0, vertexColors: true, side: THREE.DoubleSide, envMapIntensity, alphaTest: 0.5, alphaToCoverage: coverage });
@@ -163,6 +186,7 @@ export function foliageMaterial(map, { roughness = 0.6, translucency = 0.6, cove
     shader.vertexShader = 'attribute float sway;\nuniform vec4 uWind;\n' + shader.vertexShader.replace('#include <begin_vertex>', FOLIAGE_VERT);
     shader.fragmentShader = 'uniform float uTranslucency;\n' + shader.fragmentShader
       .replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''))
+      .replace('#include <lights_fragment_begin>', FOLIAGE_LIGHTS)
       .replace('#include <lights_fragment_end>', FOLIAGE_FRAG);
   });
 }

@@ -2061,7 +2061,7 @@ retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
 
 The dad asked for his street "as realistic as possible", the character still classic. So
 Sparrow Lane's environment has a second, realistic look (`render/real/*`, `world/lane/real/*`;
-the plan behind it is the R1 and R2 milestones of the realistic-environment plan), while Jonas, the
+the plan behind it is the R1, R2 and R3 milestones of the realistic-environment plan), while Jonas, the
 coins, the star, the 1-up, the signs' boards, butterflies, birds and the HUD keep their classic
 models and materials, and every other area keeps the N64 look.
 
@@ -2077,8 +2077,8 @@ build.test.js` checks the realistic build's colliders and collision world are th
 build's to the byte, and that it draws exactly the classic faces but those it draws itself:
 **`REAL_DRAWN`** (`lane/build.js`) names the elements the realistic look builds anew (the
 mailbox, the plants, the forest, the chain houses, the cars, the kerbs, the lamp and flag
-posts, the fences, the bins, the villas' windows, the garage doors, the toys, the motorhome,
-the cabinet); a classic builder asks `kit.drawn(name)` for the kit to draw one into, the kit or
+posts, the fences, the bins, the villas' walls and windows, the garage doors, the toys, the
+motorhome, the cabinet); a classic builder asks `kit.drawn(name)` for the kit to draw one into, the kit or
 one whose builders draw nothing (`NOTHING`, a no-op proxy) with the same `solids` and `signs`,
 so every collider is still made exactly as before. The realistic build also draws the turning
 area round (`round`: `plan.js roadPieces({ round })`, 64 sides at the mean of the 16-gon's
@@ -2093,10 +2093,12 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   far plane centred on the camera; its `hazeColor(dir)` is every material's aerial
   perspective), the sky's prefiltered environment (`scene.environment`, intensity 1.3), the
   reflection probe (`probe.js`: one half-float cube capture of the street from over the road in
-  front of the dad's house, Jonas hidden, prefiltered: the windows' envMap; taken on the first
-  frame after each attach), the sun's soft shadow (PCF, radius 2.5) in a box round Jonas
+  front of the dad's house, Jonas hidden, prefiltered: the windows' envMap), the sun's soft shadow (PCF, radius 2.5) in a box round Jonas
   (`view.setFocus`), snapped to whole shadow texels across the light so static shadows never
-  shimmer, and the light preset (`layout.LANE_REAL`).
+  shimmer, and the light preset (`layout.LANE_REAL`). The probe is taken once, as the build is
+  readied (below), and kept for every later visit (the street does not change); until then a
+  blank probe of its size (`warmProbe`) stands in, so the materials that reflect it compile as
+  they will draw.
 * `render/real/materials.js`: `pbrMaterial` (a texture set's albedo × vertex tint × colour,
   normal map, ORM: occlusion and roughness), `plainMaterial` (paint, cloth), `glassMaterial`
   (ior 2.2 for double glazing's ~14 %: its F0 set in the standard material's lighting as the
@@ -2118,13 +2120,22 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   (tangent space, OpenGL) / ORM, each tiling (but the cards' cut-outs), deterministic to the
   byte. They run in **the realistic look's worker**
   (`render/real/laneRealWorker.js`, a module worker like the title logo's), which keeps them in
-  an **IndexedDB cache** (`texCache.js`: database 'castle-real', store 'tex', key
-  `${TEXGEN_VERSION}:${jobKey}`, 48 MB, least recently used out, other versions first; any error
-  is a miss). `TEXGEN_VERSION` is bumped by hand whenever a generator's output changes:
-  `tests/real-texgen.test.js` pins each lane set's hash at 64 px with it. `textureStore.js` (main
-  thread) asks the worker, keeps the sets for the session and makes the `DataTexture`s
-  (repeating, mipmapped, anisotropic per tier; clones share an image). No photo pixels, no
-  downloads: every colour is a number in the generators or the catalogue.
+  an **IndexedDB cache** (`texCache.js`: database 'castle-real', store 'tex' the maps and store
+  'meta' each entry's size and last use, so marking one used and trimming read and write a few
+  bytes, never the maps; key `${TEXGEN_VERSION}:${jobKey}`, 64 MB (the high tier's sets are
+  ~50 MB), least recently used out, other versions first; the keys are read once as a worker
+  starts, so a miss costs no transaction; any error is a miss). `TEXGEN_VERSION` is bumped by
+  hand whenever a generator's output changes: `tests/real-texgen.test.js` pins each lane set's
+  hash at 64 px with it. `textureStore.js` (main thread) runs **a pool of the workers** (the
+  cores but one, 1 to 3: `poolSize`), hands each job to the one with the least work ahead by an
+  estimate (the area's geometry first, then the sets, the biggest first), all at once (the main
+  thread may be busy booting meanwhile), holding a worker's jobs until it says it runs (a
+  message posted before is passed on by a main-thread task, which would wait behind the boot);
+  it keeps the sets for the session (each job's time in `store.ms`) and makes the
+  `DataTexture`s (repeating, mipmapped, anisotropic per tier; clones share an image). No photo
+  pixels, no downloads: every colour is a number in the generators or the catalogue. The
+  geometry is not cached across visits: it is made beside the boot (30 MB of floats on high would
+  cost the cache more than its making does).
 * `render/real/tier.js`: the tier from the device (phones and tablets **low**; a discrete or
   Apple-silicon GPU **high**; other desktops **mid**; `?tier=` overrides), and per tier:
 
@@ -2138,15 +2149,17 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
 
   Budgets per frame (the shadow pass included; checked in headless Chromium by
   `tests/lane-real-browser.test.js`, frame times by hand on real hardware): high ≤ 160 draw
-  calls, ≤ 900k triangles, ≤ 20 realistic programs; mid ≤ 130 / 450k; low ≤ 100 / 200k. The
-  governor that steps down from measured frame times comes later.
-* `render/real/RealAreas.js` (main makes one; `AreaSwitch` uses it): the tier, whether
-  realistic looks may run (fallbacks to classic, logged once, the F1 line saying why:
-  `(classic: building | chosen | <what failed>)`: `?look=classic`, G in the game, the worker or a
-  build failing; without float render targets the tier drops to low), the
-  texture prefetch at boot (idle priority), and an area's build (its sets, `def.real.build`, its
-  programs compiled for the look: `view.compileLook`). Under `?test=1` the realistic look is
-  opt-in (`?look=real` or a `?tier=`), so scripted tests never see the look change mid-run.
+  calls, ≤ 900k triangles, ≤ 20 realistic programs; mid ≤ 130 / 450k; low ≤ 100 / 200k. Then
+  **the governor** (below) steps the drawing down from measured frame times.
+* `render/real/RealAreas.js` (main makes one right after the renderer; `AreaSwitch` uses it):
+  the tier, whether realistic looks may run (fallbacks to classic, logged once, the F1 line
+  saying why: `(classic: building | chosen | too slow | <what failed>)`: `?look=classic`, G in
+  the game, the governor giving up, the workers or a build failing; without float render
+  targets the tier drops to low), the workers' start at the very beginning of the boot
+  (`prefetch`: main waits, a moment, until they run, then they work beside the boot), and each
+  area's build, made in the background as soon as its sets and geometry are in (below). Under
+  `?test=1` the realistic look is opt-in (`?look=real` or a `?tier=`), so scripted tests never
+  see the look change mid-run, and it swaps in without a crossfade there.
 
 **Its own geometry (R2).** What the classic builders no longer draw comes from the realistic
 look's worker (`laneRealWorker.js`) as typed arrays: `world/lane/real/detail.js`
@@ -2166,10 +2179,20 @@ the main thread but the upload.
   proud of the course below, every quad wound to face out) on the houses `LANE_REAL.tiles`
   names (the dad's and his neighbours'), the tile set's normal map on the others; a soffit, a
   fascia, half-round gutters with downpipes down the wall, barge boards and verge rolls, a ridge
-  cap. The courses cast no shadow themselves (their rolls would shimmer at the shadow map's
+  cap. The courses are sunk into the roof's plane (`SINK` 7.2: the rolls' crowns at most 1.5 over
+  it, the ridge cap's and the verge rolls' tops 2 over the ridge), so Jonas, on the collider's
+  plane, stands on the crowns instead of in them; the walls stop 10 under the plane (their top
+  edge would show between the rolls). The courses cast no shadow themselves (their rolls would shimmer at the shadow map's
   texels): a flat stand-in under them does (`shadowCaster`: no colour, no depth, both faces).
-* `villas.js`: the villas' windows (white surrounds standing proud, sashes, stone sills),
-  sectional garage doors, gutters and rounded hip and ridge caps over the classic hipped roofs.
+* `villas.js`: the villas' walls (white render to the upper floor, brick over it, a white band
+  between) with **real openings** (`villaHouses`; arched heads with the wall filled back in their
+  corners): in each window a white casing proud of the wall, a reveal, a frame with a mullion and
+  a transom, the glass over a dim room box, a stone sill (one a garage door's frame would cross,
+  at the west end, stands proud instead); the bay windows glazed on three sides over an opening
+  into the room, a little tiled roof; the arched front door set back in its opening with panel
+  shadows, a brass handle and a step; the balcony a slab, dark posts and rails round dark glass
+  and a capping, the classic railing box's size (its top is the collider's). Sectional garage
+  doors, gutters and rounded hip and ridge caps over the classic hipped roofs.
 * `foliage.js`: **leaf cards**: clusters of two crossed alpha-tested cards (the leaf atlas's
   cells: rhododendron, hedge, tree, red) on shells over the classic shapes (each canopy's
   blobs from the classic builder's own seeded stream, so every plant stands where its classic
@@ -2181,8 +2204,10 @@ the main thread but the upload.
   cards in whorls, a dark inner cone) instanced where `spots.js forestSpots` plants them (the
   classic forest draws its cones from the same list), plus a far tree line where the ground ends
   in the haze (`extras.js treeLine`, casting none).
-* `cars.js`: **lofted cars** (rounded sections, the bonnet sloping to a rounded nose, the sill
-  rising over the axles; a greenhouse of slices, glass on its straight runs, pillars in the
+* `cars.js`: **lofted cars** (sections with a crisp shoulder crease under a tightly rounded deck:
+  two ring points 0.4 apart, so the smooth normals turn there; the bonnet sloping to a rounded
+  nose, the sill rising over the axles; the doors' dark shut lines; a greenhouse of slices, glass
+  on its straight runs in a black seal along the belt and under drip rails, pillars in the
   body's colour; rounded tyres on dished five-spoke rims in dark arches; lamps, mirrors,
   handles; no plates, no badges): lacquered paint (`plainMaterial({ clearcoat })`: three's
   clearcoat lobe switched on in the standard material, `USE_CLEARCOAT`, without the physical
@@ -2196,7 +2221,9 @@ the main thread but the upload.
   1024 × 512 RGBA8 map of where blades grow and the ground's height there, built in the worker
   from `layout.js`: none on the road, the pavement, paths, drives, the round bed, the mailbox,
   bushes, hedges, houses, posts, or where the ground steps) and shrinks it to nothing off the
-  lawns and toward the grid's radius (760 on high: no pop).
+  lawns and toward the grid's radius (760 on high: no pop). The cells are ordered nearest the
+  grid's middle first, so drawing the first n of them (`reach(share)`: the governor's) is a disc
+  of a shorter reach.
 * `garden.js`: the mailbox (a chamfered charcoal board box, its roof boards, flap, blank enamel
   plate, framed door, knob, concrete foot) and its carved wooden bird painted blue (white
   breast, yellow beak, glossy eyes, raised wings); **granite kerbs** (`kerbs`: stones ~150 long
@@ -2208,8 +2235,14 @@ the main thread but the upload.
   `extras.js`: the trampoline, the hoop, the motorhome, the cabinet.
 * **Materials** (`render/real/materials.js`): `foliageMaterial` (an atlas with coverage-keeping
   mips; both faces lit by the card's own outward-bent normal, no back-face flip; the sun through
-  the leaves from the shadowed direct light; alpha to coverage under MSAA; each vertex swaying
-  along `layout.WIND` by its `sway`, from a wind uniform the part's update runs), `grassMaterial`,
+  the leaves from the shadowed direct light (the sun's as the lights' loop lit it,
+  `FOLIAGE_LIGHTS`: after the loop three leaves the last directional light there, the storm's
+  key, dark in the sun); alpha to coverage under MSAA; each vertex swaying
+  along `layout.WIND` by its `sway`, from a wind uniform the part's update runs: **gusts**, its
+  phase running fast and slow by turns and its sway stronger as it runs fast, the flags waving
+  on the same phase and the cirrus drifting along it; a card seen from behind its bent normal,
+  against the light, gets no sheen, only the light through it: the red tree glows red against
+  the sun instead of bleaching white), `grassMaterial`,
   the lacquer, `shadowCaster`. Texture sets added in the worker: the leaf atlas (`leaves`, 1024 on
   high: four 512 cells), `fir`, `bark` (and a birch's), `granite`; cut-outs get mips that keep
   their coverage (`noise.js coverageMips`: each level's alpha scaled so as many texels pass the
@@ -2217,17 +2250,55 @@ the main thread but the upload.
   `DataTexture`'s own mipmaps.
 * **Tiers**: low (phones) halves the leaf clusters, has no tile courses (the normal map), no
   blades, plainer windows and cars, fewer materials (`LOW_MERGE`) and only the houses and the
-  cars casting the sun's shadow (`LOW_CASTERS`); mid has 4 segments a roll and the smaller grass
-  grid. Measured in headless Chromium at the five views: high 98–119 draw calls, ~790k triangles
-  (393k of them the grass grid's, counted whole), 12 realistic programs; low 55–91 calls, ~150k.
+  cars casting the sun's shadow (`LOW_CASTERS`); mid has 70 % of the leaf clusters, 4 segments a
+  roll and the smaller grass grid. Measured in headless Chromium at the five views (the shadow
+  pass included): high 116–121 draw calls, ~764k triangles, 12 realistic programs, 59.6 MB of
+  set textures; mid 116–121, ~435k, 12, 43.9 MB; low 90–94, ~179k, 10, 18.8 MB.
   The realistic part hangs under its area's root only while shown (`Area.showReal`): the
   renderer's classic warm-ups compile whatever is under the root, hidden or not.
 
-**The switch.** `AreaSwitch.get` starts an area's realistic build in the background as it builds
-the area; once ready the area holds it (`Area.setReal(part, look)`: a second WorldPart under its
-root, hidden) and, while it is the current area and realistic looks are wanted, `_look` shows
-it (`Area.showReal`: its update and door follow), hides the grounds' sky dome and calls
-`view.setLook(look)`. `_swap` drops any look first (`view.setLook(null)`), then the next area's
+**Readying it, between frames (R3).** An area's realistic build (`RealAreas.build(def)`, once a
+session) starts as the workers' data comes in, at boot, whether or not Jonas is near: so it is
+usually ready long before he reaches the lane's door, and the lane shows realistic from its
+first frame, behind the covered screen. Every step runs between frames, a few milliseconds at a
+time (`slices`: `SLICE` 6 ms, then a task boundary): the build itself is a generator
+(`look.js laneRealSteps` over `lane/build.js laneSteps` and `props.js propsSteps`: a builder or
+two a step, the longest ~30 ms, the round ground pass; `buildLane` runs the same steps through
+at once, so the classic build is unchanged to the byte), the detail's bounding spheres come from
+the worker; then the programs, compiled a mesh at a time (`view.compileLook`) and each linked in
+a task of its own (`program.getUniforms()`: where the browser cannot link in the background, the
+first frame would otherwise wait for all of them at once), the textures uploaded a few at a time
+(after the links, which would wait on queued uploads), and the probe, its own task (the street's
+first draw: its buffers uploaded, the sun's shadow programs made), taken where the area will
+stand (the part under a group at its origin, `view.withLook` showing only it for the while).
+`real.ms[area]` keeps each step's time and `real.longest` the longest stretch between two frames.
+
+**Crossfades.** Where a look comes or goes on screen (the build landing while the lane shows
+classic: `?area=lane` at boot, a slow device; G; a governor step), `view.crossfade(seconds)`
+draws the picture as it stands once more, copies the canvas (`post/FadePass.js`: a
+`FramebufferTexture`) and draws it over the next frames, fading out (0.4 s, smoothstep; 0.3 s for
+a governor step), whatever path the new frames take (MSAA, direct, graded, retro); behind the
+covered screen (the hold of a wipe) there is no fade to make.
+
+**The governor.** Unless `?test=1` or a `?tier=` (drawn as asked), the look's tier is governed
+(`tier.js Governor` on `ladder(tier)`: each tier's own render size, MSAA, shadow and grass from
+the built tier down, each then at 85 % of its render size; what was built, textures and
+geometry, stays). `N64Renderer.render` hands it each frame's time (`look.govern`): a 2 s window
+of frames over budget (the 90th percentile over 20 ms, 50 fps; 36 ms on a low level, phones
+aiming at 30) steps down; 5 s of frames keeping 60 fps steps back up, and a step up that fails
+doubles the wait before the next (to a minute); stalls (a hidden tab, a build: over 250 ms, but
+five in a row count) and the second after a step are not counted. Each step cross-fades
+(`setLevel`: the render size, the HDR target's MSAA, the shadow map and box, the blades' reach)
+and is kept for the next visit (`localStorage` 'castleGrounds.realLevel.v1', per tier; a
+convenience). Off the ladder (still too slow at its last level) the look goes classic for the
+session (`real.slow()`, the F1 line `(classic: too slow)`). The F1 line names the level and
+'auto': `real 1088x612 msaa2 mid 85% auto`.
+
+**The switch.** The area holds its realistic build once ready (`Area.setReal(part, look)`: a
+second WorldPart under its root, hidden; `AreaSwitch.get` gives it at once when `real.done` has
+it, else `_buildReal` waits for it) and, while it is the current area and realistic looks are
+wanted, `_look` shows it (`Area.showReal`: its update and door follow), hides the grounds' sky
+dome and calls `view.setLook(look)` (cross-fading where the picture shows: `_look(area, fade)`). `_swap` drops any look first (`view.setLook(null)`), then the next area's
 atmosphere and look. `setLook(look)` snapshots every field a look may touch and `setLook(null)`
 writes it back, so leaving restores the renderer exactly:
 
@@ -2249,37 +2320,44 @@ not tone mapped), so they come out of the output pass as the classic look draws 
 toggles "Classic street" (the classic look, this session; `AreaSwitch.setClassic`); F2 / R in
 the realistic look is the retro TV over it for this visit. The pause legend's retro row says so
 in such a course (`REAL_LOOK_ROW` 'R / F2 / G  Retro / Classic', `CLASSIC_LOOK_ROW` 'Retro /
-Realistic' while classic by choice: `hud.setLook`), keeping the legend's twelve rows and widths. A frame with a look (`N64Renderer.draw`'s one branch, `look.draw`): the scene into
+Realistic' while classic by choice: `hud.setLook`), keeping the legend's twelve rows and widths. A frame with a look (`N64Renderer.drawScene`'s one branch, `look.draw`): the scene into
 the HDR target, the output pass to the canvas; with the storm's grade, a flash or the meltdown
 the output pass writes into the grade's target and `GradePass` finishes as in native mode; with
 retro over realistic the scene is drawn at 240 lines and goes through the output pass into the
 retro target and `N64Pass` (a real street on a 1998 TV); the recorder's capture sizes it like any
 frame and its frame hook sees the finished canvas; a `setView()` scene bypasses it. The F1 line
-reads `real 1600x900 msaa4 high`.
+reads `real 1600x900 msaa4 high` (and ' auto' while governed).
 
-**Tests**: `tests/real-texgen.test.js` (every lane set pinned at 64 px with `TEXGEN_VERSION`,
+**Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the governor's
+ladder and its verdicts on synthetic frame-time series, the kept level, the workers' pool and how
+it shares the jobs out), `tests/real-texgen.test.js` (every lane set pinned at 64 px with `TEXGEN_VERSION`,
 deterministic, periodic noises and seams, plausible albedo / roughness / normals, the cut-outs'
 mips keeping their coverage, the high tier's sets within 3 × 700 ms in node),
 `tests/lane-real-build.test.js` (the colliders and collision world byte-identical to the
-classic build's, exactly the classic faces but `REAL_DRAWN`'s, the split by part, the rooms,
+classic build's, exactly the classic faces but `REAL_DRAWN`'s, the split by part, no room of
+its own,
 unbaked tints, grey lawns, roof uvs up the slopes, no NaN, the catalogue's and the detail's
-materials and shadow flags, the firs instanced, the grass following the camera, the pause
+materials and shadow flags, the firs instanced, the grass following the camera and its reach, the pause
 legend's look row, the realistic sources' privacy), `tests/lane-real-geometry.test.js` (the
 worker's geometry: deterministic, within each tier's triangle budget, every face wound the way
-its normals point, the walls open at every window and door, the tile courses on the classic
-roof planes, the firs on the classic forest's spots, the lawn mask, the cars on their wheels
+its normals point, the walls open at every window and door of the chain houses and the villas,
+the tile courses in the classic roof planes (the crowns at most 1.5 over them, the ridge line's
+top 2), the firs on the classic forest's spots, the lawn mask, the cars on their wheels
 inside their colliders and their bodies and tyres closed, the bird on the ridge), `tests/real-materials.test.js` (the haze and the
 clamp in every material's patched shader, the glass's F0 and premultiplied output, the leaf
-cards', the grass's and the lacquer's patches, shared uniforms, ≤ 20 programs, the signs'
+cards' (no sheen on a card seen from behind), the grass's and the lacquer's patches, shared
+uniforms, ≤ 20 programs, the signs'
 inverse tone mapping), `tests/lane-real-browser.test.js` (E2E: the swap, the pixels, the grade
-and the recorder's framings, the counts and a blue sky at five views on high and on low, G, the
+and the recorder's framings, a crossfade, the counts and a blue sky at five views on high, mid
+and low, G, the
 low tier, `?look=classic`, and the exact restore of the renderer after a visit, with and
 without F2); `tests/net-relay-build.test.js` (the worker chunk).
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
-own chunk (`laneRealWorker-*.js`, ~80 kB, no three.js, no imports: under 160 kB); `main`
-carries only the renderer side (R1 +~29 kB, R2 +~9 kB: 1,682,765 bytes, under the
-1,700,000-byte budget). `tests/net-relay-build.test.js` checks both.
+own chunk (`laneRealWorker-*.js`, ~87 kB, no three.js, no imports: under 160 kB); `main`
+carries only the renderer side (R1 +~29 kB, R2 +~9 kB, R3 +~8.8 kB: the crossfade, the governor,
+the workers' pool, the build between frames: 1,691,593 bytes, under the 1,700,000-byte
+budget). `tests/net-relay-build.test.js` checks both.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -3235,9 +3313,9 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,682,765
-  bytes with Sparrow Lane, its details and its realistic look's renderer side, ~545 kB gzip,
-  plus the ~13 kB title-logo worker and the ~80 kB realistic look's worker; the size warning
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,691,593
+  bytes with Sparrow Lane, its details and its realistic look's renderer side, ~553 kB gzip,
+  plus the ~13 kB title-logo worker and the ~87 kB realistic look's worker; the size warning
   limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for the second
   course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built separately
   into the same folder (~85 kB, its own copy of the touch controller and protocol).

@@ -1,5 +1,6 @@
 // The realistic look's performance tiers: what a device draws the look with. A first guess from
-// the device (R3 adds the governor that steps down or up from measured frame times).
+// the device, then a governor that steps the drawing down a ladder (or back up) from the frame
+// times it measures.
 //
 //   TIERS.high | .mid | .low      // the settings (below)
 //   guessTier({ coarse, touchPoints, shortSide, gpu }) -> 'high' | 'mid' | 'low'
@@ -13,6 +14,23 @@
 //                                 // maxPixels drawn
 //   texSize(tier, kind) -> px     // a texture set's size (512 or 256; the leaf atlas, four
 //                                 // sets in one, 1024 on high)
+//   ladder(tier) -> [level]       // what the governor steps through, the tier itself first:
+//                                 // each tier's own render size, MSAA, shadow and grass from
+//                                 // this one down, each then at 85 % of its render size;
+//                                 // level { name, pixelRatio, maxPixels, samples, shadow, box,
+//                                 // grass (a share of the build's blades' reach), scale }. What
+//                                 // was built (textures, geometry) stays: these only draw it.
+//   new Governor({ levels, level }) // gov.frame(ms) per frame drawn, ms since the one before ->
+//                                 // the level to step to (levels.length: below the ladder, the
+//                                 // classic look) or null: frames over budget for a window (2 s:
+//                                 // the 90th percentile over 20 ms, 50 fps; on a low level 36 ms,
+//                                 // 28 fps) step down; every frame keeping 60 fps (17.5 ms) for
+//                                 // 5 s steps back up, and a step up that fails doubles the wait
+//                                 // before the next (up to a minute). Stalls (over 250 ms: a
+//                                 // hidden tab, a build; but five in a row count) and the
+//                                 // second after a step are not counted.
+//   savedLevel(tier), saveLevel(tier, level)   // the last good level on this device (local
+//                                 // storage; a convenience: unavailable, the tier's own)
 //
 // Settings: pixelRatio (cap), maxPixels, samples (the HDR target's MSAA; low draws straight to
 // the canvas, `direct`: no HDR target, three tone maps per material), shadow (map size), box
@@ -70,4 +88,102 @@ export function lookPixelRatio(tier, dpr, width, height) {
   const ratio = Math.min(dpr || 1, tier.pixelRatio);
   const pixels = width * height * ratio * ratio;
   return pixels > tier.maxPixels ? Math.sqrt(tier.maxPixels / (width * height)) : ratio;
+}
+
+// The blades' reach on each tier's level (a share of the built grid's: GRASS in
+// world/lane/real/grass.js, high's 760 and mid's 480; none on low).
+const GRASS_REACH = { high: 1, mid: 480 / 760, low: 0 };
+const NAMES = ['high', 'mid', 'low'];
+
+export function ladder(tier) {
+  const out = [];
+  for (const name of NAMES.slice(NAMES.indexOf(tier.name))) {
+    const t = TIERS[name];
+    const level = { name, pixelRatio: t.pixelRatio, maxPixels: t.maxPixels, samples: tier.direct ? 0 : t.samples, shadow: t.shadow, box: t.box, grass: GRASS_REACH[name], scale: 1 };
+    out.push(level, { ...level, name: `${name} 85%`, scale: 0.85 });
+  }
+  return out;
+}
+
+const WINDOW = 2000; // ms of frames a verdict is made on
+const BUDGET = 20; // ms: the 90th percentile above it steps down (50 fps)
+const LOW_BUDGET = 36; // ...on a low level (28 fps: phones aim at 30)
+const FAST = 17.5; // ms: every frame keeping 60 fps
+const UP_WAIT = 5000; // ms of fast frames before a step up (doubled after one that fails)
+const MAX_WAIT = 60000;
+const STALL = 250; // ms: a frame this late is a stall (a hidden tab, a build), not the GPU...
+const STALLS = 5; // ...unless this many come in a row
+const SETTLE = 1000; // ms after a step not counted (the crossfade, the targets made again)
+
+export class Governor {
+  constructor({ levels, level = 0 }) {
+    this.levels = levels;
+    this.level = level;
+    this.times = [];
+    this.span = 0;
+    this.settle = SETTLE;
+    this.calm = 0; // ms of fast windows in a row
+    this.wait = UP_WAIT;
+    this.raised = -1; // the level the last step up went to (until it holds a window)
+    this.stalls = 0; // stalls in a row
+  }
+
+  frame(ms) {
+    if (this.level >= this.levels.length) return null; // (off the ladder: classic, for good)
+    // A stall (a hidden tab, a build) is not the GPU: the window starts again, unless the stalls
+    // go on (a device this slow: they count, as late frames).
+    this.stalls = ms > STALL ? this.stalls + 1 : 0;
+    if (this.stalls > 0 && this.stalls < STALLS) {
+      this.times.length = 0;
+      this.span = 0;
+      return null;
+    }
+    if (this.settle > 0) {
+      this.settle -= ms;
+      return null;
+    }
+    this.times.push(ms);
+    this.span += ms;
+    if (this.span < WINDOW) return null;
+    const p90 = this.times.sort((a, b) => a - b)[Math.floor(this.times.length * 0.9)];
+    this.times.length = 0;
+    this.span = 0;
+    const raised = this.raised === this.level;
+    this.raised = -1;
+    if (p90 > (this.levels[this.level].name.startsWith('low') ? LOW_BUDGET : BUDGET)) {
+      this.calm = 0;
+      if (raised) this.wait = Math.min(this.wait * 2, MAX_WAIT); // (it could not hold: wait longer)
+      return this.go(this.level + 1);
+    }
+    this.calm = p90 <= FAST ? this.calm + WINDOW : 0;
+    if (this.calm < this.wait || this.level === 0) return null;
+    this.calm = 0;
+    this.raised = this.level - 1;
+    return this.go(this.level - 1);
+  }
+
+  go(level) {
+    this.level = level;
+    this.settle = SETTLE;
+    return level;
+  }
+}
+
+const SAVED = 'castleGrounds.realLevel.v1';
+
+export function savedLevel(tier) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED));
+    return saved?.tier === tier.name ? saved.level : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveLevel(tier, level) {
+  try {
+    localStorage.setItem(SAVED, JSON.stringify({ tier: tier.name, level }));
+  } catch {
+    // (no storage: the next visit starts at the tier's own level)
+  }
 }

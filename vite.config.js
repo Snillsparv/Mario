@@ -7,15 +7,16 @@ import padRelay from './tools/padRelay.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.68 MB minified (1,682,765 bytes), ~545
+// first frame, so splitting would only add requests. ~1.69 MB minified (1,691,593 bytes), ~553
 // kB gzipped, plus two module workers of its own (new Worker(new URL(...)), not imports): the
-// ~13 kB title-logo worker and the realistic look's (render/real/laneRealWorker.js, ~80 kB: the
-// pure code the realistic Sparrow Lane needs, its texture generators and its geometry builders,
-// kept out of main; it must import no three.js and stay under 160 kB). The size
-// warning was 1600 (1,584,238 bytes before it); raised to 1700 for the second course, Sparrow
-// Lane (world/lane/*, about 60 kB with its details; its realistic look's renderer side about
-// 39 kB more): the hard budget (1,700,000 bytes) is the limit. Growth goes into the worker
-// first; raising the cap is the last resort, documented here and in docs/ARCHITECTURE.md.
+// ~13 kB title-logo worker and the realistic look's (render/real/laneRealWorker.js, ~87 kB, a
+// pool of up to three of them: the pure code the realistic Sparrow Lane needs, its texture
+// generators and its geometry builders, kept out of main; it must import no three.js and stay
+// under 160 kB). The size warning was 1600 (1,584,238 bytes before it); raised to 1700 for the
+// second course, Sparrow Lane (world/lane/*, about 60 kB with its details; its realistic look's
+// renderer side about 47 kB more): the hard budget (1,700,000 bytes) is the limit. Growth goes
+// into the worker first; raising the cap is the last resort, documented here and in
+// docs/ARCHITECTURE.md.
 const GAME_CHUNK_LIMIT_KB = 1700;
 
 // The phone's controller page (pad.html) is built on its own, right after the game, into the

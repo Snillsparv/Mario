@@ -80,6 +80,8 @@ const START_LIVES = 4;
 const INTRO_HOLD_TICKS = 60;
 // How long the switch into (and out of) AI RACE mode takes.
 const DARK_FADE_SECONDS = 3;
+// How long the boot waits at most for the realistic look's workers to start (ms).
+const WORKERS_WAIT = 1000;
 
 async function start() {
   const container = document.getElementById('game');
@@ -90,6 +92,12 @@ async function start() {
   const view = new N64Renderer(container);
   view.alignOverlay(uiRoot); // HUD and title follow the picture when F3 pillarboxes it to 4:3
   const { scene, camera } = view;
+  // Areas with a realistic look (Sparrow Lane: render/real/*), on this device's tier; ?look=classic
+  // keeps them classic, as does G in the game (this session). Its workers start on the looks'
+  // textures and geometry at once: the boot waits until they run (a worker starts only while
+  // this thread is free), so they work beside the rest of it.
+  const real = new RealAreas({ view, search: location.search, test: TEST });
+  await Promise.race([real.prefetch(AREA_DEFS), new Promise((resolve) => setTimeout(resolve, WORKERS_WAIT))]);
 
   const level = buildLevel(scene);
   view.setWaterLevelFn((x, z) => level.collision.waterLevelAt(x, z));
@@ -152,9 +160,6 @@ async function start() {
     darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
   let lastAction = player.action;
-  // Areas with a realistic look (Sparrow Lane: render/real/*), on this device's tier; ?look=classic
-  // keeps them classic, as does G in the game (this session).
-  const real = new RealAreas({ view, search: location.search, test: TEST });
   // The areas (the grounds, the Great Hall, the courses): walking through a door, GAME OVER's
   // way back. A warp waits for plain play: not in AI RACE (the storm stays on the grounds), nor
   // while the meltdown runs (nor while a dialog is up: AreaSwitch sees to that itself).
@@ -175,7 +180,6 @@ async function start() {
     },
     real,
   });
-  real.prefetch(AREA_DEFS); // the realistic looks' textures, in the background from now on
   // The pause legend's look row: in a course with a realistic look, drawn so or classic by choice.
   const lookRow = () => (view.look ? 'real' : areas.current.def.real && real.reason === 'chosen' ? 'classic' : null);
   // G: "Classic street", the realistic look off (or back on) for this session.

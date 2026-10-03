@@ -18,7 +18,8 @@
 // up (the mass shades as a volume), darker and duller the deeper and lower it sits; a dark core
 // inside stops the sky showing through where a real bush is dense. A canopy's clusters inside
 // another of its blobs are left out (only the canopy's outside is leafy). The cards' tips sway in
-// the wind (`sway`, units: more on the trees than the bushes); low tier: half the clusters.
+// the wind (`sway`, units: more on the trees than the bushes); mid tier 70 % of the clusters (the
+// hedges' cards a little farther apart), low half.
 
 import { makeRng } from '../../../core/math.js';
 import { Geo, add, mul, sub, dot, cross, norm } from './geo.js';
@@ -27,6 +28,8 @@ import { forestSpots } from './spots.js';
 // The leaf atlas's cells (texgen/sets.js LEAF_CELLS: each half the atlas a side).
 const CELL = { rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] };
 const CORE = { green: [0.03, 0.055, 0.018], red: [0.045, 0.012, 0.012] };
+// The share of a shell's clusters per tier (mid a little sparser, low half).
+const CLUSTERS = { high: 1, mid: 0.7, low: 0.5 };
 const BARK = 0xb8aca0;
 const BIRCH_BARK = 0xf4f2ec;
 
@@ -64,7 +67,7 @@ function cluster(g, R, c, d, size, cell, sway, cards = 2) {
 // turns at random, darker deep and low; and its dark core.
 function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside = [], sway = 3, core = CORE.green, coreK = 0.78 }) {
   const { foliage } = kit;
-  const n = kit.tier === 'low' ? Math.round(count / 2) : count;
+  const n = Math.round(count * (CLUSTERS[kit.tier] ?? 1));
   for (let i = 0; i < n; i++) {
     let d;
     do d = [R() * 2 - 1, R() * 2 - 1, R() * 2 - 1];
@@ -169,7 +172,7 @@ function ring(x, y, z, r, sides) {
 function hedge(kit, R, h) {
   const { foliage, core } = kit;
   // (The long hedges behind the houses a little coarser.)
-  const step = (kit.tier === 'low' ? 36 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
+  const step = (kit.tier === 'low' ? 36 : kit.tier === 'mid' ? 29 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
   const tint = () => {
     const k = 0.8 + 0.35 * R();
     foliage.rgb(0.95 * k, 1.05 * k, 0.85 * k);

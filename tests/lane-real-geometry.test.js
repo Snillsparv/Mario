@@ -72,15 +72,26 @@ test('every face is wound the way its normals point (but the leaf cards, lit thr
   }
 });
 
-test('the walls are open at every window and door of the chain houses: no wall triangle across an opening', () => {
-  const walls = [mesh(high, 'boards'), mesh(high, 'brick')];
-  for (const h of lane.HOUSES.filter((o) => o.kit === 'chain')) {
+test('the walls are open at every window and door of the chain houses and the villas: no wall triangle across an opening', () => {
+  const walls = [mesh(high, 'boards'), mesh(high, 'brick'), mesh(high, 'render')];
+  for (const h of lane.HOUSES.filter((o) => o.kit === 'chain' || o.kit === 'villa')) {
     const front = frameOf(h).face('front').f;
     const back = frameOf(h).face('back').f;
     const openings = [];
-    for (const u of h.windows ?? []) openings.push([front, u, 170, 300], [back, -u, 170, 300]);
+    if (h.kit === 'villa') {
+      // The upper floor's windows (plain, arched, behind a bay), one on each other face; the
+      // arched door at the garden's floor; the west end's (rendered to its eaves) are over its
+      // garage doors.
+      const y0 = h.y0 ?? 22;
+      if (h.render < h.eave) {
+        for (const u of [...(h.windows ?? []), ...(h.arches ?? []), ...(h.bays ?? [])]) openings.push([front, u, 530, 600]);
+        for (const name of ['back', 'left', 'right']) openings.push([frameOf(h).face(name).f, 0, 530, 700]);
+      } else for (const name of ['left', 'right']) openings.push([frameOf(h).face(name).f, 0, h.eave - y0 - 220, h.eave - y0 - 40]);
+      if (h.door !== undefined) openings.push([front, h.door, lane.TERRACE - y0 + 5, lane.TERRACE - y0 + 150]);
+    }
+    for (const u of h.kit === 'chain' ? (h.windows ?? []) : []) openings.push([front, u, 170, 300], [back, -u, 170, 300]);
     if (typeof h.door === 'object') openings.push([front, h.door.u, 1, h.door.h - 1]);
-    else if (typeof h.door === 'number') openings.push([front, h.door, 1, 214]);
+    else if (typeof h.door === 'number' && h.kit === 'chain') openings.push([front, h.door, 1, 214]);
     for (const [f, u, v0, v1] of openings) {
       // A point in the opening's middle, on the wall's plane (and on the plinth's, 2 proud);
       // (south_2's back window where its wing stands against it is inside the wing: no matter).
@@ -104,13 +115,14 @@ test('the walls are open at every window and door of the chain houses: no wall t
   }
 });
 
-test('the tile courses lie on the classic roof planes (the colliders Jonas walks on): never under them, at most the rolls\' height over them', () => {
+test('the tile courses lie in the classic roof planes (the colliders Jonas walks on): their crowns at most 1.5 over them (he stands on the crowns), the troughs under them', () => {
   const { position: p } = mesh(high, 'tiles');
   const roofs = lane.LANE_REAL.tiles.map((id) => {
     const h = lane.HOUSES.find((o) => o.id === id);
     return { h, F: frameOf(h), o: h.overhang ?? 60, A: h.w / 2, B: h.d / 2, tan: (h.ridge - h.eave) / (h.d / 2) };
   });
   let checked = 0;
+  let crown = -Infinity;
   for (let i = 0; i < p.length; i += 3) {
     // On one of the roofs it lies within (in each house's frame: u along its ridge, w across
     // it; where two roofs meet, the wing's eave under its house's, either will do), leaving out
@@ -128,20 +140,22 @@ test('the tile courses lie on the classic roof planes (the colliders Jonas walks
       overs.push((p[i + 1] - (h.ridge - w * tan)) * Math.cos(Math.atan(tan)));
     }
     if (!overs.length || cap) continue;
-    assert.ok(overs.some((over) => over > -3.5 && over < 9.5), `a tile vertex ${overs.map((v) => v.toFixed(2))} off its roof's plane`);
+    assert.ok(overs.some((over) => over > -10.5 && over <= 1.55), `a tile vertex ${overs.map((v) => v.toFixed(2))} off its roof's plane`);
+    crown = Math.max(crown, Math.min(...overs.map((v) => (v > -10.5 ? v : Infinity))));
     checked++;
   }
   assert.ok(checked > 10000, `${checked} vertices`);
-  // The ridge caps sit low on the ridge line Jonas walks along (his feet sinking no deeper there
-  // than between the rolls).
-  for (const { h, F, A } of roofs) {
+  assert.ok(crown > 1 && crown <= 1.55, `the highest crown ${crown.toFixed(2)} over the plane`);
+  // The ridge caps (and the verge rolls' tops at its ends) sit low on the ridge line Jonas walks
+  // along (his feet sinking no deeper there than on the crowns).
+  for (const { h, F, A, o } of roofs) {
     let top = -Infinity;
     for (let i = 0; i < p.length; i += 3) {
       const [dx, dz] = [p[i] - h.cx, p[i + 2] - h.cz];
       const [ux, , uz] = F.dir(1, 0, 0);
-      if (Math.abs(dx * ux + dz * uz) < A - 50 && Math.abs(-dx * uz + dz * ux) < 20) top = Math.max(top, p[i + 1]);
+      if (Math.abs(dx * ux + dz * uz) < A + o + 10 && Math.abs(-dx * uz + dz * ux) < 20) top = Math.max(top, p[i + 1]);
     }
-    assert.ok(top > h.ridge && top <= h.ridge + 10.5, `${h.id}: the ridge cap's top ${(top - h.ridge).toFixed(1)} over the ridge`);
+    assert.ok(top > h.ridge && top <= h.ridge + 2.5, `${h.id}: the ridge cap's top ${(top - h.ridge).toFixed(1)} over the ridge`);
   }
 });
 

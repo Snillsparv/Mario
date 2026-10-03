@@ -10,7 +10,8 @@
 //   skyUniforms(sky, sunDir) -> uniforms   // sky: { zenith, horizonAway, horizonSun, ground
 //                                // ([r, g, b] linear), intensity, clouds }; shared by the sky,
 //                                // its environment capture and the materials' haze
-//   makeSky(uniforms, { clouds, horizonFill, radius }) -> THREE.Mesh 'realSky'
+//   makeSky(uniforms, { clouds, horizonFill, radius }) -> THREE.Mesh 'realSky'   (its
+//                                // uDrift: how far the cirrus has drifted, set as time goes)
 //                                // the dome, centred on the camera in its vertex shader (no
 //                                // per-frame work), on the far plane; horizonFill 1: below the
 //                                // horizon the visible dome shows the horizon's haze (the
@@ -57,6 +58,7 @@ const SKY_FRAG = /* glsl */ `
 ${SKY_GLSL}
 uniform float uClouds;
 uniform float uHorizonFill;
+uniform vec2 uDrift;
 varying vec3 vDir;
 
 float skyHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -83,7 +85,7 @@ void main() {
   float mu = dot(v, uSunDir);
   // Cirrus on a high plane, stretched along the wind, lit warm toward the sun.
   if (v.y > 0.0 && uClouds > 0.0) {
-    vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * (v.xz / (v.y + 0.12) * 1.1);
+    vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * (v.xz / (v.y + 0.12) * 1.1 - uDrift);
     q.y *= 4.0;
     float w = smoothstep(0.55, 0.85, skyFbm(q * 1.3)) * smoothstep(0.0, 0.25, v.y) * uClouds;
     float sunSide = pow(clamp(mu * 0.5 + 0.5, 0.0, 1.0), 2.0);
@@ -114,7 +116,7 @@ export function skyUniforms(sky, sunDir) {
 
 export function makeSky(uniforms, { clouds = 0.55, horizonFill = 1, radius = 30000 } = {}) {
   const material = new THREE.ShaderMaterial({
-    uniforms: { ...uniforms, uClouds: { value: clouds }, uHorizonFill: { value: horizonFill } },
+    uniforms: { ...uniforms, uClouds: { value: clouds }, uHorizonFill: { value: horizonFill }, uDrift: { value: new THREE.Vector2() } },
     vertexShader: SKY_VERT,
     fragmentShader: SKY_FRAG,
     side: THREE.BackSide,

@@ -4,9 +4,10 @@
 // red, its windows neither black nor NaN (the probe's old bug), the sign boards as the classic
 // look draws them, Jonas's shirt red as in the classic look; the storm's grade, a flash and the
 // meltdown draw through the grade pass; the recorder's 16:9 and 9:16 framings see drawn frames;
+// a crossfade draws the picture as it stood over the next ones until it has faded;
 // draw calls, triangles, programs and texture bytes at the five views within the high tier's
-// budgets (and the low tier's at them on ?tier=low), the sky blue at each; G draws it classic and
-// back. ?tier=low draws straight to the canvas. ?look=classic
+// budgets (and the mid and low tiers' at them on ?tier=mid and ?tier=low), the sky blue at each;
+// G draws it classic and back. ?tier=low draws straight to the canvas. ?look=classic
 // keeps the classic look. Leaving restores the renderer exactly: a snapshot of every field a
 // look may touch (and the programs the grounds draw with, and the scene's children) taken on the
 // grounds equals one taken after a visit to the lane (out through the dad's door, the hall, back
@@ -260,6 +261,28 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
       assert.ok(h >= 1080, `${w} x ${h}`);
       assert.ok(blue(px), `the recorded frame's sky: ${px}`);
     }
+    // A crossfade: the picture as it stood drawn over the next ones (here a long one, G drawing
+    // the classic look under it), until it has faded.
+    const fade = await page.evaluate(() => {
+      const g = window.__game;
+      const v = g.view;
+      const spot = [[0.5, 0.75]];
+      const real = window.__pixelsOn(spot)[0];
+      v.crossfade(1000);
+      g.areas.setClassic(true);
+      const held = window.__pixelsOn(spot)[0];
+      v.fader.start -= 2e6; // (over)
+      const classic = window.__pixelsOn(spot)[0];
+      const after = window.__pixelsOn(spot)[0];
+      g.areas.setClassic(false);
+      return { real, held, classic, after, active: v.fader.active };
+    });
+    t.diagnostic(`crossfade: ${JSON.stringify(fade)}`);
+    for (let c = 0; c < 3; c++) assert.ok(Math.abs(fade.held[c] - fade.real[c]) <= 3, `the faded picture drawn over the classic one: ${fade.held} vs ${fade.real}`);
+    assert.ok(fade.real.some((x, c) => Math.abs(x - fade.classic[c]) > 12), `the classic look under it differs: ${fade.classic}`);
+    assert.deepEqual(fade.after, fade.classic);
+    assert.equal(fade.active, false, 'the copy freed once faded');
+    await real();
     // Counts at the five views (the arrival, the door, west, the turning area, the dad's drive),
     // the shadow pass included: within the high tier's budgets; the sky blue at each.
     await countViews(page, t, { calls: 160, triangles: 900000, programs: 20, textureBytes: 64 * 1024 * 1024 });
@@ -324,7 +347,21 @@ test('leaving restores the renderer exactly: the grounds before and after a visi
   }
 });
 
-test('?tier=low draws straight to the canvas (tone mapped per material), its sky blue and walls red; ?look=classic keeps the classic look', { skip, timeout: 600000 }, async (t) => {
+test('?tier=mid within its budgets at the five views; ?tier=low draws straight to the canvas (tone mapped per material), its sky blue and walls red; ?look=classic keeps the classic look', { skip, timeout: 900000 }, async (t) => {
+  {
+    const { page, errors, step, real } = await open('&area=lane&tier=mid');
+    try {
+      await real();
+      await step(30);
+      assert.match(await page.evaluate(() => window.__game.view.describeMode()), /^real 960x540 msaa2 mid$/);
+      // The mid tier's budgets (a desktop with an integrated GPU): 70 % of the leaf clusters,
+      // the smaller grass grid, 4 segments a tile roll.
+      await countViews(page, t, { calls: 130, triangles: 450000, programs: 20, textureBytes: 64 * 1024 * 1024 });
+      assert.deepEqual(errors, []);
+    } finally {
+      await page.close();
+    }
+  }
   {
     const { page, errors, step, real } = await open('&area=lane&tier=low');
     try {

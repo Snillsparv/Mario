@@ -52,9 +52,15 @@
 //     setView() scene bypasses it. setFocus(p) is where the sun's shadow box centres (Jonas);
 //     addRealActor(object3D, blob) names an actor that casts and receives that shadow while a
 //     look is set (its blob shadow fades to REAL_BLOB as a contact shadow); compileLook(look,
-//     objects) compiles their programs for a look before it is first set. The F1 line then reads
-//     'real 1600x900 msaa4 high' (look.describe); setLookNote(why) adds why an area that has one
-//     draws classic ('native 1920x1080 (classic: building)').
+//     objects, programs?) compiles their programs for a look before it is first set (programs:
+//     a Set the programs go into, for a caller that links them one at a time); withLook(look,
+//     holder, objects, fn) runs fn with the look set and only those objects shown (a build's
+//     probe, between frames). The F1 line then reads 'real 1600x900 msaa4 high' (look.describe:
+//     its level, and 'auto' while its governor runs: render() hands it each frame's time,
+//     look.govern); setLookNote(why) adds why an area that has one draws classic ('native
+//     1920x1080 (classic: building)'). crossfade(seconds): the picture as it stands fades out
+//     over the next frames (post/FadePass.js: a look coming or going, or its level stepping,
+//     never pops).
 //
 // World geometry is unlit (baked vertex colours). The sun and hemisphere lights below only
 // shade dynamic actors (hero, coins, star) that use Lambert/Phong materials.
@@ -68,6 +74,7 @@ import { loadSettings, saveSettings } from './post/settings.js';
 import { UnderwaterFog, isBelowWater } from './post/underwater.js';
 import { DebugOverlay } from './post/DebugOverlay.js';
 import { GradePass } from './post/GradePass.js';
+import { FadePass } from './post/FadePass.js';
 import { STORM_FOG, STORM_UNDERWATER_FOG, STORM_LIGHTS, flashEnvelope, stormFogRange } from './post/storm.js';
 import { UNDERWATER_FOG } from './post/underwater.js';
 import { WARN_FOG, FIRE_FOG, WHITE_FOG, FIRE_LIGHTS, MELT_GRADE, MELT_OFF, fireGradeOf, meltFogRange } from './post/meltdown.js';
@@ -197,6 +204,7 @@ export class N64Renderer {
     this.flashPending = false; // flash() was called: it starts on the next frame drawn
     this.flashLevel = 0; // brightness drawn in the last frame
     this.gradePass = new GradePass();
+    this.fader = new FadePass(); // crossfade(): the picture before a look came, fading out
     this.gradeWarm = ''; // native: '' | 'pending' | 'ready' (programs for the grade target)
     this.drawSize = new THREE.Vector2();
     this.keyDir = new THREE.Vector3();
@@ -459,6 +467,14 @@ export class N64Renderer {
     this.refit(); // (the pixel ratio and the retro filter follow)
   }
 
+  // The picture as it stands fades out over the next `seconds` of frames (before a change that
+  // would pop: a look coming or going, its tier stepping).
+  crossfade(seconds) {
+    if (this.viewScene) return;
+    this.draw(); // (the drawing buffer is not kept after a frame)
+    this.fader.freeze(this.renderer, seconds);
+  }
+
   // setLook's work without the refit (compileLook sets a look only for a moment).
   applyLook(look) {
     if (this.look) this.dropLook();
@@ -578,7 +594,7 @@ export class N64Renderer {
   // set: its state is set for the compile and the classic one put back (no frame is drawn in
   // between; hidden objects are shown for it). Resolves once compiled (in parallel where the
   // browser can: KHR_parallel_shader_compile).
-  compileLook(look, objects) {
+  compileLook(look, objects, programs = null) {
     const { renderer, camera, scene } = this;
     const before = this.look;
     this.applyLook(look);
@@ -589,12 +605,45 @@ export class N64Renderer {
       renderer.setRenderTarget(look.sceneTarget(renderer));
       for (const o of list) o.visible = true;
       done = list.map((o) => renderer.compileAsync(o, camera, scene));
+      // (Each one's program, for a caller that links them one at a time: RealAreas.)
+      for (const o of programs ? list : []) {
+        o.traverse((m) => {
+          for (const material of m.material ? [].concat(m.material) : []) programs.add(renderer.properties.get(material).currentProgram);
+        });
+      }
     } finally {
       list.forEach((o, i) => (o.visible = shown[i]));
       renderer.setRenderTarget(null);
       this.applyLook(before);
     }
     return Promise.all(done);
+  }
+
+  // Runs fn() with `look` set and the scene showing only `objects`, the look's sky and the lights
+  // (with `holder`, a group a build hangs them under meanwhile, in it for the while), then puts
+  // all of it back: RealAreas' probe, between frames (none is drawn meanwhile).
+  withLook(look, holder, objects, fn) {
+    const { scene } = this;
+    const before = this.look;
+    this.applyLook(look);
+    if (holder) scene.add(holder);
+    const keep = new Set([look.sky, this.sun, this.ambient, this.stormKey]);
+    for (const o of objects) for (let p = o; p; p = p.parent) keep.add(p);
+    const hidden = [];
+    for (const o of keep) {
+      for (const other of o.parent?.children ?? []) {
+        if (keep.has(other) || !other.visible) continue;
+        other.visible = false;
+        hidden.push(other);
+      }
+    }
+    try {
+      fn();
+    } finally {
+      for (const o of hidden) o.visible = true;
+      holder?.removeFromParent();
+      this.applyLook(before);
+    }
   }
 
   // Why the current area, which has a realistic look, draws classic ('building', 'chosen' or
@@ -791,13 +840,20 @@ export class N64Renderer {
   render() {
     // Moving the window to a screen with another pixel density fires no resize event.
     if (window.devicePixelRatio !== this.lastDevicePixelRatio) this.resize();
+    if (this.look && !this.viewScene) this.look.govern(this, performance.now()); // (its tier's governor)
     this.draw();
     this.frameHook?.();
     this.debug.frame(performance.now() / 1000, this.renderer.info, () => this.describeMode());
   }
 
-  // Draws the current scene and camera state (also used to repaint after a resize).
+  // Draws the current scene and camera state (also used to repaint after a resize), and over it
+  // the picture a crossfade is fading out.
   draw() {
+    this.drawScene();
+    if (this.fader.active && !this.viewScene) this.fader.draw(this.renderer);
+  }
+
+  drawScene() {
     if (this.viewScene) {
       this.drawView();
       return;
@@ -889,6 +945,7 @@ export class N64Renderer {
     this.underwater.dispose();
     this.pass.dispose();
     this.gradePass.dispose();
+    this.fader.dispose();
     this.warmList.length = 0;
     this.target.dispose();
     this.renderer.dispose();

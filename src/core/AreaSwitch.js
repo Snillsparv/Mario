@@ -196,6 +196,7 @@ export class AreaSwitch {
     this.offset = { x: 0, z: 0 }; // heroOffset's, reused
     this.won = new Set(); // courses whose own star he has won this game (their lamps lit)
     this.realBuilding = new Set(); // areas whose realistic build is under way
+    if (real) real.onChange = () => this._look(this.current, true); // (too slow: classic again)
     events.on('warpRequest', (w) => this.request(w));
     events.on('starCollected', (e) => this.onStar(e));
   }
@@ -228,7 +229,13 @@ export class AreaSwitch {
     this.buildMs[name] = performance.now() - t0;
     this.built[name] = area;
     this._light(area);
-    if (this.real?.wanted && def.real) this._buildReal(area);
+    if (this.real?.wanted && def.real) {
+      // Built in the background since boot: usually ready already (then it shows from the
+      // first frame, behind the covered screen), else it swaps in once it is.
+      const ready = this.real.done.get(name);
+      if (ready) area.setReal(ready.part, ready.look);
+      else this._buildReal(area);
+    }
     return area;
   }
 
@@ -237,18 +244,18 @@ export class AreaSwitch {
     this.real.setClassic(on);
     const area = this.current;
     if (!on && area.def.real && !area.real && !this.realBuilding.has(area)) this._buildReal(area);
-    this._look(area);
+    this._look(area, true);
   }
 
   // An area's realistic build, in the background: once ready the area holds it, and shows it at
-  // once if it is the current one.
+  // once if it is the current one (cross-fading from the classic look on screen).
   _buildReal(area) {
     this.realBuilding.add(area);
-    this.real.build(area).then(
+    this.real.build(area.def).then(
       ({ part, look }) => {
         this.realBuilding.delete(area);
         area.setReal(part, look);
-        if (this.current === area) this._look(area);
+        if (this.current === area) this._look(area, this.phase !== 'hold');
       },
       () => {
         this.realBuilding.delete(area); // (RealAreas says why; the area stays classic)
@@ -258,9 +265,11 @@ export class AreaSwitch {
   }
 
   // The area's look: its realistic one where ready and wanted (its realistic part shown), else
-  // classic; the grounds' sky dome where def.sky and no realistic sky draws.
-  _look(area) {
+  // classic; the grounds' sky dome where def.sky and no realistic sky draws. fade: the picture
+  // on screen cross-fades to it (real.fade seconds; none behind the covered screen).
+  _look(area, fade = false) {
     const look = this.real?.wanted && area.look ? area.look : null;
+    if (fade && this.real.fade > 0 && look !== this.view.look) this.view.crossfade?.(this.real.fade);
     area.showReal?.(look !== null);
     if (this.sky?.object3D) this.sky.object3D.visible = !!area.def.sky && look === null;
     this.view.setLook?.(look);

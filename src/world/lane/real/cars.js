@@ -5,11 +5,12 @@
 //   cars(kit, L)        // kit: detail.js's Geo per material (carPaint, carGlass, tyre, rim,
 //                       // trim, lamp, tail, metal)
 //
-// A body lofted through rounded sections along the car (the bonnet sloping down to a rounded
-// nose, a rounded tail, the sill rising over each axle so the tyres show), a greenhouse of
-// slices from the belt to the roof (the screens raked, the sides falling in: tumblehome), glass
-// on its straight runs, pillars in the body's colour at its corners and in the middle of each
-// side, the roof panel; rounded tyres on dished alloy rims (five spokes) in dark arches;
+// A body lofted through sections along the car (the bonnet sloping down to a rounded nose, a
+// rounded tail, the sill rising over each axle so the tyres show; a crisp shoulder crease along
+// each side under a tightly rounded deck), the doors' dark shut lines, a greenhouse of slices
+// from the belt to the roof (the screens raked, the sides falling in: tumblehome), glass on its
+// straight runs in a black seal and under drip rails, pillars in the body's colour at its
+// corners and in the middle of each side, the roof panel; rounded tyres on dished alloy rims (five spokes) in dark arches;
 // headlights and tail lights, door mirrors and handles. Each kind keeps its own
 // proportions (layout.js: the van tall and short-nosed, the estate's long roof, the SUV's square
 // tail). The paint is lacquered (look.js: a clearcoat over a metallic paint, both reflecting the
@@ -27,6 +28,28 @@ function roundRect(a, b, r, per = 4) {
     }
   }
   return pts;
+}
+
+// A body section (half width a, half height b, centred): a flat floor rounded up into sides that
+// draft out to a crisp shoulder crease just under the top (`crease` below it: two points 0.4
+// apart, so the smooth normals turn there), then tuck in to a tightly rounded top deck;
+// counter-clockwise from the floor's middle, as roundRect's [x, y, corner] (corner: false).
+function bodySection(a, b, crease) {
+  const right = [];
+  const rb = Math.min(10, b * 0.45);
+  const yc = b - Math.min(crease, b * 0.5);
+  const rt = Math.min(8, (b - yc) * 0.8);
+  for (let i = 0; i <= 3; i++) {
+    const t = -Math.PI / 2 + (i / 3) * (Math.PI / 2);
+    right.push([a - 3 - rb + Math.cos(t) * rb, -b + rb + Math.sin(t) * rb]);
+  }
+  right.push([a - 1.4, (-b + rb + yc) / 2], [a, yc - 0.3], [a - 0.3, yc + 0.1]);
+  for (let i = 0; i <= 3; i++) {
+    const t = (i / 3) * (Math.PI / 2);
+    right.push([a - 3 - rt + Math.cos(t) * rt, b - rt + Math.sin(t) * rt]);
+  }
+  const left = right.map(([u, y]) => [-u, y]).reverse();
+  return [[0, -b], ...right, [0, b], ...left].map(([u, y]) => [u, y, false]);
 }
 
 const TYRE = [0.035, 0.035, 0.037];
@@ -49,10 +72,11 @@ function car(kit, L, c) {
   const van = c.kind === 'van';
   const square = c.kind === 'suv' || van;
   const axles = [hl - K.l * 0.19, -hl + K.l * 0.2];
+  const R = K.wheel;
   const { carPaint, carGlass, tyre, rim, trim, lamp, tail, metal } = kit;
   carPaint.color(c.tint);
-  // The body: stations along the car, each a rounded section.
-  const rings = [];
+  // The body: stations along the car, each a section with a shoulder crease.
+  const sections = [];
   const S = kit.tier === 'low' ? 18 : 32;
   for (let k = 0; k <= S; k++) {
     const w = -hl + (2 * hl * k) / S;
@@ -74,15 +98,29 @@ function car(kit, L, c) {
     const a = Math.max(8, hw - taper * 0.9);
     const b = (top - bottom) / 2;
     const mid = (top + bottom) / 2;
-    rings.push(roundRect(a, b, Math.min(18, b * 0.9, a * 0.5), 4).map(([u, y]) => W(u * (1 + 0.03 * Math.cos((y / b) * 1.2)), mid + y, w)));
+    sections.push({ w, a, b, mid, profile: bodySection(a, b, 13) });
   }
-  carPaint.loft(rings, { capStart: true, capEnd: true });
+  carPaint.loft(sections.map(({ w, mid, profile }) => profile.map(([u, y]) => W(u, mid + y, w))), { capStart: true, capEnd: true });
+  // The doors' shut lines: dark seams down each side from the shoulder to the sill (the front
+  // door's leading edge, the pillar between the doors, the rear door's trailing edge).
+  const seam = (w) => {
+    const near = sections.reduce((p, q) => (Math.abs(q.w - w) < Math.abs(p.w - w) ? q : p));
+    const side = near.profile.slice(3, 7); // (the side: the floor's corner up to the crease)
+    for (const s of [-1, 1]) {
+      for (let k = 0; k + 1 < side.length; k++) {
+        const [[u0, y0s], [u1, y1s]] = [side[k], side[k + 1]];
+        const q = [W(s * (u0 + 0.5), near.mid + y0s, w - 0.7), W(s * (u0 + 0.5), near.mid + y0s, w + 0.7), W(s * (u1 + 0.5), near.mid + y1s, w + 0.7), W(s * (u1 + 0.5), near.mid + y1s, w - 0.7)];
+        if (s > 0) trim.quad(q[1], q[0], q[3], q[2]);
+        else trim.quad(q[0], q[1], q[2], q[3]);
+      }
+    }
+  };
   // The greenhouse: horizontal slices from the belt (f 0) to the roof (f 1).
-  const slice = (f) => {
+  const slice = (f, out = 0) => {
     const y = belt + (roof - belt) * f;
-    const front = hl - K.hood - K.screen * f;
-    const rear = -hl + K.tail + (K.tailTop - K.tail) * f;
-    const half = hw - 8 - (van ? 12 : 22) * Math.pow(f, 1.2) - (f > 0.9 ? 30 * (f - 0.9) : 0);
+    const front = hl - K.hood - K.screen * f + out;
+    const rear = -hl + K.tail + (K.tailTop - K.tail) * f - out;
+    const half = hw - 8 - (van ? 12 : 22) * Math.pow(f, 1.2) - (f > 0.9 ? 30 * (f - 0.9) : 0) + out;
     const mid = (front + rear) / 2;
     const rr = roundRect((front - rear) / 2, half, Math.min(square ? 18 : 28, half * 0.5), 3);
     return { ring: rr.map(([w, u]) => W(u, y, mid + w)), corner: rr.map((p) => p[2]), mid, half, y };
@@ -95,6 +133,12 @@ function car(kit, L, c) {
   carGlass.loft(gs.map((g) => g.ring), { segs: (i) => !corner(i) });
   carPaint.loft(gs.map((g) => g.ring), { segs: corner });
   carPaint.loft([0.84, 0.93, 1].map((f) => slice(f).ring), { capEnd: true });
+  // The glass's black surround: a seal along the belt all round, and the drip rails over the
+  // side windows (crisp lines round the greenhouse).
+  trim.rgb(0.012, 0.012, 0.014);
+  trim.loft([slice(0, 0.7).ring, slice(0.05, 0.7).ring]);
+  trim.loft([slice(0.81, 0.7).ring, slice(0.85, 0.7).ring], { segs: (i) => !corner(i) });
+  for (const w of [axles[0] - R - 14, gs[0].mid - 10, axles[1] + R + 14]) seam(w);
   // The B pillars: body-colour strips over the side glass, mid cabin.
   for (const s of [-1, 1]) {
     const strip = gs.map((g) => [W(s * (g.half + 0.8), g.y, g.mid - 17), W(s * (g.half + 0.8), g.y, g.mid - 3)]);
@@ -105,7 +149,6 @@ function car(kit, L, c) {
     }
   }
   // The wheels: a rounded tyre, a dished alloy rim with a hub cap, in a dark arch.
-  const R = K.wheel;
   const SIDES = kit.tier === 'low' ? 12 : 22;
   for (const w of axles) {
     for (const s of [-1, 1]) {
@@ -149,7 +192,7 @@ function car(kit, L, c) {
       else g.quad(q[0], q[1], q[2], q[3]);
     }
   };
-  lamp.rgb(0.75, 0.76, 0.78);
+  lamp.rgb(0.42, 0.44, 0.47); // (glass over a chrome reflector: not a white sticker)
   lights(lamp, hw * 0.42, hw * 0.86, belt - 34, belt - 16, hl - (square ? 3 : 6), hl - (square ? 16 : 30));
   tail.rgb(0.5, 0.02, 0.02);
   lights(tail, hw * 0.5, hw * 0.92, belt - 36, belt - 14, -hl + 3, -hl + 14);

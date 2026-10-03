@@ -19,7 +19,8 @@
 // glazing bars, the glass (the reflection probe's street) over white curtains and a dim room, a
 // sloping sheet-metal sill. The door: a black frame, the leaf set back with a handle, a lamp
 // beside it; the dad's is door.js's (it swings: the realistic build leaves it its opening) with a
-// glazed side light. The roof: pan tile courses (or the tile set), a soffit, a black fascia, a
+// glazed side light. The roof: pan tile courses (or the tile set; the courses sunk into the roof's
+// plane, so Jonas stands on their crowns; the walls stop under it), a soffit, a black fascia, a
 // half-round gutter with a downpipe at each end down the wall, black barge boards and a roll of
 // verge tiles up the gables, a rounded ridge cap; the tile courses cast no shadow themselves
 // (their rolls' self-shadow would shimmer at the shadow map's texels): a flat stand-in under
@@ -70,8 +71,11 @@ const DOOR = { w: 116, h: 215 };
 const PLINTH = 135;
 const ROOF = { overhang: 60, thick: 18, fascia: 22 };
 // The tile courses: COURSE up the slope a course, WAVE across a roll, each course's nose NOSE proud
-// of the one below it, the rolls ROLL high; SEG segments a roll per tier (none on low).
-const TILE = { COURSE: 54, WAVE: 45, NOSE: 3.2, ROLL: 5.5, LAP: 6 };
+// of the one below it, the rolls ROLL high, all sunk SINK into the roof's plane (the collider
+// Jonas walks on: so he stands on the rolls' crowns, at most 1.5 over it, not among them); SEG
+// segments a roll per tier (none on low).
+const TILE = { COURSE: 54, WAVE: 45, NOSE: 3.2, ROLL: 5.5, LAP: 6, SINK: 7.2 };
+const TOP_GAP = 10;
 export const TILE_SEG = { high: 5, mid: 4, low: 0 };
 
 // A wall band on frame f from u0 to u1, v0 to v1 at w, with rectangular holes { u0, u1, v0, v1 }
@@ -110,21 +114,24 @@ export function chainHouse(kit, L, h, { tiled = false } = {}) {
   } else if (typeof h.door === 'number') holes.front.push({ u0: h.door - DOOR.w / 2, u1: h.door + DOOR.w / 2, v0: 0, v1: DOOR.h });
   // The walls: the plinth (or the gable end) in white brick, 2 proud, the boards over it, the
   // gables' triangles; the flashing on the plinth's top.
+  // (The walls stop TOP_GAP under the roof's plane: the tile courses sink into it, and a wall's
+  // edge would show between their rolls.)
+  const top = wallH - TOP_GAP;
   for (const name of ['front', 'back', 'left', 'right']) {
     const { f, half } = F.face(name);
     const gable = name === 'left' || name === 'right';
-    const brickTop = gable && h.gableEnds ? wallH : plinth;
+    const brickTop = gable && h.gableEnds ? top : plinth;
     kit.brick.color(TINT.brick);
     band(kit.brick, f, -half - 2, half + 2, -4, brickTop, 2, holes[name]);
-    if (brickTop < wallH) {
+    if (brickTop < top) {
       kit.boards.color(h.boards);
-      band(kit.boards, f, -half, half, brickTop, wallH, 0, holes[name]);
+      band(kit.boards, f, -half, half, brickTop, top, 0, holes[name]);
       kit.metal.color(TINT.black);
       kit.metal.quad(f.at(-half - 2, plinth - 3, 5), f.at(half + 2, plinth - 3, 5), f.at(half + 2, plinth + 3, 0), f.at(-half - 2, plinth + 3, 0));
     }
     if (gable) {
       kit.boards.color(h.gableBoards ?? h.boards);
-      kit.boards.tri(f.at(-half, wallH, 0), f.at(half, wallH, 0), f.at(0, h.ridge - y0, 0), { uvs: [[-half, wallH], [half, wallH], [0, h.ridge - y0]] });
+      kit.boards.tri(f.at(-half, top, 0), f.at(half, top, 0), f.at(0, h.ridge - y0 - TOP_GAP, 0), { uvs: [[-half, top], [half, top], [0, h.ridge - y0 - TOP_GAP]] });
     }
   }
   const front = F.face('front').f;
@@ -244,12 +251,12 @@ export function lamp({ paint, gloss }, f, u, v) {
 // (down to the batten at the eave); `seg` segments a roll. Each quad wound to face out (the
 // slope's outward normal, up): both slopes of a roof were culled away once.
 export function tileCourses(g, e0, e1, up, len, seg) {
-  const { COURSE, WAVE, NOSE, ROLL, LAP } = TILE;
+  const { COURSE, WAVE, NOSE, ROLL, LAP, SINK } = TILE;
   const run = Math.hypot(...sub(e1, e0));
   const ex = norm(sub(e1, e0));
   let nrm = norm(cross(ex, up));
   if (nrm[1] < 0) nrm = mul(nrm, -1);
-  const prof = (x) => ROLL * (0.5 + 0.5 * Math.cos((x * 2 * Math.PI) / WAVE));
+  const prof = (x) => ROLL * (0.5 + 0.5 * Math.cos((x * 2 * Math.PI) / WAVE)) - SINK;
   const dprof = (x) => -ROLL * 0.5 * Math.sin((x * 2 * Math.PI) / WAVE) * ((2 * Math.PI) / WAVE);
   const P = (x, s, off) => add(add(add(e0, mul(ex, x)), mul(up, s)), mul(nrm, off));
   const N = (x, slope) => {
@@ -274,7 +281,7 @@ export function tileCourses(g, e0, e1, up, len, seg) {
       const [pa, pb] = [prof(a), prof(b)];
       const [na, nb] = [N(a, slope), N(b, slope)];
       q(P(a, s0, pa + NOSE), P(b, s0, pb + NOSE), P(b, s1, pb), P(a, s1, pa), [na, nb, nb, na], [[a, s0], [b, s0], [b, s1], [a, s1]]);
-      const [la, lb] = k === 0 ? [-3, -3] : [pa, pb];
+      const [la, lb] = k === 0 ? [-3 - SINK, -3 - SINK] : [pa, pb];
       q(P(a, s0, la), P(b, s0, lb), P(b, s0, pb + NOSE), P(a, s0, pa + NOSE), [nn, nn, nn, nn], [[a, s0 - 4], [b, s0 - 4], [b, s0], [a, s0]], 0.7);
     }
   }
@@ -303,7 +310,7 @@ function gableRoof(kit, F, h, tiled) {
     if (tiled && seg) {
       kit.tiles.color(h.roof);
       tileCourses(kit.tiles, e0, e1, up, len, seg);
-      kit.shadow.quad(...slope.map((p) => sub(p, mul(F.dir(0, 1, s * tan), 3))));
+      kit.shadow.quad(...slope.map((p) => sub(p, mul(F.dir(0, 1, s * tan), 3 + TILE.SINK))));
     } else {
       kit.roof.color(h.roof);
       const ex = norm(sub(e1, e0));
@@ -347,17 +354,17 @@ function gableRoof(kit, F, h, tiled) {
       const board = [[p[0], p[1] - 22, p[2]], [q[0], q[1] - 22, q[2]], [q[0], q[1] + 3, q[2]], [p[0], p[1] + 3, p[2]]];
       kit.paint.quad(...((e > 0) !== (s > 0) ? [board[1], board[0], board[3], board[2]] : board));
       kit.tiles.color(h.roof, 0.85);
-      kit.tiles.tube(add(p, [0, 5, 0]), add(q, [0, 5, 0]), 7, 7, 5, { a0: Math.PI, arc: Math.PI, caps: true });
+      kit.tiles.tube(add(p, [0, -5, 0]), add(q, [0, -5, 0]), 7, 7, 5, { a0: Math.PI, arc: Math.PI, caps: true });
     }
   }
-  // (Low on the ridge, its top 10 over the collider's ridge line Jonas stands on: his feet sink
-  // no deeper there than between the rolls.)
+  // (Low on the ridge, its top 2 over the collider's ridge line Jonas stands on: his feet sink
+  // no deeper there than on the rolls' crowns.)
   kit.tiles.color(h.roof, 0.9);
-  const [ra, rb] = [F.at(-A - o - 4, h.ridge - 2, 0), F.at(A + o + 4, h.ridge - 2, 0)];
+  const [ra, rb] = [F.at(-A - o - 4, h.ridge - 10, 0), F.at(A + o + 4, h.ridge - 10, 0)];
   kit.tiles.tube(ra, rb, 12, 12, 8, { a0: Math.PI, arc: Math.PI, caps: true });
   // The ridge tiles' joints: thin dark rings every 40.
   const run = Math.hypot(...sub(rb, ra));
   const ex = norm(sub(rb, ra));
   kit.paint.color(0x0a0a0a);
-  for (let x = 40; x < run; x += 40) kit.paint.tube(add(ra, mul(ex, x)), add(ra, mul(ex, x + 2)), 12.6, 12.6, 8, { a0: Math.PI, arc: Math.PI });
+  for (let x = 40; x < run; x += 40) kit.paint.tube(add(ra, mul(ex, x)), add(ra, mul(ex, x + 2)), 12.4, 12.4, 8, { a0: Math.PI, arc: Math.PI });
 }

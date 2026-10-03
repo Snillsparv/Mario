@@ -5,6 +5,9 @@
 //
 //   buildLane(layout, { look, materials, replaced }?) -> { name: 'lane', object3D, colliders,
 //                          update(time), setDoorOpen(t, id), reset() }
+//   laneSteps(layout, options)   the same a step at a time: a generator whose next() runs a
+//                   builder or two (a few ms) and whose return value is the part (the realistic
+//                   build runs it over several frames; buildLane runs it through)
 //     look          'classic' (the default: the baked N64 look below) or 'real' (the realistic
 //                   look's visuals, world/lane/real/look.js: the same builders, unbaked, drawn with
 //                   `materials`, a material per mesh name; its colliders are the classic build's
@@ -58,8 +61,8 @@
 // (the tile courses lie across them), its lawns' tints are made grey (the lawn texture is green
 // itself) and its signs stay baked. It leaves out what it draws itself (REAL_DRAWN: the worker's
 // world/lane/real/detail.js builds those: the chain houses, the plants and the forest, the cars,
-// the kerbs, the posts, fences and bins, the villas' windows, the garage doors, the toys, the
-// motorhome, the cabinet, the mailbox) and draws its turning area round.
+// the kerbs, the posts, fences and bins, the villas' walls and windows, the garage doors, the
+// toys, the motorhome, the cabinet, the mailbox) and draws its turning area round.
 //
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): the road and
 // every hard surface (stone), the lawns and the terraces' tops (grass), the terraces' walls and
@@ -78,7 +81,7 @@ import { faluPlankTexture, sailTexture } from '../skerries/textures.js';
 import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
-import { buildProps, waveFlags } from './props.js';
+import { propsSteps, waveFlags } from './props.js';
 import { normals, inside, band, roadPieces } from './real/plan.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
@@ -119,7 +122,7 @@ const CARPORT_SHADE = 0.62; // the drive's asphalt under the carport's roof
 // The realistic look's own meshes (their repeats; the classic look draws them in render's and
 // grass's builders).
 export const REAL_REPEAT = { glass: 300, paint: 300, path: 240 };
-export const REAL_DRAWN = Object.freeze(['mailbox', 'plants', 'forest', 'chain', 'cars', 'kerbs', 'posts', 'fences', 'bins', 'villaWindows', 'garageDoors', 'toys', 'motorhome', 'cabinet']);
+export const REAL_DRAWN = Object.freeze(['mailbox', 'plants', 'forest', 'chain', 'cars', 'kerbs', 'posts', 'fences', 'bins', 'villas', 'villaWindows', 'garageDoors', 'toys', 'motorhome', 'cabinet']);
 
 // A builder that draws nothing (every method a no-op, chainable).
 const NOTHING = new Proxy({}, { get: () => () => NOTHING, set: () => true });
@@ -142,7 +145,16 @@ class SlopeBuilder extends GeoBuilder {
   }
 }
 
-export function buildLane(layout, { look = 'classic', materials = null, replaced = look === 'real' ? REAL_DRAWN : [], round = look === 'real' } = {}) {
+export function buildLane(layout, options) {
+  const steps = laneSteps(layout, options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+// buildLane a step at a time (a generator: each next() runs a builder or two, a few ms; its
+// return value the part): the realistic build runs it over several frames.
+export function* laneSteps(layout, { look = 'classic', materials = null, replaced = look === 'real' ? REAL_DRAWN : [], round = look === 'real' } = {}) {
   const real = look === 'real';
   const kit = { look, solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} }, groundAt: layout.groundHeight };
   for (const name of Object.keys(REPEAT)) kit[name] = new (real && name === 'roof' ? SlopeBuilder : GeoBuilder)(REPEAT[name]);
@@ -158,17 +170,25 @@ export function buildLane(layout, { look = 'classic', materials = null, replaced
     // The realistic look draws the turning area round (the lawns and the drives cut round it)
     // and its own granite kerbs (world/lane/real/garden.js); the colliders keep the 16-gon.
     ground(hidden, layout, road);
+    yield;
     ground({ ...kit, solids: NOTHING }, layout, roadPieces(layout, { round: true }));
   } else ground(kit, layout, road);
+  yield;
   kerbs(kit.drawn('kerbs'), layout, road);
   terraces(kit, layout);
+  yield;
   bank(kit, layout);
   boundary(kit, layout);
-  for (const h of layout.HOUSES) house(kit, h);
+  yield;
+  for (const h of layout.HOUSES) {
+    house(kit, h);
+    yield;
+  }
   link(kit, layout.LINK);
   carport(kit, layout.CARPORT);
   const leaf = frontDoor(kit, layout);
-  buildProps(kit, layout);
+  yield;
+  yield* propsSteps(kit, layout);
   return real ? assembleReal(kit, layout, leaf, materials) : assemble(kit, layout, leaf);
 }
 

@@ -4,12 +4,15 @@
 // poles, signs, coins and entries stay the classic build's. (This folder, world/lane/real/, holds
 // the lane's realistic-look code; this module runs on the main thread.)
 //
-//   LANE_REAL_AREA = { jobs, detail, build }   // world/areas.js lane def.real (RealAreas builds it)
+//   LANE_REAL_AREA = { jobs, detail, build }   // world/areas.js lane def.real (RealAreas builds it;
+//                                              // build: laneRealSteps)
 //   laneJobs(tier) -> [{ kind, size, opts }]   // the texture sets at the tier's sizes
 //   laneDetail(tier) -> { area, tier }   // the worker's geometry job (world/lane/real/detail.js)
 //   laneMaterials(store, tier, haze, { anisotropy }) -> { [mesh name]: material }
 //   detailMaterials(store, tier, haze, { anisotropy }) -> { [detail material]: material }
 //   buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro, detail }) -> { part, look }
+//   laneRealSteps(layout, options)   // the same a step at a time (a generator whose return value
+//                                    // is { part, look }: RealAreas runs it over several frames)
 //       part: the WorldPart 'lane' (its object3D 'lane-real', under the area's root: the classic
 //       builders' faces the realistic look keeps, and the worker's `detail` in its own
 //       materials), look: the RealLook from layout.LANE_REAL (its probe over the road in world
@@ -28,8 +31,10 @@
 // ones are leaf cards (materials.js foliageMaterial: the leaf atlas, the fir twig), `glass` ones
 // glass (the windows' on the reflection probe; the cars' opaque and dark), `clearcoat` the cars'
 // lacquer, `shadow` the tile courses' flat stand-in (it only casts). Firs come instanced, the
-// grass as a grid of clumps that follows the camera (grassGrid); the plants and the grass sway in
-// one wind (layout.WIND's way, its phase run by the part's update).
+// grass as a grid of clumps that follows the camera (grassGrid: look.grass(share) sets its reach,
+// the governor's); the plants, the grass and the flags move in one wind (layout.WIND's way, its
+// phase run by the part's update in gusts: fast and slow by turns, the sway stronger as it runs
+// fast), the cirrus drifting along it.
 
 import * as THREE from 'three';
 import { RealLook } from '../../../render/real/RealLook.js';
@@ -39,7 +44,7 @@ import { texSize } from '../../../render/real/tier.js';
 import { GRASS } from './grass.js';
 import { worldMaterial } from '../../../render/materials.js';
 import { woodTexture as signWoodTexture } from '../../props/textures.js';
-import { buildLane, REPEAT, REAL_REPEAT } from '../build.js';
+import { laneSteps, REPEAT, REAL_REPEAT } from '../build.js';
 
 // The terraces' split-face blocks and the steps: grey, coarse.
 const BLOCKS = { cols: 3, rows: 7, seed: 23, tone: [0.5, 0.5, 0.48], mortar: [0.32, 0.32, 0.31], jitter: 0.12 };
@@ -48,18 +53,19 @@ const CATALOGUE = {
   asphalt: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.8 },
   grass: { set: 'grass', cover: 300, color: [1.6, 1.79, 1.52] },
   blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, normalScale: 1.6 },
-  brick: { set: 'brick', cover: 180, color: 1.1, normalScale: 1.2 },
+  brick: { set: 'brick', cover: 100, color: 1.1, normalScale: 1.2 },
   render: { set: 'render', cover: 300 },
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
   roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
   cobbles: { set: 'pavers', opts: { cols: 10, seed: 73 }, cover: 240, color: 1.6 },
-  path: { set: 'pavers', cover: 240, color: 1.5, vertexColors: false },
+  path: { set: 'pavers', cover: 240, color: [1.2, 1.42, 0.98], vertexColors: false }, // (mossy)
 };
 const PAINT = { roughness: 0.5 };
 const CLOTH = { roughness: 0.85, side: THREE.DoubleSide };
 const DETAIL = {
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
-  brick: { set: 'brick', cover: 180, color: 1.1, normalScale: 1.2 },
+  brick: { set: 'brick', cover: 100, color: 1.1, normalScale: 1.2 },
+  render: { set: 'render', cover: 300 },
   roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
   tiles: { set: 'tiles', opts: { relief: 0 }, cover: 270, color: 5, roughness: 0.8 },
   granite: { set: 'granite', cover: 120, color: 0.95 },
@@ -89,6 +95,7 @@ const DETAIL = {
 };
 const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1 };
 const WIND_SPEED = 1.7; // the plants' sway, radians a second
+const CLOUD_DRIFT = 0.002; // the cirrus's drift along the wind (the sky's units a second)
 
 const repeatOf = (name) => REPEAT[name] ?? REAL_REPEAT[name];
 const colorOf = (c = 1) => (Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2]) : new THREE.Color(c, c, c));
@@ -150,7 +157,11 @@ function detailGroup(detail, M) {
     mesh.receiveShadow = true;
     group.add(mesh);
   };
-  for (const { name, material, cast, buffers } of detail.meshes) add(new THREE.Mesh(geometryOf(buffers), M[material]), name, cast);
+  for (const { name, material, cast, buffers, sphere } of detail.meshes) {
+    const geo = geometryOf(buffers);
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(sphere[0], sphere[1], sphere[2]), sphere[3]); // (the worker's)
+    add(new THREE.Mesh(geo, M[material]), name, cast);
+  }
   const { parts, matrices, colors, cast, far } = detail.firs;
   for (const { material, buffers } of parts) {
     const geo = geometryOf(buffers);
@@ -165,8 +176,9 @@ function detailGroup(detail, M) {
 }
 
 // The grass's clumps over a grid of G.side x G.side cells (materials.js grassMaterial), its mask
-// a DataTexture; returns the grid's per-frame move: centred ahead of the camera (on the ground
-// it looks at), snapped to whole cells. No allocation a frame.
+// a DataTexture; returns { follow(camera), reach(share) }: the grid's per-frame move, centred
+// ahead of the camera (on the ground it looks at), snapped to whole cells (no allocation a
+// frame), and its blades' reach (the governor's).
 function grassGrid(group, { clump, mask }, G, haze, wind) {
   const lawn = new THREE.DataTexture(mask.data, mask.width, mask.height, THREE.RGBAFormat, THREE.UnsignedByteType);
   lawn.needsUpdate = true;
@@ -175,10 +187,15 @@ function grassGrid(group, { clump, mask }, G, haze, wind) {
   const middle = { value: new THREE.Vector2() };
   const geo = new THREE.InstancedBufferGeometry();
   for (const [key, array] of Object.entries(clump)) geo.setAttribute(key, new THREE.BufferAttribute(array, ATTRIBUTES[key]));
-  const cells = new Float32Array(G.side * G.side * 2);
-  for (let i = 0; i < G.side * G.side; i++) cells.set([i % G.side, Math.floor(i / G.side)], i * 2);
-  geo.setAttribute('cell', new THREE.InstancedBufferAttribute(cells, 2));
-  geo.instanceCount = G.side * G.side;
+  // The cells nearest the grid's middle first, so the first n of them are a disc (a shorter
+  // reach: reach(r)).
+  const order = [];
+  for (let i = 0; i < G.side * G.side; i++) order.push([i % G.side, Math.floor(i / G.side)]);
+  const off = (G.side - 1) / 2;
+  const far = ([i, j]) => (i - off) ** 2 + (j - off) ** 2;
+  order.sort((a, b) => far(a) - far(b));
+  geo.setAttribute('cell', new THREE.InstancedBufferAttribute(new Float32Array(order.flat()), 2));
+  geo.instanceCount = order.length;
   const mesh = new THREE.Mesh(geo, grassMaterial({ lawn, rect, grid, middle, wind }, haze));
   mesh.name = 'lane-detail-grass';
   mesh.receiveShadow = true;
@@ -186,42 +203,77 @@ function grassGrid(group, { clump, mask }, G, haze, wind) {
   group.add(mesh);
   const at = new THREE.Vector3();
   const ahead = new THREE.Vector3();
-  return (camera) => {
+  const follow = (camera) => {
+    const reach = grid.value.w;
     group.worldToLocal(at.copy(camera.position));
     camera.getWorldDirection(ahead);
     const l = Math.hypot(ahead.x, ahead.z) || 1;
-    const x = at.x + (ahead.x / l) * G.radius * 0.55;
-    const z = at.z + (ahead.z / l) * G.radius * 0.55;
+    const x = at.x + (ahead.x / l) * reach * 0.55;
+    const z = at.z + (ahead.z / l) * reach * 0.55;
     middle.value.set(x, z);
     grid.value.x = (Math.floor(x / G.cell) - G.side / 2) * G.cell;
     grid.value.y = (Math.floor(z / G.cell) - G.side / 2) * G.cell;
   };
+  // The blades' reach, a share of the grid's (the governor's levels: tier.js ladder): the cells
+  // within it drawn, the blades fading out toward it.
+  const reach = (share) => {
+    const r = G.radius * share;
+    grid.value.w = Math.max(r, 1);
+    let n = 0;
+    while (r > 0 && n < order.length && Math.sqrt(far(order[n])) * G.cell <= r + G.cell) n++;
+    geo.instanceCount = n;
+    mesh.visible = n > 0;
+  };
+  return { follow, reach };
 }
 
-export function buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro = true, detail = null }) {
+export function buildLaneReal(layout, options) {
+  const steps = laneRealSteps(layout, options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+// buildLaneReal a step at a time (a generator, as lane/build.js laneSteps: RealAreas runs it
+// over several frames).
+export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRetro = true, detail = null }) {
   const preset = layout.LANE_REAL;
   const p = preset.probe;
   const look = new RealLook({ preset, tier, probeAt: { x: p.x + origin.x, y: p.y + origin.y, z: p.z + origin.z }, canRetro });
   const materials = laneMaterials(store, tier, look.haze, { anisotropy, exposure: preset.exposure });
   look.useProbe([materials.glass]);
-  const part = buildLane(layout, { look: 'real', materials });
+  yield;
+  const part = yield* laneSteps(layout, { look: 'real', materials });
+  yield;
+  for (const o of part.object3D.children) o.geometry?.computeBoundingSphere(); // (not in the first frame)
   if (!detail) return { part, look };
+  yield;
   // The wind the plants sway in (the flags' breeze: their direction, a phase running with the
   // clock), set as the part updates.
-  const [wx, wz] = layout.WIND.dir;
-  const wind = { value: new THREE.Vector4(wx / Math.hypot(wx, wz), wz / Math.hypot(wx, wz), 0, 0) };
+  const [wx, wz] = layout.WIND.dir.map((c) => c / Math.hypot(...layout.WIND.dir));
+  const wind = { value: new THREE.Vector4(wx, wz, 0, 0) };
   const D = detailMaterials(store, tier, look.haze, { anisotropy, wind });
   look.useProbe([D.glass]);
   const group = detailGroup(detail, D);
   part.object3D.add(group);
-  const follow = detail.grass ? grassGrid(group, detail.grass, GRASS[tier.name], look.haze, wind) : null;
+  yield;
+  const grass = detail.grass ? grassGrid(group, detail.grass, GRASS[tier.name], look.haze, wind) : null;
+  const follow = grass?.follow;
+  look.grass = grass?.reach ?? null;
+  look.grass?.(look.level.grass);
+  // Gusts: the wind's phase runs fast and slow by turns (the flags waving with it), its sway
+  // stronger while it runs fast; the cirrus drifting with it.
   const update = part.update;
+  const drift = look.sky.material.uniforms.uDrift.value;
   part.update = (time, camera) => {
-    update(time);
-    wind.value.z = time * WIND_SPEED;
+    const phase = time + 1.6 * Math.sin(time * 0.23) + 1.1 * Math.sin(time * 0.37 + 1);
+    const gust = 1 + 0.09 * Math.cos(time * 0.23) + 0.1 * Math.cos(time * 0.37 + 1); // (0.8 .. 1.2 as it runs)
+    update(phase);
+    wind.value.set(wx * gust, wz * gust, phase * WIND_SPEED, 0);
+    drift.set(wx, wz).multiplyScalar(time * CLOUD_DRIFT);
     if (camera) follow?.(camera);
   };
   return { part, look };
 }
 
-export const LANE_REAL_AREA = Object.freeze({ jobs: laneJobs, detail: laneDetail, build: buildLaneReal });
+export const LANE_REAL_AREA = Object.freeze({ jobs: laneJobs, detail: laneDetail, build: laneRealSteps });

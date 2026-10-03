@@ -6,6 +6,9 @@
 //   captureProbe(renderer, scene, { at, size, near, far, hide }) -> WebGLRenderTarget (PMREM)
 //       at: { x, y, z } (world); size: the cube's faces (px); hide: objects hidden while it is
 //       taken (Jonas, who moves)
+//   blankProbe(renderer, size) -> WebGLRenderTarget (PMREM)   // the same of an empty cube: a
+//       stand-in of the probe's size, so the materials that will reflect it compile (and the
+//       prefilter's programs are made) before the street is there to capture
 //
 // The shadow map is drawn once for all six faces (the sun does not move between them).
 
@@ -28,6 +31,14 @@ export function captureProbe(renderer, scene, { at, size = 256, near = 20, far =
     shadows.autoUpdate = auto;
     hide.forEach((o, i) => (o.visible = shown[i]));
   }
+  return prefilter(renderer, cube);
+}
+
+export function blankProbe(renderer, size) {
+  return prefilter(renderer, new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType }));
+}
+
+function prefilter(renderer, cube) {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const out = pmrem.fromCubemap(cube.texture);
   pmrem.dispose();

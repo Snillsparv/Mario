@@ -128,6 +128,14 @@ area at the far end with a double garage and a footpath, the junction with its b
 motorhome at the other. Cars stand on the drives (his own two in front of the carport) and flags
 fly over the gardens. Nothing here can hurt him.
 
+The street **looks real**, while Jonas, the coins and the star stay classic: low golden sunlight
+with real shadows, a deep blue sky with drifting cirrus, painted-in-code brick, boards, roof tiles,
+asphalt and lawns with blades of grass, windows set in the walls that reflect the street, leafy
+hedges and trees swaying in the gusts, spruces up the hill, lacquered cars. The game picks the
+detail for your computer or phone and steps it down (or back up) by itself if the picture
+stutters (F1 shows how it draws); **G** shows the street in the classic look instead (and back),
+and **R** / **F2** there shows the real street through the retro TV.
+
 * The course's **star** twinkles over the ridge of Jonas's roof. Climb a **wheelie bin** by the
   carport, jump onto the carport's flat roof and hop across onto the roof's slope, then walk up to
   the ridge. Or jump right at the front wall to grab the eaves, or climb the little red-leaf tree
@@ -176,7 +184,8 @@ fly over the gardens. Nothing here can hurt him.
 | C | RB | camera mode |
 | Enter / Esc | Start | pause (shows the controls) |
 | J (while paused in a course) | B (while paused in a course) | leave the course (back out of the ship in the bottle) |
-| R (or F2) | | retro filter (the low-resolution N64 look on/off) |
+| R (or F2) | | retro filter (the low-resolution N64 look on/off; in Sparrow Lane's real look, for that visit) |
+| G | | Sparrow Lane: the classic look instead of the real one (and back), for this session |
 | 4 (or F3) | | 4:3 screen |
 | V | | record video, landscape: V starts, V again stops and saves a Full HD (1920x1080) MP4 or WebM with sound (works when the game runs on your own computer, `npm run dev` / `npm run preview`) |
 | 9 | | record video, portrait: the same at 1080x1920 (9:16), for Instagram Reels and Stories; 9 (or V) again stops and saves |
@@ -204,7 +213,8 @@ that blocks downloads) V and 9 only explain this.
 URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-time loop;
 driven through `window.__game`, see the docs), `?area=hall`, `?area=skerries` or `?area=lane`
 (with `?skipTitle=1` or `?test=1`: start inside the Great Hall, in Midsummer Skerries or in
-Sparrow Lane).
+Sparrow Lane), `?look=classic` (Sparrow Lane in its classic look), `?tier=high`, `mid` or `low`
+(its real look at that detail, as asked: no automatic stepping).
 
 ## Play with your phone as a controller
 
