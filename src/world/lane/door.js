@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { GeoBuilder, localBoxPolys, wallFrame } from '../castle/geom.js';
 import { wallLamp } from './houses.js';
 
-const TINT = { leaf: 0x222222, frame: 0xf2f0ea, hall: 0x2a2420, handle: 0xc8a050, threshold: 0x9a968e, glass: 0x4a5a66 };
+const TINT = { leaf: 0x222222, frame: 0xf2f0ea, realFrame: 0x1a1b1d, hall: 0x2a2420, handle: 0xc8a050, threshold: 0x9a968e, glass: 0x4a5a66 };
 const FRAME = { w: 16, out: 6 };
 const VESTIBULE = { depth: 170, fade: 0.55, swing: 1.35 }; // swing: radians, standing open
 const LEAF = { thick: 5 };
@@ -31,14 +31,17 @@ export function frontDoor(kit, { DAD }) {
   const hw = D.w / 2;
   // The door's wall frame: on the house's front face at its middle, looking out at the street.
   const f = wallFrame([D.x, DAD.floor, D.faceZ], [0, 0, -1]);
-  // The white frame round the opening and the grey threshold.
-  paint.color(TINT.frame);
+  // The white frame round the opening and the grey threshold (where the realistic look draws the
+  // house itself the frame is black, as the real one is, and a glazed side light stands beside
+  // it: world/lane/real/house.js draws that, the lamp beyond it).
+  const real = kit.drawn('chain') !== kit;
+  paint.color(real ? TINT.realFrame : TINT.frame);
   paint.solid(localBoxPolys(f, -hw - FRAME.w, -hw, 0, D.h, -4, FRAME.out));
   paint.solid(localBoxPolys(f, hw, hw + FRAME.w, 0, D.h, -4, FRAME.out));
   paint.solid(localBoxPolys(f, -hw - FRAME.w, hw + FRAME.w, D.h, D.h + FRAME.w, -4, FRAME.out));
   paint.color(TINT.threshold);
   paint.poly([f.at(-hw, 1, FRAME.out), f.at(hw, 1, FRAME.out), f.at(hw, 1, -LEAF.thick), f.at(-hw, 1, -LEAF.thick)], { facing: [0, 1, 0] });
-  wallLamp(paint, f, hw + FRAME.w + 50, 220);
+  wallLamp(paint, f, hw + FRAME.w + (real ? 125 : 50), 220);
   vestibule(paint, f, hw, D.h);
   // The leaf: black boards, a narrow pane, a brass handle; its back and edges for when it
   // stands open.

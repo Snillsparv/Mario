@@ -29,8 +29,9 @@
 // at the retro filter's 240 lines, through the output pass into the view's retro target and
 // post/N64Pass.js (a real street on a 1998 TV). The low tier draws straight to the canvas
 // (`direct`: three tone maps per material; no HDR target, no output pass) unless graded or
-// retro. The probe is taken on the first frame after each attach (Jonas hidden); the HDR targets
-// are freed on detach and made again on the next frame drawn.
+// retro. The probe is taken on the first frame after each attach (Jonas hidden; none on the low
+// tier, whose glass reflects the sky's environment); the HDR targets are freed on detach and made
+// again on the next frame drawn.
 
 import * as THREE from 'three';
 import { OutputPass } from './OutputPass.js';
@@ -147,7 +148,7 @@ export class RealLook {
   // The reflection probe: the street from probeAt, Jonas hidden, the sun's box round it.
   takeProbe(view) {
     this.probeDirty = false;
-    if (!this.probeAt || !this.probeMaterials.length) return;
+    if (!this.probeAt || !this.probeMaterials.length || !this.tier.probe) return;
     const { renderer, scene, sun } = view;
     this.snapped.set(this.probeAt.x, this.probeAt.y, this.probeAt.z);
     this.placeSun(sun, this.snapped);

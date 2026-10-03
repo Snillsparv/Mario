@@ -4,12 +4,16 @@
 // poles, signs, coins and entries stay the classic build's. (This folder, world/lane/real/, holds
 // the lane's realistic-look code; this module runs on the main thread.)
 //
-//   LANE_REAL_AREA = { jobs, build }      // world/areas.js lane def.real (RealAreas builds it)
+//   LANE_REAL_AREA = { jobs, detail, build }   // world/areas.js lane def.real (RealAreas builds it)
 //   laneJobs(tier) -> [{ kind, size, opts }]   // the texture sets at the tier's sizes
+//   laneDetail(tier) -> { area, tier }   // the worker's geometry job (world/lane/real/detail.js)
 //   laneMaterials(store, tier, haze, { anisotropy }) -> { [mesh name]: material }
-//   buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro }) -> { part, look }
-//       part: the WorldPart 'lane' (its object3D 'lane-real', under the area's root), look: the
-//       RealLook from layout.LANE_REAL (its probe over the road in world coordinates)
+//   detailMaterials(store, tier, haze, { anisotropy }) -> { [detail material]: material }
+//   buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro, detail }) -> { part, look }
+//       part: the WorldPart 'lane' (its object3D 'lane-real', under the area's root: the classic
+//       builders' faces the realistic look keeps, and the worker's `detail` in its own
+//       materials), look: the RealLook from layout.LANE_REAL (its probe over the road in world
+//       coordinates)
 //
 // The catalogue (CATALOGUE): each mesh's set (and its options), the world units one repeat of
 // the set covers, a colour the map and the vertex tint are multiplied by (linear: the tints stay
@@ -18,17 +22,26 @@
 // probe's street over a dim room); paint and cloth are flat; the signs keep the classic look
 // (unlit, baked), their colour turned back through the exposure and tone mapping, so they read
 // exactly as before through the output pass (materials.js classicLook).
+//
+// The detail's catalogue (DETAIL): the worker's meshes come with uvs in world units, so a set
+// repeats once over `cover` units; plain materials are flat (paint, metal, enamel...); `leaf`
+// ones are leaf cards (materials.js foliageMaterial: the leaf atlas, the fir twig), `glass` ones
+// glass (the windows' on the reflection probe; the cars' opaque and dark), `clearcoat` the cars'
+// lacquer, `shadow` the tile courses' flat stand-in (it only casts). Firs come instanced, the
+// grass as a grid of clumps that follows the camera (grassGrid); the plants and the grass sway in
+// one wind (layout.WIND's way, its phase run by the part's update).
 
 import * as THREE from 'three';
 import { RealLook } from '../../../render/real/RealLook.js';
-import { pbrMaterial, plainMaterial, glassMaterial, classicLook } from '../../../render/real/materials.js';
+import { pbrMaterial, plainMaterial, glassMaterial, foliageMaterial, grassMaterial, shadowCaster, classicLook } from '../../../render/real/materials.js';
 import { jobKey } from '../../../render/real/texgen/jobs.js';
 import { texSize } from '../../../render/real/tier.js';
+import { GRASS } from './grass.js';
 import { worldMaterial } from '../../../render/materials.js';
 import { woodTexture as signWoodTexture } from '../../props/textures.js';
 import { buildLane, REPEAT, REAL_REPEAT } from '../build.js';
 
-// The terraces' split-face blocks, the round bed's stones and the kerbs: grey, coarse.
+// The terraces' split-face blocks and the steps: grey, coarse.
 const BLOCKS = { cols: 3, rows: 7, seed: 23, tone: [0.5, 0.5, 0.48], mortar: [0.32, 0.32, 0.31], jitter: 0.12 };
 
 const CATALOGUE = {
@@ -38,14 +51,44 @@ const CATALOGUE = {
   brick: { set: 'brick', cover: 180, color: 1.1, normalScale: 1.2 },
   render: { set: 'render', cover: 300 },
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
-  roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.55 },
+  roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
   cobbles: { set: 'pavers', opts: { cols: 10, seed: 73 }, cover: 240, color: 1.6 },
   path: { set: 'pavers', cover: 240, color: 1.5, vertexColors: false },
-  leaves: { set: 'grass', opts: { seed: 133, leaves: 0 }, cover: 160, color: [5.5, 4.4, 5.5] },
-  wood: { set: 'soil', opts: { seed: 95 }, cover: 150, color: 5 },
 };
 const PAINT = { roughness: 0.5 };
 const CLOTH = { roughness: 0.85, side: THREE.DoubleSide };
+const DETAIL = {
+  boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
+  brick: { set: 'brick', cover: 180, color: 1.1, normalScale: 1.2 },
+  roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
+  tiles: { set: 'tiles', opts: { relief: 0 }, cover: 270, color: 5, roughness: 0.8 },
+  granite: { set: 'granite', cover: 120, color: 0.95 },
+  patch: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.5 },
+  bark: { set: 'bark', cover: 120, normalScale: 1.2 },
+  birch: { set: 'bark', opts: { birch: 1 }, cover: 140 },
+  paint: { roughness: 0.55, side: THREE.DoubleSide },
+  metal: { roughness: 0.35, metalness: 0.3 },
+  steel: { roughness: 0.45, metalness: 0.6 },
+  enamel: { roughness: 0.3 },
+  bird: { roughness: 0.38, side: THREE.DoubleSide },
+  gloss: { roughness: 0.15 },
+  cloth: { roughness: 0.9, side: THREE.DoubleSide },
+  glass: { glass: true },
+  shadow: { shadow: true },
+  carPaint: { roughness: 0.4, metalness: 0.45, clearcoat: [1, 0.05] },
+  carGlass: { glass: { color: 0x050607, ior: 2, opacity: 1 } },
+  tyre: { roughness: 0.9 },
+  rim: { roughness: 0.3, metalness: 1 },
+  trim: { roughness: 0.6 },
+  lamp: { roughness: 0.08, metalness: 0.2 },
+  tail: { roughness: 0.15 },
+  core: { roughness: 1, envMapIntensity: 0.6 },
+  'fir-core': { roughness: 1, envMapIntensity: 0.6 },
+  foliage: { set: 'leaves', leaf: { roughness: 0.75, translucency: 0.6, envMapIntensity: 0.5 } },
+  'fir-leaves': { set: 'fir', leaf: { roughness: 0.85, translucency: 0.2, envMapIntensity: 0.35 } },
+};
+const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1 };
+const WIND_SPEED = 1.7; // the plants' sway, radians a second
 
 const repeatOf = (name) => REPEAT[name] ?? REAL_REPEAT[name];
 const colorOf = (c = 1) => (Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2]) : new THREE.Color(c, c, c));
@@ -53,7 +96,7 @@ const jobOf = (tier, { set, opts = {} }) => ({ kind: set, size: texSize(tier, se
 
 export function laneJobs(tier) {
   const jobs = [];
-  for (const entry of Object.values(CATALOGUE)) {
+  for (const entry of [...Object.values(CATALOGUE), ...Object.values(DETAIL).filter((e) => e.set)]) {
     const job = jobOf(tier, entry);
     if (!jobs.some((j) => jobKey(j) === jobKey(job))) jobs.push(job);
   }
@@ -74,14 +117,111 @@ export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy,
   return M;
 }
 
-export function buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro = true }) {
+export const laneDetail = (tier) => ({ area: 'lane', tier: tier.name });
+
+export function detailMaterials(store, tier, haze, { anisotropy = tier.anisotropy, wind } = {}) {
+  const M = {};
+  for (const [name, entry] of Object.entries(DETAIL)) {
+    if (!entry.set) {
+      M[name] = entry.glass ? glassMaterial(entry.glass === true ? {} : entry.glass, haze) : entry.shadow ? shadowCaster() : plainMaterial(entry, haze);
+      continue;
+    }
+    const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
+    if (entry.leaf) M[name] = foliageMaterial(maps.albedo, { ...entry.leaf, coverage: tier.samples > 0, wind }, haze);
+    else M[name] = pbrMaterial(maps, { repeat: 1 / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1 }, haze);
+  }
+  for (const [name, m] of Object.entries(M)) m.name = `lane-detail-${name}`;
+  return M;
+}
+
+const geometryOf = (buffers) => {
+  const geo = new THREE.BufferGeometry();
+  for (const [key, array] of Object.entries(buffers)) geo.setAttribute(key, new THREE.BufferAttribute(array, ATTRIBUTES[key]));
+  return geo;
+};
+
+// The worker's meshes in their materials (the group 'lane-detail'), the firs instanced.
+function detailGroup(detail, M) {
+  const group = new THREE.Group();
+  group.name = 'lane-detail';
+  const add = (mesh, name, cast = true) => {
+    mesh.name = `lane-detail-${name}`;
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  };
+  for (const { name, material, cast, buffers } of detail.meshes) add(new THREE.Mesh(geometryOf(buffers), M[material]), name, cast);
+  const { parts, matrices, colors, cast, far } = detail.firs;
+  for (const { material, buffers } of parts) {
+    const geo = geometryOf(buffers);
+    for (const [set, casts, name] of [[{ matrices, colors }, cast, material], [far, false, `${material}-far`]]) {
+      const mesh = new THREE.InstancedMesh(geo, M[material], set.matrices.length / 16);
+      mesh.instanceMatrix = new THREE.InstancedBufferAttribute(set.matrices, 16);
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(set.colors, 3);
+      add(mesh, name, casts);
+    }
+  }
+  return group;
+}
+
+// The grass's clumps over a grid of G.side x G.side cells (materials.js grassMaterial), its mask
+// a DataTexture; returns the grid's per-frame move: centred ahead of the camera (on the ground
+// it looks at), snapped to whole cells. No allocation a frame.
+function grassGrid(group, { clump, mask }, G, haze, wind) {
+  const lawn = new THREE.DataTexture(mask.data, mask.width, mask.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  lawn.needsUpdate = true;
+  const rect = new THREE.Vector4(mask.x0, mask.z0, 1 / (mask.x1 - mask.x0), 1 / (mask.z1 - mask.z0));
+  const grid = { value: new THREE.Vector4(0, 0, G.cell, G.radius) };
+  const middle = { value: new THREE.Vector2() };
+  const geo = new THREE.InstancedBufferGeometry();
+  for (const [key, array] of Object.entries(clump)) geo.setAttribute(key, new THREE.BufferAttribute(array, ATTRIBUTES[key]));
+  const cells = new Float32Array(G.side * G.side * 2);
+  for (let i = 0; i < G.side * G.side; i++) cells.set([i % G.side, Math.floor(i / G.side)], i * 2);
+  geo.setAttribute('cell', new THREE.InstancedBufferAttribute(cells, 2));
+  geo.instanceCount = G.side * G.side;
+  const mesh = new THREE.Mesh(geo, grassMaterial({ lawn, rect, grid, middle, wind }, haze));
+  mesh.name = 'lane-detail-grass';
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false; // (its clumps are placed in the shader)
+  group.add(mesh);
+  const at = new THREE.Vector3();
+  const ahead = new THREE.Vector3();
+  return (camera) => {
+    group.worldToLocal(at.copy(camera.position));
+    camera.getWorldDirection(ahead);
+    const l = Math.hypot(ahead.x, ahead.z) || 1;
+    const x = at.x + (ahead.x / l) * G.radius * 0.55;
+    const z = at.z + (ahead.z / l) * G.radius * 0.55;
+    middle.value.set(x, z);
+    grid.value.x = (Math.floor(x / G.cell) - G.side / 2) * G.cell;
+    grid.value.y = (Math.floor(z / G.cell) - G.side / 2) * G.cell;
+  };
+}
+
+export function buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro = true, detail = null }) {
   const preset = layout.LANE_REAL;
   const p = preset.probe;
   const look = new RealLook({ preset, tier, probeAt: { x: p.x + origin.x, y: p.y + origin.y, z: p.z + origin.z }, canRetro });
   const materials = laneMaterials(store, tier, look.haze, { anisotropy, exposure: preset.exposure });
   look.useProbe([materials.glass]);
   const part = buildLane(layout, { look: 'real', materials });
+  if (!detail) return { part, look };
+  // The wind the plants sway in (the flags' breeze: their direction, a phase running with the
+  // clock), set as the part updates.
+  const [wx, wz] = layout.WIND.dir;
+  const wind = { value: new THREE.Vector4(wx / Math.hypot(wx, wz), wz / Math.hypot(wx, wz), 0, 0) };
+  const D = detailMaterials(store, tier, look.haze, { anisotropy, wind });
+  look.useProbe([D.glass]);
+  const group = detailGroup(detail, D);
+  part.object3D.add(group);
+  const follow = detail.grass ? grassGrid(group, detail.grass, GRASS[tier.name], look.haze, wind) : null;
+  const update = part.update;
+  part.update = (time, camera) => {
+    update(time);
+    wind.value.z = time * WIND_SPEED;
+    if (camera) follow?.(camera);
+  };
   return { part, look };
 }
 
-export const LANE_REAL_AREA = Object.freeze({ jobs: laneJobs, build: buildLaneReal });
+export const LANE_REAL_AREA = Object.freeze({ jobs: laneJobs, detail: laneDetail, build: buildLaneReal });

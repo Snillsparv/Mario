@@ -29,6 +29,10 @@
 // w, its front a gable of white boards with two dark panel doors and a white brick pier between
 // them.
 //
+// The realistic look draws the chain houses with ids, the villas' windows and the garage doors
+// itself (world/lane/real/house.js, villas.js): those draw into kit.drawn('chain' |
+// 'villaWindows' | 'garageDoors') there, a kit drawing nothing; the colliders are made the same.
+//
 // Colliders: each house one convex solid, its walls and its roof (to the eaves, then the hip or
 // gable up to the ridge); the drawn overhangs have none. The link a solid block to its flat roof
 // (stone), the carport its roof slab, its posts and its back wall (wood; the roofs' tops are
@@ -127,7 +131,7 @@ function villa(kit, h) {
   }
   const front = F.face('front').frame;
   // The garage door(s) at drive level: grey panels with darker joints.
-  for (const u of h.garages ?? (h.garage !== undefined ? [h.garage] : [])) garageDoor(paint, front, u, GARAGE);
+  for (const u of h.garages ?? (h.garage !== undefined ? [h.garage] : [])) garageDoor(kit.drawn('garageDoors').paint, front, u, GARAGE);
   // The front door (at the floor of the garden it opens onto).
   if (h.door !== undefined) {
     const at = F.at(h.door, 0, h.d / 2 + 10);
@@ -139,16 +143,17 @@ function villa(kit, h) {
   }
   // Upper-floor windows: plain, arched, bays.
   const W = WIN.villa;
+  const glazed = kit.drawn('villaWindows'); // (the realistic look's own: world/lane/real/villas.js)
   if (renderTop < wallH) {
-    for (const u of h.windows ?? []) villaWindow(kit, front, u, W, false);
-    for (const u of h.arches ?? []) villaWindow(kit, front, u, W, true);
+    for (const u of h.windows ?? []) villaWindow(glazed, front, u, W, false);
+    for (const u of h.arches ?? []) villaWindow(glazed, front, u, W, true);
     for (const u of h.bays ?? []) bayWindow(kit, front, u, W);
     // A window or two on the back and the sides.
-    for (const name of ['back', 'left', 'right']) villaWindow(kit, F.face(name).frame, 0, W, false);
+    for (const name of ['back', 'left', 'right']) villaWindow(glazed, F.face(name).frame, 0, W, false);
   } else {
     // Rendered to the eaves (the west end's): a row of windows over the garage doors.
-    for (const u of [-550, 0, 550]) villaWindow(kit, front, u, { ...W, sill: wallH - 230 }, false);
-    for (const name of ['left', 'right']) villaWindow(kit, F.face(name).frame, 0, { ...W, sill: wallH - 230 }, false);
+    for (const u of [-550, 0, 550]) villaWindow(glazed, front, u, { ...W, sill: wallH - 230 }, false);
+    for (const name of ['left', 'right']) villaWindow(glazed, F.face(name).frame, 0, { ...W, sill: wallH - 230 }, false);
   }
   if (h.balcony) {
     // A dark railing box on the left (west) gable at the upper floor, solid (its floor more than
@@ -173,7 +178,9 @@ function villa(kit, h) {
 }
 
 function chain(kit, h) {
-  const { brick, boards } = kit;
+  // (The realistic look draws the course's own chain houses itself: world/lane/real/house.js.)
+  const drawn = h.id ? kit.drawn('chain') : kit;
+  const { brick, boards, paint } = drawn;
   const F = frame(h);
   const y0 = h.y0 ?? 22;
   const wallH = h.eave - y0;
@@ -202,17 +209,17 @@ function chain(kit, h) {
   }
   // Windows and the door on the front; a row on the back.
   const front = F.face('front').frame;
-  for (const u of h.windows ?? []) chainWindow(kit, front, u);
-  for (const u of h.windows ?? []) chainWindow(kit, F.face('back').frame, -u);
+  for (const u of h.windows ?? []) chainWindow(drawn, front, u);
+  for (const u of h.windows ?? []) chainWindow(drawn, F.face('back').frame, -u);
   if (typeof h.door === 'number') {
-    kit.paint.color(TINT.frame);
-    kit.paint.panel(front, rect(h.door - 70, 0, h.door + 70, 225), 1);
-    kit.paint.color(TINT.door);
-    kit.paint.panel(front, rect(h.door - 58, 0, h.door + 58, 215), 2);
-    wallLamp(kit.paint, front, h.door + 110, 200);
+    paint.color(TINT.frame);
+    paint.panel(front, rect(h.door - 70, 0, h.door + 70, 225), 1);
+    paint.color(TINT.door);
+    paint.panel(front, rect(h.door - 58, 0, h.door + 58, 215), 2);
+    wallLamp(paint, front, h.door + 110, 200);
   }
   if (h.veranda) veranda(kit, F, h);
-  gableRoof(kit, F, h, 'u');
+  gableRoof(drawn, F, h, 'u');
   kit.solids.solid(gablePolys(F, hw, hd, y0, h.eave, h.ridge, 'u'), 'stone');
 }
 
@@ -233,7 +240,7 @@ function garage(kit, h) {
     }
   }
   const front = F.face('front').frame;
-  for (const u of h.doors) garageDoor(paint, front, u, { w: 440, h: 240 }, TINT.garage);
+  for (const u of h.doors) garageDoor(kit.drawn('garageDoors').paint, front, u, { w: 440, h: 240 }, TINT.garage);
   brick.color(TINT.whiteBrick);
   brick.panel(front, rect(-40, 0, 40, 260), 1);
   gableRoof(kit, F, h, 'w');

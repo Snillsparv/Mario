@@ -45,8 +45,9 @@
 //                          // setVisible() shows and hides its group with the root
 //   real, look,            // its realistic build once ready (def.real; core/AreaSwitch.js, null
 //                          // until then): a second WorldPart of visuals only, under the root
-//                          // beside the classic parts, and the RealLook it is drawn through
-//   setReal(part, look),   // ...hands them over (the part hidden)
+//                          // beside the classic parts while shown, and the RealLook it is
+//                          // drawn through
+//   setReal(part, look),   // ...hands them over (the part not shown yet)
 //   showReal(on),          // the realistic part shown instead of the classic ones (or back):
 //                          // update() and setDoorOpen() follow it
 // }
@@ -180,13 +181,14 @@ export function buildArea(scene, def) {
     setReal(part, look) {
       this.real = part;
       this.look = look;
-      part.object3D.visible = false;
-      root.add(part.object3D);
     },
     showReal(on) {
       this.realShown = !!on && this.real !== null;
       for (const p of parts) if (p.object3D) p.object3D.visible = !this.realShown;
-      if (this.real) this.real.object3D.visible = this.realShown;
+      // (Under the root only while shown: the renderer's classic warm-ups compile whatever hangs
+      // under it, hidden or not, and its materials are the realistic look's alone.)
+      if (this.realShown) root.add(this.real.object3D);
+      else this.real?.object3D.removeFromParent();
     },
     setLit(on) {
       for (const p of parts) p.setLit?.(on);

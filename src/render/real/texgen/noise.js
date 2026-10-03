@@ -21,6 +21,8 @@
 //                                          // blurred surface round it
 //   pack(n, { col, alpha?, h, strength, ao?, rough, metal? }) -> { size, albedo, normal, orm }
 //                                          // a set's three RGBA8 maps (see sets.js)
+//   coverageMips(albedo, n, cutoff?) -> [Uint8Array]   // an alpha-tested albedo's mip levels
+//                                          // 1 .. (down to 1 x 1) keeping its coverage (below)
 //   clamp01, smooth(a, b, v), field(n), rgbField(n), setRgb(col, i, r, g, b)
 //
 // The lattices are tables filled once per noise (a generator builds its noises before its pixel
@@ -241,4 +243,74 @@ export function pack(n, { col, alpha = null, h, strength, ao = null, rough, meta
     orm[j + 3] = 255;
   }
   return { size: n, albedo, normal: normalsFrom(h, n, strength), orm };
+}
+
+// Mips for an alpha-tested albedo (RGBA8, n x n, the alpha its coverage): each level the 2 x 2
+// mean of the one above (the colour weighted by alpha, so no dark fringe), its alpha scaled so
+// as many texels pass `cutoff` as at level 0 (a faint fixed dither breaks the ties of texels
+// half covered alike). A plain mean thins the coverage level by level (a leaf a texel wide
+// averages with the gaps round it to below the cutoff) and distant foliage would fade to
+// nothing.
+export function coverageMips(albedo, n, cutoff = 0.5) {
+  let alpha = new Float32Array(n * n);
+  let col = new Float32Array(n * n * 3);
+  let pass = 0;
+  for (let i = 0; i < n * n; i++) {
+    alpha[i] = albedo[i * 4 + 3] / 255;
+    for (let c = 0; c < 3; c++) col[i * 3 + c] = albedo[i * 4 + c];
+    if (alpha[i] > cutoff) pass++;
+  }
+  const coverage = pass / (n * n);
+  const levels = [];
+  for (let m = n >> 1; m >= 1; m >>= 1) {
+    const a = new Float32Array(m * m);
+    const rgb = new Float32Array(m * m * 3);
+    const up = m * 2;
+    for (let y = 0; y < m; y++) {
+      for (let x = 0; x < m; x++) {
+        const j0 = y * 2 * up + x * 2;
+        const j1 = j0 + 1;
+        const j2 = j0 + up;
+        const j3 = j2 + 1;
+        const a0 = alpha[j0];
+        const a1 = alpha[j1];
+        const a2 = alpha[j2];
+        const a3 = alpha[j3];
+        const sum = a0 + a1 + a2 + a3;
+        const i = y * m + x;
+        a[i] = sum / 4;
+        for (let c = 0; c < 3; c++) {
+          const c0 = col[j0 * 3 + c];
+          const c1 = col[j1 * 3 + c];
+          const c2 = col[j2 * 3 + c];
+          const c3 = col[j3 * 3 + c];
+          rgb[i * 3 + c] = sum > 0 ? (c0 * a0 + c1 * a1 + c2 * a2 + c3 * a3) / sum : (c0 + c1 + c2 + c3) / 4;
+        }
+      }
+    }
+    // The scale whose coverage is level 0's (more passes as it grows: a bisection).
+    const dither = new Float32Array(m * m);
+    for (let i = 0; i < m * m; i++) dither[i] = (hash(i % m, (i / m) | 0, m) - 0.5) * 0.03;
+    const passing = (k) => {
+      let p = 0;
+      for (let i = 0; i < m * m; i++) if (a[i] * k + dither[i] > cutoff) p++;
+      return p / (m * m);
+    };
+    let [lo, hi] = [0.25, 16];
+    for (let it = 0; it < 18; it++) {
+      const mid = (lo + hi) / 2;
+      if (passing(mid) < coverage) lo = mid;
+      else hi = mid;
+    }
+    const k = (lo + hi) / 2;
+    const out = new Uint8Array(m * m * 4);
+    for (let i = 0; i < m * m; i++) {
+      for (let c = 0; c < 3; c++) out[i * 4 + c] = Math.round(rgb[i * 3 + c]);
+      out[i * 4 + 3] = toByte(a[i] * k + dither[i]);
+    }
+    levels.push(out);
+    alpha = a;
+    col = rgb;
+  }
+  return levels;
 }

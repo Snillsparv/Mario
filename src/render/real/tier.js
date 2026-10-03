@@ -11,17 +11,20 @@
 //   lookPixelRatio(tier, dpr, width, height) -> ratio   // the render size's pixel ratio for a
 //                                 // width x height CSS picture: min(dpr, cap) and at most
 //                                 // maxPixels drawn
-//   texSize(tier, kind) -> px     // a texture set's size (512 or 256)
+//   texSize(tier, kind) -> px     // a texture set's size (512 or 256; the leaf atlas, four
+//                                 // sets in one, 1024 on high)
 //
 // Settings: pixelRatio (cap), maxPixels, samples (the HDR target's MSAA; low draws straight to
 // the canvas, `direct`: no HDR target, three tone maps per material), shadow (map size), box
 // (the shadow camera's half size round the focus), tex (the big sets' size) and small (the
-// rest), anisotropy, probe (the reflection probe's cube size).
+// rest), anisotropy, probe (the reflection probe's cube size; 0 on low: none, the glass reflects
+// the sky's environment: a phone is spared the capture and every program compiled a second
+// time for it, its half-float cube drawn where nothing else draws to a target).
 
 export const TIERS = Object.freeze({
   high: Object.freeze({ name: 'high', pixelRatio: 1.5, maxPixels: 2.4e6, samples: 4, direct: false, shadow: 2048, box: 2600, tex: 512, small: 256, anisotropy: 8, probe: 256 }),
   mid: Object.freeze({ name: 'mid', pixelRatio: 1, maxPixels: 1.6e6, samples: 2, direct: false, shadow: 1024, box: 2200, tex: 512, small: 256, anisotropy: 4, probe: 128 }),
-  low: Object.freeze({ name: 'low', pixelRatio: 1, maxPixels: 0.9e6, samples: 0, direct: true, shadow: 1024, box: 1600, tex: 256, small: 256, anisotropy: 2, probe: 64 }),
+  low: Object.freeze({ name: 'low', pixelRatio: 1, maxPixels: 0.9e6, samples: 0, direct: true, shadow: 1024, box: 1600, tex: 256, small: 256, anisotropy: 2, probe: 0 }),
 });
 
 // The sets drawn at the big size on high (and mid, but for the lawn and the leaves there).
@@ -29,6 +32,7 @@ const BIG = new Set(['boards', 'brick', 'tiles', 'asphalt', 'grass', 'pavers']);
 const MID_SMALL = new Set(['grass']);
 
 export function texSize(tier, kind, opts = {}) {
+  if (kind === 'leaves') return tier.name === 'high' ? 1024 : 512; // (an atlas of four)
   if (!BIG.has(kind) || (opts.leaves === 0 && kind === 'grass')) return tier.small;
   if (tier.name === 'mid' && MID_SMALL.has(kind)) return tier.small;
   return tier.tex;

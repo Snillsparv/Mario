@@ -9,7 +9,8 @@
 //   node tools/realShots.mjs --out shots/real
 //   node tools/realShots.mjs --out shots/real --views arrival,door --sizes 960x540 \
 //     --looks high,classic
-// Options: --views (default all: arrival, door, west, turn, cars, roof, retro), --sizes (default
+// Options: --views (default all: arrival, door, west, turn, cars, roof, retro, tree: the dad's
+// red-leaf tree close up), --sizes (default
 // 960x540,1280x720), --looks (default high,low,classic: a tier, or classic).
 // Files: <out>/<look>-<view>-<width>.png. Prints each view's F1 line and draw calls.
 
@@ -36,6 +37,7 @@ const VIEWS = {
   cars: { pos: [1500, 260, 700], look: [2150, 160, 1300], fov: 50, hero: [1450, 22, 1150, 0.7] },
   roof: { pos: [-1300, 900, 300], look: [600, 450, 1900], fov: 45, hero: [-100, 644, 1967.5, -Math.PI / 2] },
   retro: { pos: [0, 346, -82], look: [0, 303, 1156], fov: 45, retro: true },
+  tree: { pos: [640, 260, 380], look: [1050, 470, 850], fov: 50, hero: [760, 22, 520, 0.7] },
 };
 
 const out = opt('out', 'shots/real');
@@ -86,6 +88,7 @@ try {
           cam.lookAt(v.look[0] + o.x, v.look[1] + o.y, v.look[2] + o.z);
           cam.updateProjectionMatrix();
           view.setFocus({ x: v.look[0] + o.x, y: 0, z: v.look[2] + o.z });
+          g.areas.update(1, cam); // (what follows the camera: the realistic look's grass)
           view.render();
           const info = view.renderer.info.render;
           return `${view.describeMode()}: ${info.calls} calls, ${info.triangles} triangles`;

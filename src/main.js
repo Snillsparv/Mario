@@ -435,6 +435,8 @@ async function start() {
     cam.apply(renderAlpha);
     shake.apply(camera, state.mode === 'play' && !state.paused ? dt : 0);
     view.setFocus(model.object3D.position); // (a realistic look's shadow box follows him)
+    // The pause legend's look row follows the look (it may swap in, built, while paused).
+    if (state.paused && hud.look !== lookRow()) hud.setLook?.(lookRow());
     areas.update(state.time, camera, renderAlpha); // the current area's world (a door swinging)...
     areas.objects.animate(state.time, renderAlpha, camera); // ...and objects
     fx.update(state.mode === 'play' && !state.paused ? dt : 0, state.time, camera);

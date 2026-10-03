@@ -5,7 +5,8 @@
 // look draws them, Jonas's shirt red as in the classic look; the storm's grade, a flash and the
 // meltdown draw through the grade pass; the recorder's 16:9 and 9:16 framings see drawn frames;
 // draw calls, triangles, programs and texture bytes at the five views within the high tier's
-// budgets; G draws it classic and back. ?tier=low draws straight to the canvas. ?look=classic
+// budgets (and the low tier's at them on ?tier=low), the sky blue at each; G draws it classic and
+// back. ?tier=low draws straight to the canvas. ?look=classic
 // keeps the classic look. Leaving restores the renderer exactly: a snapshot of every field a
 // look may touch (and the programs the grounds draw with, and the scene's children) taken on the
 // grounds equals one taken after a visit to the lane (out through the dad's door, the hall, back
@@ -121,6 +122,36 @@ async function open(query) {
 }
 
 const blue = ([r, g, b]) => b > r + 40;
+
+// The five views (Jonas there, the camera behind him; local x, y, z, yaw): each one's draw calls,
+// triangles (the shadow pass included), realistic programs and texture bytes within the tier's
+// budgets, the sky at its top blue.
+const VIEWS = { arrival: [0, 22, 1156, Math.PI], door: [-260, 22, 700, 0.4], west: [-600, 22, 200, -Math.PI / 2], turn: [1500, 0, 250, Math.PI / 2 + 0.3], cars: [1500, 22, 700, 0.7] };
+async function countViews(page, t, budget) {
+  for (const [name, [x, y, z, yaw]] of Object.entries(VIEWS)) {
+    const f = await page.evaluate(([x, y, z, yaw]) => {
+      const g = window.__game;
+      g.player.teleport(x - 60000, y, z, yaw);
+      g.player.setAction('idle');
+      g.camera.reset(g.player);
+      g.step(10);
+      g.render();
+      const r = g.view.renderer;
+      const programs = r.info.programs.filter((p) => p.cacheKey.includes('real-')).length;
+      let texels = 0;
+      for (const s of g.areas.real.store.sets.values()) texels += s.albedo.length + s.normal.length + s.orm.length;
+      const out = { calls: r.info.render.calls, triangles: r.info.render.triangles, programs, all: r.info.programs.length, textureBytes: Math.round(texels * 1.33) };
+      out.sky = window.__pixelsOn([[0.5, 0.98]])[0];
+      return out;
+    }, [x, y, z, yaw]);
+    t.diagnostic(`${name}: ${JSON.stringify(f)}`);
+    assert.ok(f.calls <= budget.calls, `${name}: ${f.calls} draw calls`);
+    assert.ok(f.triangles <= budget.triangles, `${name}: ${f.triangles} triangles`);
+    assert.ok(f.programs <= budget.programs, `${name}: ${f.programs} realistic programs`);
+    assert.ok(f.textureBytes <= budget.textureBytes, `${name}: ${f.textureBytes} texture bytes`);
+    assert.ok(blue(f.sky), `${name}: the sky ${f.sky}`);
+  }
+}
 const lum = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
 test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Falu red wall, live windows, the signs and Jonas as the classic look draws them; the grade and the recorder\'s framings; the counts at five views; G draws it classic and back', { skip, timeout: 900000 }, async (t) => {
@@ -230,28 +261,8 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
       assert.ok(blue(px), `the recorded frame's sky: ${px}`);
     }
     // Counts at the five views (the arrival, the door, west, the turning area, the dad's drive),
-    // the shadow pass included: within the high tier's budgets.
-    const views = { arrival: [0, 22, 1156, Math.PI], door: [-260, 22, 700, 0.4], west: [-600, 22, 200, -Math.PI / 2], turn: [1500, 0, 250, Math.PI / 2 + 0.3], cars: [1500, 22, 700, 0.7] };
-    for (const [name, [x, y, z, yaw]] of Object.entries(views)) {
-      const f = await page.evaluate(([x, y, z, yaw]) => {
-        const g = window.__game;
-        g.player.teleport(x - 60000, y, z, yaw);
-        g.player.setAction('idle');
-        g.camera.reset(g.player);
-        g.step(10);
-        g.render();
-        const r = g.view.renderer;
-        const programs = r.info.programs.filter((p) => p.cacheKey.includes('real-')).length;
-        let texels = 0;
-        for (const s of g.areas.real.store.sets.values()) texels += s.albedo.length + s.normal.length + s.orm.length;
-        return { calls: r.info.render.calls, triangles: r.info.render.triangles, programs, all: r.info.programs.length, textureBytes: Math.round(texels * 1.33) };
-      }, [x, y, z, yaw]);
-      t.diagnostic(`${name}: ${JSON.stringify(f)}`);
-      assert.ok(f.calls <= 160, `${name}: ${f.calls} draw calls`);
-      assert.ok(f.triangles <= 900000, `${name}: ${f.triangles} triangles`);
-      assert.ok(f.programs <= 20, `${name}: ${f.programs} realistic programs`);
-      assert.ok(f.textureBytes <= 64 * 1024 * 1024, `${name}: ${f.textureBytes} texture bytes`);
-    }
+    // the shadow pass included: within the high tier's budgets; the sky blue at each.
+    await countViews(page, t, { calls: 160, triangles: 900000, programs: 20, textureBytes: 64 * 1024 * 1024 });
     assert.deepEqual(errors, []);
   } finally {
     await page.close();
@@ -326,6 +337,8 @@ test('?tier=low draws straight to the canvas (tone mapped per material), its sky
       assert.ok(blue(zenith), `the zenith ${zenith}`);
       const wall = await page.evaluate(() => window.__pixelsAt([[-440, 300, 1329], [600, 300, 1329]]));
       for (const p of wall) assert.ok(p && p[0] > 2 * p[1], `Falu red: ${p}`);
+      // The low tier's budgets (a phone): no grass blades, no tile courses, fewer casters.
+      await countViews(page, t, { calls: 100, triangles: 200000, programs: 18, textureBytes: 20 * 1024 * 1024 });
       assert.deepEqual(errors, []);
     } finally {
       await page.close();

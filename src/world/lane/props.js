@@ -28,6 +28,11 @@
 // (skerries/props.js fir(), drawn only); two plain chain houses down the side road in the fog
 // (houses.js); the signposts (props/decor.js addSignpost; a sign with post: false has none).
 //
+// The realistic look draws most of these itself (lane/build.js REAL_DRAWN: the plants, the forest,
+// the posts, the bins, the fences, the mailbox, the cars, the toys, the motorhome, the cabinet):
+// those builders draw into kit.drawn(name), a kit drawing nothing there, and still make every
+// collider; the forest's spots are world/lane/real/spots.js's, the same for both looks.
+//
 // Colliders: the lampposts' prisms (the climbable two have their pole only, as the flagpoles and
 // the red-leaf tree: layout.POLES), the bins, the hedges (boxes, their tops walkable), the thujas
 // (steep frustums), the trees' trunks and the shrub, the rhododendron, the round bed, the mailbox
@@ -41,6 +46,7 @@ import { addSignpost } from '../props/decor.js';
 import { makeRng } from '../../core/math.js';
 import { fir } from '../skerries/props.js';
 import { frame, house } from './houses.js';
+import { forestSpots } from './real/spots.js';
 
 const TINT = {
   lamp: 0x8c9092,
@@ -94,8 +100,6 @@ const TINT = {
   sideRoof: 0x34302e,
 };
 const THUJA_LEAN = 0.09; // the thujas' colliders lean in this much per unit up (walls, not floors)
-const FIR_SIZE = { h: [900, 1700], r: [260, 420] };
-const BIRCH_SIZE = { h: [1300, 1800], r: [280, 380] };
 // The cross flag's cells along the wind (fractions of its length) and up it: the cross's arms in
 // the second column and the second row.
 const FLAG_COLS = [0, 5 / 16, 7 / 16, 0.62, 0.81, 1];
@@ -133,7 +137,7 @@ export function buildProps(kit, layout) {
 // A lamppost: a grey eight-sided pole on a wider foot, an arm out along its yaw at the top and a
 // flat lamp head; a prism collider unless it is a climbable pole (layout.POLES).
 function lamppost(kit, layout, { x, z, yaw }) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('posts');
   const { LAMP, POLES } = layout;
   const y0 = layout.groundHeight(x, z);
   paint.color(TINT.lamp);
@@ -151,7 +155,8 @@ function lamppost(kit, layout, { x, z, yaw }) {
 // A white flagpole tapering to a gold knob (a climbable pole: no collider of its own), its flag
 // or pennant (kit.cloth, seen from both sides) streaming from just under the knob along WIND.
 function flagpole(kit, layout, f) {
-  const { paint, cloth } = kit;
+  const { cloth } = kit;
+  const { paint } = kit.drawn('posts');
   const { FLAGPOLE: F, WIND } = layout;
   const { x, z, y0 } = f;
   const top = y0 + 1200;
@@ -218,7 +223,7 @@ export function waveFlags(geo, { FLAGPOLES, FLAGPOLE, WIND }) {
 // A wheelie bin: a dark body, its lid a little wider on top, two wheels at its back; solid to its
 // lid's top.
 function bin(kit, layout, { x, z }) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('bins');
   const { BIN, GROUND } = layout;
   const [hx, hz] = [BIN.x / 2, BIN.z / 2];
   paint.color(TINT.bin);
@@ -234,7 +239,7 @@ function bin(kit, layout, { x, z }) {
 // A hedge: a leafy box, darker toward its foot, a soft crown along its top; solid, its top
 // walkable (flat).
 function hedge(kit, h) {
-  const { leaves, solids } = kit;
+  const { leaves, solids } = kit.drawn('plants');
   const { x0, x1, z0, z1, y0, top } = h;
   leaves.color(TINT.hedge);
   leaves.shade = (x, y) => 0.75 + 0.25 * Math.min(1, (y - y0) / Math.max(1, top - y0));
@@ -259,7 +264,7 @@ function hedge(kit, h) {
 // A thuja: a dark green eight-sided column tapering to a point; its collider a steep frustum
 // (its sides walls, its small top out of reach).
 function thuja(kit, layout, { x, z }) {
-  const { leaves, solids } = kit;
+  const { leaves, solids } = kit.drawn('plants');
   const { r, h } = layout.THUJA;
   const y0 = layout.groundHeight(x, z);
   leaves.color(TINT.thuja);
@@ -308,12 +313,13 @@ function canopy(kit, x, z, y0, y1, r, tint, seed, n = 4, leaves = kit.leaves) {
 
 // A big broad-leaved tree at the junction: a stout trunk (solid) under a lumpy canopy.
 function broadTree(kit, layout, t) {
-  const { wood, solids } = kit;
+  const drawn = kit.drawn('plants');
+  const { wood, solids } = drawn;
   const y0 = layout.groundHeight(t.x, t.z);
   const trunkTop = y0 + t.h * 0.45;
   wood.color(TINT.trunk);
   wood.lathe(t.x, t.z, [[60, y0 - 10], [45, y0 + 120], [38, trunkTop], [0, trunkTop]], 7, { flat: true });
-  canopy(kit, t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, TINT.canopy, Math.round(t.x * 7 + t.z));
+  canopy(drawn, t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, TINT.canopy, Math.round(t.x * 7 + t.z));
   solids.solid(prismPolys(t.x, t.z, 45, 8, y0 - 10, trunkTop), 'wood');
 }
 
@@ -321,10 +327,11 @@ function broadTree(kit, layout, t) {
 // apples), the birch (white bark ringed dark under a tall yellowing canopy) or the red-leaved
 // shrub (two red domes, drawn in render); trunks and the shrub solid.
 function gardenTree(kit, layout, t) {
-  const { wood, render, paint, solids } = kit;
+  const drawn = kit.drawn('plants');
+  const { wood, render, paint, solids } = drawn;
   const y0 = layout.groundHeight(t.x, t.z);
   if (t.kind === 'birch') {
-    birch(kit, t.x, t.z, y0, t.h, t.r, 7);
+    birch(drawn, t.x, t.z, y0, t.h, t.r, 7);
     solids.solid(prismPolys(t.x, t.z, 30, 6, y0 - 10, y0 + t.h * 0.6), 'wood');
     return;
   }
@@ -343,7 +350,7 @@ function gardenTree(kit, layout, t) {
   const c0 = y0 + t.h * 0.35;
   wood.color(TINT.trunk);
   wood.lathe(t.x, t.z, [[40, y0 - 10], [32, y0 + 100], [26, c0 + 80], [0, c0 + 100]], 7, { flat: true });
-  canopy(kit, t.x, t.z, c0, top, t.r, TINT.apple, 211, 5);
+  canopy(drawn, t.x, t.z, c0, top, t.r, TINT.apple, 211, 5);
   const rng = makeRng(213);
   paint.color(TINT.fruit);
   for (let i = 0; i < 18; i++) {
@@ -372,7 +379,8 @@ function birch(kit, x, z, base, h, r, seed) {
 // where Jonas stands on it; no collider), the rhododendron at the house's west corner (a dark
 // green dome, solid), a potted plant by the door and the car charger on the east gable.
 function dadsGarden(kit, layout) {
-  const { leaves, wood, blocks, render, paint, solids } = kit;
+  const { render, paint, solids } = kit;
+  const { leaves, wood, render: crown, paint: pot } = kit.drawn('plants');
   const { ROUND_BED: B, RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND } = layout;
   const bedTop = GROUND + 14;
   render.color(TINT.litter);
@@ -386,11 +394,12 @@ function dadsGarden(kit, layout) {
     render.color(TINT.redLeaf[i % TINT.redLeaf.length], 1.1);
     render.poly([[x - s, bedTop + 5, z], [x, bedTop + 5, z - s * 0.6], [x + s, bedTop + 5, z], [x, bedTop + 5, z + s * 0.6]], { facing: [0, 1, 0] });
   }
+  const stones = kit.drawn('plants').blocks;
   for (let i = 0; i < B.stones; i++) {
     const a = ((i + rng() * 0.4) / B.stones) * Math.PI * 2;
     const s = 22 + rng() * 12;
-    blocks.color(TINT.stones, 0.85 + rng() * 0.25);
-    blocks.lathe(B.x + Math.sin(a) * (B.r - 10), B.z + Math.cos(a) * (B.r - 10), [[s, GROUND - 4], [s * 1.05, GROUND + s * 0.5], [s * 0.6, GROUND + s], [0, GROUND + s * 1.1]], 6, { flat: true, a0: a });
+    stones.color(TINT.stones, 0.85 + rng() * 0.25);
+    stones.lathe(B.x + Math.sin(a) * (B.r - 10), B.z + Math.cos(a) * (B.r - 10), [[s, GROUND - 4], [s * 1.05, GROUND + s * 0.5], [s * 0.6, GROUND + s], [0, GROUND + s * 1.1]], 6, { flat: true, a0: a });
   }
   solids.solid(prismPolys(B.x, B.z, B.r, 12, GROUND - 10, bedTop), 'grass');
   // The tree: the trunk and six stems branching out of it into the crown.
@@ -405,18 +414,18 @@ function dadsGarden(kit, layout) {
   }
   // The crown: blobs round the trunk's top in a ring (the side away from the house lower), three
   // more over its back; four reds, darker underneath.
-  const crown = [
+  const blobs = [
     [0.7, 170, 520, 150, 120], [-0.7, 170, 520, 150, 120],
     [1.75, 190, 470, 140, 115], [-1.75, 190, 470, 140, 115],
     [2.6, 170, 430, 115, 95], [-2.6, 170, 430, 115, 95],
     [0, 150, 630, 135, 72], [1.3, 175, 605, 110, 72], [-1.3, 175, 605, 110, 72],
   ];
-  render.shade = (px, y) => 0.62 + 0.42 * Math.min(1, Math.max(0, (y - C.y0) / (C.y1 - C.y0)));
-  crown.forEach(([a, off, cy, r, ry], i) => {
-    render.color(TINT.redLeaf[i % TINT.redLeaf.length], 0.92 + (i % 3) * 0.06);
-    blob(render, T.x + Math.sin(a) * off, T.z + Math.cos(a) * off, cy, r, ry, a * 3);
+  crown.shade = (px, y) => 0.62 + 0.42 * Math.min(1, Math.max(0, (y - C.y0) / (C.y1 - C.y0)));
+  blobs.forEach(([a, off, cy, r, ry], i) => {
+    crown.color(TINT.redLeaf[i % TINT.redLeaf.length], 0.92 + (i % 3) * 0.06);
+    blob(crown, T.x + Math.sin(a) * off, T.z + Math.cos(a) * off, cy, r, ry, a * 3);
   });
-  render.shade = null;
+  crown.shade = null;
   // The rhododendron.
   leaves.color(TINT.rhodo);
   leaves.shade = (x, y) => 0.7 + 0.3 * Math.min(1, (y - GROUND) / R.h);
@@ -424,8 +433,8 @@ function dadsGarden(kit, layout) {
   leaves.shade = null;
   solids.solid(prismPolys(R.x, R.z, R.r * 0.85, 8, GROUND - 6, GROUND + R.h * 0.85), 'grass');
   // A blue pot by the door with a little green plant in it (drawn only).
-  paint.color(TINT.pot);
-  paint.lathe(P.x, P.z, [[16, GROUND], [24, GROUND + 4], [27, GROUND + 40], [0, GROUND + 40]], 8, { flat: true });
+  pot.color(TINT.pot);
+  pot.lathe(P.x, P.z, [[16, GROUND], [24, GROUND + 4], [27, GROUND + 40], [0, GROUND + 40]], 8, { flat: true });
   leaves.color(TINT.potLeaves);
   leaves.lathe(P.x, P.z, [[22, GROUND + 38], [32, GROUND + 58], [22, GROUND + 80], [0, GROUND + 90]], 7);
   // The car charger: a dark box on the white gable by the bins.
@@ -437,7 +446,8 @@ function dadsGarden(kit, layout) {
 // A bed of cosmos on a terrace: dark soil, tufts of leaves (seeded) each with a few pink, rose
 // and white flowers on top (drawn only).
 function flowerBed(kit, layout, bed) {
-  const { cobbles, leaves, render } = kit;
+  const { cobbles } = kit;
+  const { leaves, render } = kit.drawn('plants');
   const y = layout.groundHeight((bed.x0 + bed.x1) / 2, (bed.z0 + bed.z1) / 2);
   cobbles.color(TINT.soil);
   cobbles.poly([[bed.x0, y + 1, bed.z0], [bed.x1, y + 1, bed.z0], [bed.x1, y + 1, bed.z1], [bed.x0, y + 1, bed.z1]], { facing: [0, 1, 0], shade: 0.8 });
@@ -466,7 +476,7 @@ function flowerBed(kit, layout, bed) {
 // blue sparrow standing on its ridge at the street end; solid to its eaves (a coin waits over its
 // roof).
 function mailbox(kit, layout) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('mailbox');
   const { MAILBOX: M, GROUND } = layout;
   const [bw, bd] = M.body;
   const f = frame({ cx: M.x, cz: M.z, yaw: M.yaw, w: bw, d: bd, y0: GROUND });
@@ -545,7 +555,7 @@ function sparrow(b, o, fwd) {
 // pale headlights and red tail lights, a soft shadow on the ground under it; solid (the body and
 // the cabin, each convex).
 function car(kit, layout, c) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('cars');
   const K = layout.CAR_KINDS[c.kind];
   const f = frame({ cx: c.x, cz: c.z, yaw: c.yaw });
   const y0 = layout.groundHeight(c.x, c.z);
@@ -597,7 +607,7 @@ function car(kit, layout, c) {
 // The post and the board with its arm are solid (the board's top a perch; nothing under the
 // board's front stops a jump at it).
 function hoop(kit, layout) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('toys');
   const { HOOP: H, GROUND } = layout;
   const zf = H.z + H.out; // the board's back, at the post
   const top = H.board + H.h;
@@ -628,7 +638,7 @@ function hoop(kit, layout) {
 // under the pad and six steel legs down to the terrace; solid from the terrace up to the mat's
 // top (objects/Trampoline.js does the bouncing).
 function trampoline(kit, layout) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('toys');
   const T = layout.TRAMPOLINE;
   const y0 = layout.groundHeight(T.x, T.z);
   const pad = 45;
@@ -653,7 +663,7 @@ function trampoline(kit, layout) {
 // headlights and a bumper, along the road side its door and a stripe down both sides, a ladder up
 // its back; solid from the ground to its roof (a coin spot).
 function motorhome(kit, layout) {
-  const { paint, solids } = kit;
+  const { paint, solids } = kit.drawn('motorhome');
   const { MOTORHOME: M, GROUND } = layout;
   const f = frame({ cx: M.cx, cz: M.cz, yaw: M.yaw, w: M.l, d: M.w });
   const top = GROUND + M.h;
@@ -690,7 +700,7 @@ function motorhome(kit, layout) {
 // A fence along [from, to] (in its house's frame): a picket fence (pales on two rails, posts) or a
 // two-rail fence on posts; its collider a slab as high.
 function fence(kit, layout, { house, kind, from, to, h }) {
-  const { boards, solids } = kit;
+  const { boards, solids } = kit.drawn('fences');
   const H = layout.HOUSES.find((o) => o.id === house);
   const F = frame(H);
   const y0 = layout.GROUND;
@@ -742,8 +752,7 @@ function footpathProps(kit, layout) {
   const hexa = (c) => hexaPolys(c);
   brick.color(TINT.pillar);
   brick.solid(hexa(box(-50, 50, GROUND - 5, GROUND + 60, -26, 26)));
-  paint.color(TINT.cabinet);
-  paint.solid(hexa(box(-40, 40, GROUND + 60, GROUND + 200, -20, 20)), { faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+  kit.drawn('cabinet').paint.color(TINT.cabinet).solid(hexa(box(-40, 40, GROUND + 60, GROUND + 200, -20, 20)), { faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
   solids.solid(hexa(box(-50, 50, GROUND - 5, GROUND + 200, -26, 26)).slice(1), 'stone');
   // The sign: a grey post, a blue disc facing back up the path, the white figure walking on it
   // (head, body, legs and arms in stride).
@@ -787,41 +796,16 @@ function footpathProps(kit, layout) {
 // The forest on the bank behind the north gardens (a seeded scatter of firs and birches over
 // FOREST's band) and a ring of firs round the outside of the boundary (EDGE_FOREST: each a seeded
 // way out from a seeded point on one of its edges, kept off the road drawn on past it), all drawn
-// only: the boundary's walls stand inside them.
+// only: the boundary's walls stand inside them. Where they stand is world/lane/real/spots.js's
+// (the realistic look plants the same trees).
 function forest(kit, layout) {
-  const { FOREST: F, EDGE_FOREST: E, BOUNDS } = layout;
-  const rng = makeRng(F.seed);
-  const size = (S, r) => [S.h[0] + r() * (S.h[1] - S.h[0]), S.r[0] + r() * (S.r[1] - S.r[0])];
-  const tree = (x, z, r) => {
-    const [h, rad] = size(FIR_SIZE, r);
-    fir(kit, x, z, layout.groundHeight(x, z) - 10, h, rad, { a0: r(), solid: false });
-  };
-  for (let i = 0; i < F.count; i++) tree(F.x0 + rng() * (F.x1 - F.x0), F.z0 + rng() * (F.z1 - F.z0), rng);
-  for (let i = 0; i < F.birches; i++) {
-    const [x, z] = [F.x0 + rng() * (F.x1 - F.x0), F.z0 + rng() * (F.z1 - F.z0)];
-    const [h, rad] = size(BIRCH_SIZE, rng);
-    birch(kit, x, z, layout.groundHeight(x, z) - 10, h, rad, 500 + i);
-  }
-  const er = makeRng(E.seed);
-  const edges = BOUNDS.map((p, i) => [p, BOUNDS[(i + 1) % BOUNDS.length]]);
-  const lengths = edges.map(([p, q]) => Math.hypot(q[0] - p[0], q[1] - p[1]));
-  const total = lengths.reduce((s, l) => s + l, 0);
-  for (let i = 0, tries = 0; i < E.count && tries < E.count * 6; tries++) {
-    let pick = er() * total;
-    let k = 0;
-    while (pick > lengths[k]) pick -= lengths[k++];
-    const [p, q] = edges[k];
-    const t = pick / lengths[k];
-    const out = E.from + er() * (E.to - E.from);
-    // The edge's outward normal (the polygon runs clockwise seen from above: out is its left).
-    const nx = (q[1] - p[1]) / lengths[k];
-    const nz = -(q[0] - p[0]) / lengths[k];
-    const x = p[0] + (q[0] - p[0]) * t + nx * out;
-    const z = p[1] + (q[1] - p[1]) * t + nz * out;
-    if (layout.inBounds(x, z) || layout.roadDistance(x, z, layout.ROAD_DRAWN) < layout.ROAD.half + 300 || (x > F.x0 && z < F.z0)) continue;
-    tree(x, z, er);
-    i++;
-  }
+  const { leaves, wood } = kit.drawn('forest');
+  const { firs, birches } = forestSpots(layout);
+  const plant = (t) => fir({ leaves, wood }, t.x, t.z, t.base, t.h, t.r, { a0: t.a0, solid: false });
+  // (In the order the classic forest was always drawn: the bank's firs, its birches, the edge's.)
+  firs.slice(0, layout.FOREST.count).forEach(plant);
+  for (const t of birches) birch({ leaves, wood }, t.x, t.z, t.base, t.h, t.r, t.seed);
+  firs.slice(layout.FOREST.count).forEach(plant);
 }
 
 // Two houses down the side road in the fog (SIDE_BLOCKS): plain chain houses (houses.js) along

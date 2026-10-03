@@ -3,12 +3,20 @@
 // lane/houses.js, the dad's front door by lane/door.js and the props (street furniture,
 // greenery, the mailbox, the fences, the forest, the signposts) by lane/props.js.
 //
-//   buildLane(layout, { look, materials }?) -> { name: 'lane', object3D, colliders, update(time),
-//                          setDoorOpen(t, id), reset() }
+//   buildLane(layout, { look, materials, replaced }?) -> { name: 'lane', object3D, colliders,
+//                          update(time), setDoorOpen(t, id), reset() }
 //     look          'classic' (the default: the baked N64 look below) or 'real' (the realistic
 //                   look's visuals, world/lane/real/look.js: the same builders, unbaked, drawn with
 //                   `materials`, a material per mesh name; its colliders are the classic build's
 //                   to the byte, and only the classic build's are used)
+//     replaced      the elements not drawn (default: REAL_DRAWN in the realistic look, none in
+//                   the classic): the builders still make their colliders
+//     round         the turning area drawn round (TURN_ROUND sides: world/lane/real/plan.js),
+//                   the lawns and drives cut round it (default: in the realistic look); its
+//                   colliders stay the 16-gon's
+//   REAL_DRAWN      the elements the realistic look draws itself (world/lane/real/detail.js, in
+//                   its worker); a builder asks kit.drawn(name) for the kit to draw one into: the
+//                   kit, or one whose builders draw nothing (the same solids and signs)
 //   REPEAT, REAL_REPEAT   world units a texture repeat spans in each mesh's uvs (the realistic
 //                   look's own meshes in REAL_REPEAT)
 //     update        per frame (world/area.js), the clock in seconds: the flags wave
@@ -46,9 +54,12 @@
 // are the tints and the painted shades: the materials light them), with three meshes of its own
 // that the classic look draws in render's and grass's builders: lane-glass (the panes; the
 // houses hang a dim room behind each), lane-paint (frames, doors, fascias, soffits, poles, the
-// bins, the mailbox, the cars, the hoop, the trampoline...) and lane-path (the dad's grass-paver
-// path); its roofs' uvs run along their slopes (the tile courses lie across them), its lawns'
-// tints are made grey (the lawn texture is green itself) and its signs stay baked.
+// railings...) and lane-path (the dad's grass-paver path); its roofs' uvs run along their slopes
+// (the tile courses lie across them), its lawns' tints are made grey (the lawn texture is green
+// itself) and its signs stay baked. It leaves out what it draws itself (REAL_DRAWN: the worker's
+// world/lane/real/detail.js builds those: the chain houses, the plants and the forest, the cars,
+// the kerbs, the posts, fences and bins, the villas' windows, the garage doors, the toys, the
+// motorhome, the cabinet, the mailbox) and draws its turning area round.
 //
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): the road and
 // every hard surface (stone), the lawns and the terraces' tops (grass), the terraces' walls and
@@ -68,6 +79,7 @@ import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { buildProps, waveFlags } from './props.js';
+import { normals, inside, band, roadPieces } from './real/plan.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -107,6 +119,10 @@ const CARPORT_SHADE = 0.62; // the drive's asphalt under the carport's roof
 // The realistic look's own meshes (their repeats; the classic look draws them in render's and
 // grass's builders).
 export const REAL_REPEAT = { glass: 300, paint: 300, path: 240 };
+export const REAL_DRAWN = Object.freeze(['mailbox', 'plants', 'forest', 'chain', 'cars', 'kerbs', 'posts', 'fences', 'bins', 'villaWindows', 'garageDoors', 'toys', 'motorhome', 'cabinet']);
+
+// A builder that draws nothing (every method a no-op, chainable).
+const NOTHING = new Proxy({}, { get: () => () => NOTHING, set: () => true });
 
 // A roof's builder in the realistic look: uvs along each slope (u along its contour, v up it from
 // the eaves), so the tile texture's courses lie across every slope; flat and steep faces as any.
@@ -126,16 +142,25 @@ class SlopeBuilder extends GeoBuilder {
   }
 }
 
-export function buildLane(layout, { look = 'classic', materials = null } = {}) {
+export function buildLane(layout, { look = 'classic', materials = null, replaced = look === 'real' ? REAL_DRAWN : [], round = look === 'real' } = {}) {
   const real = look === 'real';
   const kit = { look, solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} }, groundAt: layout.groundHeight };
   for (const name of Object.keys(REPEAT)) kit[name] = new (real && name === 'roof' ? SlopeBuilder : GeoBuilder)(REPEAT[name]);
   kit.glass = real ? new GeoBuilder(REAL_REPEAT.glass) : kit.render;
   kit.paint = real ? new GeoBuilder(REAL_REPEAT.paint) : kit.render;
   kit.path = real ? new GeoBuilder(REAL_REPEAT.path) : kit.grass;
+  const hidden = { ...kit };
+  for (const name of [...Object.keys(REPEAT), ...Object.keys(REAL_REPEAT)]) hidden[name] = NOTHING;
+  kit.drawn = (name) => (replaced.includes(name) ? hidden : kit);
+  hidden.drawn = kit.drawn;
   const road = roadPieces(layout);
-  ground(kit, layout, road);
-  kerbs(kit, layout, road);
+  if (round) {
+    // The realistic look draws the turning area round (the lawns and the drives cut round it)
+    // and its own granite kerbs (world/lane/real/garden.js); the colliders keep the 16-gon.
+    ground(hidden, layout, road);
+    ground({ ...kit, solids: NOTHING }, layout, roadPieces(layout, { round: true }));
+  } else ground(kit, layout, road);
+  kerbs(kit.drawn('kerbs'), layout, road);
   terraces(kit, layout);
   bank(kit, layout);
   boundary(kit, layout);
@@ -188,6 +213,7 @@ function assembleReal(kit, layout, leaf, materials) {
   group.name = 'lane-real';
   greyLawns(kit.grass, TINT.lawn);
   const add = (name) => {
+    if (!kit[name].pos.length) return null; // (the elements it draws itself only)
     const mesh = new THREE.Mesh(kit[name].toGeometry(), materials[name]);
     mesh.name = `lane-${name}`;
     mesh.castShadow = !REAL_FLAT.has(name);
@@ -246,27 +272,6 @@ function lanePart(kit, group, wave, door) {
 
 // ---------------------------------------------------------------- 2D helpers ([x, z] outlines)
 
-// Each edge's outward unit normal of a convex outline (either winding).
-function normals(outline) {
-  const s = polyArea(outline) > 0 ? 1 : -1;
-  return outline.map(([ax, az], i) => {
-    const [bx, bz] = outline[(i + 1) % outline.length];
-    const l = Math.hypot(bx - ax, bz - az) || 1;
-    return [(s * (bz - az)) / l, (-s * (bx - ax)) / l];
-  });
-}
-
-// Whether (x, z) lies inside convex outline `poly` (either winding).
-function inside(poly, x, z) {
-  const s = polyArea(poly) > 0 ? 1 : -1;
-  for (let i = 0; i < poly.length; i++) {
-    const [ax, az] = poly[i];
-    const [bx, bz] = poly[(i + 1) % poly.length];
-    if (s * ((bx - ax) * (z - az) - (bz - az) * (x - ax)) < 0) return false;
-  }
-  return true;
-}
-
 // Whether two convex outlines overlap (separating axes; touching is no overlap).
 function overlaps(a, b) {
   for (const poly of [a, b]) {
@@ -318,49 +323,7 @@ function clean(poly) {
 const rectOf = (x0, x1, z0, z1) => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
 const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 
-// A band either side of a polyline, from offset `from` to `to` along each segment's left normal
-// (dz, -dx) (negative offsets: its right), mitred at the joints: one convex quad per segment.
-function band(line, from, to) {
-  const n = line.length;
-  const segN = [];
-  for (let i = 0; i + 1 < n; i++) {
-    const dx = line[i + 1][0] - line[i][0];
-    const dz = line[i + 1][1] - line[i][1];
-    const l = Math.hypot(dx, dz);
-    segN.push([dz / l, -dx / l]);
-  }
-  // Each joint's mitre: the mean of its segments' normals, lengthened to keep the offset.
-  const mitre = line.map((_, i) => {
-    const a = segN[Math.max(0, i - 1)];
-    const b = segN[Math.min(segN.length - 1, i)];
-    const mx = a[0] + b[0];
-    const mz = a[1] + b[1];
-    const ml = Math.hypot(mx, mz);
-    const k = 1 / ((mx / ml) * a[0] + (mz / ml) * a[1]);
-    return [(mx / ml) * k, (mz / ml) * k];
-  });
-  const off = (i, d) => [line[i][0] + mitre[i][0] * d, line[i][1] + mitre[i][1] * d];
-  const quads = [];
-  for (let i = 0; i + 1 < n; i++) quads.push([off(i, from), off(i + 1, from), off(i + 1, to), off(i, to)]);
-  return quads;
-}
-
 // ---------------------------------------------------------------- the ground
-
-// The road's pieces (convex outlines at 0): the carriageway (on past the junction into the fog),
-// the turning area, the side road.
-function roadPieces({ ROAD, ROAD_DRAWN, TURN, SIDE_ROAD: S }) {
-  const pieces = band(ROAD_DRAWN, -ROAD.half, ROAD.half);
-  const disc = Array.from({ length: TURN.sides }, (_, i) => {
-    const a = ((i + 0.5) / TURN.sides) * Math.PI * 2;
-    return [TURN.x + Math.sin(a) * TURN.r, TURN.z + Math.cos(a) * TURN.r];
-  });
-  pieces.push(disc);
-  const [dx, dz] = S.dir;
-  const end = [S.x + dx * S.len, S.z + dz * S.len];
-  pieces.push(...band([[S.x - dx * 300, S.z - dz * 300], end], -S.half, S.half));
-  return pieces;
-}
 
 // The hard surfaces a step up at GROUND (each its outline, builder, tint and shade): the
 // pavement, the drives and the notches' cobbles, the dad's grass-paver path, his drive (darker

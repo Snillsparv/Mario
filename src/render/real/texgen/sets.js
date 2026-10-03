@@ -20,9 +20,13 @@
 // grey split-face blocks with other options), tiles (concrete double-roll pan tiles), asphalt,
 // grass (a lawn from above; with leaves 0, the hedges' leafy mass), pavers (concrete grass
 // pavers; cobbles with more columns), render (white trowelled render), soil (bark mulch with
-// fallen leaves: the trunks' and posts' rough brown).
+// fallen leaves: the trunks' and posts' rough brown), granite (the kerbs), bark (a trunk's
+// fissured bark; birch 1: a birch's white bark), and two cut-outs for the leaf cards (their
+// albedo's alpha the leaves' coverage, alpha-tested, with mips that keep it: `mips`, the
+// albedo's levels 1 .. down to 1 x 1, noise.js coverageMips): leaves (an atlas of four kinds,
+// LEAF_CELLS) and fir (a spruce twig).
 
-import { hash, rng, makeFbm, makeCells, cavity, pack, clamp01, smooth, field, rgbField, setRgb } from './noise.js';
+import { hash, rng, makeFbm, makeCells, cavity, pack, coverageMips, clamp01, smooth, field, rgbField, setRgb } from './noise.js';
 
 export const TEXGEN_VERSION = 1;
 
@@ -336,7 +340,273 @@ export function soilSet(n = 256, { seed = 91 } = {}) {
   return pack(n, { col, h, strength: 1.5, ao, rough });
 }
 
-export const GENERATORS = Object.freeze({ boards: boardsSet, brick: brickSet, tiles: tilesSet, asphalt: asphaltSet, grass: grassSet, pavers: paversSet, render: renderSet, soil: soilSet });
+// Granite (the kerbs): a light grey speckled with black mica and white and pale pink feldspar.
+export function graniteSet(n = 256, { seed = 51 } = {}) {
+  const h = field(n);
+  const col = rgbField(n);
+  const rough = field(n);
+  const c = { f1: 0, f2: 0, id: 0 };
+  const grains = makeCells(48, seed);
+  const mottleNoise = makeFbm(8, 3, seed + 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const s = x / n;
+      const t = y / n;
+      grains(s, t, c);
+      const k = c.id;
+      const m = mottleNoise(s, t);
+      const v = 0.85 + 0.3 * m;
+      const [r, g, b] = k < 0.18 ? [0.04, 0.04, 0.045] : k < 0.35 ? [0.5, 0.42, 0.4] : k < 0.6 ? [0.42, 0.42, 0.42] : [0.28, 0.28, 0.29];
+      const i = y * n + x;
+      setRgb(col, i, r * v, g * v, b * v);
+      h[i] = (c.f2 - c.f1) * 0.6 + m * 0.6;
+      rough[i] = k < 0.18 ? 0.35 : 0.62;
+    }
+  }
+  return pack(n, { col, h, strength: 0.8, ao: null, rough });
+}
+
+// Bark: vertical ridges between dark fissures, grey-brown, rough (the trunks and limbs); birch 1:
+// a birch's chalky white with dark horizontal lenticels and black patches.
+export function barkSet(n = 256, { seed = 151, birch = 0 } = {}) {
+  const h = field(n);
+  const col = rgbField(n);
+  const rough = field(n);
+  const ridgeNoise = makeFbm(12, 3, seed, 2);
+  const fineNoise = makeFbm(48, 2, seed + 3);
+  const patchNoise = makeFbm(4, 3, seed + 6);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const s = x / n;
+      const t = y / n;
+      const i = y * n + x;
+      const fine = fineNoise(s, t);
+      if (birch) {
+        const patch = smooth(0.6, 0.68, patchNoise(s, t));
+        const v = 0.72 + 0.1 * fine;
+        setRgb(col, i, v * (1 - patch * 0.92), v * (0.99 - patch * 0.92), v * (0.95 - patch * 0.9));
+        h[i] = fine * 0.6 - patch * 0.5;
+        rough[i] = 0.75 + 0.15 * patch;
+      } else {
+        const ridge = ridgeNoise(s, t);
+        const fissure = smooth(0.42, 0.3, ridge);
+        const v = (0.13 + 0.07 * fine) * (1 - 0.7 * fissure);
+        setRgb(col, i, v, v * 0.82, v * 0.66);
+        h[i] = (1 - fissure) * 3 + fine;
+        rough[i] = 0.9;
+      }
+    }
+  }
+  if (birch) {
+    // Lenticels: short dark dashes across the trunk (along u), in rows.
+    const R = rng(seed + 9);
+    for (let k = 0, count = Math.round((n * n) / 260); k < count; k++) {
+      const cx = R() * n;
+      const cy = R() * n;
+      const len = 3 + R() * 9;
+      for (let d = 0; d < len; d++) {
+        for (const dy of [0, 1]) {
+          const i = (((Math.round(cy) + dy) % n) * n) + (Math.round(cx + d) % n);
+          setRgb(col, i, 0.05, 0.045, 0.04);
+          h[i] = -0.6;
+        }
+      }
+    }
+  }
+  const ao = cavity(h, n, 3, 0.3);
+  return pack(n, { col, h, strength: 1.4, ao, rough });
+}
+
+// The leaf atlas's cells (u0, v0: each half the texture a side): rhodo (the rhododendron's
+// whorls of long glossy leaves, a few yellowing), hedge (small dense leaves: the hedges, the
+// thujas, the birches' tinted yellow), tree (sprays of rounded leaves, a quarter turning: the
+// apple and the junction's trees), red (sprays of the red-leaf tree's dark purple-red leaves).
+export const LEAF_CELLS = Object.freeze({ rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] });
+
+// A leaf's half width along it (u 0 at the stem .. 1 at the tip), in LEAF_STEPS.
+const LEAF_STEPS = 256;
+const LEAF_HALF = Float32Array.from({ length: LEAF_STEPS + 1 }, (_, i) => Math.sin(Math.PI * Math.pow(i / LEAF_STEPS, 0.8)));
+
+// One leaf from its stem at (cx, cy) along angle a, len long and wid wide, into the cut-out's
+// maps, clipped to the box [bx0, bx1) x [by0, by1).
+function leaf(m, box, cx, cy, len, wid, a, c, gloss) {
+  const { n, h, col, rough, alpha } = m;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  // Its box: from the stem to the tip, the width either side.
+  const [ex, ey] = [cx + ca * len, cy + sa * len];
+  const x0 = Math.max(box[0], Math.floor(Math.min(cx, ex) - wid - 1));
+  const x1 = Math.min(box[1] - 1, Math.ceil(Math.max(cx, ex) + wid + 1));
+  const y0 = Math.max(box[2], Math.floor(Math.min(cy, ey) - wid - 1));
+  const y1 = Math.min(box[3] - 1, Math.ceil(Math.max(cy, ey) + wid + 1));
+  for (let y = y0; y <= y1; y++) {
+    const dy = y - cy;
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      const u = (dx * ca + dy * sa) / len; // 0 at the stem .. 1 at the tip
+      if (u < 0 || u > 1) continue;
+      const v = (-dx * sa + dy * ca) / wid;
+      const half = LEAF_HALF[Math.round(u * LEAF_STEPS)];
+      if (Math.abs(v) > half) continue;
+      const i = y * n + x;
+      const dome = 1 - (v / half) ** 2;
+      const rib = Math.abs(v) < 0.08;
+      const hh = 2 + dome * 1.5 + (rib ? -0.3 : 0) + u * 0.5;
+      if (alpha[i] > 0 && h[i] > hh) continue;
+      h[i] = hh;
+      alpha[i] = 1;
+      const shade = 0.75 + 0.35 * dome + (rib ? 0.15 : 0);
+      col[i * 3] = c[0] * shade;
+      col[i * 3 + 1] = c[1] * shade;
+      col[i * 3 + 2] = c[2] * shade;
+      rough[i] = gloss;
+    }
+  }
+}
+
+// A thin line (a twig) of colour c into the cut-out's maps.
+function twig(m, box, x0, y0, x1, y1, c, w) {
+  const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) + 1;
+  for (let k = 0; k <= steps; k++) {
+    const x = x0 + ((x1 - x0) * k) / steps;
+    const y = y0 + ((y1 - y0) * k) / steps;
+    for (let d = 0; d < w; d++) {
+      const xi = Math.round(x + d * 0.5);
+      const yi = Math.round(y);
+      if (xi < box[0] || xi >= box[1] || yi < box[2] || yi >= box[3]) continue;
+      const i = yi * m.n + xi;
+      if (m.alpha[i] && m.h[i] > 1.5) continue;
+      m.alpha[i] = 1;
+      m.h[i] = 1.5;
+      setRgb(m.col, i, c[0], c[1], c[2]);
+      m.rough[i] = 0.85;
+    }
+  }
+}
+
+const cutout = (n) => ({ n, h: field(n), col: rgbField(n), rough: field(n), alpha: field(n) });
+
+// The cut-out's maps, its background (where no leaf is) the dark green of a leafy mass's depths,
+// with its coverage-keeping mips.
+function packCutout(m, { strength, ao }) {
+  const { n, col, alpha, rough } = m;
+  for (let i = 0; i < n * n; i++) {
+    if (alpha[i]) continue;
+    col[i * 3] = 0.05;
+    col[i * 3 + 1] = 0.08;
+    col[i * 3 + 2] = 0.03;
+    rough[i] = 0.8;
+  }
+  const set = pack(n, { col, alpha, h: m.h, strength, ao: cavity(m.h, n, ao[0], ao[1]), rough: m.rough });
+  set.mips = coverageMips(set.albedo, n);
+  return set;
+}
+
+export function leavesSet(n = 1024, { seed = 101 } = {}) {
+  const m = cutout(n);
+  const half = n / 2;
+  const R = rng(seed);
+  for (const [kind, [u0, v0]] of Object.entries(LEAF_CELLS)) {
+    const [ox, oy] = [u0 * n, v0 * n];
+    const pad = Math.max(2, half * 0.02);
+    const box = [ox + pad, ox + half - pad, oy + pad, oy + half - pad];
+    const at = (k) => [ox + half * (0.12 + 0.76 * R()), oy + half * (0.12 + 0.76 * R()), k];
+    if (kind === 'rhodo') {
+      for (let w = 0; w < 16; w++) {
+        const [cx, cy] = at();
+        const k = 5 + Math.floor(R() * 3);
+        const a0 = R() * Math.PI * 2;
+        for (let j = 0; j < k; j++) {
+          const a = a0 + (j / k) * Math.PI * 2 + R() * 0.3;
+          const t = R();
+          const c = R() < 0.05 ? [0.42, 0.32, 0.04] : [0.06 + t * 0.05, 0.14 + t * 0.09, 0.04 + t * 0.03];
+          leaf(m, box, cx, cy, half * (0.11 + R() * 0.04), half * 0.034, a, c, 0.45);
+        }
+      }
+    } else if (kind === 'hedge') {
+      for (let l = 0; l < 520; l++) {
+        const [cx, cy] = at();
+        const t = R();
+        const len = half * (0.035 + R() * 0.02);
+        leaf(m, box, cx, cy, len, len * 0.42, R() * Math.PI * 2, [0.07 + t * 0.06, 0.15 + t * 0.1, 0.035 + t * 0.03], 0.55);
+      }
+    } else {
+      // Sprays: a twig aimed into the cell, leaves alternating along it.
+      const red = kind === 'red';
+      for (let k = 0; k < 12; k++) {
+        const [x0, y0] = at();
+        const a = Math.atan2(oy + half / 2 - y0, ox + half / 2 - x0) + (R() - 0.5) * 1.6;
+        const len = half * (0.28 + R() * 0.14);
+        const [x1, y1] = [x0 + Math.cos(a) * len, y0 + Math.sin(a) * len];
+        twig(m, box, x0, y0, x1, y1, red ? [0.08, 0.03, 0.03] : [0.09, 0.07, 0.05], 2);
+        let side = R() < 0.5 ? -1 : 1;
+        for (let f = 0.12; f < 1; f += 0.085) {
+          const [px, py] = [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
+          const t = R();
+          const turn = R() < (red ? 0.15 : 0.25);
+          const c = red ? (turn ? [0.5, 0.1, 0.03] : [0.16 + t * 0.14, 0.025 + t * 0.03, 0.03 + t * 0.03]) : turn ? [0.32, 0.2, 0.04] : [0.07 + t * 0.06, 0.15 + t * 0.1, 0.035 + t * 0.03];
+          const ll = half * (0.075 + R() * 0.03) * (1 - f * 0.35);
+          leaf(m, box, px, py, ll, ll * (red ? 0.42 : 0.5), a + side * (0.55 + R() * 0.45), c, red ? 0.5 : 0.6);
+          side = -side;
+        }
+      }
+    }
+  }
+  return packCutout(m, { strength: 1.2, ao: [6, 0.25] });
+}
+
+// A spruce branch for the fir cards: a twig from u 0 (the trunk) to u 1 drooping a little, side
+// twigs angled forward, all thick with short needles (dark blue-green, paler new growth at the
+// tips).
+export function firSet(n = 256, { seed = 141 } = {}) {
+  const m = cutout(n);
+  const box = [1, n - 1, 1, n - 1];
+  const R = rng(seed);
+  const line = (x0, y0, x1, y1, c, hh) => {
+    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) + 1;
+    for (let k = 0; k <= steps; k++) {
+      const x = Math.round(x0 + ((x1 - x0) * k) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * k) / steps);
+      if (x < box[0] || x >= box[1] || y < box[2] || y >= box[3]) continue;
+      const i = y * n + x;
+      if (m.alpha[i] && m.h[i] > hh) continue;
+      m.alpha[i] = 1;
+      m.h[i] = hh;
+      setRgb(m.col, i, c[0], c[1], c[2]);
+      m.rough[i] = 0.8;
+    }
+  };
+  const branch = (x0, y0, ang, len, depth) => {
+    const segs = Math.ceil(len / 3);
+    let [x, y] = [x0, y0];
+    for (let k = 0; k < segs; k++) {
+      const t = k / segs;
+      const a = ang + (R() - 0.5) * 0.08;
+      const [nx, ny] = [x + Math.cos(a) * (len / segs), y + Math.sin(a) * (len / segs)];
+      line(x, y, nx, ny, [0.05, 0.035, 0.02], 1.5);
+      const nl = (depth ? 5 : 7) * (1 - 0.45 * t) * (n / 256);
+      for (const side of [-1, 1]) {
+        for (let q = 0; q < 2; q++) {
+          const na = a + side * (0.9 + R() * 0.4);
+          const tip = t > 0.8 && R() < 0.6;
+          const g = R();
+          const c = tip ? [0.1 + g * 0.04, 0.2 + g * 0.06, 0.06] : [0.025 + g * 0.02, 0.06 + g * 0.04, 0.035 + g * 0.02];
+          line(nx, ny, nx + Math.cos(na) * nl, ny + Math.sin(na) * nl, c, 2 + R());
+        }
+      }
+      [x, y] = [nx, ny];
+    }
+  };
+  const len = n * 0.92;
+  branch(2, n * 0.5, 0.06, len, 0);
+  for (let k = 0; k < 9; k++) {
+    const t = 0.08 + (k / 9) * 0.82;
+    for (const side of [-1, 1]) branch(2 + len * t, n * 0.5 + len * t * 0.06, side * (0.75 + R() * 0.25), n * 0.38 * (1 - t * 0.6) * (0.8 + R() * 0.3), 1);
+  }
+  return packCutout(m, { strength: 1, ao: [4, 0.3] });
+}
+
+export const GENERATORS = Object.freeze({ boards: boardsSet, brick: brickSet, tiles: tilesSet, asphalt: asphaltSet, grass: grassSet, pavers: paversSet, render: renderSet, soil: soilSet, granite: graniteSet, bark: barkSet, leaves: leavesSet, fir: firSet });
 
 export function generate({ kind, size, opts = {} }) {
   const fn = GENERATORS[kind];

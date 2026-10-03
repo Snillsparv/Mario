@@ -1,14 +1,16 @@
 // The realistic look's procedural texture sets (render/real/texgen/*): pure, deterministic to
 // the byte (each set's hash at 64 px pinned with TEXGEN_VERSION: a generator changed without a
 // version bump fails here, since the IndexedDB cache would go on serving the old maps), tiling,
-// in plausible ranges (linear albedo means per set, roughness, unit normals), and quick enough
-// to make in the worker: Sparrow Lane's high-tier sets well inside 3x the 700 ms budget.
+// in plausible ranges (linear albedo means per set, roughness, unit normals), the leaf cards'
+// cut-outs keeping their coverage at every mip level (else distant foliage thins to nothing), and
+// quick enough to make in the worker: Sparrow Lane's high-tier sets well inside 3x the 700 ms
+// budget.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { TEXGEN_VERSION, generate } from '../src/render/real/texgen/sets.js';
 import { jobKey } from '../src/render/real/texgen/jobs.js';
-import { makeFbm, makeCells } from '../src/render/real/texgen/noise.js';
+import { makeFbm, makeCells, coverageMips } from '../src/render/real/texgen/noise.js';
 import { TIERS } from '../src/render/real/tier.js';
 import { laneJobs } from '../src/world/lane/real/look.js';
 
@@ -26,10 +28,16 @@ const PINNED = {
     'tiles:{}': '0cd7c8bb18d84a8e',
     'pavers:{"cols":10,"seed":73}': '7af87ac8440e7746',
     'pavers:{}': '8c283e6c89994825',
-    'grass:{"leaves":0,"seed":133}': '0b99ef7e4367a888',
-    'soil:{"seed":95}': '90a595d2a7a970a4',
+    'tiles:{"relief":0}': '6c7004fd45c9e2a5',
+    'granite:{}': '2e69c35083fd3dbd',
+    'bark:{}': '98e8c8d71d224033',
+    'bark:{"birch":1}': '2d7cafb7589aa3df',
+    'leaves:{}': '5ec91de4f9973683',
+    'fir:{}': 'f24e65bed631522d',
   },
 };
+// The cut-outs: alpha-tested leaf cards (their alpha the leaves' coverage), not opaque.
+const CUTOUTS = new Set(['leaves', 'fir']);
 // Plausible linear albedo means (r, g, b) per set, before the catalogue's colour and the tints.
 const MEANS = {
   asphalt: [[0.05, 0.15], [0.05, 0.15], [0.05, 0.15]], // dark: the material brightens it
@@ -40,7 +48,13 @@ const MEANS = {
   tiles: [[0.4, 0.8], [0.4, 0.8], [0.4, 0.8]], // mid grey: the tint gives black or brown
   pavers: [[0.1, 0.35], [0.12, 0.35], [0.08, 0.3]],
   soil: [[0.05, 0.2], [0.02, 0.1], [0.01, 0.05]],
+  granite: [[0.15, 0.45], [0.15, 0.45], [0.15, 0.45]],
+  bark: [[0.08, 0.25], [0.06, 0.2], [0.04, 0.16]], // grey-brown: the tint darkens it
+  birch: [[0.45, 0.75], [0.45, 0.75], [0.45, 0.75]], // a birch's chalky white, black patches
+  leaves: [[0.03, 0.15], [0.06, 0.2], [0.01, 0.08]], // green leaves over a dark green ground
+  fir: [[0.02, 0.1], [0.04, 0.12], [0.01, 0.06]],
 };
+const meansOf = (job) => MEANS[job.opts?.birch ? 'birch' : job.kind];
 
 const hash = (s) => crypto.createHash('sha1').update(s.albedo).update(s.normal).update(s.orm).digest('hex').slice(0, 16);
 const lin = (b) => {
@@ -54,9 +68,9 @@ test('every lane set is pinned at 64 px with TEXGEN_VERSION, and the same bytes 
   const jobs = laneJobs(TIERS.high);
   assert.deepEqual(jobs.map(pinKey).sort(), Object.keys(PINNED.hashes).sort(), 'every lane set pinned');
   for (const job of jobs) assert.equal(hash(generate({ ...job, size: 64 })), PINNED.hashes[pinKey(job)], `${pinKey(job)} changed: bump TEXGEN_VERSION`);
-  // The low tier's sets (all 256) twice: the same bytes.
+  // The low tier's sets (all 256 a set) twice: the same bytes.
   for (const job of laneJobs(TIERS.low)) {
-    assert.equal(job.size, 256);
+    assert.equal(job.size, job.kind === 'leaves' ? 512 : 256, 'all 256 (the leaf atlas: four 256 cells)');
     assert.equal(hash(generate(job)), hash(generate(job)), jobKey(job));
   }
   // Keys: the options in a fixed order.
@@ -107,7 +121,7 @@ test('the noises are periodic over the texture (so every set tiles), and each se
   }
 });
 
-test('albedo means in plausible linear ranges per set, roughness 0.3 .. 1, normals of unit length, opaque, no metal', () => {
+test('albedo means in plausible linear ranges per set, roughness 0.3 .. 1, normals of unit length, opaque (but the cut-outs), no metal', () => {
   for (const job of laneJobs(TIERS.high)) {
     const s = generate({ ...job, size: 128 });
     const n = s.size * s.size;
@@ -121,12 +135,34 @@ test('albedo means in plausible linear ranges per set, roughness 0.3 .. 1, norma
       const [x, y, z] = [0, 1, 2].map((c) => s.normal[i * 4 + c] / 127.5 - 1);
       normal = Math.max(normal, Math.abs(Math.hypot(x, y, z) - 1));
       assert.equal(s.orm[i * 4 + 2], 0, 'no metal');
-      assert.equal(s.albedo[i * 4 + 3], 255, 'opaque');
+      if (!CUTOUTS.has(job.kind)) assert.equal(s.albedo[i * 4 + 3], 255, 'opaque');
     }
-    const want = MEANS[job.kind];
+    const want = meansOf(job);
     mean.forEach((m, c) => assert.ok(m >= want[c][0] && m <= want[c][1], `${jobKey(job)}: mean ${'rgb'[c]} ${m.toFixed(3)}`));
     assert.ok(rough[0] >= 0.3 && rough[1] <= 1, `${jobKey(job)}: roughness ${rough}`);
     assert.ok(normal < 0.02, `${jobKey(job)}: normals ${normal}`);
+  }
+});
+
+test('the cut-outs\' mips keep their coverage (as many texels pass the alpha test at every level of 16 px and more as at full size), all the way down to 1 x 1', () => {
+  for (const job of laneJobs(TIERS.high).filter((j) => CUTOUTS.has(j.kind))) {
+    const s = generate({ ...job, size: 256 });
+    const passing = (a, n) => {
+      let p = 0;
+      for (let i = 0; i < n * n; i++) if (a[i * 4 + 3] > 127) p++;
+      return p / (n * n);
+    };
+    const full = passing(s.albedo, 256);
+    assert.ok(full > 0.05 && full < 0.6, `${jobKey(job)}: coverage ${full}`);
+    assert.equal(s.mips.length, 8, '128 .. 1');
+    s.mips.forEach((m, k) => {
+      const n = 256 >> (k + 1);
+      assert.equal(m.length, n * n * 4);
+      if (n >= 16) assert.ok(Math.abs(passing(m, n) - full) <= 0.05 * full, `${jobKey(job)} level ${k + 1}: ${passing(m, n).toFixed(3)} vs ${full.toFixed(3)}`);
+    });
+    // A plain box filter thins it level by level (what the mips are for).
+    const plain = coverageMips(s.albedo, 256, 2);
+    assert.ok(passing(plain[3], 16) < 0.5 * full, 'a mean alone loses the leaves');
   }
 });
 

@@ -4,7 +4,7 @@
 //
 //   const cache = openTexCache({ limit? })   // never throws; without IndexedDB (node, a private
 //                                            // window that refuses it) every call is a miss
-//   await cache.get(key) -> { size, albedo, normal, orm } (Uint8Arrays) | null
+//   await cache.get(key) -> { size, albedo, normal, orm, mips? } (Uint8Arrays) | null
 //   await cache.put(key, set)                // then trims the store to `limit` bytes (48 MB):
 //                                            // other TEXGEN_VERSIONs' entries first, then the
 //                                            // least recently used
@@ -71,7 +71,9 @@ export function openTexCache({ limit = TEX_CACHE_LIMIT } = {}) {
         if (!row) return null;
         row.lastUsed = Date.now();
         s.put(row);
-        return { size: row.size, albedo: new Uint8Array(row.albedo), normal: new Uint8Array(row.normal), orm: new Uint8Array(row.orm) };
+        const set = { size: row.size, albedo: new Uint8Array(row.albedo), normal: new Uint8Array(row.normal), orm: new Uint8Array(row.orm) };
+        if (row.mips) set.mips = row.mips.map((m) => new Uint8Array(m));
+        return set;
       } catch {
         return null;
       }
@@ -81,8 +83,9 @@ export function openTexCache({ limit = TEX_CACHE_LIMIT } = {}) {
         const s = await store('readwrite');
         if (!s) return;
         const copy = (a) => a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength);
-        const bytes = set.albedo.byteLength + set.normal.byteLength + set.orm.byteLength;
-        await request(s.put({ key, size: set.size, albedo: copy(set.albedo), normal: copy(set.normal), orm: copy(set.orm), bytes, lastUsed: Date.now() }));
+        const mips = set.mips ?? [];
+        const bytes = set.albedo.byteLength + set.normal.byteLength + set.orm.byteLength + mips.reduce((n, m) => n + m.byteLength, 0);
+        await request(s.put({ key, size: set.size, albedo: copy(set.albedo), normal: copy(set.normal), orm: copy(set.orm), mips: set.mips?.map(copy), bytes, lastUsed: Date.now() }));
         await trim(version(key));
       } catch {
         // (a full disk or a closed database: the set just is not cached)

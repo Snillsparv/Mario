@@ -1,19 +1,23 @@
 // Sparrow Lane's realistic build (world/lane/real/look.js, lane/build.js look 'real'): visuals
 // only. Its colliders are the classic build's to the byte (so the routes, the camera's world and
-// every lane test hold whichever look is drawn), it draws exactly the classic faces (plus a dim
-// room behind each pane), split into the realistic look's meshes by part (the panes in glass,
-// the painted parts in paint, the dad's path), unbaked, its lawns' tints grey, its roofs' uvs up
-// their slopes, no NaN anywhere, within the triangle budget; every mesh gets its catalogue
-// material, the glass the reflection probe, the signs the classic look; the pause legend's
-// retro row names G there; and the realistic sources stay private and original (no image
-// files, nothing loaded).
+// every lane test hold whichever look is drawn), it draws exactly the classic faces but the
+// elements it draws itself (REAL_DRAWN: the worker's world/lane/real/detail.js) with its turning
+// area drawn round (plus a dim room behind each bay window's pane), split into the realistic
+// look's meshes by part (the panes in glass, the painted parts in paint, the dad's path),
+// unbaked, its lawns' tints grey, its roofs' uvs up their slopes, no NaN anywhere, within the
+// triangle budget; every mesh gets its catalogue material (the worker's its detail material:
+// leaf cards, lacquer, the flat shadow stand-in, the grass), the glass the reflection probe, the
+// signs the classic look; the plants sway and the grass follows the camera; the pause legend's
+// retro row names G there; and the realistic sources stay private and original (no image files,
+// nothing loaded).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import * as THREE from 'three';
 import * as lane from '../src/world/lane/layout.js';
-import { buildLane, REPEAT } from '../src/world/lane/build.js';
+import { buildLane, REPEAT, REAL_DRAWN } from '../src/world/lane/build.js';
 import { buildLaneReal, laneJobs } from '../src/world/lane/real/look.js';
+import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { TextureStore } from '../src/render/real/textureStore.js';
 import { generate } from '../src/render/real/texgen/sets.js';
 import { jobKey } from '../src/render/real/texgen/jobs.js';
@@ -26,12 +30,14 @@ import { SMALL_FONT, measureText } from '../src/ui/bitmapFont.js';
 
 const classic = buildLane(lane);
 const real = buildLane(lane, { look: 'real', materials: {} });
+// The classic look without what the realistic one draws itself, its turning area drawn round.
+const kept = buildLane(lane, { replaced: REAL_DRAWN, round: true });
 const meshes = (part) => {
   const out = {};
   part.object3D.traverse((o) => o.isMesh && (out[o.name] = o));
   return out;
 };
-const C = meshes(classic);
+const C = meshes(kept);
 const R = meshes(real);
 const linear = (hex) => new THREE.Color(hex);
 const ROOM = linear(0x4a4640);
@@ -73,18 +79,31 @@ test('the realistic build\'s colliders are the classic build\'s to the byte, and
   assert.equal(JSON.stringify(b.collision.poles), JSON.stringify(a.collision.poles), 'the poles');
 });
 
-test('it draws exactly the classic faces, the panes in glass, the painted parts in paint and the dad\'s path in path, plus a dim room behind every pane; unbaked, no NaN', () => {
-  assert.deepEqual(Object.keys(R).sort(), [...Object.keys(C), 'lane-glass', 'lane-paint', 'lane-path'].sort());
-  for (const name of Object.keys(C)) {
+test('it draws exactly the classic faces but those it draws itself, the panes in glass, the painted parts in paint and the dad\'s path in path, plus a dim room behind every bay window; unbaked, no NaN', () => {
+  // (The classic meshes the realistic look draws nothing of are left out: the leaves and the wood.)
+  const drawn = Object.keys(C).filter((name) => C[name].geometry.attributes.position.count > 0);
+  assert.deepEqual(Object.keys(R).sort(), [...drawn, 'lane-glass', 'lane-paint', 'lane-path'].sort());
+  assert.deepEqual(Object.keys(C).filter((name) => !drawn.includes(name)).sort(), ['lane-leaves', 'lane-wood']);
+  for (const name of drawn) {
     if (name === 'lane-render' || name === 'lane-grass') continue;
     assert.deepEqual(triangles(R[name]).sort(), triangles(C[name]).sort(), name);
   }
   const split = [...triangles(R['lane-render']), ...triangles(R['lane-glass']), ...triangles(R['lane-paint'], ROOM)];
   assert.deepEqual(split.sort(), triangles(C['lane-render']).sort(), 'render = render + glass + paint');
   assert.deepEqual([...triangles(R['lane-grass']), ...triangles(R['lane-path'])].sort(), triangles(C['lane-grass']).sort(), 'grass = grass + path');
+  // The rooms: two triangles behind each bay window's panes (the other windows are the worker's).
   const rooms = triangles(R['lane-paint']).length - triangles(R['lane-paint'], ROOM).length;
-  const panes = R['lane-glass'].geometry.attributes.position.count / 3;
-  assert.ok(rooms >= 100 && rooms <= panes, `${rooms} room triangles behind ${panes} pane triangles`);
+  const bays = lane.VILLAS.reduce((n, v) => n + (v.bays?.length ?? 0), 0);
+  assert.equal(rooms, 2 * bays, `${rooms} room triangles behind ${bays} bay windows`);
+  // What it draws itself is drawn by nobody else: the classic build's own (the realistic one
+  // keeps a round turning area's faces, not the 16-gon's; the forest's cones, the hedges' boxes,
+  // the cars' boxes and the chain houses' walls are gone).
+  const all = (part) => {
+    let n = 0;
+    part.object3D.traverse((o) => o.isMesh && (n += o.geometry.attributes.position.count / 3));
+    return n;
+  };
+  assert.ok(all(real) < 0.7 * all(classic), `${all(real)} of the classic build's ${all(classic)} triangles`);
   // The glass: only the panes' and glints' tints (both look through to a room).
   const glass = R['lane-glass'].geometry.attributes.color;
   const tints = [0x2c3a46, 0x6c7c8a].map(linear);
@@ -92,14 +111,14 @@ test('it draws exactly the classic faces, the panes in glass, the painted parts 
     const ok = tints.some((t) => [glass.getX(i) / t.r, glass.getY(i) / t.g, glass.getZ(i) / t.b].every((k, _, a) => Math.abs(k - a[0]) < 1e-4));
     assert.ok(ok, `glass vertex ${i}: a pane's tint`);
   }
-  // Unbaked: the boards' Falu red is the dad's tint itself (the bake's light is not in it).
+  // Unbaked: the link's yellow boards are its tint itself (the bake's light is not in it).
   const boards = R['lane-boards'].geometry.attributes;
-  const falu = linear(lane.DAD.boards);
-  const D = lane.DAD;
+  const K = lane.LINK;
+  const yellow = linear(K.boards);
   let max = 0;
   for (let i = 0; i < boards.color.count; i++) {
     const [x, z] = [boards.position.getX(i), boards.position.getZ(i)];
-    if (x > D.x0 + 1 && x < D.x1 - 1 && z > D.z0 - 1 && z < D.z1 + 1) max = Math.max(max, boards.color.getX(i) / falu.r);
+    if (x > K.x0 - 1 && x < K.x1 + 1 && z > K.z0 - 1 && z < K.z1 + 1) max = Math.max(max, boards.color.getX(i) / yellow.r);
   }
   assert.ok(max > 0.99 && max < 1.01, `the brightest board vertex is the tint: ${max}`);
   for (const [name, m] of Object.entries(R)) {
@@ -176,6 +195,64 @@ test('the realistic lane: each mesh in its catalogue material, shadows cast by a
   part.setDoorOpen(1, 'lane_home');
   assert.ok(M['lane-door'].rotation.y > 1.2);
   look.dispose();
+});
+
+test('the worker\'s detail in the realistic lane: every mesh in its detail material (leaf cards alpha-tested and swaying, the cars lacquered, the tiles casting through their flat stand-in), the firs instanced, the grass following the camera', () => {
+  for (const tierName of ['high', 'low']) {
+    const tier = TIERS[tierName];
+    const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
+    for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
+    const detail = buildLaneDetail(lane, tierName);
+    const { part, look } = buildLaneReal(lane, { store, tier, origin: AREA_DEFS.lane.origin, anisotropy: 2, detail });
+    const D = {};
+    part.object3D.getObjectByName('lane-detail').traverse((o) => o.isMesh && (D[o.name] = o));
+    assert.equal(Object.keys(D).length, detail.meshes.length + 2 * 2 + (detail.grass ? 1 : 0), `${tierName}: a mesh each, the firs' two parts for the forest and the far tree line, the grass`);
+    assert.equal(D['lane-detail-fir-leaves-far'].castShadow, false, 'the far tree line casts none');
+    for (const [name, m] of Object.entries(D)) {
+      if (name === 'lane-detail-shadow') {
+        assert.ok(m.material.isMeshBasicMaterial && !m.material.colorWrite && !m.material.depthWrite && m.castShadow, 'the stand-in only casts');
+        continue;
+      }
+      assert.ok(m.material.isMeshStandardMaterial && m.material.fog === false, `${name}: physically based, hazed`);
+      assert.match(m.material.customProgramCacheKey(), /^real-/, name);
+      for (const attr of Object.values(m.geometry.attributes)) for (const v of attr.array) assert.ok(Number.isFinite(v), `${name}: finite`);
+    }
+    const leaves = D['lane-detail-foliage'].material;
+    assert.equal(leaves.customProgramCacheKey(), 'real-foliage');
+    assert.ok(leaves.alphaTest > 0 && leaves.side === THREE.DoubleSide && leaves.map.mipmaps.length > 1, 'alpha-tested cards, coverage mips');
+    assert.equal(leaves.alphaToCoverage, tier.samples > 0, 'alpha to coverage with MSAA');
+    assert.ok(D['lane-detail-foliage'].geometry.attributes.sway, 'the cards sway');
+    assert.equal(D['lane-detail-carPaint'].material.customProgramCacheKey(), 'real-coat', 'lacquer');
+    assert.ok(D['lane-detail-carPaint'].material.defines.USE_CLEARCOAT !== undefined);
+    const firs = D['lane-detail-fir-leaves'];
+    assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16 && firs.count > 90, `${firs.count} firs`);
+    assert.equal(firs.castShadow, tierName !== 'low', 'the firs cast but on low');
+    assert.ok(look.probeMaterials.includes(D['lane-detail-glass'].material), 'the detail\'s windows reflect the probe');
+    if (tierName === 'high') {
+      assert.equal(D['lane-detail-tiles'].castShadow, false, 'the tile courses cast none themselves');
+      // The grass: its grid moves with the camera, a cell at a time; the wind's phase with the clock.
+      const grass = D['lane-detail-grass'];
+      assert.ok(grass.geometry.isInstancedBufferGeometry && grass.geometry.instanceCount === 128 * 128 && grass.frustumCulled === false);
+      const camera = new THREE.PerspectiveCamera();
+      camera.position.set(AREA_DEFS.lane.origin.x + 500, 300, AREA_DEFS.lane.origin.z + 900);
+      camera.lookAt(AREA_DEFS.lane.origin.x + 500, 0, AREA_DEFS.lane.origin.z + 2000);
+      camera.updateMatrixWorld();
+      const root = new THREE.Group();
+      root.position.set(AREA_DEFS.lane.origin.x, AREA_DEFS.lane.origin.y, AREA_DEFS.lane.origin.z);
+      root.add(part.object3D);
+      root.updateMatrixWorld(true);
+      const grid = [];
+      part.update(2, camera);
+      const shader = { uniforms: {}, vertexShader: '#include <color_vertex>\n#include <begin_vertex>', fragmentShader: '#include <fog_fragment>' };
+      grass.material.onBeforeCompile(shader);
+      grid.push(shader.uniforms.uGrid.value.clone(), shader.uniforms.uWind.value.z);
+      assert.ok(Math.abs(grid[0].x / 12 - Math.round(grid[0].x / 12)) < 1e-9, 'snapped to whole cells');
+      // (Its middle ahead of the camera: 500 across, from z 900 toward 2000.)
+      assert.ok(Math.abs(shader.uniforms.uGridMiddle.value.x - 500) < 1 && shader.uniforms.uGridMiddle.value.y > 900, 'ahead of the camera');
+      assert.ok(grid[1] > 0, 'the wind\'s phase runs');
+    }
+    look.dispose();
+  }
 });
 
 test('privacy and originality: the realistic look\'s sources load no image, read no photograph and fetch nothing (every texture is painted in code)', () => {

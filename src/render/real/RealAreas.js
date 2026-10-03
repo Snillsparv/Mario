@@ -10,10 +10,12 @@
 //   real.wanted          // realistic looks are on: not classic by choice, nothing has failed
 //   real.reason          // why not ('' while wanted): 'chosen' (?look=classic or the toggle),
 //                        // or what failed (the worker, a build)
-//   real.prefetch(defs)  // the worker starts on every def.real's texture sets, at idle priority
-//   real.build(area) -> Promise<{ part, look }>   // its sets (usually there already), its build
-//                        // (def.real.build), its textures uploaded a slice at a time, its
-//                        // programs compiled for the look (view.compileLook)
+//   real.prefetch(defs)  // the worker starts on every def.real's texture sets and geometry, at
+//                        // idle priority
+//   real.build(area) -> Promise<{ part, look }>   // its sets and its geometry from the worker
+//                        // (usually there already), its build (def.real.build), its textures
+//                        // uploaded a slice at a time, its programs compiled for the look
+//                        // (view.compileLook)
 //   real.setClassic(on)  // the "Classic street" choice (G, this session only)
 //   real.ms[area]        // how long its build's steps took ({ textures (waiting for the worker),
 //                        // build, upload, compile }, ms)
@@ -61,7 +63,11 @@ export class RealAreas {
   prefetch(defs) {
     if (this.classic) return;
     const start = () => {
-      for (const def of Object.values(defs)) if (def.real) this.store.load(def.real.jobs(this.tier)).catch(() => {});
+      for (const def of Object.values(defs)) {
+        if (!def.real) continue;
+        this.store.load(def.real.jobs(this.tier)).catch(() => {});
+        this.store.detail(def.real.detail(this.tier)).catch(() => {});
+      }
     };
     if (typeof requestIdleCallback === 'function') requestIdleCallback(start, { timeout: 2000 });
     else setTimeout(start, 0);
@@ -91,10 +97,10 @@ export class RealAreas {
     const lap = (name, t0) => (ms[name] = Math.round(performance.now() - t0));
     try {
       let t0 = performance.now();
-      await this.store.load(real.jobs(this.tier));
+      const [, detail] = await Promise.all([this.store.load(real.jobs(this.tier)), this.store.detail(real.detail(this.tier))]);
       lap('textures', t0);
       t0 = performance.now();
-      const built = real.build(area.def.layout, { store: this.store, tier: this.tier, origin: area.def.origin, anisotropy: this.anisotropy, canRetro: this.float });
+      const built = real.build(area.def.layout, { store: this.store, tier: this.tier, origin: area.def.origin, anisotropy: this.anisotropy, canRetro: this.float, detail });
       lap('build', t0);
       t0 = performance.now();
       await this.upload(built.part.object3D);

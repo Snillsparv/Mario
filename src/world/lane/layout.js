@@ -540,6 +540,8 @@ export const LANE_SUN = (() => {
 //   shadow       the sun's soft shadow (three's PCF with this radius; biases for the flat walls
 //                at a grazing sun)
 //   probe        the reflection probe's place: over the road in front of the dad's house
+//   tiles        the houses whose roofs are real tile courses (world/lane/real/house.js: the dad's
+//                and his neighbours', close to play; the rest the tile set's normal map)
 //   atmosphere   the actors' look meanwhile (view.setAtmosphere): the sun (1, 0.82, 0.62) x 3
 //                along LANE_SUN, a pale sky and green ground hemisphere for Jonas, the classic
 //                objects' fog in the haze's horizon colour, far enough to match it
@@ -551,6 +553,7 @@ export const LANE_REAL = Object.freeze({
   haze: 2.2e-5,
   shadow: Object.freeze({ radius: 2.5, bias: -0.0004, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
+  tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
   atmosphere: Object.freeze({ fog: 0xbbd6f3, near: 3000, far: 45000, sun: 0xffeace, sunIntensity: 3, sunDir: LANE_SUN, sky: 0xcfe0ff, ground: 0x5a6040, ambientIntensity: 0.9 }),
 });
 
