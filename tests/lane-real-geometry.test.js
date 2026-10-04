@@ -5,9 +5,11 @@
 // plane) under ridge caps no higher, the firs where the classic forest's cones stood, the
 // grass's mask growing on the lawns only (never on the roads, paths, drives, the round bed, the
 // mailbox, the bushes, the walls' steps), the cars standing on their wheels inside their
-// colliders (their bodies and tyres closed: no hole to see through), the bird on the mailbox's
-// ridge; every tier within its triangle budget (section 7 of the plan: high <= 900k a frame with
-// the grass and the shadow pass, so the detail itself far under), the low tier's halved.
+// colliders (their bodies and tyres closed: no hole to see through), every tyre's patch on the
+// drive's drawn surface and each car level on it, the bonnets and roofs on the colliders Jonas
+// stands on, no plate or badge, the bird on the mailbox's ridge; every tier within its triangle
+// budget (section 7 of the plan: high <= 900k a frame with the grass and the shadow pass, so the
+// detail itself far under), the low tier's halved.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -17,14 +19,38 @@ import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { forestSpots } from '../src/world/lane/real/spots.js';
 import { lawnMask, GRASS } from '../src/world/lane/real/grass.js';
 import { frameOf } from '../src/world/lane/real/house.js';
-import { cars } from '../src/world/lane/real/cars.js';
+import { cars, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
+import { roadPieces, inside } from '../src/world/lane/real/plan.js';
 
 const t0 = performance.now();
 const high = buildLaneDetail(lane, 'high');
 const ms = performance.now() - t0;
 const low = buildLaneDetail(lane, 'low');
 const mesh = (d, name) => d.meshes.find((m) => m.name === name).buffers;
+// Every mesh's positions in a material (a probe's own meshes too: carPaint@car0...), joined.
+const positionsOf = (d, material) => {
+  const parts = d.meshes.filter((m) => m.material === material).map((m) => m.buffers.position);
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+};
+// A car's own vertices among `p` (within `pad` of its box), in its frame: [across, y, along].
+const ownOf = (c, p, pad = 60) => {
+  const K = lane.CAR_KINDS[c.kind];
+  const [fx, fz] = [Math.sin(c.yaw), Math.cos(c.yaw)];
+  const out = [];
+  for (let i = 0; i < p.length; i += 3) {
+    const along = (p[i] - c.x) * fx + (p[i + 2] - c.z) * fz;
+    const across = (p[i] - c.x) * fz - (p[i + 2] - c.z) * fx;
+    if (Math.abs(along) < K.l / 2 + pad && Math.abs(across) < K.w / 2 + pad) out.push([across, p[i + 1], along]);
+  }
+  return out;
+};
 const sha = (d) => {
   const h = crypto.createHash('sha1');
   for (const m of d.meshes) for (const a of Object.values(m.buffers)) h.update(Buffer.from(a.buffer));
@@ -212,7 +238,7 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
 
 test('the cars stand on their wheels inside their colliders; the bird stands on the mailbox\'s ridge; the bed\'s stones ring it', () => {
   const tyres = mesh(high, 'tyre').position;
-  const paint = mesh(high, 'carPaint').position;
+  const paint = positionsOf(high, 'carPaint');
   for (const c of lane.CARS) {
     const K = lane.CAR_KINDS[c.kind];
     const y0 = lane.groundHeight(c.x, c.z);
@@ -286,4 +312,285 @@ test('the cars\' bodies and tyres are closed: every edge of each shared by exact
       }
     }
   }
+});
+
+// The drawn ground's height under (x, z) (the realistic build's asphalt, cobbles, path and lawn
+// meshes: a vertical ray), the highest under `below`.
+function surfaceAt(meshes, x, z, below) {
+  let best = -Infinity;
+  for (const m of meshes) {
+    const p = m.geometry.attributes.position.array;
+    for (let i = 0; i < p.length; i += 9) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = p.subarray(i, i + 9);
+      const d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+      if (Math.abs(d) < 1e-9) continue;
+      const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / d;
+      const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / d;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+      const y = l1 * ay + l2 * by + l3 * cy;
+      if (y < below && y > best) best = y;
+    }
+  }
+  return best;
+}
+
+test('every car sits flat on its drive: each tyre\'s patch on the drawn surface (neither floating nor sunk), the four patches level, the sill level, and a contact shadow under it', () => {
+  const ground = [];
+  buildLane(lane, { look: 'real', materials: {} }).object3D.traverse((o) => o.isMesh && ['lane-asphalt', 'lane-cobbles', 'lane-path', 'lane-grass'].includes(o.name) && ground.push(o));
+  assert.ok(ground.length >= 3, 'the ground\'s meshes');
+  for (const d of [high, low]) {
+    const tyres = mesh(d, 'tyre').position;
+    const paint = positionsOf(d, 'carPaint');
+    const contact = d.meshes.find((m) => m.name === 'contact')?.buffers;
+    assert.ok(contact, `${d === high ? 'high' : 'low'}: the contact shadows`);
+    for (const c of lane.CARS) {
+      const K = lane.CAR_KINDS[c.kind];
+      const F = carFrame(lane, c);
+      const t = ownOf(c, tyres);
+      const patches = [];
+      for (const wc of F.axles) {
+        for (const s of [-1, 1]) {
+          // This wheel's tread (within its radius of its axis, on its side).
+          const own = t.filter(([u, , w]) => Math.abs(w - wc) < F.R + 2 && Math.sign(u) === s);
+          assert.ok(own.length > 20, `${c.kind}: a tyre at ${wc}, ${s}`);
+          const lowest = Math.min(...own.map((v) => v[1]));
+          const patch = own.filter((v) => v[1] < lowest + 0.01);
+          // Where it stands: the patch's middle, in the world.
+          const um = patch.reduce((a, v) => a + v[0], 0) / patch.length;
+          const wm = patch.reduce((a, v) => a + v[2], 0) / patch.length;
+          const [x, , z] = F.at(um, 0, wm);
+          const surface = surfaceAt(ground, x, z, F.y0 + 50);
+          assert.ok(Number.isFinite(surface), `${c.kind} at ${c.x}: ground under its wheel`);
+          assert.ok(Math.abs(lowest - surface) <= 0.25, `${c.kind} at ${c.x}: its tyre ${(lowest - surface).toFixed(2)} off the drive's surface`);
+          assert.ok(patch.length >= 2, `${c.kind}: a flat patch where it stands (${patch.length} points)`);
+          patches.push(lowest);
+        }
+      }
+      assert.ok(Math.max(...patches) - Math.min(...patches) < 0.01, `${c.kind} at ${c.x}: level on its four patches`);
+      // The sill: the body's lowest points between the arches, level from front to back.
+      const between = ownOf(c, paint, 0).filter(([, , w]) => w < F.axles[0] - F.R - 12 && w > F.axles[1] + F.R + 12);
+      const floor = Math.min(...between.map((v) => v[1]));
+      const front = between.filter(([, , w]) => w > (F.axles[0] + F.axles[1]) / 2);
+      const rear = between.filter(([, , w]) => w <= (F.axles[0] + F.axles[1]) / 2);
+      for (const half of [front, rear]) assert.ok(Math.abs(Math.min(...half.map((v) => v[1])) - floor) < 0.01, `${c.kind}: the sill level`);
+      assert.ok(floor - F.y0 >= 15 && floor - F.y0 <= 35, `${c.kind}: its ground clearance ${(floor - F.y0).toFixed(1)}`);
+      // Its contact shadow: under it, on the drive, darkest under its middle.
+      const shade = [];
+      for (let i = 0; i < contact.position.length; i += 3) {
+        const [x, y, z] = contact.position.subarray(i, i + 3);
+        const along = (x - c.x) * Math.sin(c.yaw) + (z - c.z) * Math.cos(c.yaw);
+        const across = (x - c.x) * Math.cos(c.yaw) - (z - c.z) * Math.sin(c.yaw);
+        if (Math.abs(along) < K.l / 2 + 30 && Math.abs(across) < K.w / 2 + 30) {
+          assert.ok(y > F.y0 && y < F.y0 + 1, `${c.kind}: its contact shadow just over the drive`);
+          shade.push(contact.color[i]);
+        }
+      }
+      assert.ok(shade.length > 40 && Math.min(...shade) < 0.45 && Math.max(...shade) === 1, `${c.kind}: a contact shadow fading out (${shade.length})`);
+    }
+  }
+});
+
+test('the cars\' bonnets and roofs lie on the colliders Jonas stands on (within 4), their parts in the probes\' clusters, no plate or badge on either end', () => {
+  const clusters = carClusters(lane);
+  assert.equal(clusters.length, 4, 'the dad\'s drive, the west link, the north drives, the east end');
+  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5], [6, 7]]);
+  assert.deepEqual(high.probes.map((p) => p.name), ['car0', 'car1', 'car2', 'car3', 'north']);
+  assert.deepEqual(low.probes, [], 'no probes on low');
+  for (const [k, g] of clusters.entries()) {
+    assert.ok(high.meshes.some((m) => m.name === `carPaint@${k}` && m.probe === `car${k}`), `cluster ${k}: its own paint`);
+    const roofs = g.cars.map((i) => lane.groundHeight(lane.CARS[i].x, lane.CARS[i].z) + lane.CAR_KINDS[lane.CARS[i].kind].roof);
+    assert.ok(g.at[1] > Math.max(...roofs), 'its probe over the roofs');
+  }
+  for (const d of [high, low]) {
+    const paint = positionsOf(d, 'carPaint');
+    for (const c of lane.CARS) {
+      const K = lane.CAR_KINDS[c.kind];
+      const { y0 } = carFrame(lane, c);
+      const own = ownOf(c, paint, 0);
+      const hl = K.l / 2;
+      // The bonnet: along the middle, from the windscreen's foot to 45 short of the nose (the
+      // collider's top runs to there).
+      // Its top surface: the highest of its paint's triangles over points along the bonnet's
+      // middle (from the windscreen's foot to 45 short of the nose: the collider's top runs to
+      // there) and over the roof (the cabin collider's top, in from its edges).
+      const F = carFrame(lane, c);
+      const tris = [];
+      for (let i = 0; i < paint.length; i += 9) {
+        const [x, , z] = paint.subarray(i, i + 3);
+        if (Math.hypot(x - c.x, z - c.z) < hl + 40) tris.push(paint.subarray(i, i + 9));
+      }
+      const soup = Float32Array.from(tris.flatMap((t) => [...t]));
+      const hit = (u, w) => {
+        const [x, , z] = F.at(u, 0, w);
+        return surfaceAt([{ geometry: { attributes: { position: { array: soup } } } }], x, z, Infinity);
+      };
+      for (let w = hl - K.hood + 10; w <= hl - 45; w += 15) {
+        const y = hit(0, w);
+        assert.ok(Math.abs(y - (y0 + K.belt)) <= 4, `${c.kind}: the bonnet ${(y - y0 - K.belt).toFixed(1)} off the collider's top at ${w}`);
+      }
+      for (let w = -hl + K.tailTop + 20; w <= hl - K.hood - K.screen - 20; w += 40) {
+        for (const u of [-(K.w / 2 - 60), 0, K.w / 2 - 60]) {
+          const y = hit(u, w);
+          assert.ok(Math.abs(y - (y0 + K.roof)) <= 4, `${c.kind}: the roof ${(y - y0 - K.roof).toFixed(1)} off the collider's top at ${u}, ${w}`);
+        }
+      }
+    }
+    // No plate and no badge: nothing plate-shaped (a rectangle 55 to 95 wide, 10 to 26 high, 3.5
+    // to 6 times as wide as high: a plate's 520 x 110 at the cars' scale) on the middle of either
+    // end.
+    for (const name of ['metal', 'trim', 'lamp', 'tail', 'enamel', 'gloss']) {
+      const m = d.meshes.find((o) => o.name === name);
+      if (!m) continue;
+      const p = m.buffers.position;
+      for (const c of lane.CARS) {
+        const K = lane.CAR_KINDS[c.kind];
+        const own = ownOf(c, p, 4);
+        for (let i = 0; i + 5 < own.length; i += 6) {
+          const q = own.slice(i, i + 6);
+          const end = q.every(([, , w]) => Math.abs(Math.abs(w) - K.l / 2) < 4);
+          if (!end) continue;
+          const us = q.map((v) => v[0]);
+          const ys = q.map((v) => v[1]);
+          const [wd, ht] = [Math.max(...us) - Math.min(...us), Math.max(...ys) - Math.min(...ys)];
+          const mid = Math.abs((Math.max(...us) + Math.min(...us)) / 2) < 30;
+          assert.ok(!(mid && wd >= 55 && wd <= 95 && ht >= 10 && ht <= 26 && wd / ht >= 3.5 && wd / ht <= 6), `${c.kind}: a plate-shaped ${name} part (${wd.toFixed(0)} x ${ht.toFixed(0)}) on an end`);
+        }
+      }
+    }
+  }
+});
+
+test('the clutter lies on the ground: every fallen leaf within 2 of the ground (none under a collider, none on the road\'s middle 60 %), weeds only in the kerbs\' joints, at the walls\' feet and on the path, the grit in the gutters; the street sign\'s plate blank; within each tier\'s share', async () => {
+  const { clutter, streetSign, STREET_SIGN, SHARE } = await import('../src/world/lane/real/clutter.js');
+  const { CollisionWorld } = await import('../src/collision/CollisionWorld.js');
+  const world = new CollisionWorld();
+  for (const c of buildLane(lane).colliders) world.addCollider(c);
+  world.finalize();
+  const ground = lawnMask(lane);
+  const pieces = roadPieces(lane, { round: true });
+  const kitOf = (tier) => {
+    const kit = { tier };
+    for (const name of ['foliage', 'core', 'patch', 'granite', 'paint', 'steel', 'enamel']) kit[name] = new Geo();
+    clutter(kit, lane, ground);
+    return kit;
+  };
+  const tris = (g) => g.count / 3;
+  const counts = {};
+  for (const tier of ['high', 'mid', 'low']) {
+    const kit = kitOf(tier);
+    counts[tier] = ['foliage', 'core', 'patch', 'granite', 'paint'].reduce((n, k) => n + tris(kit[k]), 0);
+    // (The leaves: the core's flat triangles, normals up; its others the weeds' blades.)
+    const { pos: p, nrm: n } = kit.core;
+    const flat = (i) => [0, 1, 2].every((k) => n[i + k * 3] === 0 && n[i + k * 3 + 1] === 1 && n[i + k * 3 + 2] === 0);
+    let leaves = 0;
+    for (let i = 0; i < p.length; i += 9) {
+      if (!flat(i)) continue;
+      leaves++;
+      const [x, y, z] = [(p[i] + p[i + 3] + p[i + 6]) / 3, (p[i + 1] + p[i + 4] + p[i + 7]) / 3, (p[i + 2] + p[i + 5] + p[i + 8]) / 3];
+      // (On the drawn road: in one of its pieces, or overhanging a kerb's foot by a little.)
+      const near = (a, b) => [[0, 0], [a, 0], [-a, 0], [0, b], [0, -b]].some(([dx, dz]) => pieces.some((piece) => inside(piece, x + dx, z + dz)));
+      const onRoad = near(12, 12);
+      const g = onRoad ? 0 : lane.groundHeight(x, z);
+      assert.ok(Math.abs(y - g) <= 2, `${tier}: a leaf at ${x.toFixed(0)}, ${z.toFixed(0)} ${(y - g).toFixed(1)} off the ground`);
+      // (The straight's end, where its south half meets the turning area at a kerb, aside.)
+      const end = lane.ROAD.line[lane.ROAD.line.length - 1][0];
+      if (g === 0 && lane.roadDistance(x, z) <= lane.ROAD.half && x < end - 100) assert.ok(lane.roadDistance(x, z) > 0.6 * lane.ROAD.half || Math.hypot(x - lane.TURN.x, z - lane.TURN.z) <= lane.TURN.r, `${tier}: a leaf on the road's middle at ${x.toFixed(0)}, ${z.toFixed(0)}`);
+      if (Math.hypot(x - lane.TURN.x, z - lane.TURN.z) <= lane.TURN.r) assert.ok(Math.hypot(x - lane.TURN.x, z - lane.TURN.z) > 0.6 * lane.TURN.r, `${tier}: a leaf in the turning area's middle`);
+      const hit = world.raycast({ x, y: 5000, z }, { x: 0, y: -1, z: 0 }, 6000);
+      assert.ok(hit && hit.point.y <= y + 0.5 && y - hit.point.y <= 3.5, `${tier}: a leaf at ${x.toFixed(0)}, ${z.toFixed(0)} under a collider (${hit?.point.y.toFixed(1)} vs ${y.toFixed(1)})`);
+    }
+    assert.ok(leaves > (tier === 'high' ? 6000 : tier === 'mid' ? 3500 : 1200), `${tier}: ${leaves} leaf triangles`);
+    // The weeds' blades (core): in a kerb's joint (at the road's edge), at a wall's foot, on the path.
+    const c = kit.core.pos;
+    if (tier === 'low') assert.equal(c.length / 9 - leaves, 0, 'no weeds on low');
+    const P = lane.DAD_PATH;
+    for (let i = 0; i < c.length; i += 9) {
+      if (flat(i)) continue;
+      const [x, z] = [c[i], c[i + 2]];
+      // (At a kerb: on the drawn road, the road's edge within 15.)
+      const onRoad = (px, pz) => pieces.some((piece) => inside(piece, px, pz));
+      const kerb = onRoad(x, z) && Array.from({ length: 8 }, (_, k) => [Math.cos(k * 0.785) * 15, Math.sin(k * 0.785) * 15]).some(([dx, dz]) => !onRoad(x + dx, z + dz));
+      const wall = lane.PLOTS_N.some((pl) => x > pl.x0 && x < pl.x1) && Math.abs(z - lane.wallZAt(x) - 7) < 12;
+      const plinth = lane.HOUSES.some((h) => h.kit === 'chain' && ['front', 'back', 'left', 'right'].some((name) => {
+        const { f, half } = frameOf(h).face(name);
+        const o = f.at(0, 0, 0);
+        const u = (x - o[0]) * f.right[0] + (z - o[2]) * f.right[2];
+        const w = (x - o[0]) * f.out[0] + (z - o[2]) * f.out[2];
+        return Math.abs(u) <= half + 40 && w > 0 && w < 20;
+      }));
+      const path = x > P.x0 && x < P.x1 && z > P.z0 && z < P.z1;
+      assert.ok(kerb || wall || plinth || path, `${tier}: a weed at ${x.toFixed(0)}, ${z.toFixed(0)} in no joint, at no wall`);
+    }
+    // The grit: in the gutters (on the road, its edge within 40: the grit 4 to 18 wide, and where
+    // the straight meets the turning area a sliver of kerb between them).
+    const g = kit.patch.pos;
+    assert.ok(g.length > 0);
+    const road = (px, pz) => pieces.some((piece) => inside(piece, px, pz));
+    for (let i = 0; i < g.length; i += 3) {
+      assert.ok(Math.abs(g[i + 1] - 0.45) < 1e-4, 'the grit just over the road');
+      const [x, z] = [g[i], g[i + 2]];
+      const ring = (r) => Array.from({ length: 8 }, (_, k) => [x + Math.cos(k * 0.785) * r, z + Math.sin(k * 0.785) * r]);
+      assert.ok(ring(1).some(([px, pz]) => road(px, pz)) && [5, 10, 15, 20, 25, 30, 35, 40].some((r) => ring(r).some(([px, pz]) => !road(px, pz))), `grit at ${x.toFixed(0)}, ${z.toFixed(0)} in the gutter`);
+    }
+  }
+  assert.ok(counts.high <= 30000, `high: ${counts.high} clutter triangles`);
+  assert.ok(counts.mid <= counts.high * 0.75 && counts.low <= counts.high * 0.4, `mid ${counts.mid}, low ${counts.low} (high ${counts.high})`);
+  assert.deepEqual(SHARE, { high: 1, mid: 0.6, low: 0.25 });
+  // The street sign: a post, a plate white on both faces with a black border, nothing else on it.
+  const kit = { tier: 'high' };
+  for (const name of ['steel', 'enamel', 'paint', 'lamp', 'gloss', 'metal']) kit[name] = new Geo();
+  streetSign(kit, lane);
+  assert.equal(kit.enamel.count, 36, 'the plate: one box');
+  const white = new Set();
+  for (let i = 0; i < kit.enamel.col.length; i += 3) white.add(kit.enamel.col.slice(i, i + 3).join());
+  assert.equal(white.size, 1, 'one colour: blank');
+  assert.ok(kit.enamel.col[0] > 0.85 && kit.enamel.col[1] > 0.85 && kit.enamel.col[2] > 0.85, 'white');
+  assert.equal(kit.paint.count, 4 * 2 * 6, 'its black border on both faces, nothing more');
+  for (let i = 0; i < kit.paint.col.length; i++) assert.ok(kit.paint.col[i] < 0.01, 'black');
+  assert.equal(kit.lamp.count + kit.gloss.count + kit.metal.count, 0, 'no lettering, no reflectors');
+  const y0 = lane.groundHeight(STREET_SIGN.x, STREET_SIGN.z);
+  assert.ok(Math.min(...kit.steel.pos.filter((_, i) => i % 3 === 1)) < y0, 'its post in the ground');
+  assert.ok(lane.roadDistance(STREET_SIGN.x, STREET_SIGN.z) > lane.ROAD.half + lane.KERB.w + 40, 'on the verge');
+});
+
+test('the walls\' weathering: a wear attribute on the houses\' walls (how far under the sill or eave over it, how high over the ground, the streaks\' length), in range; none on the other meshes but theirs', () => {
+  for (const d of [high, low]) {
+    for (const m of d.meshes) {
+      const w = m.buffers.wear;
+      if (!['boards', 'brick', 'render'].includes(m.name)) {
+        assert.equal(w, undefined, `${m.name}: no wear attribute`);
+        continue;
+      }
+      assert.ok(w && w.length === m.buffers.position.length, `${m.name}: a wear attribute`);
+      let worn = 0;
+      for (let i = 0; i < w.length; i += 3) {
+        if (w[i + 2] === 0) continue; // (a quad drawn without: the mailbox's boards)
+        worn++;
+        assert.ok(w[i] >= 0 && w[i] <= 1100, `${m.name}: under its sill or eave ${w[i]}`);
+        assert.ok(w[i + 1] >= -200 && w[i + 1] <= 1300, `${m.name}: over the ground ${w[i + 1]}`);
+        assert.ok(w[i + 2] >= 0.5 && w[i + 2] <= 1.3, `${m.name}: its streaks' length ${w[i + 2]}`);
+      }
+      assert.ok(worn >= 300, `${m.name}: its walls worn (${worn} vertices)`);
+    }
+  }
+  // Under the dad's front windows the boards' streaks hang from the sills (under 0 at a sill's
+  // line), the plinth's foot is at the ground.
+  const boards = mesh(high, 'boards');
+  const dad = lane.DAD;
+  const front = frameOf(dad).face('front').f;
+  let underSill = 0;
+  for (let i = 0; i < boards.position.length; i += 3) {
+    const [x, y, z] = boards.position.subarray(i, i + 3);
+    const o = front.at(0, 0, 0);
+    if (Math.abs((x - o[0]) * front.out[0] + (z - o[2]) * front.out[2]) > 0.5) continue;
+    const u = (x - o[0]) * front.right[0] + (z - o[2]) * front.right[2];
+    if (Math.abs(u) > dad.w / 2) continue;
+    if (boards.wear[i] < 0.01 && y - o[1] < 200) underSill++;
+  }
+  assert.ok(underSill >= (dad.windows?.length ?? 1), `the boards' streaks hang from the dad's sills (${underSill})`);
+  const brick = mesh(high, 'brick');
+  let foot = Infinity;
+  for (let i = 0; i < brick.wear.length; i += 3) if (brick.wear[i + 2] > 0) foot = Math.min(foot, brick.wear[i + 1]);
+  assert.ok(foot < 0 && foot > -10, `the plinths' feet at the ground (${foot})`);
 });

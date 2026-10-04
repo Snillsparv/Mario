@@ -1,35 +1,47 @@
 // Sparrow Lane's own realistic geometry (the realistic look's R2 detail), built in the realistic
 // look's worker (render/real/laneRealWorker.js) from layout.js alone: the elements the realistic
 // build draws itself instead of the classic builders' faces (lane/build.js REAL_DRAWN names
-// them; the classic builders still make every collider). world/lane/real/look.js wraps the
-// buffers in meshes on the main thread.
+// them; the classic builders still make every collider), and what G2 adds over them: the
+// houses' hardware (hardware.js), the ground's clutter and the blank street sign (clutter.js),
+// the cars' contact shadows (cars.js: `contact`). world/lane/real/look.js wraps the buffers in
+// meshes on the main thread.
 //
-//   buildLaneDetail(L, tier) -> { meshes, firs, grass, triangles }
-//     meshes: [{ name, material, cast, buffers, sphere }]   one per material (look.js DETAIL
-//             names them), buffers: { position, normal, uv, color, sway? } (Float32Arrays, uvs in
-//             world units but the leaf cards' atlas uvs); cast: casts the sun's shadow; sphere:
-//             its bounding sphere [x, y, z, r] (as three.js computes it)
+//   buildLaneDetail(L, tier) -> { meshes, firs, grass, ground, probes, triangles }
+//     meshes: [{ name, material, cast, buffers, sphere, probe? }]   one per material (look.js
+//             DETAIL names them; a probe's own meshes, `name@probe`, in their material
+//             reflecting that probe), buffers: { position, normal, uv, color, sway?, wear? }
+//             (Float32Arrays, uvs in world units but the leaf cards' atlas uvs); cast: casts the
+//             sun's shadow; sphere: its bounding sphere [x, y, z, r] (as three.js computes it)
 //     firs:   { parts: [{ material, buffers }], matrices, colors, cast, far }   one fir (unit
 //             height and radius) and the forest's instances (a 4 x 4 matrix and a tint each),
 //             far: the tree line's { matrices, colors } (casting none)
-//     grass:  { clump: buffers, mask }   the lawns' blade clump and their mask (grass.js; null on
-//             low)
+//     grass:  { clump: buffers }   the lawns' blade clump (grass.js; null on low)
+//     ground: the lawn mask (grass.js lawnMask: where the blades grow, the ground's height, the
+//             road's wheel track, the damp lawns): the grass's map and the weathering's ground
+//             map (materials.js WEAR), on every tier
+//     probes: [{ name, at: [x, y, z], kind }]   the reflection probes the meshes name (layout
+//             local): each cluster of cars' ('car0'.., kind 'car': cars.js carClusters) and the
+//             villas' windows' ('north', kind 'windows': from the street in front of them, so
+//             they reflect the chain houses across it); none on low (the sky's environment)
 //     triangles: the meshes' and the instances' total
 //   detailBuffers(detail) -> [ArrayBuffer]          everything to transfer
 //
-// tier: 'high' | 'mid' | 'low' (render/real/tier.js): on mid 70 % of the leaf clusters; on low
-// half of them, no tile courses, no blades, plainer windows and cars, fewer materials and shadow
-// casters (LOW_MERGE, LOW_CASTERS).
+// tier: 'high' | 'mid' | 'low' (render/real/tier.js): on mid 70 % of the leaf clusters, plainer
+// cars, 60 % of the clutter; on low half of the clusters, no tile courses, no blades, plainer
+// windows and cars still, a quarter of the leaves on the ground and no weeds, fewer materials and
+// shadow casters (LOW_MERGE, LOW_CASTERS), no probes of its own (one paint, one glass).
 
 import { Geo } from './geo.js';
 import { mailbox, kerbs, roadDecals, bedStones } from './garden.js';
 import { plants, firGeometry, firInstances } from './foliage.js';
 import { chainHouse } from './house.js';
-import { cars } from './cars.js';
+import { cars, carClusters } from './cars.js';
 import { grassClump, lawnMask } from './grass.js';
 import { lampposts, flagpoles, fences, bins } from './street.js';
 import { villaHouses, garageDoors, hipTrim } from './villas.js';
 import { trampoline, hoop, motorhome, cabinet, treeLine } from './extras.js';
+import { clutter, streetSign } from './clutter.js';
+import { hardware } from './hardware.js';
 
 // Each material's builder; `cast` false: casts no shadow (the ground's, the glass, the rooms').
 const MATERIALS = {
@@ -60,7 +72,10 @@ const MATERIALS = {
   trim: true,
   lamp: true,
   tail: true,
+  contact: false, // (the cars' contact shadows: a darkening of the ground under them)
 };
+// The villas' windows' probe: over the street in front of them (layout local).
+const NORTH_PROBE = [0, 420, -350];
 
 // The low tier (phones): small plain parts share a few materials (fewer draw calls), and only
 // the houses and the cars cast the sun's shadow.
@@ -73,6 +88,19 @@ export function buildLaneDetail(L, tier = 'high') {
   for (const name of Object.keys(MATERIALS)) kit[name] = new Geo();
   if (low) for (const [name, into] of Object.entries(LOW_MERGE)) kit[name] = kit[into];
   kit.tier = tier;
+  // Each cluster of cars' paint and glass, and the villas' panes, their own meshes reflecting
+  // their own probes (not on low).
+  const probes = [];
+  const own = [];
+  if (!low) {
+    carClusters(L).forEach((g, k) => {
+      probes.push({ name: `car${k}`, at: g.at, kind: 'car' });
+      for (const m of ['carPaint', 'carGlass']) own.push({ key: `${m}@${k}`, material: m, probe: `car${k}` });
+    });
+    probes.push({ name: 'north', at: NORTH_PROBE, kind: 'windows' });
+    own.push({ key: 'glass@north', material: 'glass', probe: 'north' });
+    for (const o of own) kit[o.key] = new Geo();
+  }
   mailbox(kit, L);
   kerbs(kit, L);
   roadDecals(kit, L);
@@ -83,14 +111,18 @@ export function buildLaneDetail(L, tier = 'high') {
   bins(kit, L);
   plants(kit, L);
   for (const h of L.HOUSES) if (h.kit === 'chain') chainHouse(kit, L, h, { tiled: L.LANE_REAL.tiles.includes(h.id) });
-  villaHouses(kit, L);
+  villaHouses(kit['glass@north'] ? { ...kit, glass: kit['glass@north'] } : kit, L);
   garageDoors(kit, L);
   hipTrim(kit, L);
+  hardware(kit, L);
   cars(kit, L);
   trampoline(kit, L);
   hoop(kit, L);
   motorhome(kit, L);
   cabinet(kit, L);
+  const ground = lawnMask(L);
+  clutter(kit, L, ground);
+  streetSign(kit, L);
   const meshes = [];
   let triangles = 0;
   for (const [name, cast] of Object.entries(MATERIALS)) {
@@ -99,15 +131,21 @@ export function buildLaneDetail(L, tier = 'high') {
     meshes.push({ name, material: name, cast: cast && (!low || LOW_CASTERS.has(name)), buffers, sphere: sphereOf(buffers.position) });
     triangles += kit[name].count / 3;
   }
+  for (const { key, material, probe } of own) {
+    if (!kit[key].count) continue;
+    const buffers = kit[key].buffers();
+    meshes.push({ name: key, material, probe, cast: MATERIALS[material], buffers, sphere: sphereOf(buffers.position) });
+    triangles += kit[key].count / 3;
+  }
   // The forest's firs and the far tree line: one fir, instanced (the far ones casting none).
   const fir = firGeometry(tier);
   const { matrices, colors } = firInstances(L);
   const firs = { parts: ['leaves', 'core'].map((k) => ({ material: `fir-${k}`, buffers: fir[k].buffers() })), matrices, colors, cast: !low, far: treeLine(L, tier) };
   for (const k of ['leaves', 'core']) triangles += (fir[k].count / 3) * ((matrices.length + firs.far.matrices.length) / 16);
-  // The grass's clump and the lawns' mask (none on low).
+  // The grass's clump (none on low) and the ground's map.
   const clump = grassClump(tier);
-  const grass = clump && { clump: clump.buffers(), mask: lawnMask(L) };
-  return { meshes, firs, grass, triangles };
+  const grass = clump && { clump: clump.buffers() };
+  return { meshes, firs, grass, ground, probes, triangles };
 }
 
 // The bounding sphere three.js would compute (the box's middle, the farthest point), made here
@@ -137,9 +175,7 @@ export function detailBuffers(detail) {
     for (const p of detail.firs.parts) add(p.buffers);
     out.push(detail.firs.matrices.buffer, detail.firs.colors.buffer, detail.firs.far.matrices.buffer, detail.firs.far.colors.buffer);
   }
-  if (detail.grass) {
-    add(detail.grass.clump);
-    out.push(detail.grass.mask.data.buffer);
-  }
+  if (detail.grass) add(detail.grass.clump);
+  if (detail.ground) out.push(detail.ground.data.buffer);
   return out;
 }

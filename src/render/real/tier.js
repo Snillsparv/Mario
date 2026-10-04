@@ -45,10 +45,11 @@
 // size), box (the near shadow camera's half size round the focus: tight and sharp, the far map
 // covering the rest), far (the far, static map's size: the whole street's sun shadows, drawn
 // once a build; 0 on low: none, R3's single map round Jonas), tex (the big sets' size) and
-// small (the rest), anisotropy, probe (the reflection probe's cube size; 0 on low: none, the
-// glass reflects the sky's environment: a phone is spared the capture and every program
+// small (the rest), anisotropy, probe (the windows' reflection probes' cube size; 0 on low: none,
+// the glass reflects the sky's environment: a phone is spared the capture and every program
 // compiled a second time for it, its half-float cube drawn where nothing else draws to a
-// target), post (the post chain, render/real/post/*: high the occlusion at 12 taps, bloom over 5
+// target), carProbe (each cluster of parked cars' probe: their lacquer and glass; 0 on low),
+// post (the post chain, render/real/post/*: high the occlusion at 12 taps, bloom over 5
 // levels, the sun shafts and the colour fringing; mid 8 taps and 4 levels; low none: the direct
 // path keeps R3's picture).
 
@@ -59,9 +60,9 @@ const POST = Object.freeze({
 });
 
 export const TIERS = Object.freeze({
-  high: Object.freeze({ name: 'high', pixelRatio: 1.5, maxPixels: 2.4e6, samples: 4, direct: false, shadow: 2048, box: 1500, far: 4096, tex: 512, small: 256, anisotropy: 8, probe: 256, post: POST.high }),
-  mid: Object.freeze({ name: 'mid', pixelRatio: 1, maxPixels: 1.6e6, samples: 2, direct: false, shadow: 1024, box: 1300, far: 2048, tex: 512, small: 256, anisotropy: 4, probe: 128, post: POST.mid }),
-  low: Object.freeze({ name: 'low', pixelRatio: 1, maxPixels: 0.9e6, samples: 0, direct: true, shadow: 1024, box: 1600, far: 0, tex: 256, small: 256, anisotropy: 2, probe: 0, post: POST.low }),
+  high: Object.freeze({ name: 'high', pixelRatio: 1.5, maxPixels: 2.4e6, samples: 4, direct: false, shadow: 2048, box: 1500, far: 4096, tex: 512, small: 256, anisotropy: 8, probe: 256, carProbe: 128, post: POST.high }),
+  mid: Object.freeze({ name: 'mid', pixelRatio: 1, maxPixels: 1.6e6, samples: 2, direct: false, shadow: 1024, box: 1300, far: 2048, tex: 512, small: 256, anisotropy: 4, probe: 128, carProbe: 64, post: POST.mid }),
+  low: Object.freeze({ name: 'low', pixelRatio: 1, maxPixels: 0.9e6, samples: 0, direct: true, shadow: 1024, box: 1600, far: 0, tex: 256, small: 256, anisotropy: 2, probe: 0, carProbe: 0, post: POST.low }),
 });
 
 // The sets drawn at the big size on high (and mid, but for the lawn and the leaves there).

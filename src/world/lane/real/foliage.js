@@ -28,8 +28,13 @@ import { forestSpots } from './spots.js';
 // The leaf atlas's cells (texgen/sets.js LEAF_CELLS: each half the atlas a side).
 const CELL = { rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] };
 const CORE = { green: [0.03, 0.055, 0.018], red: [0.045, 0.012, 0.012] };
-// The share of a shell's clusters per tier (mid a little sparser, low half).
+// The hedges' cores a little lighter (under the ambient occlusion they read black-green).
+const HEDGE_CORE = [0.045, 0.075, 0.027];
+// The share of a shell's clusters per tier (mid a little sparser, low half); the broad trees',
+// the birches' and the apple tree's canopies denser still on high (their outline from afar was
+// the most "game" thing left in the street).
 const CLUSTERS = { high: 1, mid: 0.7, low: 0.5 };
+const DENSE = { high: 1.4, mid: 1, low: 1 };
 const BARK = 0xb8aca0;
 const BIRCH_BARK = 0xf4f2ec;
 
@@ -106,13 +111,32 @@ function canopyBlobs(x, z, y0, y1, r, seed, n = 4) {
   return blobs;
 }
 
+// A few smaller blobs round a canopy's outline (their own seeded stream: the classic blobs stay
+// where the classic builder's stood), so it reads ragged instead of a lollipop: n of them on the
+// biggest blob's skin, between a quarter and two-fifths of the canopy's radius each.
+function ragged(blobs, n, seed, tier = 'high') {
+  if (tier === 'low') return blobs; // (the phones' canopies as they were)
+  const rng = makeRng(seed);
+  const [main] = blobs;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rng() * 1.2;
+    const up = -0.15 + rng() * 0.75;
+    const r = main.r[0] * (0.42 + rng() * 0.25);
+    const k = 0.95 + rng() * 0.25;
+    out.push({ c: [main.c[0] + Math.sin(a) * main.r[0] * k * Math.cos(up), main.c[1] + Math.sin(up) * main.r[1] * k, main.c[2] + Math.cos(a) * main.r[2] * k * Math.cos(up)], r: [r, r * (0.7 + rng() * 0.3), r], outer: true });
+  }
+  return [...blobs, ...out];
+}
+
 // A canopy: every blob's shell (only outside the others), cluster counts by its skin's area.
 function canopy(kit, R, blobs, { size, cell, tints, density = 1.2, below = -0.4, sway = 8, core = CORE.green }) {
   for (const b of blobs) {
     const [a, h, c] = b.r;
     const area = 4 * Math.PI * Math.pow(((a * h) ** 1.6 + (a * c) ** 1.6 + (h * c) ** 1.6) / 3, 1 / 1.6);
     const count = Math.round((area / (size * size)) * density);
-    shell(kit, R, { c: b.c, r: b.r, count, size, cell, tints, below, outside: blobs.filter((o) => o !== b), sway, core, coreK: 0.72 });
+    // (A ragged canopy's small outer blobs no core of their own: the light shows through them.)
+    shell(kit, R, { c: b.c, r: b.r, count, size, cell, tints, below, outside: blobs.filter((o) => o !== b), sway, core: b.outer ? null : core, coreK: 0.72 });
   }
 }
 
@@ -139,9 +163,9 @@ export function plants(kit, L) {
     const top = y0 + t.h * 0.45;
     kit.bark.color(BARK);
     kit.bark.tube([t.x, y0 - 10, t.z], [t.x, top, t.z], 60, 36, 8);
-    const blobs = canopyBlobs(t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, Math.round(t.x * 7 + t.z));
+    const blobs = ragged(canopyBlobs(t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, Math.round(t.x * 7 + t.z)), 6, Math.round(t.x * 3 - t.z), kit.tier);
     limbs(kit.bark, [t.x, top - 20, t.z], blobs, 26);
-    canopy(kit, R, blobs, { size: 130, cell: CELL.tree, tints: leafy, sway: 10 });
+    canopy(kit, R, blobs, { size: 130, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * (DENSE[kit.tier] ?? 1) });
   }
   for (const t of L.GARDEN_TREES) gardenTree(kit, R, L, t);
   redTree(kit, R, L);
@@ -193,7 +217,7 @@ function hedge(kit, R, h) {
   for (const [xe, s] of [[h.x0, -1], [h.x1, 1]]) {
     for (let z = h.z0; z <= h.z1; z += step) for (let y = h.y0 + 12; y <= top; y += step) card([xe + s * (4 + R() * 6), y, z + jit() * 0.6], [s, 0.1, 0], 50);
   }
-  core.rgb(...CORE.green);
+  core.rgb(...HEDGE_CORE);
   core.box(h.x0 + 8, h.x1 - 8, h.y0 - 4, top - 14, h.z0 + 8, h.z1 - 8, { skip: 'b' });
 }
 
@@ -241,9 +265,9 @@ function gardenTree(kit, R, L, t) {
   const c0 = y0 + t.h * 0.35;
   kit.bark.color(BARK);
   kit.bark.tube([t.x, y0 - 10, t.z], [t.x, c0 + 60, t.z], 36, 24, 7);
-  const blobs = canopyBlobs(t.x, t.z, c0, y0 + t.h, t.r, 211, 5);
+  const blobs = ragged(canopyBlobs(t.x, t.z, c0, y0 + t.h, t.r, 211, 5), 4, 2111, kit.tier);
   limbs(kit.bark, [t.x, c0 + 40, t.z], blobs, 16);
-  canopy(kit, R, blobs, { size: 90, cell: CELL.tree, tints: [[1, 1.05, 0.92], [0.9, 1, 0.85], [1.1, 1.08, 0.9]], density: 1.3, sway: 6 });
+  canopy(kit, R, blobs, { size: 90, cell: CELL.tree, tints: [[1, 1.05, 0.92], [0.9, 1, 0.85], [1.1, 1.08, 0.9]], density: 1.3 * (DENSE[kit.tier] ?? 1), sway: 6 });
   kit.paint.color(0xb8281e);
   const A = makeRng(213);
   for (let i = 0; i < 26; i++) {
@@ -268,7 +292,7 @@ function birch(kit, R, x, z, base, h, r, seed) {
     if (Math.hypot(top[0] - x, top[2] - z) > t) kit.birch.tube([x, b.c[1] - b.r[1] * 0.5, z], top, t * 0.4, t * 0.15, 5);
   }
   const yellow = [[1.5, 1.35, 0.6], [1.1, 1.15, 0.7], [2.2, 1.6, 0.4], [1.3, 1.25, 0.65]];
-  canopy(kit, R, blobs, { size: 70, cell: CELL.hedge, tints: yellow, density: 0.85, below: -0.6, sway: 9, core: null });
+  canopy(kit, R, blobs, { size: 70, cell: CELL.hedge, tints: yellow, density: 0.85 * (DENSE[kit.tier] ?? 1), below: -0.6, sway: 9, core: null });
 }
 
 // The dad's red-leaf tree in the round bed: its trunk (the climbable pole), six stems branching

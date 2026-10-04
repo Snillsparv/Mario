@@ -13,7 +13,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import * as lane from '../src/world/lane/layout.js';
-import { laneJobs, laneMaterials, detailMaterials } from '../src/world/lane/real/look.js';
+import { laneJobs, laneMaterials, detailMaterials, wearUniforms } from '../src/world/lane/real/look.js';
 import { RealLook } from '../src/render/real/RealLook.js';
 import { RealPost } from '../src/render/real/post/RealPost.js';
 import { TextureStore } from '../src/render/real/textureStore.js';
@@ -28,8 +28,10 @@ function lookAndMaterials(tier = TIERS.high) {
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
   for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
   const look = new RealLook({ preset: lane.LANE_REAL, tier, farBox: BOX });
+  // (The weathering's ground map, a stand-in; the houses' walls worn by their attribute.)
+  Object.assign(look.haze, wearUniforms({ data: new Uint8Array(16), width: 2, height: 2, x0: -9200, x1: 8200, z0: -4200, z1: 3800 }, { x: 0, y: 0, z: 30000 }));
   const wind = { value: new THREE.Vector4(1, 0, 0, 0) };
-  return { look, M: laneMaterials(store, tier, look.haze, { exposure: lane.LANE_REAL.exposure, grade: look.grade }), D: detailMaterials(store, tier, look.haze, { wind }) };
+  return { look, M: laneMaterials(store, tier, look.haze, { exposure: lane.LANE_REAL.exposure, grade: look.grade }), D: detailMaterials(store, tier, look.haze, { wind, worn: new Set(['boards', 'brick', 'render']) }) };
 }
 
 function compiled(material, lib = THREE.ShaderLib.standard) {
@@ -114,12 +116,12 @@ test('the output pass: the occlusion on the HDR colour before the tone mapping (
   look.dispose();
 });
 
-test('uniform names unique in every realistic material\'s shaders: the sky\'s GLSL, the haze, the sun\'s near and far shadow patch and the material\'s own patch never declare one twice', () => {
+test('uniform names unique in every realistic material\'s shaders: the sky\'s GLSL, the haze, the sun\'s near and far shadow patch, the weathering and the material\'s own patch never declare one twice', () => {
   const { look, M, D } = lookAndMaterials();
   const all = { ...M, ...Object.fromEntries(Object.entries(D).map(([k, m]) => [`detail ${k}`, m])) };
   let checked = 0;
   for (const [name, m] of Object.entries(all)) {
-    if (name === 'detail shadow') continue;
+    if (name === 'detail shadow' || name === 'detail contact') continue;
     const s = compiled(m, name === 'signs' ? THREE.ShaderLib.basic : THREE.ShaderLib.standard);
     for (const [stage, glsl] of [['vertex', s.vertexShader], ['fragment', s.fragmentShader]]) {
       const names = declared(glsl);

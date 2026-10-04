@@ -5,15 +5,17 @@
 // leaf cards' (both faces lit by their own normal, the sun through them, swaying), the grass's
 // (each clump placed in the shader on the lawns' mask), the cars' lacquer (three's clearcoat in
 // the standard material), the haze uniforms shared by them all and the sky, stable program cache
-// keys, and only a handful of programs for the whole lane; the sky and the output pass (Neutral
+// keys, and only a handful of programs for the whole lane; the weathering (WEAR) in every
+// textured material, its ground map and strengths, exact on the houses' walls (their `wear`
+// attribute), lite on the low tier; the sky and the output pass (Neutral
 // tone mapping, dither) compile their GLSL from three's own chunks; the signs' boards turned back
 // through the exposure, the tone mapping and the output pass's grade.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import * as lane from '../src/world/lane/layout.js';
-import { laneJobs, laneMaterials, detailMaterials } from '../src/world/lane/real/look.js';
-import { CLAMP_GLSL, hazeChunk, classicLook, grassMaterial } from '../src/render/real/materials.js';
+import { laneJobs, laneMaterials, detailMaterials, wearUniforms } from '../src/world/lane/real/look.js';
+import { CLAMP_GLSL, hazeChunk, classicLook, grassMaterial, WEAR_KIND } from '../src/render/real/materials.js';
 import { RealLook } from '../src/render/real/RealLook.js';
 import { TextureStore } from '../src/render/real/textureStore.js';
 import { generate } from '../src/render/real/texgen/sets.js';
@@ -21,13 +23,16 @@ import { jobKey } from '../src/render/real/texgen/jobs.js';
 import { TIERS } from '../src/render/real/tier.js';
 import { SKY_GLSL } from '../src/render/real/sky.js';
 
-// (With the far shadow map's box, as the lane's look has it: none on the low tier.)
+// (With the far shadow map's box, as the lane's look has it: none on the low tier; with the
+// weathering's ground map, a stand-in, and the houses' walls worn by their attribute.)
+const WORN = new Set(['boards', 'brick', 'render']);
 function lookAndMaterials(tier = TIERS.high) {
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
   for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
   const look = new RealLook({ preset: lane.LANE_REAL, tier, farBox: { x0: -9000, x1: 8000, y0: -100, y1: 3000, z0: -4000, z1: 3600 } });
+  Object.assign(look.haze, wearUniforms({ data: new Uint8Array(16), width: 2, height: 2, x0: -9200, x1: 8200, z0: -4200, z1: 3800 }, { x: 0, y: 0, z: 30000 }));
   const wind = { value: new THREE.Vector4(1, 0, 0, 0) };
-  return { look, wind, M: laneMaterials(store, tier, look.haze, { exposure: lane.LANE_REAL.exposure, grade: look.grade }), D: detailMaterials(store, tier, look.haze, { wind }) };
+  return { look, wind, M: laneMaterials(store, tier, look.haze, { exposure: lane.LANE_REAL.exposure, grade: look.grade }), D: detailMaterials(store, tier, look.haze, { wind, worn: WORN }) };
 }
 
 // A material's shaders as three would compile them: its ShaderLib program through its
@@ -44,7 +49,7 @@ test('every realistic material hazes, with the clamp to 32 before the haze, in p
   const names = Object.keys(M).filter((n) => n !== 'signs');
   assert.deepEqual(names.sort(), ['asphalt', 'blocks', 'boards', 'brick', 'cloth', 'cobbles', 'glass', 'grass', 'paint', 'path', 'render', 'roof']);
   const all = { ...M, ...Object.fromEntries(Object.entries(D).map(([k, m]) => [`detail ${k}`, m])) };
-  const plain = Object.keys(all).filter((n) => n !== 'signs' && n !== 'detail shadow');
+  const plain = Object.keys(all).filter((n) => n !== 'signs' && n !== 'detail shadow' && n !== 'detail contact');
   assert.ok(plain.length > 30, `${plain.length} materials`);
   for (const name of plain) {
     const m = all[name];
@@ -71,7 +76,7 @@ test('every realistic material hazes, with the clamp to 32 before the haze, in p
   const low = lookAndMaterials(TIERS.low);
   assert.equal(low.look.haze.uFarShadow, undefined);
   assert.ok(!compiled(low.M.brick).fragmentShader.includes('realSunShadow'));
-  assert.equal(low.M.brick.customProgramCacheKey(), 'real-haze');
+  assert.equal(low.M.brick.customProgramCacheKey(), 'real-haze-wear-wl');
   low.look.dispose();
   const glass = compiled(M.glass).fragmentShader;
   assert.ok(!glass.includes('#include <opaque_fragment>') && glass.includes('reflectedLight.indirectSpecular, diffuseColor.a);'), 'premultiplied: the reflection at full strength');
@@ -127,7 +132,34 @@ test('the detail\'s own: the leaf cards lit by their own normal on both faces, t
   look.dispose();
 });
 
-test('stable program cache keys, and the lane\'s realistic materials (its detail\'s too) need at most 20 programs', (t) => {
+test('the weathering in every textured material: its ground map and the strengths of its kind, before the lighting; exact on the houses\' walls (their attribute), lite on the low tier; none on the plain ones', () => {
+  for (const tier of [TIERS.high, TIERS.low]) {
+    const { look, M, D } = lookAndMaterials(tier);
+    const textured = [...Object.entries(M), ...Object.entries(D).map(([k, m]) => [`detail ${k}`, m])].filter(([, m]) => m.map && !m.alphaTest && !m.isMeshBasicMaterial);
+    assert.ok(textured.length >= 17, `${textured.length} textured materials`);
+    for (const [name, m] of textured) {
+      const s = compiled(m);
+      const kind = name.replace('detail ', '');
+      assert.ok(s.fragmentShader.includes('uniform vec4 uWear;') && s.fragmentShader.includes('uniform sampler2D uWearGround;'), `${name}: the WEAR patch`);
+      const at = s.fragmentShader.indexOf('if (dot(abs(uWear), vec4(1.0)) > 0.0) {');
+      assert.ok(at > s.fragmentShader.indexOf('#include <roughnessmap_fragment>') && at < s.fragmentShader.indexOf('#include <lights_physical_fragment>'), `${name}: after the maps, before the lighting`);
+      for (const u of ['uWearGround', 'uWearRect', 'uWearOrigin']) assert.equal(s.uniforms[u], look.haze[u], `${name}: ${u} the look's`);
+      assert.deepEqual(s.uniforms.uWear.value.toArray(), WEAR_KIND[kind] ?? [0, 0, 0, 0], `${name}: its kind's strengths`);
+      const attr = name.startsWith('detail ') && WORN.has(kind);
+      assert.equal(s.vertexShader.includes('attribute vec3 wear;') && s.fragmentShader.includes('#define WEAR_ATTR'), attr, `${name}: the walls' attribute`);
+      assert.equal(s.fragmentShader.includes('#define WEAR_LITE'), tier.name === 'low', `${name}: lite on low`);
+      assert.match(m.customProgramCacheKey(), new RegExp(`^real-haze-wear${attr ? '-wa' : ''}${tier.name === 'low' ? '-wl' : ''}(-far)?$`), name);
+    }
+    for (const kind of ['boards', 'brick', 'render', 'blocks', 'roof', 'tiles', 'granite', 'cobbles', 'asphalt', 'grass']) assert.ok(WEAR_KIND[kind].some((v) => v !== 0), `${kind} weathers`);
+    assert.ok(WEAR_KIND.roof[2] >= 0.8 && WEAR_KIND.tiles[2] >= 0.8, 'moss on the roofs');
+    assert.ok(WEAR_KIND.brick[0] >= 0.8, 'the plinths\' dirt band');
+    // The plain ones (paint, the lacquer, glass, leaves) keep theirs.
+    for (const name of ['paint', 'carPaint', 'glass', 'foliage', 'metal']) assert.ok(!compiled(D[name]).fragmentShader.includes('uniform vec4 uWear;'), `${name}: no weathering`);
+    look.dispose();
+  }
+});
+
+test('stable program cache keys, and the lane\'s realistic materials (its detail\'s too) need at most 24 programs', (t) => {
   const { M, D } = lookAndMaterials();
   const programs = new Set();
   for (const [name, m] of [...Object.entries(M), ...Object.entries(D).filter(([k]) => k !== 'shadow')]) {
@@ -138,7 +170,7 @@ test('stable program cache keys, and the lane\'s realistic materials (its detail
   }
   // (And the grass's, the firs' instancing: two more.)
   t.diagnostic(`${programs.size} + 2 programs`);
-  assert.ok(programs.size + 2 <= 20, `${programs.size} + 2 programs`);
+  assert.ok(programs.size + 2 <= 24, `${programs.size} + 2 programs`);
   // A material patched twice keeps one key per kind.
   const m = hazeChunk(new THREE.MeshStandardMaterial(), {}, 'real-test');
   assert.equal(m.customProgramCacheKey(), 'real-test');

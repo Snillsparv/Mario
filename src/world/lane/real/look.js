@@ -10,7 +10,11 @@
 //                                          // in the lazy realLook chunk), re-exported
 //   laneMaterials(store, tier, haze, { anisotropy, exposure, grade }) -> { [mesh name]: material }
 //       (grade: the look's grade uniforms, RealLook.grade, which the signs turn back)
-//   detailMaterials(store, tier, haze, { anisotropy }) -> { [detail material]: material }
+//   detailMaterials(store, tier, haze, { anisotropy, probes }) -> { [detail material]: material }
+//       (probes: the detail's meshes' own probes' names; a material reflecting each one,
+//       `material@probe`, for the meshes that name it)
+//   wearUniforms(mask, origin) -> { uWearGround, uWearRect, uWearOrigin }   // the weathering's
+//       ground map (the worker's lawn mask: materials.js WEAR) as the look's haze uniforms
 //   buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro, detail }) -> { part, look }
 //   laneRealSteps(layout, options)   // the same a step at a time (a generator whose return value
 //                                    // is { part, look }: RealAreas runs it over several frames)
@@ -31,7 +35,10 @@
 // repeats once over `cover` units; plain materials are flat (paint, metal, enamel...); `leaf`
 // ones are leaf cards (materials.js foliageMaterial: the leaf atlas, the fir twig), `glass` ones
 // glass (the windows' on the reflection probe; the cars' opaque and dark), `clearcoat` the cars'
-// lacquer, `shadow` the tile courses' flat stand-in (it only casts). Firs come instanced, the
+// lacquer, `shadow` the tile courses' flat stand-in (it only casts), `contact` the cars' contact
+// shadows (a darkening of the drive under them). The cars' paint and glass reflect their own
+// cluster's probe and the villas' windows the street in front of them (the detail's probes:
+// taken as the build is readied, each a task of its own). Firs come instanced, the
 // grass as a grid of clumps that follows the camera (grassGrid: look.grass(share) sets its reach,
 // the governor's); the plants, the grass and the flags move in one wind (layout.WIND's way, its
 // phase run by the part's update in gusts: fast and slow by turns, the sway stronger as it runs
@@ -39,7 +46,7 @@
 
 import * as THREE from 'three';
 import { RealLook } from '../../../render/real/RealLook.js';
-import { pbrMaterial, plainMaterial, glassMaterial, foliageMaterial, grassMaterial, shadowCaster, classicLook } from '../../../render/real/materials.js';
+import { pbrMaterial, plainMaterial, glassMaterial, foliageMaterial, grassMaterial, shadowCaster, contactMaterial, classicLook, setWear } from '../../../render/real/materials.js';
 import { jobKey } from '../../../render/real/texgen/jobs.js';
 import { GRASS } from './grass.js';
 import { CATALOGUE, DETAIL, jobOf } from './jobs.js';
@@ -51,7 +58,7 @@ export { laneJobs, laneDetail, LANE_REAL_AREA } from './jobs.js';
 
 const PAINT = { roughness: 0.5 };
 const CLOTH = { roughness: 0.85, side: THREE.DoubleSide };
-const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1 };
+const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1, wear: 3 };
 const WIND_SPEED = 1.7; // the plants' sway, radians a second
 const FAR_TOP = 3000; // the far shadow map's box reaches this high (the hill's trees' tops)
 const CLOUD_DRIFT = 0.002; // the cirrus's drift along the wind (the sky's units a second)
@@ -61,9 +68,11 @@ const colorOf = (c = 1) => (Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2])
 
 export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy, exposure = 1, grade = null } = {}) {
   const M = {};
+  const wear = { lite: tier.name === 'low' };
   for (const [name, entry] of Object.entries(CATALOGUE)) {
     const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
-    M[name] = pbrMaterial(maps, { repeat: repeatOf(name) / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, vertexColors: entry.vertexColors ?? true }, haze);
+    M[name] = pbrMaterial(maps, { repeat: repeatOf(name) / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, vertexColors: entry.vertexColors ?? true, wear }, haze);
+    setWear(M[name], name);
   }
   M.paint = plainMaterial(PAINT, haze);
   M.cloth = plainMaterial(CLOTH, haze);
@@ -73,16 +82,21 @@ export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy,
   return M;
 }
 
-export function detailMaterials(store, tier, haze, { anisotropy = tier.anisotropy, wind } = {}) {
+export function detailMaterials(store, tier, haze, { anisotropy = tier.anisotropy, wind, probes = [], worn = new Set() } = {}) {
   const M = {};
+  const plain = (entry) => (entry.glass ? glassMaterial(entry.glass === true ? {} : entry.glass, haze) : entry.shadow ? shadowCaster() : entry.contact ? contactMaterial() : plainMaterial(entry, haze));
+  for (const { material, probe } of probes) M[`${material}@${probe}`] = plain(DETAIL[material]);
   for (const [name, entry] of Object.entries(DETAIL)) {
     if (!entry.set) {
-      M[name] = entry.glass ? glassMaterial(entry.glass === true ? {} : entry.glass, haze) : entry.shadow ? shadowCaster() : plainMaterial(entry, haze);
+      M[name] = plain(entry);
       continue;
     }
     const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
     if (entry.leaf) M[name] = foliageMaterial(maps.albedo, { ...entry.leaf, coverage: tier.samples > 0, wind }, haze);
-    else M[name] = pbrMaterial(maps, { repeat: 1 / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1 }, haze);
+    else {
+      M[name] = pbrMaterial(maps, { repeat: 1 / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, wear: { attr: worn.has(name), lite: tier.name === 'low' } }, haze);
+      setWear(M[name], name);
+    }
   }
   for (const [name, m] of Object.entries(M)) m.name = `lane-detail-${name}`;
   return M;
@@ -104,10 +118,10 @@ function detailGroup(detail, M) {
     mesh.receiveShadow = true;
     group.add(mesh);
   };
-  for (const { name, material, cast, buffers, sphere } of detail.meshes) {
+  for (const { name, material, cast, buffers, sphere, probe } of detail.meshes) {
     const geo = geometryOf(buffers);
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(sphere[0], sphere[1], sphere[2]), sphere[3]); // (the worker's)
-    add(new THREE.Mesh(geo, M[material]), name, cast);
+    add(new THREE.Mesh(geo, M[probe ? `${material}@${probe}` : material]), name, cast);
   }
   const { parts, matrices, colors, cast, far } = detail.firs;
   for (const { material, buffers } of parts) {
@@ -126,10 +140,21 @@ function detailGroup(detail, M) {
 // a DataTexture; returns { follow(camera), reach(share) }: the grid's per-frame move, centred
 // ahead of the camera (on the ground it looks at), snapped to whole cells (no allocation a
 // frame), and its blades' reach (the governor's).
-function grassGrid(group, { clump, mask }, G, haze, wind) {
-  const lawn = new THREE.DataTexture(mask.data, mask.width, mask.height, THREE.RGBAFormat, THREE.UnsignedByteType);
-  lawn.needsUpdate = true;
-  const rect = new THREE.Vector4(mask.x0, mask.z0, 1 / (mask.x1 - mask.x0), 1 / (mask.z1 - mask.z0));
+// The lawn mask as a texture (nearest texels: the grass reads where it grows and the ground's
+// height there) and its rect: Vector4(x0, z0, 1 / width, 1 / depth).
+function groundTexture(mask) {
+  const texture = new THREE.DataTexture(mask.data, mask.width, mask.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  texture.needsUpdate = true;
+  return { texture, rect: new THREE.Vector4(mask.x0, mask.z0, 1 / (mask.x1 - mask.x0), 1 / (mask.z1 - mask.z0)) };
+}
+
+export function wearUniforms(mask, origin) {
+  const { texture, rect } = groundTexture(mask);
+  return { uWearGround: { value: texture }, uWearRect: { value: rect }, uWearOrigin: { value: new THREE.Vector3(origin.x, origin.y, origin.z) } };
+}
+
+function grassGrid(group, { clump, ground }, G, haze, wind) {
+  const { texture: lawn, rect } = ground;
   const grid = { value: new THREE.Vector4(0, 0, G.cell, G.radius) };
   const middle = { value: new THREE.Vector2() };
   const geo = new THREE.InstancedBufferGeometry();
@@ -190,6 +215,10 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
   const zs = layout.BOUNDS.map(([, z]) => z + origin.z);
   const farBox = { x0: Math.min(...xs), x1: Math.max(...xs), y0: origin.y - 100, y1: origin.y + FAR_TOP, z0: Math.min(...zs), z1: Math.max(...zs) };
   const look = new RealLook({ preset, tier, probeAt: { x: p.x + origin.x, y: p.y + origin.y, z: p.z + origin.z }, farBox, canRetro });
+  // The weathering's ground map (the worker's lawn mask), every realistic material's.
+  const wear = detail?.ground ? wearUniforms(detail.ground, origin) : null;
+  if (wear) Object.assign(look.haze, wear);
+  const ground = wear && { texture: wear.uWearGround.value, rect: wear.uWearRect.value };
   const materials = laneMaterials(store, tier, look.haze, { anisotropy, exposure: preset.exposure, grade: look.grade });
   look.useProbe([materials.glass]);
   yield;
@@ -202,12 +231,19 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
   // clock), set as the part updates.
   const [wx, wz] = layout.WIND.dir.map((c) => c / Math.hypot(...layout.WIND.dir));
   const wind = { value: new THREE.Vector4(wx, wz, 0, 0) };
-  const D = detailMaterials(store, tier, look.haze, { anisotropy, wind });
+  // The probes the detail's meshes reflect: each cluster of cars', the villas' windows'.
+  const own = detail.meshes.filter((m) => m.probe);
+  const worn = new Set(detail.meshes.filter((m) => m.buffers.wear).map((m) => m.material));
+  const D = detailMaterials(store, tier, look.haze, { anisotropy, wind, probes: own, worn });
   look.useProbe([D.glass]);
+  for (const p of detail.probes ?? []) {
+    look.addProbe(p.name, { x: p.at[0] + origin.x, y: p.at[1] + origin.y, z: p.at[2] + origin.z }, p.kind === 'car' ? tier.carProbe : tier.probe);
+    look.useProbe(own.filter((m) => m.probe === p.name).map((m) => D[`${m.material}@${p.name}`]), p.name);
+  }
   const group = detailGroup(detail, D);
   part.object3D.add(group);
   yield;
-  const grass = detail.grass ? grassGrid(group, detail.grass, GRASS[tier.name], look.haze, wind) : null;
+  const grass = detail.grass ? grassGrid(group, { clump: detail.grass.clump, ground }, GRASS[tier.name], look.haze, wind) : null;
   const follow = grass?.follow;
   look.grass = grass?.reach ?? null;
   look.grass?.(look.level.grass);

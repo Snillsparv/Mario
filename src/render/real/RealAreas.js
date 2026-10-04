@@ -27,9 +27,10 @@
 //                        // geometry from the workers, its build (def.real.build: a generator, run
 //                        // a few ms at a time), its textures uploaded, its programs compiled
 //                        // (view.compileLook) and linked, its post chain's too, its reflection
-//                        // probe taken, then its far shadow map: all between frames, no task
-//                        // over a few ms but a program's link, the probe and the far map (where
-//                        // the browser waits for the GPU), so nothing hitches as it swaps in
+//                        // probes taken (a task each), then its far shadow map: all between
+//                        // frames, no task over a few ms but a program's link, a probe and the
+//                        // far map (where the browser waits for the GPU), so nothing hitches as
+//                        // it swaps in
 //   real.done            // Map: area name -> its build, once ready (core/AreaSwitch.js shows it
 //                        // from an area's first frame when it is)
 //   real.setClassic(on)  // the "Classic street" choice (G, this session only)
@@ -181,6 +182,11 @@ export class RealAreas {
       lap('compile');
       await this.upload(meshes);
       lap('upload');
+      // (Each probe a task of its own: the cars' clusters', then the windows'.)
+      for (const name of look.probeNames()) {
+        view.withLook(look, holder, [part.object3D], () => look.takeProbe(view, name));
+        await pause();
+      }
       view.withLook(look, holder, [part.object3D], () => look.takeProbe(view));
       lap('probe');
       await pause();

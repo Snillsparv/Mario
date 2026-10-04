@@ -18,12 +18,21 @@
 //       0) } every swaying material shares (the part's update sets the phase)
 //   shadowCaster() -> MeshBasicMaterial                      // draws nothing, casts the sun's
 //       shadow (both faces): the flat stand-in for a mesh that casts none itself (the tiles)
+//   contactMaterial() -> MeshBasicMaterial                   // the cars' contact shadows: the
+//       colour already drawn multiplied by the vertex colour (what the ground's light under a
+//       car is cut to: darkest under its middle and round its tyres), after the opaque scene,
+//       writing no depth, pulled toward the camera a little (no fight with the drive)
 //   grassMaterial({ lawn, rect, grid, wind }, haze) -> MeshStandardMaterial   // the grass's
 //       clump over a grid of cells (below): lawn the mask (a DataTexture), rect its uniform
 //       Vector4(x0, z0, 1 / width, 1 / depth), grid { value: Vector4(corner x, corner z, cell,
 //       radius) } and the grid's middle { value: Vector2 } (the part's update moves both)
-//   hazeChunk(material, haze, key)                           // patches any standard material
-//       (and, where the look has a far shadow map, haze.uFarShadow, sunShadowChunk: key '-far')
+//   hazeChunk(material, haze, key, patch?, wear?)            // patches any standard material
+//       (and, where the look has a far shadow map, haze.uFarShadow, sunShadowChunk: key '-far';
+//       wear { attr, lite }: the WEAR patch where the look has the ground map, haze.uWearGround:
+//       keys '-wear', '-wa' (the `wear` attribute), '-wl' (lite))
+//   setWear(material, kind)                                  // its weathering's strengths
+//       (WEAR_KIND[kind]: none by default)
+//   WEAR_KIND, WEAR_GLSL                                     // (the tests')
 //   sunShadowChunk(shader)                                   // the sun's shadow near and far
 //   classicLook(material, { exposure, direct, grade })       // an unlit classic material (the
 //       signs' boards) drawn through the look as it looked in the classic one (below; grade:
@@ -70,6 +79,22 @@
 // hash of where the cell lies (so nothing swims as the grid moves on a cell at a time), turned
 // and sized by the same hash, stood on the lawn mask's height, and shrunk to nothing off the
 // lawns and out toward the grid's radius (no pop); its tips sway in the wind.
+//
+// Wear and grime (WEAR): the street weathered without a texture of its own. Every textured
+// material (pbrMaterial) gets a patch before its lighting, with the look's ground map
+// (haze.uWearGround: the lawn mask, world/lane/real/grass.js groundMap: G the ground's height,
+// B the road's wheel track, A where a lawn lies damp; uWearRect, uWearOrigin) and its own
+// strengths (uWear: the dirt band, the streaks, the moss, the ground's own: setWear by kind):
+// a dirt band at the foot of every wall and kerb (its height over the ground from the map, 40
+// out along the wall; or exact from the worker's `wear` attribute on the houses' walls: how far
+// under the sill or eave over it, how high over the ground, the streaks' length), rain streaks
+// hanging from the sills and eaves (and faint ones anywhere), moss and algae on the faces
+// turned up or away from the sun (the roofs' north slopes, the kerbs' tops, the walls' copings,
+// the trunks' north sides), a greener tint in the streaks under a north eave; the asphalt's
+// wheel track down the street's middle (darker, smoother); the lawns' slow change of colour
+// (yellowed patches, darker damp ones by the hedges: the grass blades match, grassMaterial). All
+// from world positions and the interpolated normal (the normal-mapped one made the streaks
+// speckle). The low tier's is lite (the band and the ground's only: one noise).
 //
 // Each patch has a fixed customProgramCacheKey: one program serves every material of a kind
 // with the same three.js features.
@@ -138,17 +163,127 @@ export function sunShadowChunk(shader) {
     .replace(SUN_CALL, `realSunShadow( ${SUN_CALL}, vDirectionalShadowCoord[ i ], directionalLightShadow.shadowIntensity )`);
 }
 
-export function hazeChunk(material, haze, key = 'real-haze', patch = null) {
+// The weathering's strengths per kind: (the dirt band, the streaks, the moss, the ground's own:
+// the asphalt's wheel track over 0, the lawn's colour under 0).
+export const WEAR_KIND = Object.freeze({
+  boards: [0.55, 0.55, 0.05, 0],
+  brick: [0.9, 0.45, 0.3, 0],
+  render: [0.8, 0.7, 0.25, 0],
+  blocks: [0.9, 0.5, 0.7, 0],
+  roof: [0, 0.35, 0.9, 0],
+  tiles: [0, 0.35, 0.9, 0],
+  granite: [0.5, 0, 0.6, 0],
+  cobbles: [0.4, 0, 0.8, 0],
+  path: [0.3, 0, 0.6, 0],
+  bark: [0, 0, 0.6, 0],
+  birch: [0, 0, 0.35, 0],
+  asphalt: [0, 0, 0, 1],
+  patch: [0, 0, 0, 0.6],
+  grass: [0, 0, 0, -1],
+});
+
+export function setWear(material, kind) {
+  material.userData.wear?.value.fromArray(WEAR_KIND[kind] ?? [0, 0, 0, 0]);
+}
+
+// The noise the weathering draws with (the grass's blades share it, in their vertex shader).
+const WEAR_NOISE = /* glsl */ `
+float wHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float wNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(wHash(i), wHash(i + vec2(1.0, 0.0)), u.x), mix(wHash(i + vec2(0.0, 1.0)), wHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float wFbm(vec2 p) { return 0.5 * wNoise(p) + 0.3 * wNoise(p * 2.13 + 7.1) + 0.2 * wNoise(p * 4.37 + 3.3); }
+// The lawn's colour at a world point: yellowed patches, darker damp ones (damp: the ground map's).
+vec3 wLawn(vec2 p, float damp, float k) {
+  float dry = smoothstep(0.52, 0.78, wFbm(p * 0.0011 + 3.1));
+  float wet = clamp(damp + 0.6 * smoothstep(0.58, 0.85, wFbm(p * 0.0017 + 7.3)), 0.0, 1.0);
+  return mix(vec3(1.0), vec3(1.22, 1.1, 0.6), 0.5 * dry * k) * mix(1.0, 0.76, wet * k);
+}
+`;
+export const WEAR_GLSL = /* glsl */ `
+uniform sampler2D uWearGround;
+uniform vec4 uWearRect;
+uniform vec3 uWearOrigin;
+uniform vec4 uWear;
+#ifdef WEAR_ATTR
+  varying vec3 vWear;
+#endif
+${WEAR_NOISE}`;
+const WEAR_FRAG = /* glsl */ `
+  if (dot(abs(uWear), vec4(1.0)) > 0.0) {
+    vec3 wp = vHazeWorld;
+    vec3 wn = inverseTransformDirection(normalize(vNormal), viewMatrix);
+    float wall = 1.0 - smoothstep(0.35, 0.7, abs(wn.y));
+    vec2 lp = wp.xz - uWearOrigin.xz;
+    vec4 gm = texture2D(uWearGround, (lp + normalize(wn.xz + 1e-4) * 40.0 * wall - uWearRect.xy) * uWearRect.zw);
+    float hag = wp.y - (gm.g * 1020.0 + uWearOrigin.y);
+    float below = 1e4;
+    float slen = 1.0;
+    #ifdef WEAR_ATTR
+      if (vWear.z > 0.0) {
+        below = vWear.x;
+        hag = vWear.y;
+        slen = vWear.z;
+      }
+    #endif
+    float along = dot(wp.xz, normalize(vec2(-wn.z, wn.x) + 1e-5));
+    float n1 = wNoise(vec2(along * 0.03, wp.y * 0.01));
+    float band = (1.0 - smoothstep(0.0, 25.0 + 60.0 * n1, hag)) * wall * step(-30.0, hag);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.3, 0.27, 0.22), clamp(uWear.x * band, 0.0, 0.85));
+    float wet = 0.0;
+    #ifndef WEAR_LITE
+      // Streaks: faint ones anywhere on a wall, strong drips hanging from a sill or an eave.
+      float faint = smoothstep(0.5, 0.92, wFbm(vec2(along * 0.11, wp.y * 0.0018 + along * 0.0007))) * (0.5 + 0.5 * wNoise(vec2(along * 0.013, 3.7)));
+      float drip = smoothstep(0.42, 0.85, wFbm(vec2(along * 0.13, wp.y * 0.0035))) * exp(-below / (220.0 * slen));
+      float streak = max(faint * 0.35, drip) * wall;
+      float away = smoothstep(0.25, -0.35, dot(wn, uSunDir));
+      diffuseColor.rgb *= 1.0 - 0.45 * uWear.y * streak;
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.68, 0.42), clamp(uWear.y * drip * away * wall, 0.0, 0.6));
+      // Moss: on faces turned up and away from the sun, in patches.
+      float up = smoothstep(0.25, 0.75, wn.y);
+      float moss = smoothstep(0.5, 0.76, wFbm(wp.xz * 0.012 + wp.y * 0.003)) * (0.35 + up) * (0.45 + 0.9 * away) * (0.6 + 0.4 * wNoise(wp.xz * 0.21));
+      // (Lighter than the dark tiles, darker than the white plinths: a yellow-green.)
+      vec3 mossTint = vec3(0.1, 0.115, 0.032) * (0.7 + 0.6 * wNoise(wp.xz * 0.05 + 1.7));
+      diffuseColor.rgb = mix(diffuseColor.rgb, mossTint, clamp(uWear.z * moss, 0.0, 0.75));
+      roughnessFactor = min(1.0, roughnessFactor + 0.25 * (uWear.x * band + uWear.z * moss));
+    #endif
+    // The ground's own: the asphalt's wheel track (uWear.w over 0: gm.b, darker and smoother),
+    // the lawn's colour (under 0: gm.a, where it lies damp).
+    float track = gm.b * max(uWear.w, 0.0) * (1.0 - wall);
+    diffuseColor.rgb *= 1.0 - 0.2 * track;
+    roughnessFactor *= 1.0 - 0.35 * track;
+    if (uWear.w < 0.0) diffuseColor.rgb *= wLawn(wp.xz, gm.a, -uWear.w);
+  }
+`;
+const WEAR_VERT = /* glsl */ `#include <begin_vertex>
+  vWear = wear;`;
+
+// The WEAR patch into a standard material's shader (attr: its geometry's `wear` attribute;
+// lite: the band and the ground's only).
+function wearChunk(shader, uniform, { attr = false, lite = false }) {
+  shader.uniforms.uWear = uniform;
+  const defines = (attr ? '#define WEAR_ATTR\n' : '') + (lite ? '#define WEAR_LITE\n' : '');
+  if (attr) shader.vertexShader = 'attribute vec3 wear;\nvarying vec3 vWear;\n' + shader.vertexShader.replace('#include <begin_vertex>', WEAR_VERT);
+  shader.fragmentShader = defines + WEAR_GLSL + shader.fragmentShader.replace('#include <lights_physical_fragment>', WEAR_FRAG + '#include <lights_physical_fragment>');
+}
+
+export function hazeChunk(material, haze, key = 'real-haze', patch = null, wear = null) {
   material.fog = false; // (the haze is the fog)
   const far = !!haze.uFarShadow;
+  const worn = !!(wear && haze.uWearGround);
+  if (worn) material.userData.wear = { value: new THREE.Vector4() };
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, haze);
     shader.vertexShader = 'varying vec3 vHazeWorld;\n' + shader.vertexShader.replace('#include <project_vertex>', HAZE_VERT);
     shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG);
     patch?.(shader);
+    if (worn) wearChunk(shader, material.userData.wear, wear);
     if (far) sunShadowChunk(shader);
   };
-  material.customProgramCacheKey = () => (far ? `${key}-far` : key);
+  const k = worn ? `${key}-wear${wear.attr ? '-wa' : ''}${wear.lite ? '-wl' : ''}` : key;
+  material.customProgramCacheKey = () => (far ? `${k}-far` : k);
   return material;
 }
 
@@ -158,7 +293,7 @@ const repeated = (texture, repeat) => {
   return t;
 };
 
-export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1, normalScale = 1, side = THREE.FrontSide, vertexColors = true } = {}, haze) {
+export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1, normalScale = 1, side = THREE.FrontSide, vertexColors = true, wear = {} } = {}, haze) {
   const orm = repeated(maps.orm, repeat);
   const material = new THREE.MeshStandardMaterial({
     map: repeated(maps.albedo, repeat),
@@ -172,7 +307,7 @@ export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1,
     vertexColors,
     side,
   });
-  return hazeChunk(material, haze);
+  return hazeChunk(material, haze, 'real-haze', null, wear);
 }
 
 export function plainMaterial({ color = 0xffffff, roughness = 0.5, metalness = 0, side = THREE.FrontSide, vertexColors = true, envMapIntensity = 1, clearcoat = null } = {}, haze) {
@@ -243,13 +378,16 @@ const GRASS_COLOR = /* glsl */ `#include <color_vertex>
   grassAt += grassHash * uGrid.z;
   vec4 grassLawn = texture2D(uLawn, (grassAt - uLawnRect.xy) * uLawnRect.zw);
   float grassSize = grassLawn.r * (1.0 - smoothstep(uGrid.w * 0.7, uGrid.w, distance(grassAt, uGridMiddle)));
-  vColor.rgb *= mix(vec3(0.9, 0.92, 0.85), vec3(1.25, 1.2, 1.05), grassHash.y);`;
+  vColor.rgb *= mix(vec3(0.9, 0.92, 0.85), vec3(1.25, 1.2, 1.05), grassHash.y);
+  vColor.rgb *= wLawn((modelMatrix * vec4(grassAt.x, 0.0, grassAt.y, 1.0)).xz, grassLawn.a, 1.0); // (the lawn's own colour under it)`;
 
 const GRASS_VERT = /* glsl */ `#include <begin_vertex>
   {
     float turn = grassHash.x * 6.2832;
     transformed.xz = mat2(cos(turn), sin(turn), -sin(turn), cos(turn)) * transformed.xz;
-    transformed *= grassSize * vec3(1.0, 0.7 + 0.6 * grassHash.y, 1.0);
+    // (Longer where the lawn lies damp by the hedges and in unmown patches.)
+    float grassLong = 1.0 + 0.5 * grassLawn.a + 0.4 * smoothstep(0.55, 0.8, wFbm(grassAt * 0.0016 + 5.3));
+    transformed *= grassSize * vec3(1.0, (0.7 + 0.6 * grassHash.y) * grassLong, 1.0);
     float swayPhase = uWind.z * 1.3 + dot(grassAt, vec2(0.004, 0.003));
     transformed.xz += uWind.xy * sway * 2.5 * grassSize * (0.6 * sin(swayPhase) + 0.4 * sin(2.7 * swayPhase));
     transformed.xz += grassAt;
@@ -260,12 +398,35 @@ export function grassMaterial({ lawn, rect, grid, middle, wind }, haze) {
   const material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, vertexColors: true, side: THREE.DoubleSide });
   return hazeChunk(material, haze, 'real-grass', (shader) => {
     Object.assign(shader.uniforms, { uLawn: { value: lawn }, uLawnRect: { value: rect }, uGrid: grid, uGridMiddle: middle, uWind: wind });
-    shader.vertexShader = 'attribute vec2 cell;\nattribute float sway;\nuniform sampler2D uLawn;\nuniform vec4 uLawnRect, uGrid, uWind;\nuniform vec2 uGridMiddle;\n' + shader.vertexShader.replace('#include <color_vertex>', GRASS_COLOR).replace('#include <begin_vertex>', GRASS_VERT);
+    shader.vertexShader = 'attribute vec2 cell;\nattribute float sway;\nuniform sampler2D uLawn;\nuniform vec4 uLawnRect, uGrid, uWind;\nuniform vec2 uGridMiddle;\n' + WEAR_NOISE + shader.vertexShader.replace('#include <color_vertex>', GRASS_COLOR).replace('#include <begin_vertex>', GRASS_VERT);
   });
 }
 
 export function shadowCaster() {
   return new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+}
+
+export function contactMaterial() {
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.ZeroFactor,
+    blendDst: THREE.SrcColorFactor,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
+    toneMapped: false,
+    fog: false,
+  });
+  // (A factor, not a colour: never encoded for the screen.)
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <colorspace_fragment>', '');
+  };
+  material.customProgramCacheKey = () => 'real-contact';
+  return material;
 }
 
 export function glassMaterial({ color = 0x9aa4a8, roughness = 0.02, ior = 2.2, opacity = 0.45, envMapIntensity = 1 } = {}, haze) {

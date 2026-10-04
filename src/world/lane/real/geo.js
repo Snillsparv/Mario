@@ -8,6 +8,10 @@
 //                                     // linear), times k
 //   g.sway                            // the next vertices' weight in the wind (0 still: the
 //                                     // leaf cards' tips 1; only meshes that sway carry it)
+//   g.wearAt = (p) => [below, over, length] | null   // the next vertices' `wear` (the walls'
+//                                     // weathering, materials.js WEAR: how far under the sill or
+//                                     // eave over it, how high over the ground, its streaks'
+//                                     // length; only meshes with some carry it, the others' 0)
 //   g.quad(a, b, c, d, { uvs, n, shade })   // a b c d counter-clockwise seen from its front;
 //                                     // uvs default to its own edges (u along a->b, v along
 //                                     // a->d, world units), n one normal each (flat by default),
@@ -24,7 +28,7 @@
 //                                     // closed, all the same length), smooth normals; segs(i):
 //                                     // whether segment i .. i + 1 of the rings is skinned
 //   g.count                           // vertices so far
-//   g.buffers() -> { position, normal, uv, color, sway? }   // Float32Arrays, non-indexed
+//   g.buffers() -> { position, normal, uv, color, sway?, wear? }   // Float32Arrays, non-indexed
 //
 //   linear(hex) -> [r, g, b]          // an sRGB hex colour in linear light (as three.js's Color)
 //   sub, add, mul, dot, cross, norm, lerp   // [x, y, z] vector helpers
@@ -58,6 +62,9 @@ export class Geo {
     this.tint = [1, 1, 1];
     this.sway = 0;
     this.swaying = false; // (whether any vertex has swayed: the attribute is only kept then)
+    this.wr = [];
+    this.wearAt = null;
+    this.wearing = false; // (whether any vertex has worn: the attribute is only kept then)
   }
 
   get count() {
@@ -82,6 +89,11 @@ export class Geo {
     this.col.push(this.tint[0] * shade, this.tint[1] * shade, this.tint[2] * shade);
     this.sw.push(this.sway);
     if (this.sway) this.swaying = true;
+    const w = this.wearAt?.(p);
+    if (w) {
+      this.wr.push(w[0], w[1], w[2]);
+      this.wearing = true;
+    } else this.wr.push(0, 0, 0);
   }
 
   quad(a, b, c, d, { uvs = null, n = null, shade = 1 } = {}) {
@@ -243,6 +255,7 @@ export class Geo {
   buffers() {
     const out = { position: Float32Array.from(this.pos), normal: Float32Array.from(this.nrm), uv: Float32Array.from(this.uv), color: Float32Array.from(this.col) };
     if (this.swaying) out.sway = Float32Array.from(this.sw);
+    if (this.wearing) out.wear = Float32Array.from(this.wr);
     return out;
   }
 }

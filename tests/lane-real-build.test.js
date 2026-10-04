@@ -213,6 +213,14 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
         assert.ok(m.material.isMeshBasicMaterial && !m.material.colorWrite && !m.material.depthWrite && m.castShadow, 'the stand-in only casts');
         continue;
       }
+      if (name === 'lane-detail-contact') {
+        // The cars' contact shadows: multiplying what is drawn under them, writing no depth,
+        // casting none.
+        const c = m.material;
+        assert.ok(c.isMeshBasicMaterial && c.transparent && !c.depthWrite && c.blending === THREE.CustomBlending && c.blendSrc === THREE.ZeroFactor && c.blendDst === THREE.SrcColorFactor && !m.castShadow);
+        assert.equal(c.customProgramCacheKey(), 'real-contact');
+        continue;
+      }
       assert.ok(m.material.isMeshStandardMaterial && m.material.fog === false, `${name}: physically based, hazed`);
       assert.match(m.material.customProgramCacheKey(), /^real-/, name);
       for (const attr of Object.values(m.geometry.attributes)) for (const v of attr.array) assert.ok(Number.isFinite(v), `${name}: finite`);
@@ -224,8 +232,25 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     assert.ok(leaves.alphaTest > 0 && leaves.side === THREE.DoubleSide && leaves.map.mipmaps.length > 1, 'alpha-tested cards, coverage mips');
     assert.equal(leaves.alphaToCoverage, tier.samples > 0, 'alpha to coverage with MSAA');
     assert.ok(D['lane-detail-foliage'].geometry.attributes.sway, 'the cards sway');
-    assert.equal(D['lane-detail-carPaint'].material.customProgramCacheKey(), `real-coat${far}`, 'lacquer');
-    assert.ok(D['lane-detail-carPaint'].material.defines.USE_CLEARCOAT !== undefined);
+    // The cars' lacquer (each cluster's on its own probe; on low one paint on the sky's
+    // environment), the villas' windows on theirs.
+    const paints = Object.entries(D).filter(([name]) => name.startsWith('lane-detail-carPaint'));
+    assert.equal(paints.length, tierName === 'low' ? 1 : 4, `${tierName}: the cars' paints`);
+    for (const [name, m] of paints) {
+      assert.equal(m.material.customProgramCacheKey(), `real-coat${far}`, `${name}: lacquer`);
+      assert.ok(m.material.defines.USE_CLEARCOAT !== undefined);
+    }
+    if (tierName === 'high') {
+      const names = look.probeNames();
+      assert.deepEqual(names, ['car0', 'car1', 'car2', 'car3', 'street', 'north'], 'the cars\' probes first');
+      for (let k = 0; k < 4; k++) {
+        const p = look.probes.get(`car${k}`);
+        assert.equal(p.size, 128);
+        assert.deepEqual(p.materials, [D[`lane-detail-carPaint@${k}`].material, D[`lane-detail-carGlass@${k}`].material], `cluster ${k}: its paint and glass on its probe`);
+      }
+      assert.deepEqual(look.probes.get('north').materials, [D['lane-detail-glass@north'].material], 'the villas\' windows on theirs');
+      assert.ok(look.probes.get('north').at.z < AREA_DEFS.lane.origin.z, 'over the street in front of them');
+    } else assert.deepEqual(look.probeNames(), [], 'no probes on low');
     const firs = D['lane-detail-fir-leaves'];
     assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16 && firs.count > 90, `${firs.count} firs`);
     assert.equal(firs.castShadow, tierName !== 'low', 'the firs cast but on low');
@@ -270,7 +295,7 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
   }
 });
 
-test('privacy and originality: the realistic look\'s sources load no image, read no photograph and fetch nothing (every texture is painted in code)', () => {
+test('privacy and originality: the realistic look\'s sources load no image, read no photograph and fetch nothing (every texture is painted in code), name no street and letter nothing', () => {
   const files = [];
   const walk = (dir) => {
     for (const f of readdirSync(dir)) {
@@ -288,7 +313,13 @@ test('privacy and originality: the realistic look\'s sources load no image, read
     assert.ok(!/\.(png|jpe?g|webp|gif|hdr|exr|ktx2?)['"`]/i.test(src), `${f.pathname}: no image files`);
     assert.ok(!/TextureLoader|RGBELoader|new Image\b|ImageLoader|\bfetch\(|XMLHttpRequest/.test(src), `${f.pathname}: nothing loaded`);
     assert.ok(!/\b[A-Z]{3} ?\d{2}[0-9A-Z]\b/.test(src), `${f.pathname}: no licence plates`);
+    // No real street's name (a Swedish street's: ...vägen, ...gatan) and no lettering drawn
+    // anywhere in the look (the street sign's plate and the mailbox's stay blank).
+    assert.ok(!/[A-ZÅÄÖ][a-zåäö]+(vägen|gatan|stigen|gränd|backen|allén|torget|vagen)\b/.test(src), `${f.pathname}: no street names`);
+    assert.ok(!/fillText|strokeText|bitmapFont|measureText/.test(src), `${f.pathname}: no lettering`);
   }
+  // The new detail's sources are among those scanned.
+  assert.ok(files.some((f) => f.pathname.endsWith('/clutter.js')) && files.some((f) => f.pathname.endsWith('/hardware.js')), 'clutter.js and hardware.js scanned');
 });
 
 test('the pause legend in a course with a realistic look: its retro row names G too (retro TV and classic, or the retro filter and realistic), the same rows at the same places; pads and touch unchanged', () => {

@@ -35,8 +35,8 @@ export const DETAIL = {
   roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
   tiles: { set: 'tiles', opts: { relief: 0 }, cover: 270, color: 5, roughness: 0.8 },
   granite: { set: 'granite', cover: 120, color: 0.95 },
-  patch: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.5 },
-  bark: { set: 'bark', cover: 120, normalScale: 1.2 },
+  patch: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.5, roughness: 0.72 }, // (sealed: smoother, a little glossier)
+  bark: { set: 'bark', cover: 120, normalScale: 1.6 },
   birch: { set: 'bark', opts: { birch: 1 }, cover: 140 },
   paint: { roughness: 0.55, side: THREE.DoubleSide },
   metal: { roughness: 0.35, metalness: 0.3 },
@@ -54,6 +54,7 @@ export const DETAIL = {
   trim: { roughness: 0.6 },
   lamp: { roughness: 0.08, metalness: 0.2 },
   tail: { roughness: 0.15 },
+  contact: { contact: true },
   core: { roughness: 1, envMapIntensity: 0.6 },
   'fir-core': { roughness: 1, envMapIntensity: 0.6 },
   foliage: { set: 'leaves', leaf: { roughness: 0.75, translucency: 0.6, envMapIntensity: 0.5 } },

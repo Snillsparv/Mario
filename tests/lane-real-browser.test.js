@@ -18,6 +18,9 @@
 // 10 on mid, none on low; the occlusion's mean at the arrival neither black nor white, the sky
 // the same with it and without; a bloom halo round the sun; Jonas drawn at 0.85 and the camera's
 // field of view 55 in the realistic look, 1 and 45 with G (classic by choice) and after it.
+// G2: each cluster of parked cars' reflection probe and the villas' windows' taken (none on low),
+// the weathering's ground map bound, the cars' contact shadows darkening the drive beside them,
+// the clutter and the blank street sign drawn; budgets per tier (section 9 of the GTA plan).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -87,6 +90,17 @@ async function open(query) {
           for (let i = 0; i < 49; i++) sum += px[i * 4 + c];
           return Math.round(sum / 49);
         });
+      });
+    };
+    // ...the mean of a 7 x 7 patch at screen fractions (the grain and an edge evened out)...
+    window.__patchOn = (spots) => {
+      const g = window.__game;
+      g.render();
+      const gl = g.view.renderer.getContext();
+      const px = new Uint8Array(4 * 49);
+      return spots.map(([fx, fy]) => {
+        gl.readPixels(Math.floor(fx * gl.drawingBufferWidth) - 3, Math.floor(fy * gl.drawingBufferHeight) - 3, 7, 7, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        return [0, 1, 2].map((c) => Math.round(px.filter((_, i) => i % 4 === c).reduce((a, q) => a + q, 0) / 49));
       });
     };
     // ...and at screen fractions (0..1 from the bottom left).
@@ -318,6 +332,52 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     const far = Math.max(ratio.at(-1), ratio.at(-2));
     for (const r of ratio.slice(0, -2)) assert.ok(r > far + 0.01, `a halo round the sun: ${ratio.map((x) => x.toFixed(3))}`);
     assert.deepEqual(gta.far, [true, 1], 'the far shadow map taken once');
+    // G2: the probes (the cars' clusters' at 128, the windows' at 256), all taken; the
+    // weathering's ground map; the contact shadows, the clutter, the sign.
+    const g2 = await page.evaluate(() => {
+      const g = window.__game;
+      const look = g.view.look;
+      const named = (n) => g.view.scene.getObjectByName(n);
+      return {
+        probes: [...look.probes.values()].map((p) => [p.name, p.size, p.taken, !!p.target, p.materials.length]),
+        ground: !!look.haze.uWearGround?.value?.isDataTexture,
+        contact: named('lane-detail-contact')?.visible === true && named('lane-detail-contact').material.transparent,
+        paints: ['carPaint@0', 'carPaint@1', 'carPaint@2', 'carPaint@3'].map((n) => named(`lane-detail-${n}`)?.material.envMap?.isTexture === true),
+      };
+    });
+    t.diagnostic(`G2: ${JSON.stringify(g2)}`);
+    assert.deepEqual(g2.probes.map((p) => p[0]), ['street', 'car0', 'car1', 'car2', 'car3', 'north']);
+    for (const [name, size, taken, target, materials] of g2.probes) {
+      assert.ok(taken && target && materials > 0, `${name}: taken`);
+      assert.equal(size, name.startsWith('car') ? 128 : 256, `${name}: its size`);
+    }
+    assert.ok(g2.ground, 'the weathering\'s ground map');
+    assert.ok(g2.contact, 'the cars\' contact shadows');
+    assert.deepEqual(g2.paints, [true, true, true, true], 'each cluster\'s paint on its probe');
+    // Under the dad's dark car's nose (local 2300, 1430; its nose at z 1100), seen low from the
+    // street: the drive darker under it (its contact shadow, the occlusion) than in front of it.
+    const beside = await page.evaluate(() => {
+      const g = window.__game;
+      const v = g.view;
+      const cam = v.camera;
+      const o = g.areas.current.def.origin;
+      g.step(1);
+      cam.position.set(2300 + o.x, 60 + o.y, 700 + o.z);
+      cam.lookAt(2300 + o.x, 40 + o.y, 1430 + o.z);
+      cam.updateProjectionMatrix();
+      cam.updateMatrixWorld();
+      v.render();
+      const gl = v.renderer.getContext();
+      const px = new Uint8Array(4 * 49);
+      const p = cam.position.clone();
+      return [[2300, 23, 1150], [2300, 23, 990]].map(([x, y, z]) => {
+        p.set(x + o.x, y + o.y, z + o.z).project(cam);
+        gl.readPixels(Math.floor((p.x * 0.5 + 0.5) * gl.drawingBufferWidth) - 3, Math.floor((p.y * 0.5 + 0.5) * gl.drawingBufferHeight) - 3, 7, 7, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        return [0, 1, 2].map((c) => Math.round(px.filter((_, i) => i % 4 === c).reduce((a, q) => a + q, 0) / 49));
+      });
+    });
+    t.diagnostic(`under the car and in front of it: ${JSON.stringify(beside)}`);
+    assert.ok(lum(beside[0]) < lum(beside[1]) * 0.85, `the drive darker under the car: ${beside}`);
     // The signs as the classic look draws them (unlit, turned back through the tone mapping),
     // Jonas's shirt red: the
     // same view realistic and classic (G).
@@ -417,14 +477,16 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     const fade = await page.evaluate(() => {
       const g = window.__game;
       const v = g.view;
+      // (A patch's mean: the grain changes from frame to frame, and a thin rod of the roof's
+      // hardware may cross the spot.)
       const spot = [[0.5, 0.75]];
-      const real = window.__pixelsOn(spot)[0];
+      const real = window.__patchOn(spot)[0];
       v.crossfade(1000);
       g.areas.setClassic(true);
-      const held = window.__pixelsOn(spot)[0];
+      const held = window.__patchOn(spot)[0];
       v.fader.start -= 2e6; // (over)
-      const classic = window.__pixelsOn(spot)[0];
-      const after = window.__pixelsOn(spot)[0];
+      const classic = window.__patchOn(spot)[0];
+      const after = window.__patchOn(spot)[0];
       g.areas.setClassic(false);
       return { real, held, classic, after, active: v.fader.active };
     });
@@ -538,8 +600,9 @@ test('?tier=mid within its budgets at the five views; ?tier=low draws straight t
       const wall = await page.evaluate(() => window.__patchAt([[-730, 300, 1329], [150, 300, 1329], [250, 300, 1329]]));
       for (const p of wall) assert.ok(p && p[0] > 2 * p[1], `Falu red: ${p}`);
       // The low tier's budgets (a phone): no grass blades, no tile courses, fewer casters.
-      await countViews(page, t, { calls: 100, triangles: 200000, programs: 18, textureBytes: 20 * 1024 * 1024 });
+      await countViews(page, t, { calls: 100, triangles: 220000, programs: 18, textureBytes: 20 * 1024 * 1024 });
       assert.deepEqual(await page.evaluate(() => [window.__game.view.look.post, window.__game.view.look.far, window.__game.view.heroScale]), [null, null, 0.85], 'no post chain or far map on low (Jonas smaller all the same)');
+      assert.deepEqual(await page.evaluate(() => window.__game.view.look.probeNames()), [], 'no probes on low');
       assert.deepEqual(errors, []);
     } finally {
       await page.close();

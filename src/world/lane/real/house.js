@@ -11,13 +11,21 @@
 //   wallFrame(origin, out) -> { at(u, v, w), dir, out }   // u right seen from outside, v up, w out
 //   fbox(g, f, u0, u1, v0, v1, w0, w1, skip?)   // a box in a wall frame (skip: 'fklrtb', the
 //                                      // faces left out: front back left right top bottom)
+//   wallWear(L, f, top, len?) -> (p) => wear   // a wall quad's weathering (Geo.wearAt; the
+//                                      // materials' WEAR): how far under `top` (the sill or the
+//                                      // eave over it, v in frame f), how high over the ground
+//                                      // 40 out in front of the wall, its streaks' length
+//   streakLength(u) -> 0.7 .. 1.3      // a sill's streaks' length, by where it is
 //
 // Walls: a white brick plinth standing 2 proud of the boards (a sloping black flashing on its
 // top), the boards up to the eaves, or white brick to the eaves on gable ends, the gables'
 // triangles in boards; real openings for the windows and the door, so the windows sit in the
 // wall: a black casing proud of the boards, a reveal 10 deep, the frame and two casements with
 // glazing bars, the glass (the reflection probe's street) over white curtains and a dim room, a
-// sloping sheet-metal sill. The door: a black frame, the leaf set back with a handle, a lamp
+// sloping sheet-metal sill. Each wall quad carries the weathering's `wear` attribute (wallWear:
+// how far under the sill over it, on down the plinth under a window, or under the eaves; the
+// gables' triangles in two halves, so their distance under the verge is exact). The door: a
+// black frame, the leaf set back with a handle, a lamp
 // beside it; the dad's is door.js's (it swings: the realistic build leaves it its opening) with a
 // glazed side light. The roof: pan tile courses (or the tile set; the courses sunk into the roof's
 // plane, so Jonas stands on their crowns; the walls stop under it), a soffit, a black fascia, a
@@ -78,19 +86,43 @@ const TILE = { COURSE: 54, WAVE: 45, NOSE: 3.2, ROLL: 5.5, LAP: 6, SINK: 7.2 };
 const TOP_GAP = 10;
 export const TILE_SEG = { high: 5, mid: 4, low: 0 };
 
+export function wallWear(L, f, top, len = 1) {
+  const y0 = f.at(0, 0, 0)[1];
+  return (p) => [Math.max(0, top - (p[1] - y0)), p[1] - L.groundHeight(p[0] + f.out[0] * 40, p[2] + f.out[2] * 40), len];
+}
+
+export const streakLength = (u) => 0.7 + 0.6 * ((((Math.sin(u * 12.9898 + 4.1) * 43758.5453) % 1) + 1) % 1);
+
 // A wall band on frame f from u0 to u1, v0 to v1 at w, with rectangular holes { u0, u1, v0, v1 }
-// cut out of it; uvs in world units across the face.
-function band(g, f, u0, u1, v0, v1, w, holes) {
-  const rect = (a, b, c, d) => g.quad(f.at(a, c, w), f.at(b, c, w), f.at(b, d, w), f.at(a, d, w), { uvs: [[a, c], [b, c], [b, d], [a, d]] });
+// cut out of it; uvs in world units across the face. wear { L, eave }: each quad's weathering
+// (under its hole's sill, or under the eave).
+function band(g, f, u0, u1, v0, v1, w, holes, wear = null) {
+  const rect = (a, b, c, d, under = null) => {
+    if (wear) g.wearAt = wallWear(wear.L, f, under ? under.v0 : wear.eave, under ? streakLength(under.u0) : 0.5);
+    g.quad(f.at(a, c, w), f.at(b, c, w), f.at(b, d, w), f.at(a, d, w), { uvs: [[a, c], [b, c], [b, d], [a, d]] });
+  };
   const cuts = holes.filter((o) => o.u1 > u0 && o.u0 < u1 && o.v1 > v0 && o.v0 < v1).sort((p, q) => p.u0 - q.u0);
+  // (Under a window over the band, its sill's streaks run on down it: the plinth's.)
+  const sills = wear ? holes.filter((o) => o.v0 >= v1 && o.u1 > u0 && o.u0 < u1).sort((p, q) => p.u0 - q.u0) : [];
+  const span = (a, b) => {
+    let u = a;
+    for (const o of sills) {
+      if (o.u1 <= u || o.u0 >= b) continue;
+      if (o.u0 > u) rect(u, o.u0, v0, v1);
+      rect(Math.max(u, o.u0), Math.min(b, o.u1), v0, v1, o);
+      u = Math.min(b, o.u1);
+    }
+    if (u < b) rect(u, b, v0, v1);
+  };
   let u = u0;
   for (const o of cuts) {
-    if (o.u0 > u) rect(u, o.u0, v0, v1);
-    if (o.v0 > v0) rect(o.u0, o.u1, v0, Math.min(v1, o.v0));
+    if (o.u0 > u) span(u, o.u0);
+    if (o.v0 > v0) rect(o.u0, o.u1, v0, Math.min(v1, o.v0), o);
     if (o.v1 < v1) rect(o.u0, o.u1, Math.max(v0, o.v1), v1);
     u = o.u1;
   }
-  if (u < u1) rect(u, u1, v0, v1);
+  if (u < u1) span(u, u1);
+  g.wearAt = null;
 }
 
 export function chainHouse(kit, L, h, { tiled = false } = {}) {
@@ -121,17 +153,30 @@ export function chainHouse(kit, L, h, { tiled = false } = {}) {
     const { f, half } = F.face(name);
     const gable = name === 'left' || name === 'right';
     const brickTop = gable && h.gableEnds ? top : plinth;
+    const wear = { L, eave: top };
     kit.brick.color(TINT.brick);
-    band(kit.brick, f, -half - 2, half + 2, -4, brickTop, 2, holes[name]);
+    band(kit.brick, f, -half - 2, half + 2, -4, brickTop, 2, holes[name], wear);
     if (brickTop < top) {
       kit.boards.color(h.boards);
-      band(kit.boards, f, -half, half, brickTop, top, 0, holes[name]);
+      band(kit.boards, f, -half, half, brickTop, top, 0, holes[name], wear);
       kit.metal.color(TINT.black);
       kit.metal.quad(f.at(-half - 2, plinth - 3, 5), f.at(half + 2, plinth - 3, 5), f.at(half + 2, plinth + 3, 0), f.at(-half - 2, plinth + 3, 0));
     }
     if (gable) {
-      kit.boards.color(h.gableBoards ?? h.boards);
-      kit.boards.tri(f.at(-half, top, 0), f.at(half, top, 0), f.at(0, h.ridge - y0 - TOP_GAP, 0), { uvs: [[-half, top], [half, top], [0, h.ridge - y0 - TOP_GAP]] });
+      // The gable's triangle in two halves (each one's distance under the verge over it is then
+      // exact).
+      const apex = h.ridge - y0 - TOP_GAP;
+      const g = kit.boards;
+      g.color(h.gableBoards ?? h.boards);
+      const verge = wallWear(L, f, 0, 1.3);
+      g.wearAt = (p) => {
+        const u = (p[0] - f.at(0, 0, 0)[0]) * f.right[0] + (p[2] - f.at(0, 0, 0)[2]) * f.right[2];
+        const w = verge(p);
+        return [Math.max(0, apex - (Math.abs(u) / half) * (apex - top) - (p[1] - y0)), w[1], w[2]];
+      };
+      g.tri(f.at(-half, top, 0), f.at(0, top, 0), f.at(0, apex, 0), { uvs: [[-half, top], [0, top], [0, apex]] });
+      g.tri(f.at(0, top, 0), f.at(half, top, 0), f.at(0, apex, 0), { uvs: [[0, top], [half, top], [0, apex]] });
+      g.wearAt = null;
     }
   }
   const front = F.face('front').f;

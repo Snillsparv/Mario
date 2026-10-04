@@ -14,12 +14,13 @@ import { makeFbm, makeCells, coverageMips } from '../src/render/real/texgen/nois
 import { TIERS } from '../src/render/real/tier.js';
 import { laneJobs } from '../src/world/lane/real/look.js';
 
-// Each lane job's maps at 64 px (sha1 of albedo, normal, orm), for TEXGEN_VERSION 1. Bump the
-// version and these together whenever a generator's output changes.
+// Each lane job's maps at 64 px (sha1 of albedo, normal, orm), for TEXGEN_VERSION 2 (2: the
+// asphalt's finer, lower-contrast aggregate in a darker binder). Bump the version and these
+// together whenever a generator's output changes.
 const PINNED = {
-  version: 1,
+  version: 2,
   hashes: {
-    'asphalt:{}': '0c277766d269c7d9',
+    'asphalt:{}': '1dcd009fed8e1597',
     'grass:{}': '5b13b3937acf55e3',
     'brick:{"cols":3,"jitter":0.12,"mortar":[0.32,0.32,0.31],"rows":7,"seed":23,"tone":[0.5,0.5,0.48]}': 'a4a33d02f9351c8c',
     'brick:{}': 'a4ed355d50ff7e64',

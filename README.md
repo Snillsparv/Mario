@@ -131,7 +131,14 @@ fly over the gardens. Nothing here can hurt him.
 The street **looks real**, while Jonas, the coins and the star stay classic: low golden sunlight
 with real shadows, a deep blue sky with drifting cirrus, painted-in-code brick, boards, roof tiles,
 asphalt and lawns with blades of grass, windows set in the walls that reflect the street, leafy
-hedges and trees swaying in the gusts, spruces up the hill, lacquered cars. And it is filmed
+hedges and trees swaying in the gusts, spruces up the hill. Modern crossovers, a hatchback, an
+estate and a van stand on the drives (no plates, no badges), lacquered, each reflecting what
+stands round it, sitting on their tyres with a soft shadow under them. The street is lived in:
+dirt at the foot of the walls, rain streaks under the window sills, moss on the roofs and the
+kerbs, a darker wheel track down the asphalt and glossy sealed patches, fallen leaves and grit in
+the gutters, weeds in the kerbs' joints, gravel along the walls, dandelions in the lawns; snow
+guards, ladders, vents and TV aerials on the roofs, air bricks, doorbells and a hose reel on the
+walls, a blank street sign at the junction. And it is filmed
 like a modern open-world game: soft contact shadows where things meet the ground, a glow round
 the low sun and its rays through the trees, the houses' and trees' shadows all the way down the
 street, a cinematic colour grade with subtle film grain, and a lower, wider camera over the

@@ -743,7 +743,7 @@ function fence(kit, layout, { house, kind, from, to, h }) {
 // A TV antenna on a chain house's ridge: a mast and a boom with five elements across it (drawn
 // only).
 function antenna(kit, layout, { house, x }) {
-  const { paint } = kit;
+  const { paint } = kit.drawn('antennas'); // (the realistic look's own: world/lane/real/hardware.js)
   const H = layout.HOUSES.find((h) => h.id === house);
   const [y, z] = [H.ridge, H.cz];
   const top = y + 250;

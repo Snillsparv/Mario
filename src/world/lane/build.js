@@ -122,7 +122,7 @@ const CARPORT_SHADE = 0.62; // the drive's asphalt under the carport's roof
 // The realistic look's own meshes (their repeats; the classic look draws them in render's and
 // grass's builders).
 export const REAL_REPEAT = { glass: 300, paint: 300, path: 240 };
-export const REAL_DRAWN = Object.freeze(['mailbox', 'plants', 'forest', 'chain', 'cars', 'kerbs', 'posts', 'fences', 'bins', 'villas', 'villaWindows', 'garageDoors', 'toys', 'motorhome', 'cabinet']);
+export const REAL_DRAWN = Object.freeze(['mailbox', 'plants', 'forest', 'chain', 'cars', 'kerbs', 'posts', 'fences', 'bins', 'villas', 'villaWindows', 'garageDoors', 'toys', 'motorhome', 'cabinet', 'antennas']);
 
 // A builder that draws nothing (every method a no-op, chainable).
 const NOTHING = new Proxy({}, { get: () => () => NOTHING, set: () => true });

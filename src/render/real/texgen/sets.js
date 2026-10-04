@@ -28,7 +28,7 @@
 
 import { hash, rng, makeFbm, makeCells, cavity, pack, coverageMips, clamp01, smooth, field, rgbField, setRgb } from './noise.js';
 
-export const TEXGEN_VERSION = 1;
+export const TEXGEN_VERSION = 2;
 
 // Vertical board-and-batten cladding (Falu paint): `boards` boards across, each with a batten
 // over its joint. A light neutral colour: the vertex tint gives red or yellow.
@@ -147,33 +147,36 @@ export function tilesSet(n = 512, { waves = 6, rows = 5, seed = 31, relief = 1 }
   return pack(n, { col, h, strength: 0.7, ao, rough });
 }
 
-// Asphalt: a dark matrix with light and dark aggregate, fine pits; rough.
-export function asphaltSet(n = 512, { seed = 41, tone = 0.085 } = {}) {
+// Asphalt: a dark binder with fine, low-contrast aggregate (grey and dark stones, a few lighter
+// ones), sand between them and fine pits; rough. (Seen from a person's height a road's stones
+// are small and only a little lighter than the binder.)
+export function asphaltSet(n = 512, { seed = 41, tone = 0.072 } = {}) {
   const h = field(n);
   const col = rgbField(n);
   const rough = field(n);
   const c = { f1: 0, f2: 0, id: 0 };
-  const stones = makeCells(96, seed);
+  const stones = makeCells(150, seed);
   const mottleNoise = makeFbm(4, 3, seed + 3);
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       const s = x / n;
       const t = y / n;
       stones(s, t, c);
-      const stone = smooth(0.42, 0.3, c.f1); // the aggregate (rounded tops)
+      const stone = smooth(0.4, 0.27, c.f1); // the aggregate (rounded tops)
       const kind = c.id;
       const fine = hash(x, y, seed + 9);
-      let v = tone * (0.85 + 0.3 * mottleNoise(s, t));
-      if (stone > 0.2) v = v * (1 - stone) + stone * (kind < 0.25 ? 0.2 : kind < 0.6 ? 0.12 : 0.06);
-      v *= 0.92 + fine * 0.16;
+      const sand = hash(x * 3 + 1, y * 5 + 2, seed + 17);
+      let v = tone * (0.88 + 0.24 * mottleNoise(s, t)) * (0.94 + 0.12 * sand);
+      if (stone > 0.2) v = v * (1 - stone) + stone * (kind < 0.12 ? 0.15 : kind < 0.55 ? 0.105 : 0.07);
+      v *= 0.94 + fine * 0.12;
       const i = y * n + x;
-      h[i] = stone * 1.2 + (fine < 0.04 ? -0.8 : 0);
-      setRgb(col, i, v, v * 0.99, v * 0.97);
-      rough[i] = 0.92 - stone * 0.12 * (kind < 0.25 ? 1 : 0.4);
+      h[i] = stone * 1.1 + (fine < 0.04 ? -0.7 : 0);
+      setRgb(col, i, v, v * 0.99, v * 0.975);
+      rough[i] = 0.9 - stone * 0.1 * (kind < 0.12 ? 1 : 0.4);
     }
   }
-  const ao = cavity(h, n, 2, 0.4);
-  return pack(n, { col, h, strength: 1.6, ao, rough });
+  const ao = cavity(h, n, 2, 0.35);
+  return pack(n, { col, h, strength: 1.4, ao, rough });
 }
 
 // A lawn from above: short blades in several greens (a few dry ones), soft dark gaps between

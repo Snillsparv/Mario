@@ -7,12 +7,12 @@ import padRelay from './tools/padRelay.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.68 MB minified (1,678,476 bytes), ~548
+// first frame, so splitting would only add requests. ~1.68 MB minified (1,678,665 bytes), ~549
 // kB gzipped, plus one lazily loaded chunk and two module workers of its own (new Worker(new
 // URL(...)), not imports): the ~13 kB title-logo worker and the realistic look's
-// (render/real/laneRealWorker.js, ~88 kB, a pool of up to three of them: the pure code the
+// (render/real/laneRealWorker.js, ~114 kB, a pool of up to three of them: the pure code the
 // realistic Sparrow Lane needs, its texture generators and its geometry builders, kept out of
-// main; it must import no three.js and stay under 160 kB). The chunk, `realLook` (~45 kB:
+// main; it must import no three.js and stay under 160 kB). The chunk, `realLook` (~52 kB:
 // world/lane/real/realLook.js, imported only dynamically, at boot beside the workers), is the
 // realistic look's main-thread code the boot does not need (its materials, sky, probe, far
 // shadow, post chain and output pass); it imports only from main (three.js and the classic

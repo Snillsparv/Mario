@@ -18,10 +18,12 @@
 //                          // each front corner, rounded caps along the hips and the ridge
 //
 // kit: detail.js's Geo per material (render, brick, paint, glass, core, enamel, metal, granite,
-// trim, roof, tiles).
+// trim, roof, tiles; the villas' panes go into the kit's `glass@north` where it has one: their own
+// probe). The walls carry the weathering's `wear` attribute (house.js wallWear): under each
+// window's sill (on down the render under it), else under the eaves.
 
 import { add, mul, sub, norm } from './geo.js';
-import { frameOf, fbox } from './house.js';
+import { frameOf, fbox, wallWear, streakLength } from './house.js';
 
 const WHITE = 0xf6f4ee;
 const WIN = { w: 220, sill: 520, h: 200, frame: 12 };
@@ -117,14 +119,31 @@ function tri2(g, f, a, b, c, w = 0) {
 
 // A wall band on frame f (u0..u1 across, v0..v1 up, at w 0) with openings cut out of it (each
 // { u0, u1, v0, v1, arch }: an arched one's head a half circle its width, the wall filled back
-// in its corners); uvs in world units.
-function wall(g, f, u0, u1, v0, v1, holes) {
-  const rect = (a, b, c, d) => d > c && g.quad(f.at(a, c, 0), f.at(b, c, 0), f.at(b, d, 0), f.at(a, d, 0), { uvs: [[a, c], [b, c], [b, d], [a, d]] });
+// in its corners); uvs in world units. wear { L, eave }: each quad's weathering (under its
+// opening's sill, or under the eaves: house.js wallWear).
+function wall(g, f, u0, u1, v0, v1, holes, wear = null) {
+  const rect = (a, b, c, d, under = null) => {
+    if (d <= c) return;
+    if (wear) g.wearAt = wallWear(wear.L, f, under ? under.v0 - 12 : wear.eave, under ? streakLength(under.u0) : 0.5);
+    g.quad(f.at(a, c, 0), f.at(b, c, 0), f.at(b, d, 0), f.at(a, d, 0), { uvs: [[a, c], [b, c], [b, d], [a, d]] });
+  };
   const cuts = holes.filter((o) => o.u1 > u0 && o.u0 < u1 && o.v1 > v0 && o.v0 < v1).sort((p, q) => p.u0 - q.u0);
+  // (Under a window over the band, its sill's streaks run on down it: the render's.)
+  const sills = wear ? holes.filter((o) => o.v0 >= v1 && o.u1 > u0 && o.u0 < u1).sort((p, q) => p.u0 - q.u0) : [];
+  const span = (a, b) => {
+    let x = a;
+    for (const o of sills) {
+      if (o.u1 <= x || o.u0 >= b) continue;
+      if (o.u0 > x) rect(x, o.u0, v0, v1);
+      rect(Math.max(x, o.u0), Math.min(b, o.u1), v0, v1, o);
+      x = Math.min(b, o.u1);
+    }
+    if (x < b) rect(x, b, v0, v1);
+  };
   let u = u0;
   for (const o of cuts) {
-    if (o.u0 > u) rect(u, o.u0, v0, v1);
-    rect(o.u0, o.u1, v0, Math.min(v1, o.v0));
+    if (o.u0 > u) span(u, o.u0);
+    rect(o.u0, o.u1, v0, Math.min(v1, o.v0), o);
     rect(o.u0, o.u1, Math.max(v0, o.v1), v1);
     if (o.arch && o.v1 <= v1) {
       const hw = (o.u1 - o.u0) / 2;
@@ -134,7 +153,8 @@ function wall(g, f, u0, u1, v0, v1, holes) {
     }
     u = o.u1;
   }
-  if (u < u1) rect(u, u1, v0, v1);
+  if (u < u1) span(u, u1);
+  g.wearAt = null;
 }
 
 // An outline shrunk toward its middle by d (convex, near enough for a frame's inner edge).
@@ -302,11 +322,12 @@ function villaHouse(kit, L, h) {
       for (const u of h.bays ?? []) holes.push({ u0: u - BAY.w / 2 + BAY.frame, u1: u + BAY.w / 2 - BAY.frame, v0: WIN.sill, v1: WIN.sill + WIN.h });
       if (door) holes.push({ u0: door.u - 55, u1: door.u + 55, v0: door.v, v1: door.v + 220, arch: true });
     }
+    const wear = { L, eave: wallH };
     kit.render.color(0xf0ece4);
-    wall(kit.render, f, -half, half, 0, Math.min(renderTop, wallH), holes);
+    wall(kit.render, f, -half, half, 0, Math.min(renderTop, wallH), holes, wear);
     if (renderTop < wallH) {
       kit.brick.color(h.brick ?? 0xb05a3c);
-      wall(kit.brick, f, -half, half, renderTop, wallH, holes);
+      wall(kit.brick, f, -half, half, renderTop, wallH, holes, wear);
       // The white band between the floors.
       kit.paint.color(WHITE);
       fbox(kit.paint, f, -half - 2, half + 2, renderTop - 6, renderTop + 6, 0, 2, 'k');

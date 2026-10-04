@@ -178,7 +178,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
-| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures; `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`) | WorldPart, built by `area.js` |
+| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures; `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`, `clutter.js`, `hardware.js`) | WorldPart, built by `area.js` |
 | Realistic look | `src/render/real/*` (RealLook, OutputPass, sky, materials, probe, tier, RealAreas, textureStore, texCache, the worker `laneRealWorker.js`, `texgen/*`) | RealLook, RealAreas (see "Realistic look (Sparrow Lane)") |
 | Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
 | Trampolines | `src/objects/Trampoline.js` (the spring only: its course draws it) | Trampolines, built by ObjectManager (see "Objects") |
@@ -2080,7 +2080,7 @@ build's to the byte, and that it draws exactly the classic faces but those it dr
 **`REAL_DRAWN`** (`lane/build.js`) names the elements the realistic look builds anew (the
 mailbox, the plants, the forest, the chain houses, the cars, the kerbs, the lamp and flag
 posts, the fences, the bins, the villas' walls and windows, the garage doors, the toys, the
-motorhome, the cabinet); a classic builder asks `kit.drawn(name)` for the kit to draw one into, the kit or
+motorhome, the cabinet, the TV antennas); a classic builder asks `kit.drawn(name)` for the kit to draw one into, the kit or
 one whose builders draw nothing (`NOTHING`, a no-op proxy) with the same `solids` and `signs`,
 so every collider is still made exactly as before. The realistic build also draws the turning
 area round (`round`: `plan.js roadPieces({ round })`, 64 sides at the mean of the 16-gon's
@@ -2095,8 +2095,12 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   (`sky.js`: an art-directed golden-hour gradient, the sun's glow and disc, cirrus; drawn on the
   far plane centred on the camera; its `hazeColor(dir)` is every material's aerial
   perspective), the sky's prefiltered environment (`scene.environment`, intensity 1.3), the
-  reflection probe (`probe.js`: one half-float cube capture of the street from over the road in
-  front of the dad's house, Jonas hidden, prefiltered: the windows' envMap), the sun's soft shadow (PCF, radius 2.5) in a tight box round Jonas
+  reflection probes (`probe.js`: half-float cube captures of the street, Jonas hidden,
+  prefiltered: the street's from over the road in front of the dad's house, the windows'
+  envMap; G2 adds one over the street in front of the villas, their windows' (they reflect the
+  chain houses across it, not themselves), and one over each cluster of parked cars, their
+  lacquer's and glass's: `look.addProbe(name, at, size)`, `useProbe(materials, name)`; each
+  taken in a task of its own, the cars' first), the sun's soft shadow (PCF, radius 2.5) in a tight box round Jonas
   (`view.setFocus`, a little ahead of him along the view), snapped to whole shadow texels across the light so static shadows never
   shimmer, beyond it the far map over the whole street (`farShadow.js`: below), and the light preset (`layout.LANE_REAL`). The probe is taken once, as the build is
   readied (below), and kept for every later visit (the street does not change); until then a
@@ -2153,11 +2157,13 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   | post chain | AO 12 taps, bloom 5 levels, sun shafts, edge fringing | AO 8 taps, bloom 4 levels | none |
   | textures | 512 (256 for render, granite, bark, fir; the leaf atlas 1024) | 512, the lawn 256, the leaf atlas 512 | 256 (the leaf atlas 512) |
   | anisotropy, probe | 8, 256 | 4, 128 | 2, none (the sky's environment) |
+  | the cars' probes (each cluster's) | 128 | 64 | none |
+  | weathering, clutter (G2) | full, all | full, 60 % | lite (the band), a quarter of the leaves |
 
   Budgets per frame (the shadow pass and the post chain included; checked in headless Chromium
   by `tests/lane-real-browser.test.js`, frame times by hand on real hardware: the F1 overlay's
   GPU line): high ≤ 175 draw calls, ≤ 1.0M triangles, ≤ 24 realistic programs; mid ≤ 145 /
-  500k; low ≤ 100 / 200k. Then **the governor** (below) steps the drawing down from measured
+  500k; low ≤ 100 / 220k. Then **the governor** (below) steps the drawing down from measured
   frame times.
 * `render/real/RealAreas.js` (main makes one right after the renderer; `AreaSwitch` uses it):
   the tier, whether realistic looks may run (fallbacks to classic, logged once, the F1 line
@@ -2212,24 +2218,67 @@ the main thread but the upload.
   cards in whorls, a dark inner cone) instanced where `spots.js forestSpots` plants them (the
   classic forest draws its cones from the same list), plus a far tree line where the ground ends
   in the haze (`extras.js treeLine`, casting none).
-* `cars.js`: **lofted cars** (sections with a crisp shoulder crease under a tightly rounded deck:
-  two ring points 0.4 apart, so the smooth normals turn there; the bonnet sloping to a rounded
-  nose, the sill rising over the axles; the doors' dark shut lines; a greenhouse of slices, glass
-  on its straight runs in a black seal along the belt and under drip rails, pillars in the
-  body's colour; rounded tyres on dished five-spoke rims in dark arches; lamps, mirrors,
-  handles; no plates, no badges): lacquered paint (`plainMaterial({ clearcoat })`: three's
-  clearcoat lobe switched on in the standard material, `USE_CLEARCOAT`, without the physical
-  material's class), dark opaque glass with ior 2's F0; both on the sky's environment (the probe,
-  taken in front of the dad's house, painted the red wall into every bonnet as rust).
+* `cars.js` (**cars v2**, G2): modern crossovers, a hatchback, an estate and a van, each one
+  closed loft of sections along the car (stations denser toward the ends and at each arch's
+  edges; a tucked floor corner, a lower side swelling out, haunches over the rear wheel, a crisp
+  shoulder crease, a deck tumbling in; every section's points over the one before, so the skin
+  never folds), the plan's corners rounded, the bonnet's leading edge rounded into a nearly
+  upright face, the floor **level** at the kind's ground clearance and raised over each wheel
+  into a round arch; its top on the colliders Jonas stands on (the bonnet within 4 of the belt,
+  the roof within 4 of the roof: `lane/props.js car()`), the window line rising behind the cowl
+  (a high belt line, a low greenhouse). Details lie on the body's own surface (`sideU`: its
+  section's outline at that height; `onSide`, `sideStrip`, `endFace`): slim headlamps with a
+  pale light guide and two projectors wrapping round the corners, a framed black grille with
+  slats, a wide black intake and a silver skid plate; slim tail lamps with light guides, a black
+  lower bumper with reflectors; door shut lines, flush handles, mirrors on black stalks; black
+  arch flares and sill cladding on the crossovers and the van; black A and B pillars (a floating
+  roof), the crossovers' rear quarters black, roof rails on posts, a spoiler lip, a fin antenna,
+  wipers. **No plate, no badge.** The wheels are to the bodies' scale (0.9 of the classic
+  ones): tyres with a bulging sidewall whose tread's lowest ring is flattened onto the ground
+  (the patch the car stands on: every car level on its four patches), ten-spoke rims (five on
+  mid and low) over a dark barrel and a brake disc, in black liners that close each arch. Under
+  each car a **contact shadow** (`contact`: `materials.js contactMaterial`, the colour drawn under
+  it multiplied by the vertex colour, darkest under its middle and round each tyre's patch,
+  after the opaque scene, no depth written): the car sits on its drive. Lacquered paint
+  (`plainMaterial({ clearcoat })`: three's clearcoat lobe switched on in the standard material,
+  `USE_CLEARCOAT`, without the physical material's class), dark opaque glass with ior 2's F0;
+  each cluster's (`carClusters`: cars on the same side of the street within 2800 of another of
+  theirs: the dad's drive, the west link, the north drives, the east end) on its own probe over
+  its roofs (`carPaint@k`, `carGlass@k` meshes; on low one paint on the sky's environment): the
+  single probe in front of the dad's house painted his red wall into every bonnet as rust.
+* `clutter.js` (G2): fallen leaves (small atlas cards lying flat, curled at one end, tints at most
+  1) drifting along every kerb (a slow wave of density, most at its foot, strays to 70, a few on
+  the verge; kept clear of the kerbs, the cars, the fences and the course's edge), under the
+  junction's trees, the birch and the apple tree, on the dad's path; a dark grit line wandering
+  along the gutters (`patch`, 4 to 18 wide); weeds (leafy cards and grass blades) in the kerbs'
+  joints, at the terraces' walls' feet, at the chain houses' plinths and between the path's
+  stones; a gravel strip along the chain houses' walls where their lawns meet them (the granite
+  set at a third of its scale); dandelions and clover on the lawns; and the **blank street name
+  sign** at the junction (`streetSign`: a grey post, a white plate with a black border, both
+  faces blank: no name). No overhead wires, no road markings (the street has none). Per tier
+  (`SHARE`): high all, mid 60 % of the leaves and weeds, low a quarter of the leaves, no weeds or
+  flowers; ~18k / 11k / 3.4k triangles.
+* `hardware.js` (G2): the houses' hardware: snow guards along the chain houses' street eaves,
+  the gutters' brackets every 60, the dad's two vent pipes and ventilation hood, black roof
+  ladders on the dad's and south_2's roofs (all low over the roofs' planes: Jonas walks them),
+  the TV antennas as real masts (a clamp, a boom of elements, a reflector, a second array;
+  `REAL_DRAWN` 'antennas'), air bricks in the plinths, vents under the soffits, letter slots and
+  doorbells (the dad's a bell only: his mailbox), splash blocks under the downpipes, window
+  handles, the dad's outdoor socket, hose reel and two pot plants on his inner sills; the villas'
+  door lamps, garage door seals and a satellite dish on north_2; the terraces' walls' coping
+  stones, 4 proud with joints.
 * `grass.js`: the **grass**: one clump of blades (`grassClump`: 4 blades of 3 segments on high,
   3 of 2 on mid, none on low) instanced over a 128 × 128 grid of 12-unit cells (80 × 80 on mid)
   that follows the camera (centred ahead of it, snapped to whole cells: `look.js grassGrid`, one
   uniform a frame); the vertex shader (`materials.js grassMaterial`) places each clump in its
   cell at a hash of the cell, turns and sizes it, stands it on the **lawn mask** (`lawnMask`: a
-  1024 × 512 RGBA8 map of where blades grow and the ground's height there, built in the worker
-  from `layout.js`: none on the road, the pavement, paths, drives, the round bed, the mailbox,
-  bushes, hedges, houses, posts, or where the ground steps) and shrinks it to nothing off the
-  lawns and toward the grid's radius (760 on high: no pop). The cells are ordered nearest the
+  1024 × 512 RGBA8 map of where blades grow (R) and the ground's height (G, everywhere inside
+  the boundary), built in the worker from `layout.js` on every tier: none on the road, the
+  pavement, paths, drives, the round bed, the mailbox, bushes, hedges, houses, posts, or where
+  the ground steps; B the road's wheel track, A where a lawn lies damp by the hedges: the
+  weathering's ground map, below) and shrinks it to nothing off the lawns and toward the grid's
+  radius (760 on high: no pop); its blades lighter toward their tips, longer in damp and unmown
+  patches, tinted with the lawn's own slow change of colour. The cells are ordered nearest the
   grid's middle first, so drawing the first n of them (`reach(share)`: the governor's) is a disc
   of a shorter reach.
 * `garden.js`: the mailbox (a chamfered charcoal board box, its roof boards, flap, blank enamel
@@ -2259,9 +2308,13 @@ the main thread but the upload.
 * **Tiers**: low (phones) halves the leaf clusters, has no tile courses (the normal map), no
   blades, plainer windows and cars, fewer materials (`LOW_MERGE`) and only the houses and the
   cars casting the sun's shadow (`LOW_CASTERS`); mid has 70 % of the leaf clusters, 4 segments a
-  roll and the smaller grass grid. Measured in headless Chromium at the five views (the shadow
-  pass included): high 116–121 draw calls, ~764k triangles, 12 realistic programs, 59.6 MB of
-  set textures; mid 116–121, ~435k, 12, 43.9 MB; low 90–94, ~179k, 10, 18.8 MB.
+  roll and the smaller grass grid. (G2: the junction's trees, the birches and the apple tree
+  1.4 × their clusters on high, with a few smaller blobs round each canopy's outline from their
+  own seeded stream, `foliage.js ragged`, not on low; the hedges' cores a little lighter; the
+  bark's normal map deeper.) Measured in headless Chromium at the five views (the shadow
+  pass and the post chain included; G2): high 132–141 draw calls, 880–892k triangles, 15
+  realistic programs, 59.6 MB of set textures; mid 126–138, 459–469k, 15, 43.9 MB; low 90–95,
+  ~197k, 12, 18.8 MB (R3: high 116–121, ~764k, 12; mid ~435k; low ~179k, 10).
   The realistic part hangs under its area's root only while shown (`Area.showReal`): the
   renderer's classic warm-ups compile whatever is under the root, hidden or not.
 
@@ -2427,6 +2480,39 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   `world/lane/real/jobs.js`). If it fails to load (offline, a 404) the lane stays classic, the F1
   line `(classic: chunk)`.
 
+**Wear and grime, clutter, cars v2 (G2).** The street weathered and lived in, all in code:
+* **The weathering** (`materials.js` WEAR, in every textured realistic material: `pbrMaterial`
+  through `hazeChunk(..., wear)`): a patch before the lighting with the look's **ground map**
+  (`haze.uWearGround`: the worker's lawn mask, `look.js wearUniforms`; `uWearRect`,
+  `uWearOrigin`: the look's uniforms, nothing global) and the material's own strengths
+  (`uWear` = the dirt band, the streaks, the moss, the ground's own: `WEAR_KIND` by the mesh's
+  kind, `setWear`): a dirt band at the foot of every wall and kerb (its height over the ground
+  from the map 40 out along the wall), rain streaks (faint anywhere, strong drips hanging from
+  the sills and eaves), a greener tint in the drips on the faces turned from the sun, moss in
+  patches on faces turned up and away from the sun (the roofs' north slopes, the kerbs' tops,
+  the copings, the paver path, the trunks' north sides), the asphalt's wheel track down the
+  street's middle and round the turning area (darker, smoother: the map's B), the lawns'
+  yellowed and damp patches (A: along the hedges). All from world positions and the
+  interpolated normal (the normal-mapped one made the streaks speckle); uniforms prefixed `uWear`
+  (a `uGround` clashed with the sky's). The chain houses' and villas' walls carry an exact
+  **`wear` attribute** from the worker (`Geo.wearAt`; `house.js wallWear`): how far under the
+  sill or the eave over it (each wall quad hangs under one: linear over it, so exact), how high
+  over the ground, the streaks' length (each sill's own): their materials define `WEAR_ATTR`
+  (key '-wa'). The low tier's weathering is lite (`WEAR_LITE`, key '-wl': the band and the
+  ground's only, one noise). Keys: '-wear' after 'real-haze', then '-far'. The sealed patches
+  are glossier (their roughness halved), the asphalt set finer and darker (`TEXGEN_VERSION` 2).
+* **The probes**: each cluster of parked cars' (128 px on high, 64 on mid: `tier.carProbe`; none
+  on low) and the villas' windows' (from over the street in front of them), beside the street's;
+  the worker names them (`detail.probes`) and splits the meshes that reflect them
+  (`carPaint@k`, `carGlass@k`, `glass@north`); RealAreas takes each in a task of its own, the
+  cars' first (the windows' then see the cars reflecting theirs).
+* **Clutter, hardware, cars v2**: `clutter.js`, `hardware.js`, `cars.js` above; the classic
+  look's antennas are `REAL_DRAWN` now (the classic build unchanged to the byte).
+* **Per tier** (section 9 of the GTA plan): high everything (~18k triangles of clutter, cars v2
+  ~7.5k each); mid 60 % of the clutter, the cars' five-spoke wheels and fewer stations; low a
+  quarter of the leaves, no weeds or flowers, the cars plainer, the canopies as they were, the
+  weathering lite, no probes of its own.
+
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its
 verdicts on synthetic frame-time series, the kept level, the workers' pool and how it shares the
@@ -2453,11 +2539,20 @@ worker's geometry: deterministic, within each tier's triangle budget, every face
 its normals point, the walls open at every window and door of the chain houses and the villas,
 the tile courses in the classic roof planes (the crowns at most 1.5 over them, the ridge line's
 top 2), the firs on the classic forest's spots, the lawn mask, the cars on their wheels
-inside their colliders and their bodies and tyres closed, the bird on the ridge), `tests/real-materials.test.js` (the haze and the
+inside their colliders and their bodies and tyres closed, every tyre's patch on the drive's
+drawn surface (neither floating nor sunk) and each car level on its four patches and its sill,
+a contact shadow under each, the bonnets and roofs within 4 of the colliders Jonas stands on,
+the cars' clusters and probes, no plate-shaped part on either end; the clutter on the ground
+(every leaf within 2 of it, none under a collider, none on the road's middle 60 %), the weeds
+only in the kerbs' joints, at the walls' feet and on the path, the grit in the gutters, the
+street sign's plate blank, the clutter's share per tier; the walls' wear attribute in range,
+the streaks hanging from the dad's sills; the bird on the ridge), `tests/real-materials.test.js` (the haze and the
 clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
 the glass's F0 and premultiplied output, the leaf
 cards' (no sheen on a card seen from behind), the grass's and the lacquer's patches, shared
-uniforms, ≤ 20 programs, the signs'
+uniforms, the weathering in every textured material (the look's ground map, its kind's
+strengths, the walls' attribute, lite on low) and in none of the plain ones, ≤ 24 programs,
+the signs'
 inverse tone mapping and grade), `tests/lane-real-browser.test.js` (E2E: the swap, the pixels, the grade
 and the recorder's framings, a crossfade, the counts and a blue sky at five views on high, mid
 and low, G, the
@@ -2465,16 +2560,19 @@ low tier, `?look=classic`, and the exact restore of the renderer after a visit, 
 without F2 (the camera's profile and field of view, Jonas's size, the post chain's targets
 freed, the far map kept and taken once); the GTA look: the post chain's draw calls per tier, the
 occlusion's mean neither black nor white and never on the sky, the bloom round the sun, Jonas at
-0.85 and the camera at 55° in it, 1 and 45° with G); `tests/net-relay-build.test.js` (the
-worker chunk and the lazy `realLook` chunk).
+0.85 and the camera at 55° in it, 1 and 45° with G; G2: every probe taken (the cars' clusters'
+at 128, the windows' at 256; none on low), the weathering's ground map bound, the contact
+shadows drawn and the drive darker under a car than in front of it, each tier within section
+9's budgets); `tests/net-relay-build.test.js` (the worker chunk and the lazy `realLook` chunk).
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
-own chunk (`laneRealWorker-*.js`, ~88 kB, no three.js, no imports: under 160 kB); the renderer
-side's code that the boot does not need is the lazy `realLook` chunk (above: ~45 kB with G1's
-post chain, imported by `main` only dynamically, importing only `main`: under 90 kB; no
-modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB, R2 +~9
-kB, R3 +~8.8 kB, then G1 moved the look's code out: 1,678,476 bytes, under the 1,700,000-byte
-budget). `tests/net-relay-build.test.js` checks all three.
+own chunk (`laneRealWorker-*.js`, ~114 kB with G2's cars, clutter and hardware, no three.js,
+no imports: under 160 kB); the renderer side's code that the boot does not need is the lazy
+`realLook` chunk (above: ~52 kB with G1's post chain and G2's weathering and probes, imported by
+`main` only dynamically, importing only `main`: under 90 kB; no modulepreload,
+`build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB, R2 +~9 kB, R3 +~8.8 kB,
+then G1 moved the look's code out: 1,678,476 bytes; G2 +189: 1,678,665 bytes, under the
+1,700,000-byte budget). `tests/net-relay-build.test.js` checks all three.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -3430,9 +3528,10 @@ Unknown names must be ignored silently.
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,691,593
-  bytes with Sparrow Lane, its details and its realistic look's renderer side, ~553 kB gzip,
-  plus the ~13 kB title-logo worker and the ~87 kB realistic look's worker; the size warning
+  `npm run build` — production build into `dist/`: the game as one bundle by design (1,678,665
+  bytes with Sparrow Lane, its details and its realistic look's boot part, ~549 kB gzip, plus
+  the ~52 kB lazy `realLook` chunk, the ~13 kB title-logo worker and the ~114 kB realistic
+  look's worker; the size warning
   limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for the second
   course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built separately
   into the same folder (~85 kB, its own copy of the touch controller and protocol).

@@ -8,7 +8,12 @@
 //                                      // (local x0..x1 across, z0..z1 down): R 255 where blades
 //                                      // grow (the lawns and the terraces' gardens, clear of every
 //                                      // road, path, drive, wall, house, hedge, bush, bed and
-//                                      // post), G the ground's height / 4 there
+//                                      // post), G the ground's height / 4 (everywhere inside the
+//                                      // boundary), B the road's wheel track (a darker, smoother
+//                                      // band down its middle and a ring round the turning
+//                                      // area), A where a lawn lies damp (along the hedges): the
+//                                      // grass's map and the weathering's ground map
+//                                      // (materials.js WEAR), made on every tier
 //   GRASS = { high, mid }              // the grid per tier: side clumps a side, cell units each,
 //                                      // radius (blades fade out from 0.7 of it)
 //
@@ -39,8 +44,9 @@ export function grassClump(tier) {
     const at = (t, side) => [ox + fx * (1 - t) * side + lx * t * t, h * t, oz + fz * (1 - t) * side + lz * t * t];
     for (let s = 0; s < G.segs; s++) {
       const [t0, t1] = [s / G.segs, (s + 1) / G.segs];
-      const k0 = 0.55 + 0.5 * t0;
-      const k1 = 0.55 + 0.5 * t1;
+      // (Lighter toward the tips: dark spiky tufts read against the lawn at a person's height.)
+      const k0 = 0.7 + 0.55 * t0;
+      const k1 = 0.7 + 0.55 * t1;
       const q = [at(t0, -1), at(t0, 1), at(t1, 1), at(t1, -1)];
       const up = [0, 1, 0];
       for (const i of [0, 1, 2, 0, 2, 3]) {
@@ -63,6 +69,8 @@ export function lawnMask(L) {
   const sz = (z1 - z0) / H;
   const grow = new Uint8Array(W * H);
   const heights = new Float32Array(W * H);
+  const ground = new Float32Array(W * H);
+  const track = new Float32Array(W * H);
   // Where the ground is lawn: inside the boundary (row by row: where the row crosses its
   // edges), off the road, the turning area, the pavement and the footpath.
   const P = L.FOOTPATH;
@@ -104,6 +112,13 @@ export function lawnMask(L) {
       for (let i = i0; i <= i1; i++) {
         const x = x0 + (i + 0.5) * sx;
         const road = roadAt(x, z);
+        const k0 = j * W + i;
+        const tr = Math.hypot(x - L.TURN.x, z - L.TURN.z);
+        // The ground's height everywhere (the road and the turning area at 0), and the wheel
+        // track on them.
+        const onRoad = road <= L.ROAD.half || tr <= L.TURN.r;
+        ground[k0] = onRoad ? 0 : L.offRoadHeight(x, z);
+        if (onRoad) track[k0] = Math.max(Math.exp(-((road / (0.42 * L.ROAD.half)) ** 2)) * (road <= L.ROAD.half ? 1 : 0), 0.75 * Math.exp(-(((tr - 0.55 * L.TURN.r) / (0.18 * L.TURN.r)) ** 2)) * (tr <= L.TURN.r ? 1 : 0));
         if (road < L.ROAD.half + L.KERB.w + m || (x - L.TURN.x) ** 2 + (z - L.TURN.z) ** 2 < turn) continue;
         // The pavement: along the bend and the straight on the north side.
         if (z < 0 && road < L.PAVEMENT.to + m && x < L.PAVEMENT.x1 + m) continue;
@@ -127,8 +142,19 @@ export function lawnMask(L) {
       const h = heights[k];
       const ok = grow[k] === 1 && level(i + step, j, h) && level(i - step, j, h) && level(i, j + step, h) && level(i, j - step, h);
       mask[k * 4] = ok ? 255 : 0;
-      mask[k * 4 + 1] = Math.max(0, Math.min(255, Math.round(h / 4)));
-      mask[k * 4 + 3] = 255;
+      mask[k * 4 + 1] = Math.max(0, Math.min(255, Math.round((grow[k] ? h : ground[k]) / 4)));
+      mask[k * 4 + 2] = Math.round(track[k] * 255);
+      // Damp along the hedges (their shade, the drip from them).
+      if (grow[k]) {
+        const x = x0 + (i + 0.5) * sx;
+        const z = z0 + (j + 0.5) * sz;
+        let damp = 0;
+        for (const e of L.HEDGES) {
+          const d = Math.hypot(Math.max(e.x0 - x, 0, x - e.x1), Math.max(e.z0 - z, 0, z - e.z1));
+          damp = Math.max(damp, 1 - Math.min(1, d / 160));
+        }
+        mask[k * 4 + 3] = Math.round(damp * damp * 255);
+      }
     }
   }
   // Stamp out everything standing on the lawns.

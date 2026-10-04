@@ -24,10 +24,18 @@
 //                                   // classicLook (the signs)
 //   look.pixelRatio(dpr, width, height)   // the drawing buffer's pixel ratio (tier.js)
 //   look.haze                       // the uniforms every realistic material's haze shares
-//   look.useProbe(materials)        // these take the probe as their envMap (the glass)
-//   look.warmProbe(renderer)        // a blank probe of its size on them meanwhile (RealAreas:
-//                                   // before their programs compile)
-//   look.takeProbe(view)            // the probe, taken (else on the first frame drawn)
+//   look.addProbe(name, at, size)   // another reflection probe (world/lane/real/look.js: each
+//                                   // cluster of parked cars', the villas' windows'), at { x, y,
+//                                   // z } (world), its cube `size` px (0: none, the materials keep
+//                                   // the sky's environment)
+//   look.useProbe(materials, name?) // these take a probe as their envMap (the street's: the
+//                                   // windows; or the one named)
+//   look.probeNames()               // the probes to take (those with materials), the cars' first
+//   look.warmProbe(renderer)        // a blank probe of each one's size on its materials
+//                                   // meanwhile (RealAreas: before their programs compile)
+//   look.takeProbe(view, name?)     // a probe (or every one not yet), taken (RealAreas, a task
+//                                   // each; else on the first frame drawn)
+//   look.probeAt, look.probeMaterials   // the street's probe's place and materials
 //   look.takeFar(view)              // the far shadow map, drawn (RealAreas, after the probe;
 //                                   // else on the first frame drawn: Jonas hidden)
 //   look.compilePost(renderer) -> Promise   // the post chain's and the output pass's programs
@@ -87,7 +95,6 @@ export class RealLook {
   constructor({ preset, tier = TIERS.high, probeAt = null, farBox = null, canRetro = true }) {
     this.preset = preset;
     this.tier = tier;
-    this.probeAt = probeAt;
     this.canRetro = canRetro; // (retro over realistic needs half-float targets)
     this.camera = preset.camera ?? null; // the camera's profile meanwhile (core/AreaSwitch.js)
     this.heroScale = preset.hero ?? 1; // Jonas's model's size meanwhile (view.heroScale)
@@ -101,8 +108,10 @@ export class RealLook {
     this.post = tier.direct ? null : new RealPost(preset.post);
     this.depthChecked = false; // (the depth's resolve, checked on the first frame with it)
     this.env = null; // the sky's PMREM (made on the first attach, kept)
-    this.probe = null; // the reflection probe's PMREM (a blank stand-in till taken: warmProbe)
-    this.probeMaterials = [];
+    // The reflection probes: name -> { at, size, materials, target (its PMREM: a blank stand-in
+    // till taken, warmProbe), taken }; the street's (the windows') first.
+    this.probes = new Map();
+    if (probeAt) this.addProbe('street', probeAt, tier.probe);
     this.probeTaken = false;
     this.probeDirty = true;
     this.hdr = null; // the scene's HDR target (drawing buffer size)
@@ -125,8 +134,25 @@ export class RealLook {
     this.last = 0; // the last frame's time (govern)
   }
 
-  useProbe(materials) {
-    for (const m of materials) if (!this.probeMaterials.includes(m)) this.probeMaterials.push(m);
+  addProbe(name, at, size) {
+    this.probes.set(name, { name, at, size, materials: [], target: null, taken: false });
+  }
+
+  useProbe(materials, name = 'street') {
+    const probe = this.probes.get(name);
+    if (!probe) return;
+    for (const m of materials) if (!probe.materials.includes(m)) probe.materials.push(m);
+  }
+
+  get probeMaterials() {
+    return this.probes.get('street')?.materials ?? [];
+  }
+
+  // The probes to take, the cars' first (the windows' then see the cars' lacquer reflecting
+  // theirs).
+  probeNames() {
+    const names = [...this.probes.values()].filter((p) => p.materials.length && p.size > 0).map((p) => p.name);
+    return [...names.filter((n) => n.startsWith('car')), ...names.filter((n) => !n.startsWith('car'))];
   }
 
   attach(view) {
@@ -264,29 +290,42 @@ export class RealLook {
     sun.position.copy(snapped).addScaledVector(sunDir, SUN_DISTANCE);
   }
 
-  // A blank probe of the real one's size on the probe's materials (their programs then compile
-  // as they will draw, and the prefilter's are made), until takeProbe.
+  get probeAt() {
+    return this.probes.get('street')?.at ?? null;
+  }
+
+  // A blank probe of each real one's size on its materials (their programs then compile as they
+  // will draw, and the prefilter's are made), until takeProbe.
   warmProbe(renderer) {
-    if (this.probe || !this.probeMaterials.length || !this.tier.probe) return;
-    this.probe = blankProbe(renderer, this.tier.probe);
-    for (const m of this.probeMaterials) {
-      m.envMap = this.probe.texture;
-      m.needsUpdate = true;
+    for (const p of this.probes.values()) {
+      if (p.target || !p.materials.length || !p.size) continue;
+      p.target = blankProbe(renderer, p.size);
+      for (const m of p.materials) {
+        m.envMap = p.target.texture;
+        m.needsUpdate = true;
+      }
     }
   }
 
-  // The reflection probe: the street from probeAt, Jonas hidden, the sun's box round it.
-  takeProbe(view) {
-    this.probeDirty = false;
-    this.probeTaken = true;
-    if (!this.probeAt || !this.probeMaterials.length || !this.tier.probe) return;
+  // A reflection probe (or every one not yet taken): the street from its place, Jonas hidden,
+  // the sun's box round it.
+  takeProbe(view, name = null) {
+    const names = name ? [name] : this.probeNames().filter((n) => !this.probes.get(n).taken);
+    for (const n of names) this.captureOne(view, this.probes.get(n));
+    this.probeDirty = [...this.probes.values()].some((p) => !p.taken && p.materials.length && p.size > 0);
+    this.probeTaken = !this.probeDirty;
+  }
+
+  captureOne(view, p) {
+    p.taken = true;
+    if (!p.materials.length || !p.size) return;
     const { renderer, scene, sun } = view;
-    this.snapped.set(this.probeAt.x, this.probeAt.y, this.probeAt.z);
+    this.snapped.set(p.at.x, p.at.y, p.at.z);
     this.placeSun(sun, this.snapped);
-    const old = this.probe;
-    this.probe = captureProbe(renderer, scene, { at: this.probeAt, size: this.tier.probe, hide: view.realActors.map((a) => a.object3D) });
-    for (const m of this.probeMaterials) {
-      m.envMap = this.probe.texture;
+    const old = p.target;
+    p.target = captureProbe(renderer, scene, { at: p.at, size: p.size, hide: view.realActors.map((a) => a.object3D) });
+    for (const m of p.materials) {
+      m.envMap = p.target.texture;
       if (!old) m.needsUpdate = true; // (from the sky's environment to its own: once)
     }
     old?.dispose();
@@ -409,7 +448,7 @@ export class RealLook {
     this.hdr?.dispose();
     this.retroHdr?.dispose();
     this.env?.dispose();
-    this.probe?.dispose();
+    for (const p of this.probes.values()) p.target?.dispose();
     this.far?.dispose();
     this.post?.dispose();
     this.gpu?.dispose();
