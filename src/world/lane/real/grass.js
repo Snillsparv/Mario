@@ -51,7 +51,7 @@ export function grassClump(tier) {
       const up = [0, 1, 0];
       for (const i of [0, 1, 2, 0, 2, 3]) {
         const k = i < 2 ? k0 : k1;
-        g.rgb(0.13 * k, 0.33 * k, 0.055 * k);
+        g.rgb(0.15 * k, 0.33 * k, 0.055 * k);
         g.sway = (i < 2 ? t0 : t1) ** 2;
         g.vertex(q[i], up, [0, 0]);
       }

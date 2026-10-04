@@ -7,10 +7,13 @@
 //                           // the pot by the door, the flower beds, the forest's birches; kit:
 //                           // detail.js's Geo per material (foliage, core, bark, birch, paint,
 //                           // enamel)
-//   firGeometry(tier) -> { leaves, core }   // one spruce (unit radius and height, its foot
-//                           // at 0): Geos (the core its dark inner cone and its trunk)
-//   firInstances(L) -> { matrices, colors }        // the forest's firs (spots.js), a matrix and
-//                           // a tint each
+//   boxPlants(kit, spots, seed)   // a balcony box's leafy tufts and geraniums (villas.js)
+//   firGeometry(tier, seed, shape) -> { leaves, core }   // one spruce (unit radius and
+//                           // height, its foot at 0): Geos (the core its dark inner cone and
+//                           // its trunk); shape: FIR_SHAPES.A (the forest's) or .B (the edge's
+//                           // on high: more tiers, a hanging skirt, gaps)
+//   firInstances(L, from, to) -> { matrices, colors }   // the forest's firs (spots.js; a range
+//                           // of them), a matrix and a tint each
 //
 // A plant is clusters of two crossed cards (the leaf atlas's cells: texgen/sets.js LEAF_CELLS)
 // on a shell: an ellipsoid (the bushes, each blob of a canopy), a box (the hedges) or a column
@@ -359,27 +362,56 @@ function flowerBed(kit, R, L, bed) {
   }
 }
 
+// A balcony box's plants (villas.js balcony): a leafy tuft at each of `spots` (world: the soil's
+// middle there), geraniums over them (five-petal stars in `paint`).
+export function boxPlants(kit, spots, seed) {
+  const R = makeRng(seed);
+  const flowers = [0xd8343a, 0xe8607a, 0xc42a30, 0xf2eeea];
+  spots.forEach(([x, y, z], i) => {
+    shell(kit, R, { c: [x, y + 9, z], r: [17, 12, 13], count: 14, size: 15, cell: CELL.hedge, tints: [[0.85, 1.05, 0.75], [0.75, 0.95, 0.68]], below: -0.4, sway: 1, core: null });
+    for (let k = 0; k < 3; k++) {
+      const a = R() * Math.PI * 2;
+      const [fx, fy, fz] = [x + Math.sin(a) * 9, y + 17 + R() * 6, z + Math.cos(a) * 7];
+      kit.paint.color(flowers[(i + k) % flowers.length]);
+      for (let p = 0; p < 5; p++) {
+        const b = (p / 5) * Math.PI * 2;
+        kit.paint.tri([fx, fy + 0.8, fz], [fx + Math.sin(b + 0.4) * 4.5, fy, fz + Math.cos(b + 0.4) * 4.5], [fx + Math.sin(b - 0.4) * 4.5, fy, fz + Math.cos(b - 0.4) * 4.5]);
+      }
+    }
+  });
+}
+
 // ---------------------------------------------------------------- firs
 
-export function firGeometry(tier = 'high', seed = 7) {
+// The forest's spruce (A: every fir but the edge's on high) and the edge's (B, high only: the
+// firs nearest the street): more, shorter tiers, the lower branches hanging (a Norway spruce's
+// skirt), a narrower spire, branches more uneven and here and there one missing (a gap the sky
+// shows through), so the edge is not one tree copied.
+export const FIR_SHAPES = Object.freeze({
+  A: Object.freeze({ tiers: 14, low: 10, branches: 7, droop: 0, spread: 0.3, gap: 0, power: 0.85 }),
+  B: Object.freeze({ tiers: 18, low: 12, branches: 7, droop: 0.22, spread: 0.45, gap: 0.14, power: 1.05 }),
+});
+
+export function firGeometry(tier = 'high', seed = 7, shape = FIR_SHAPES.A) {
   const R = makeRng(seed);
   const leaves = new Geo();
   const core = new Geo();
-  const tiers = tier === 'low' ? 10 : 14;
+  const tiers = tier === 'low' ? shape.low : shape.tiers;
   core.rgb(0.09, 0.06, 0.045);
   core.cyl('y', -0.02, 0.95, 0, 0, 0.03, 6);
   for (let k = 0; k < tiers; k++) {
     const t = k / tiers;
     const y = 0.1 + 0.84 * t;
-    const r = Math.pow(1 - t, 0.85) + 0.06;
-    const n = Math.max(4, Math.round(7 * (1 - t * 0.4)));
+    const r = Math.pow(1 - t, shape.power) + 0.06;
+    const n = Math.max(4, Math.round(shape.branches * (1 - t * 0.4)));
     const a0 = k * 2.399;
     for (let b = 0; b < n; b++) {
       const a = a0 + (b / n) * Math.PI * 2 + (R() - 0.5) * 0.4;
+      if (shape.gap && R() < shape.gap * (1 - t)) continue;
       const dir = [Math.cos(a), 0, Math.sin(a)];
-      const len = r * (0.85 + 0.3 * R());
+      const len = r * (1 - shape.spread / 2 + shape.spread * R());
       const p0 = [dir[0] * 0.02, y, dir[2] * 0.02];
-      const p1 = [dir[0] * len, y - (0.05 + 0.08 * R()) * (0.6 + t), dir[2] * len];
+      const p1 = [dir[0] * len, y - (0.05 + 0.08 * R()) * (0.6 + t) - shape.droop * (1 - t) * len, dir[2] * len];
       const axis = norm(sub(p1, p0));
       const across = norm(cross([0, 1, 0], axis));
       const w = 0.22 + 0.25 * r;
@@ -412,12 +444,15 @@ export function firGeometry(tier = 'high', seed = 7) {
   return { leaves, core };
 }
 
-export function firInstances(L) {
+// `from`, `to`: the spots' range (forestSpots' order: the bank's firs, then the edge's).
+export function firInstances(L, from = 0, to = Infinity) {
   const { firs } = forestSpots(L);
-  const matrices = new Float32Array(firs.length * 16);
-  const colors = new Float32Array(firs.length * 3);
+  const list = firs.slice(from, to);
+  const matrices = new Float32Array(list.length * 16);
+  const colors = new Float32Array(list.length * 3);
   const R = makeRng(99);
-  firs.forEach((s, i) => {
+  for (let i = 0; i < from; i++) R(); // (each fir's tint its own, wherever the range starts)
+  list.forEach((s, i) => {
     // Column-major: a turn about y, scaled (r, h, r), at its foot.
     const a = s.a0 * Math.PI * 2;
     const [c, n] = [Math.cos(a), Math.sin(a)];

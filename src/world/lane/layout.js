@@ -536,9 +536,12 @@ const DEG = Math.PI / 180;
 
 // The realistic look (world/lane/real/look.js, render/real/RealLook.js): the same golden hour,
 // physically lit. Tuned by eye against the photographs (never sampled from them).
-//   sky          the analytic sky's colours (linear: a deep blue zenith paling to a blue-white
+//   sky          the analytic sky's colours (linear: a blue zenith paling to a blue-white
 //                horizon away from the sun, a peach band only near the horizon on its side, the
-//                dark ground the environment's lower half shows), its brightness and cirrus
+//                dim ground the environment's lower half shows), its brightness and cirrus, and
+//                envTint: its light's colour beside its own (the environment only: a camera's
+//                white balance, so the shade, the road and the white plinths read near neutral
+//                as in the photos, not blue; G3)
 //   exposure     before the output pass's Neutral tone mapping (1.3: the shade reads like the
 //                phone photos without blowing out the sunlit villas)
 //   environment  the sky's light on every realistic material (1.3: at 1 the shaded lawn is too
@@ -569,17 +572,17 @@ const DEG = Math.PI / 180;
 //   camera       the camera's profile in the realistic look (CameraController.setProfile): a
 //                lower, wider third-person street view (the field of view 55, the look point
 //                at his scaled chest, closer and flatter, gentler lags: the eye ~190 over his
-//                feet at rest, an adult's; the classic camera's ~324); the lane's camera tests
-//                pass with it too
+//                feet at rest, an adult's; the classic camera's ~324), and first person's eye
+//                at the smaller hero's (EYE_HEIGHT); the lane's camera tests pass with it too
 //   hero         Jonas's model's size in the realistic look (the dad: "maybe a little smaller"):
 //                only the model, scaled about his grip (player/model/scalePivot.js); his
 //                collider and everything he does stay
 export const LANE_REAL = Object.freeze({
-  sky: Object.freeze({ zenith: [0.075, 0.2, 0.62], horizonAway: [0.5, 0.66, 0.9], horizonSun: [1.25, 0.82, 0.42], ground: [0.05, 0.06, 0.035], intensity: 1, clouds: 0.55 }),
+  sky: Object.freeze({ zenith: [0.095, 0.215, 0.56], horizonAway: [0.56, 0.68, 0.84], horizonSun: [1.25, 0.82, 0.42], ground: [0.08, 0.085, 0.06], intensity: 1, clouds: 0.55, envTint: Object.freeze([1.08, 1, 0.8]) }),
   sunDir: LANE_SUN,
   exposure: 1.3,
   environment: 1.3,
-  haze: 3.5e-5,
+  haze: 4e-5,
   shadow: Object.freeze({ radius: 2.5, bias: -0.0004, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
@@ -597,7 +600,7 @@ export const LANE_REAL = Object.freeze({
     shaftTint: Object.freeze([1, 0.86, 0.62]),
     contrast: 0.25,
     split: 0.35,
-    shadowTint: Object.freeze([0.95, 0.99, 1.05]),
+    shadowTint: Object.freeze([0.97, 0.99, 1.02]),
     highTint: Object.freeze([1.07, 1, 0.9]),
     saturation: 1.08,
     vignette: 0.3,
@@ -614,6 +617,7 @@ export const LANE_REAL = Object.freeze({
       follow: Object.freeze({ dist: [1050, 1550], pitch: [4 * DEG, 9 * DEG], aim: [4 * DEG, 6 * DEG], swingGain: 0.02, swingMax: 0.8 * DEG, faceCamera: [100 * DEG, 155 * DEG] }),
       hero: Object.freeze({ dist: [700, 1050], pitch: [4 * DEG, 8 * DEG], aim: [3 * DEG, 5 * DEG], swingGain: 0.08, swingMax: 3 * DEG, faceCamera: [150 * DEG, 175 * DEG] }),
     }),
+    EYE_HEIGHT: 115, // first person's eye over his feet: cameraConfig's 135 x the hero's 0.85
   }),
   hero: 0.85,
 });

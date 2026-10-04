@@ -2329,9 +2329,13 @@ at once, so the classic build is unchanged to the byte), the detail's bounding s
 the worker; then the programs, compiled a mesh at a time (`view.compileLook`) and each linked in
 a task of its own (`program.getUniforms()`: where the browser cannot link in the background, the
 first frame would otherwise wait for all of them at once), the textures uploaded a few at a time
-(after the links, which would wait on queued uploads), and the probe, its own task (the street's
-first draw: its buffers uploaded, the sun's shadow programs made), taken where the area will
-stand (the part under a group at its origin, `view.withLook` showing only it for the while).
+(after the links, which would wait on queued uploads), the far shadow map (G1; since G3 before
+the probes), then the probes, each its own task (the street's first draws: its buffers uploaded,
+the sun's shadow programs made), taken where the area will stand (the part under a group at its
+origin, `view.withLook` showing only it for the while). A probe (since G3) leaves out the grass's
+blades (`look.probeSkip`: finer than its texels, 1.9M of its 4.2M triangles a face) and puts the
+sun's near box far off the street (`AWAY`: its map drawn empty), so its shadows are all the far
+map's: each probe a fifth of its old cost, ready ~3 s sooner here (SwiftShader).
 `real.ms[area]` keeps each step's time and `real.longest` the longest stretch between two frames.
 
 **Crossfades.** Where a look comes or goes on screen (the build landing while the lane shows
@@ -2348,10 +2352,14 @@ occlusion off: 'high -shafts', 'high ao8', 'high bloom4', 'high -ao'), then each
 render size, MSAA, near shadow and grass from the built tier down, each then at 85 % of its
 render size, the post chain never more than it was stepped down to; what was built, textures,
 geometry and the far shadow map, stays). `N64Renderer.render` hands it each frame's time (`look.govern`): a 2 s window
-of frames over budget (the 90th percentile over 20 ms, 50 fps; 36 ms on a low level, phones
-aiming at 30) steps down; 5 s of frames keeping 60 fps steps back up, and a step up that fails
-doubles the wait before the next (to a minute); stalls (a hidden tab, a build: over 250 ms, but
-five in a row count) and the second after a step are not counted. Each step cross-fades
+of frames over budget (the 90th percentile over the level's tier's budget, `budgetOf`: 20 ms,
+50 fps, on a high level; 22.2 ms, 45 fps, on a mid one, its floor; 36 ms on a low level, phones
+aiming at 30) steps down; 5 s of frames keeping 60 fps, and where the browser times the GPU
+(`gpuTimer.js`, measured while the look is governed too) its 90th percentile under 11 ms
+(`GPU_UP`: headroom for the level above, which a 60 fps frame rate alone cannot show), steps
+back up, and a step up that fails doubles the wait before the next (to a minute); stalls (a
+hidden tab, a build: over 250 ms, but five in a row count) and the second after a step are not
+counted. A pass the level does not run frees its targets (`RealPost.render`). Each step cross-fades
 (`setLevel`: the render size, the HDR target's MSAA and depth texture, the near shadow map and
 box, the blades' reach, the post chain's passes) and is kept for the next visit (`localStorage`
 'castleGrounds.realLevel.v2', per tier; a convenience). Off the ladder (still too slow at its last level) the look goes classic for the
@@ -2434,8 +2442,8 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   (high 2048 over ±1500, texel 1.5 units; mid 1024 over ±1300) centred a little ahead of the
   focus along the view; the **far map** (`farShadow.js`: 4096 on high, 2048 on mid, none on low)
   covers the lane's bounds up to 3000 high, its box reaching 6000 toward the sun for casters
-  outside them, and is drawn **once a build** (the readying chain's last task, after the probe;
-  else the first frame drawn), by three's own shadow pass for a light of its own that is never in
+  outside them, and is drawn **once a build** (the readying chain's task before the probes,
+  whose shadows are all its own; else the first frame drawn), by three's own shadow pass for a light of its own that is never in
   the scene (so no actor's program changes), inside a render of the scene from a camera that sees
   nothing (three's pass needs the renderer's render state). `materials.js sunShadowChunk` (in
   every realistic material where the look has a far map) wraps three's shadow term for the sun:
@@ -2454,7 +2462,7 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   0.15 s (`ScalePivot.shift`, moving the render state's feet before `model.update`: the blob
   shadow keeps to the floor and reads his world scale). The camera reads the fields a **profile**
   may change from `cam.k` (`CameraController.setProfile`: `FOV`, `LOOK_HEIGHT`, `PIVOT_RATE`,
-  `LOOK_RATE`, `ORBIT_MODES`; `cameraConfig` itself without one, so nothing else changes; the
+  `LOOK_RATE`, `ORBIT_MODES`, `EYE_HEIGHT`; `cameraConfig` itself without one, so nothing else changes; the
   AI RACE look-up widens from the profile's field of view); `AreaSwitch._look` sets the look's
   (`look.camera` = `LANE_REAL.camera`) with it and none with the classic look, a change snapping
   the camera there (under the crossfade; behind the covered wipe on entering or leaving):
@@ -2468,8 +2476,10 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   | 'hero' (R) distance, pitch, aim | 800–1250, 7–11°, 4–6° | 700–1050, 4–8°, 3–5° |
   | pivot lag / look lag | 0.3 / 0.8 | 0.18 / 0.45 |
   | eye over his feet at rest | ~324 | ~190 (an adult's) |
+  | first person's eye over his feet (`EYE_HEIGHT`, G3) | 135 | 115 (135 × 0.85) |
 
-  The fly-in, the title orbit, first person and the cannon keep `cameraConfig`'s own. The lane's
+  The fly-in, the title orbit, first person's field of view and the cannon keep `cameraConfig`'s
+  own. The lane's
   camera tests pass with the profile too (`tests/lane.test.js` runs them with each).
 * **The lazy chunk.** The realistic look's main-thread code that the boot does not need
   (`render/real/{RealLook,OutputPass,materials,sky,probe,farShadow,gpuTimer}.js`,
@@ -2513,16 +2523,62 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   quarter of the leaves, no weeds or flowers, the cars plainer, the canopies as they were, the
   weathering lite, no probes of its own.
 
+**Polish, performance, tiers (G3).**
+* **The light, tuned against the photos** (by eye, never sampled into the repo): the shade, the
+  road and the white plinths read near neutral, as a camera's white balance leaves them, not
+  blue: `LANE_REAL.sky.envTint` (1.08, 1, 0.8) colours the environment's light only (`sky.js`
+  `skyEnvironment`'s `uTint`: the visible sky, the haze and the reflections keep the sky's own
+  colours), its dim ground a little brighter (the sunlit street's bounce), the zenith a little
+  paler and less saturated, the split toning's shadow tint nearly neutral (0.97, 0.99, 1.02), the
+  haze 4e-5 (a little more depth down the street), the asphalt 12 % lighter (the sealed patches
+  as they were: darker than it), the lawn and its blades a touch more yellow. Measured on the
+  shots (patch means): the road (`f-west`) (46, 55, 77) -> (55, 60, 69), the lawn (57, 103, 77)
+  -> (68, 108, 67), the white plinth in the house's shade (`arrival`) (115, 132, 157) -> (129,
+  138, 141); the
+  Falu red, the sky's blue and Jonas's shirt (2.8 % from the classic chromaticity; the bar 8 %)
+  within their checks.
+* **Readying** (above): the far map first, then the probes without the grass and with the near
+  box away; G2's 9.5 s to ready on high here became ~5.4-6.4 s (the probes 3.9 s -> 0.7 s).
+* **The governor**: budgets per tier and the GPU's headroom before a step up (above); a bug
+  fixed: `Ssao.render` read `{ samples }` but the level hands `post` with `ao` (its taps), so
+  'high ao8' and the whole mid tier drew 12 taps, not 8.
+* **First person** in the realistic look: the eye at the smaller hero's (the profile's
+  `EYE_HEIGHT` 115).
+* **Details** (the worker): the forest edge's firs nearest the street a second spruce on high
+  (`foliage.js FIR_SHAPES.B`: more, shorter tiers, a hanging skirt, gaps; its own instanced meshes
+  in the forest's materials: `fir-leaves-edge`, `fir-core-edge`); the cars' lamps and lower
+  bumpers wrap round the corners on the body's own stations (`cars.js along`: on mid's coarser
+  body the wraps' own fewer stations cut inside it, a step); the double garage's half-round
+  gutters, brackets (high), downpipes at the gable's corners with three clips and faint rust
+  streaks under them (`hardware.js garageGutters`; the streaks in `contact`'s multiply, a
+  vertex colour fading from rust to white: `Geo` shades may be `[r, g, b]`; not on low); two
+  boxes of geraniums on north_3's balcony rail (`villas.js`, `foliage.js boxPlants`; not on
+  low). Not done: dead twigs and limb cards (the canopies' gaps already show `limbs`), and the
+  plan's optional distant depth of field (high only): the haze already softens the far
+  background, and a blur pass would cost the high tier's GPU budget, the post chain's pinned
+  passes and a program for little gain at a street this short.
+* **The build's shaders minified** (`tools/glslMinify.js`, a Vite plugin, build only): every
+  `/* glsl */` template literal in `src/` loses its comments and spare whitespace, its tokens
+  unchanged (each preprocessor line kept a line, an interpolation alone on its line kept alone;
+  no space dropped next to + or -); three.js's own chunks are not touched (the materials patch
+  them by their exact text). `tests/glsl-minify.test.js` checks token equivalence for every
+  literal in `src/` and the plugin's output; `net-relay-build`'s E2E draws every look from the
+  built bundle in Chromium (the grounds, AI RACE's storm, the meltdown, retro, the hall, the
+  skerries, the lane on high with F2 and on low, Pip's face) with no error and no program
+  failing to link.
+
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its
-verdicts on synthetic frame-time series, the kept level, the workers' pool and how it shares the
+verdicts on synthetic frame-time series (with GPU times: no step up without the headroom; the
+mid tier's 45 fps floor), each level's post chain on a stand-in renderer (its programs, its
+draw calls, the targets of the passes it does not run freed), the kept level, the workers' pool and how it shares the
 jobs out), `tests/real-post.test.js` (each tier's post chain, the ladder's post steps, the
 grade's constants in range, the output pass's composite order, every pass's uniforms given, the
 uniform names unique across the sky, the haze, the shadow patch and each material's own patch),
 `tests/camera-profile.test.js` (without a profile the poses of scripted runs on the grounds, in
 the hall and in the lane pinned as before profiles existed; a profile set and taken off leaves
 nothing behind; the lane's profile's field of view in `apply()` and the look-up, its look point,
-the arrival's eye height), `tests/hero-scale.test.js` (the pivots; at 0.85 his mittens on the
+the arrival's eye height, first person's eye with and without it), `tests/hero-scale.test.js` (the pivots; at 0.85 his mittens on the
 lip of the dad's eave, the carport's and the motorhome's roof as at full size, his grip on the
 six poles and nothing sinking into them, his lowest point on the floor, the blob at his scale,
 the eased change of pivot), `tests/lane.test.js` (its camera tests also with the realistic
@@ -2546,7 +2602,10 @@ the cars' clusters and probes, no plate-shaped part on either end; the clutter o
 (every leaf within 2 of it, none under a collider, none on the road's middle 60 %), the weeds
 only in the kerbs' joints, at the walls' feet and on the path, the grit in the gutters, the
 street sign's plate blank, the clutter's share per tier; the walls' wear attribute in range,
-the streaks hanging from the dad's sills; the bird on the ridge), `tests/real-materials.test.js` (the haze and the
+the streaks hanging from the dad's sills; the bird on the ridge; the forest edge's second
+spruce on high; the garage's rust under its pipes' clips and the balcony's geraniums, not on
+low), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
+tokens; the plugin's output), `tests/real-materials.test.js` (the haze and the
 clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
 the glass's F0 and premultiplied output, the leaf
 cards' (no sheen on a card seen from behind), the grass's and the lacquer's patches, shared
@@ -2563,16 +2622,18 @@ occlusion's mean neither black nor white and never on the sky, the bloom round t
 0.85 and the camera at 55° in it, 1 and 45° with G; G2: every probe taken (the cars' clusters'
 at 128, the windows' at 256; none on low), the weathering's ground map bound, the contact
 shadows drawn and the drive darker under a car than in front of it, each tier within section
-9's budgets); `tests/net-relay-build.test.js` (the worker chunk and the lazy `realLook` chunk).
+9's budgets); `tests/net-relay-build.test.js` (the worker chunk and the lazy `realLook` chunk;
+with E2E=1 the built bundle's minified shaders compiling and drawing every look).
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
-own chunk (`laneRealWorker-*.js`, ~114 kB with G2's cars, clutter and hardware, no three.js,
-no imports: under 160 kB); the renderer side's code that the boot does not need is the lazy
-`realLook` chunk (above: ~52 kB with G1's post chain and G2's weathering and probes, imported by
-`main` only dynamically, importing only `main`: under 90 kB; no modulepreload,
-`build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB, R2 +~9 kB, R3 +~8.8 kB,
-then G1 moved the look's code out: 1,678,476 bytes; G2 +189: 1,678,665 bytes, under the
-1,700,000-byte budget). `tests/net-relay-build.test.js` checks all three.
+own chunk (`laneRealWorker-*.js`, ~116 kB with G2's cars, clutter and hardware and G3's details,
+no three.js, no imports: under 160 kB); the renderer side's code that the boot does not need is
+the lazy `realLook` chunk (above: ~47 kB with G1's post chain and G2's weathering and probes, its
+shaders minified since G3; imported by `main` only dynamically, importing only `main`: under 90
+kB; no modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB,
+R2 +~9 kB, R3 +~8.8 kB, then G1 moved the look's code out: 1,678,476 bytes; G2 +189: 1,678,665;
+G3's minified shaders -7.7 kB: 1,670,953 bytes, under the 1,700,000-byte budget).
+`tests/net-relay-build.test.js` checks all three.
 
 ## Audio (`src/audio/AudioEngine.js`)
 

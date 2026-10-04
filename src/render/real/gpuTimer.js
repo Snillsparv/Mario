@@ -1,5 +1,6 @@
 // The realistic look's GPU time per frame (render/real/RealLook.js), for the F1 overlay's line
-// 'gpu 8.4 ms' while it shows (high and mid tiers: the look's frame, its shadow passes, the
+// 'gpu 8.4 ms' while it shows and for the governor's headroom before a step up while it runs
+// (tier.js Governor; high and mid tiers: the look's frame, its shadow passes, the
 // scene, the post chain and the output pass): a TIME_ELAPSED query round each frame where the
 // browser has EXT_disjoint_timer_query_webgl2 (read a few frames later, never waited for; a
 // frame the GPU was disturbed in is dropped), averaged over the last WINDOW frames. Where it
@@ -9,6 +10,7 @@
 //   timer.begin(), timer.end()   // round one frame's drawing (a frame while one is pending
 //                                // too long is skipped)
 //   timer.ms                     // the average (ms), or null before the first result
+//   timer.reset()                // the times so far forgotten (a new level)
 //   timer.line() -> 'gpu 8.4 ms' | 'gpu: no timer' | 'gpu ...'
 //   timer.dispose()
 
@@ -52,6 +54,12 @@ export class GpuTimer {
       if (this.times.length > WINDOW) this.times.shift();
       this.ms = this.times.reduce((a, b) => a + b, 0) / this.times.length;
     }
+  }
+
+  // (The times so far forgotten: a new level of the look's.)
+  reset() {
+    this.times = [];
+    this.ms = null;
   }
 
   line() {

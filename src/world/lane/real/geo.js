@@ -15,7 +15,8 @@
 //   g.quad(a, b, c, d, { uvs, n, shade })   // a b c d counter-clockwise seen from its front;
 //                                     // uvs default to its own edges (u along a->b, v along
 //                                     // a->d, world units), n one normal each (flat by default),
-//                                     // shade one number or four
+//                                     // shade one number or four (each a number or [r, g, b]: a
+//                                     // colour fading along the quad)
 //   g.tri(a, b, c, { uvs, n, shade })
 //   g.box(x0, x1, y0, y1, z0, z1, { skip, shade, under })   // axis-aligned; skip a string of
 //                                     // faces left out ('-x+x-z+zt b'), under: the bottom's shade
@@ -86,7 +87,8 @@ export class Geo {
     this.pos.push(p[0], p[1], p[2]);
     this.nrm.push(n[0], n[1], n[2]);
     this.uv.push(uv[0] * this.s, uv[1] * this.s);
-    this.col.push(this.tint[0] * shade, this.tint[1] * shade, this.tint[2] * shade);
+    const [r, g, b] = typeof shade === 'number' ? [shade, shade, shade] : shade;
+    this.col.push(this.tint[0] * r, this.tint[1] * g, this.tint[2] * b);
     this.sw.push(this.sway);
     if (this.sway) this.swaying = true;
     const w = this.wearAt?.(p);

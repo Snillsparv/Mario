@@ -28,15 +28,20 @@
 //                                 // blur's half width), bloom (levels; 0: none), shafts, ca (the
 //                                 // edge colour fringing) } }. What was built (textures,
 //                                 // geometry, the far shadow map) stays: these only draw it.
-//   new Governor({ levels, level }) // gov.frame(ms) per frame drawn, ms since the one before ->
-//                                 // the level to step to (levels.length: below the ladder, the
-//                                 // classic look) or null: frames over budget for a window (2 s:
-//                                 // the 90th percentile over 20 ms, 50 fps; on a low level 36 ms,
-//                                 // 28 fps) step down; every frame keeping 60 fps (17.5 ms) for
-//                                 // 5 s steps back up, and a step up that fails doubles the wait
-//                                 // before the next (up to a minute). Stalls (over 250 ms: a
-//                                 // hidden tab, a build; but five in a row count) and the
+//   new Governor({ levels, level }) // gov.frame(ms, gpu) per frame drawn, ms since the one
+//                                 // before, gpu the GPU's time a frame where the browser can
+//                                 // time it (gpuTimer.js; else null) -> the level to step to
+//                                 // (levels.length: below the ladder, the classic look) or null:
+//                                 // frames over budget for a window (2 s: the 90th percentile
+//                                 // over 20 ms, 50 fps, on a high level; 22.2 ms, 45 fps, on a
+//                                 // mid one: its floor; 36 ms, 28 fps, on a low one) step down;
+//                                 // every frame keeping 60 fps (17.5 ms), and where it is timed
+//                                 // the GPU under 11 ms a frame (headroom for the level above),
+//                                 // for 5 s steps back up, and a step up that fails doubles the
+//                                 // wait before the next (up to a minute). Stalls (over 250 ms:
+//                                 // a hidden tab, a build; but five in a row count) and the
 //                                 // second after a step are not counted.
+//   budgetOf(level) -> ms           // a level's frame budget (its tier's)
 //   savedLevel(tier), saveLevel(tier, level)   // the last good level on this device (local
 //                                 // storage; a convenience: unavailable, the tier's own)
 //
@@ -154,9 +159,16 @@ export function ladder(tier) {
 }
 
 const WINDOW = 2000; // ms of frames a verdict is made on
-const BUDGET = 20; // ms: the 90th percentile above it steps down (50 fps)
-const LOW_BUDGET = 36; // ...on a low level (28 fps: phones aim at 30)
+// ms: the 90th percentile above it steps down, by the level's tier: high 50 fps, mid 45 (its
+// floor: an integrated GPU's 45-60 fps is its look's, not a reason to lose the occlusion), low 28
+// (phones aim at 30).
+const BUDGET = Object.freeze({ high: 20, mid: 22.2, low: 36 });
 const FAST = 17.5; // ms: every frame keeping 60 fps
+// ms: where the browser times the GPU (gpuTimer.js: the F1 line's), the GPU's time a frame (its
+// 90th percentile over the window) must be under this, too, before a step up: the level above
+// costs more (an M1 draws the high level, the whole post chain, in ~11 ms: GTA plan section 9),
+// and a 60 fps frame rate alone cannot tell 6 ms of GPU work from 16.
+const GPU_UP = 11;
 const UP_WAIT = 5000; // ms of fast frames before a step up (doubled after one that fails)
 const MAX_WAIT = 60000;
 const STALL = 250; // ms: a frame this late is a stall (a hidden tab, a build), not the GPU...
@@ -174,15 +186,19 @@ export class Governor {
     this.wait = UP_WAIT;
     this.raised = -1; // the level the last step up went to (until it holds a window)
     this.stalls = 0; // stalls in a row
+    this.gpus = []; // the GPU's times this window (where the browser times it)
   }
 
-  frame(ms) {
+  // `ms`: the time since the frame before; `gpu`: the GPU's time a frame (gpuTimer.js: its mean
+  // over the last frames), or null where the browser cannot time it.
+  frame(ms, gpu = null) {
     if (this.level >= this.levels.length) return null; // (off the ladder: classic, for good)
     // A stall (a hidden tab, a build) is not the GPU: the window starts again, unless the stalls
     // go on (a device this slow: they count, as late frames).
     this.stalls = ms > STALL ? this.stalls + 1 : 0;
     if (this.stalls > 0 && this.stalls < STALLS) {
       this.times.length = 0;
+      this.gpus.length = 0;
       this.span = 0;
       return null;
     }
@@ -191,19 +207,22 @@ export class Governor {
       return null;
     }
     this.times.push(ms);
+    if (gpu !== null && Number.isFinite(gpu)) this.gpus.push(gpu);
     this.span += ms;
     if (this.span < WINDOW) return null;
-    const p90 = this.times.sort((a, b) => a - b)[Math.floor(this.times.length * 0.9)];
+    const p90 = percentile(this.times, 0.9);
+    const gpu90 = this.gpus.length ? percentile(this.gpus, 0.9) : null;
     this.times.length = 0;
+    this.gpus.length = 0;
     this.span = 0;
     const raised = this.raised === this.level;
     this.raised = -1;
-    if (p90 > (this.levels[this.level].name.startsWith('low') ? LOW_BUDGET : BUDGET)) {
+    if (p90 > budgetOf(this.levels[this.level])) {
       this.calm = 0;
       if (raised) this.wait = Math.min(this.wait * 2, MAX_WAIT); // (it could not hold: wait longer)
       return this.go(this.level + 1);
     }
-    this.calm = p90 <= FAST ? this.calm + WINDOW : 0;
+    this.calm = p90 <= FAST && (gpu90 === null || gpu90 <= GPU_UP) ? this.calm + WINDOW : 0;
     if (this.calm < this.wait || this.level === 0) return null;
     this.calm = 0;
     this.raised = this.level - 1;
@@ -216,6 +235,11 @@ export class Governor {
     return level;
   }
 }
+
+const percentile = (list, q) => list.sort((a, b) => a - b)[Math.floor(list.length * q)];
+
+// A level's frame budget (ms): its tier's (BUDGET).
+export const budgetOf = (level) => BUDGET[level.name.split(' ')[0]] ?? BUDGET.high;
 
 const SAVED = 'castleGrounds.realLevel.v2'; // (v2: the ladder's post chain steps)
 

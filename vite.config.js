@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, defineConfig } from 'vite';
 import padRelay from './tools/padRelay.js';
+import glslMinify from './tools/glslMinify.js';
 
 const BASE = './';
 const TARGET = 'es2022';
@@ -79,7 +80,9 @@ export default defineConfig({
   // server and its phone-controller relay (tools/padRelay.js) in dev and in preview.
   server: { host: true },
   preview: { host: true },
-  plugins: [padRelay(), padPageBuild()],
+  // (glslMinify: the build's shader text, /* glsl */ literals, without comments and spare
+  // whitespace: tools/glslMinify.js.)
+  plugins: [padRelay(), padPageBuild(), glslMinify()],
   build: {
     target: TARGET,
     rolldownOptions: { input: { main: 'index.html' } },

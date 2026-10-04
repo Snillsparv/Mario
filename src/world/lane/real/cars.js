@@ -52,11 +52,12 @@ const STYLE = {
   estate: { tall: false, clear: 22, noseR: 18, tailR: 12, front: 44, rear: 30, rails: 'silver', blackRear: false, crease: 15, rise: 9 },
   van: { tall: true, clear: 26, noseR: 12, tailR: 8, front: 30, rear: 20, rails: 'black', blackRear: false, crease: 18, rise: 6 },
 };
-// Per tier: body stations, wheel sides, spokes, arch segments, the fine details.
+// Per tier: body stations, wheel sides, spokes, arch segments, the fine details, the lamps and
+// bumpers wrapping round the corners (on the body's own stations there).
 const LOD = {
-  high: { stations: 46, sides: 30, spokes: 10, arch: 14, fine: true, wrap: 5 },
-  mid: { stations: 22, sides: 16, spokes: 5, arch: 6, fine: false, wrap: 2 },
-  low: { stations: 16, sides: 12, spokes: 5, arch: 6, fine: false, wrap: 0 },
+  high: { stations: 46, sides: 30, spokes: 10, arch: 14, fine: true, wrap: true },
+  mid: { stations: 22, sides: 16, spokes: 5, arch: 6, fine: false, wrap: true },
+  low: { stations: 16, sides: 12, spokes: 5, arch: 6, fine: false, wrap: false },
 };
 const WHEEL = 0.9; // the wheels to the bodies' scale (the classic ones are a size up: a real
 // crossover's wheel is ~0.7 of its bonnet's height across)
@@ -246,6 +247,13 @@ function car(kit, L, c, probe) {
   const stations = ws.filter((w, i) => i === 0 || w - ws[i - 1] > 0.2);
   paint.color(c.tint);
   paint.loft(stations.map((w) => ringOf(w).map(([u, y]) => W(u, y, w))), { capStart: true, capEnd: true });
+  // A wrap's stations round a corner, from w0 to w1: the body's own there (and both ends), so the
+  // strip lies on the loft's facets (stations of its own cut inside them where the plan curves
+  // and the body has few: a step on mid).
+  const along = (w0, w1) => {
+    const [a, b] = w0 < w1 ? [w0, w1] : [w1, w0];
+    return [a, ...stations.filter((w) => w > a + 0.5 && w < b - 0.5), b];
+  };
 
   // ---------------------------------------------------------------- the greenhouse
   const per = D.fine ? 3 : 2;
@@ -328,7 +336,7 @@ function car(kit, L, c, probe) {
   // The headlamps: a glossy unit, its light guide along the top, a projector; wrapping round
   // the corner onto the side.
   for (const s of [-1, 1]) {
-    const wrapW = Array.from({ length: D.wrap + 1 }, (_, k) => hl - (S.front * 0.9 * k) / Math.max(1, D.wrap)).reverse();
+    const wrapW = along(hl - S.front * 0.9, hl);
     const faceStrip = (g, ya, yb, off) => {
       const ua = lampIn;
       const q = [[s * ua, ya + 1.5], [s * edgeU(hl, ya), ya + 2.5], [s * edgeU(hl, yb), yb], [s * ua, yb - 1]];
@@ -384,7 +392,7 @@ function car(kit, L, c, probe) {
   const iw = (y) => Math.min(edgeU(hl, y) - 6, hw * 0.62);
   endFace(trim, 1, [[-edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + lowH), noseBottom + lowH], [-edgeU(hl, noseBottom + lowH), noseBottom + lowH]], 0.5);
   endFace(trim, 1, [[-iw(noseBottom + lowH), noseBottom + lowH - 0.5], [iw(noseBottom + lowH), noseBottom + lowH - 0.5], [iw(intakeHi) - 6, intakeHi], [-iw(intakeHi) + 6, intakeHi]], 0.5);
-  if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, Array.from({ length: D.wrap + 1 }, (_, k) => hl - (S.front * k) / D.wrap).reverse(), [noseBottom + 0.5, noseBottom + lowH], 0.5);
+  if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, along(hl - S.front, hl), [noseBottom + 0.5, noseBottom + lowH], 0.5);
   if (S.tall) {
     metal.rgb(...SILVER);
     endFace(metal, 1, [[-hw * 0.36, noseBottom + 2], [hw * 0.36, noseBottom + 2], [hw * 0.34, noseBottom + 8], [-hw * 0.34, noseBottom + 8]], 0.9);
@@ -396,7 +404,7 @@ function car(kit, L, c, probe) {
   const tHi = tailTop - 3;
   const tLo = tHi - (S.tall ? 12 : 13);
   for (const s of [-1, 1]) {
-    const wrapW = Array.from({ length: D.wrap + 1 }, (_, k) => -hl + (S.rear * 1.1 * k) / Math.max(1, D.wrap));
+    const wrapW = along(-hl, -hl + S.rear * 1.1);
     tail.rgb(0.36, 0.012, 0.01);
     const ua = hw * 0.34;
     endFace(tail, -1, [[s * ua, tLo + 2], [s * edgeU(-hl, tLo), tLo], [s * edgeU(-hl, tHi), tHi], [s * ua, tHi]], 0.5);
@@ -417,7 +425,7 @@ function car(kit, L, c, probe) {
   const bumperHi = tailBottom + (S.tall ? 30 : 20);
   trim.rgb(...PLASTIC);
   endFace(trim, -1, [[-edgeU(-hl, tailBottom + 1), tailBottom + 0.5], [edgeU(-hl, tailBottom + 1), tailBottom + 0.5], [edgeU(-hl, bumperHi), bumperHi], [-edgeU(-hl, bumperHi), bumperHi]], 0.5);
-  if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, Array.from({ length: D.wrap + 1 }, (_, k) => -hl + (S.rear * 1.2 * k) / D.wrap), [tailBottom + 0.5, bumperHi], 0.5);
+  if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, along(-hl, -hl + S.rear * 1.2), [tailBottom + 0.5, bumperHi], 0.5);
   if (S.tall) {
     metal.rgb(...SILVER);
     endFace(metal, -1, [[-hw * 0.4, tailBottom + 3], [hw * 0.4, tailBottom + 3], [hw * 0.38, tailBottom + 9], [-hw * 0.38, tailBottom + 9]], 0.9);

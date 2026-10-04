@@ -11,19 +11,21 @@
 //                          // instead); bay windows glazed on three sides over an opening, a
 //                          // little tiled roof; the arched front door set back in its opening,
 //                          // a step; the balcony a slab, dark posts and rails round dark glass,
-//                          // a capping (the classic railing box's size: its top walkable)
+//                          // a capping (the classic railing box's size: its top walkable), two
+//                          // boxes of geraniums on its front rail (not on low)
 //   garageDoors(kit, L)    // sectional doors (the villas' and the double garage's): four
 //                          // sections in a white frame, a handle
 //   hipTrim(kit, L)        // half-round gutters round the hipped roofs' eaves with a downpipe at
 //                          // each front corner, rounded caps along the hips and the ridge
 //
 // kit: detail.js's Geo per material (render, brick, paint, glass, core, enamel, metal, granite,
-// trim, roof, tiles; the villas' panes go into the kit's `glass@north` where it has one: their own
+// trim, roof, tiles, foliage; the villas' panes go into the kit's `glass@north` where it has one: their own
 // probe). The walls carry the weathering's `wear` attribute (house.js wallWear): under each
 // window's sill (on down the render under it), else under the eaves.
 
 import { add, mul, sub, norm } from './geo.js';
 import { frameOf, fbox, wallWear, streakLength } from './house.js';
+import { boxPlants } from './foliage.js';
 
 const WHITE = 0xf6f4ee;
 const WIN = { w: 220, sill: 520, h: 200, frame: 12 };
@@ -271,9 +273,20 @@ function frontDoor({ paint, metal, granite, trim }, f, u, v, tint) {
 }
 
 // The balcony on a gable (the classic railing box's place and size: solid, its top walkable): a
-// slab, a frame of dark posts and rails round dark glass panes, a capping on top.
-function balcony({ paint, glass, metal }, f, v0) {
+// slab, a frame of dark posts and rails round dark glass panes, a capping on top; and (not on
+// low) two boxes of geraniums hung outside its front rail.
+function balcony(kit, f, v0) {
+  const { paint, glass, metal } = kit;
   const [u0, u1, w1, top] = [-300, 300, 150, v0 + 100];
+  if (kit.tier !== 'low') {
+    for (const [a, b] of [[-250, -95], [95, 250]]) {
+      metal.color(0x303234);
+      fbox(metal, f, a, b, top - 26, top - 5, w1 + 4, w1 + 20);
+      kit.core.rgb(0.05, 0.035, 0.02);
+      kit.core.quad(f.at(a + 2, top - 6, w1 + 18), f.at(b - 2, top - 6, w1 + 18), f.at(b - 2, top - 6, w1 + 6), f.at(a + 2, top - 6, w1 + 6));
+      boxPlants(kit, [0.17, 0.5, 0.83].map((t) => f.at(a + (b - a) * t, top - 6, w1 + 12)), Math.round(a + 7));
+    }
+  }
   paint.color(0xd8d4cc);
   fbox(paint, f, u0, u1, v0, v0 + 14, 0, w1, 'k');
   metal.color(0x2a2c2e);

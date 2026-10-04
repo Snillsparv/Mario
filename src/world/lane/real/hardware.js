@@ -3,7 +3,7 @@
 // 19, 36 and 40's feel.
 //
 //   hardware(kit, L)   // kit: detail.js's Geo per material (metal, paint, steel, granite, enamel,
-//                      // gloss, core, foliage, tyre)
+//                      // gloss, core, foliage, tyre, contact)
 //
 // On the chain houses' roofs: snow guards along the street side's eaves (a law in Sweden: two
 // rails on brackets a tile course up), the gutters' brackets every 60 (high), the dad's two vent pipes
@@ -15,8 +15,9 @@
 // his bell beside it), concrete splash blocks under the downpipes' shoes, an outdoor socket and
 // a hose reel on the dad's front at its east end, window handles, two pot plants on the dad's
 // inner sills. On the villas: a satellite dish on north_2's wall, lamps beside the front doors,
-// a seal under the garage doors; and the terraces' walls a coping of stones standing 4 proud
-// with joints.
+// a seal under the garage doors; on the double garage gutters along its eaves (their brackets
+// on high), a downpipe at each front corner and faint rust streaks under the pipes' clips (not on
+// low); and the terraces' walls a coping of stones standing 4 proud with joints.
 
 import { frameOf, fbox, lamp } from './house.js';
 import { makeRng } from '../../../core/math.js';
@@ -32,8 +33,64 @@ export function hardware(kit, L) {
   for (const h of L.HOUSES) if (h.kit === 'chain') chainHardware(kit, L, h, fine, R, finest);
   for (const a of L.ANTENNAS) antenna(kit, L, a, fine);
   villaHardware(kit, L, fine);
+  for (const h of L.HOUSES) if (h.kit === 'garage') garageGutters(kit, L, h, fine, finest, R);
   coping(kit, L);
 }
+
+// The double garage (lane/houses.js garage(): its roof along w, the eaves on its sides, the
+// gables front and back): a half-round gutter along each eave, the brackets under it every 60
+// (high), and a downpipe at each front corner of the gable (a swan neck under the verge from the
+// gutter, three clips holding it to the render); and (not on low) faint rust streaks down the
+// white render from each clip's screws: contact's multiply, a rust tint fading to nothing.
+function garageGutters(kit, L, h, fine, finest, R) {
+  const F = frameOf(h);
+  const o = h.overhang ?? CHAIN.overhang;
+  const [A, B] = [h.d / 2, h.w / 2]; // (along the ridge: w; across it: u)
+  const tan = (h.ridge - h.eave) / B;
+  const lo = h.eave - o * tan;
+  const y0 = h.y0 ?? L.GROUND;
+  const { metal, contact } = kit;
+  metal.color(BLACK);
+  for (const s of [-1, 1]) {
+    const at = (w) => F.at(s * (B + o + 10), lo - 16, w);
+    metal.tube(at(-A - o - 6), at(A + o + 6), 9, 9, 6, { a0: 0, arc: Math.PI });
+    metal.tube(at(-A - o - 6), at(A + o + 6), 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true });
+    if (finest) {
+      for (let w = -A - o + 30; w <= A + o - 30; w += 60) {
+        const [a, b] = [F.at(s * (B + o), lo - 26, w - 1.2), F.at(s * (B + o + 20), lo - 26, w + 1.2)];
+        metal.box(Math.min(a[0], b[0]), Math.max(a[0], b[0]), lo - 27, lo - 25, Math.min(a[2], b[2]), Math.max(a[2], b[2]), { skip: 't' });
+      }
+    }
+    // The downpipe at the gable's corner (5 out of the render), its swan neck from the gutter.
+    const u = s * (B - 16);
+    const [px, , pz] = F.at(u, 0, A + 7);
+    const top = F.at(s * (B + o + 10), lo - 22, A + 14);
+    const bend = lo - 74;
+    metal.tube(top, [px, bend, pz], 5, 5, 6);
+    metal.tube([px, bend, pz], [px, y0 + 12, pz], 5, 5, 6, { caps: true });
+    const clips = [y0 + 70, y0 + 170, bend - 30];
+    for (const y of clips) {
+      const [a, b] = [F.at(u - 6.5, 0, A + 0.5), F.at(u + 6.5, 0, A + 13)];
+      metal.box(Math.min(a[0], b[0]), Math.max(a[0], b[0]), y - 2, y + 2, Math.min(a[2], b[2]), Math.max(a[2], b[2]));
+    }
+    if (!fine || !contact) continue;
+    // Rust: a thin streak from each clip's screws (either side of the pipe), on the render 0.4
+    // proud (contact's polygon offset keeps it over the wall).
+    const streak = (uc, ytop, len, wid) => {
+      const k = 0.85 + 0.15 * R();
+      const rust = [1 - 0.15 * k, 1 - 0.3 * k, 1 - 0.42 * k];
+      const P = (du, y) => F.at(uc + du, y, A + 0.4);
+      const q = [P(wid / 2, ytop - len), P(-wid / 2, ytop - len), P(-wid / 2, ytop), P(wid / 2, ytop)];
+      const fade = [[1, 1, 1], [1, 1, 1], rust, rust];
+      contact.rgb(1, 1, 1);
+      // (Facing out of the gable: +w.)
+      if (dot3(cross(sub(q[1], q[0]), sub(q[3], q[0])), F.dir(0, 0, 1)) >= 0) contact.quad(q[0], q[1], q[2], q[3], { shade: fade });
+      else contact.quad(q[1], q[0], q[3], q[2], { shade: [fade[1], fade[0], fade[3], fade[2]] });
+    };
+    for (const y of clips) for (const e of [-1, 1]) streak(u + e * 9, y - 2, 40 + 70 * R(), 3 + 1.5 * R());
+  }
+}
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 // A chain house's roof plane: its height at w across the ridge (the collider's plane).
 const roofOf = (h) => {

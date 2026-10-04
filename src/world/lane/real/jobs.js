@@ -18,8 +18,8 @@ import { texSize } from '../../../render/real/tier.js';
 export const BLOCKS = { cols: 3, rows: 7, seed: 23, tone: [0.5, 0.5, 0.48], mortar: [0.32, 0.32, 0.31], jitter: 0.12 };
 
 export const CATALOGUE = {
-  asphalt: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.8 },
-  grass: { set: 'grass', cover: 300, color: [1.6, 1.79, 1.52] },
+  asphalt: { set: 'asphalt', cover: 420, color: 4.7, normalScale: 0.8 },
+  grass: { set: 'grass', cover: 300, color: [1.7, 1.8, 1.36] },
   blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, normalScale: 1.6 },
   brick: { set: 'brick', cover: 100, color: 1.1, normalScale: 1.2 },
   render: { set: 'render', cover: 300 },

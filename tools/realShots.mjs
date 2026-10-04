@@ -15,6 +15,7 @@
 //     --looks high,classic
 // Options: --views (default all: arrival, door, west, turn, cars, roof, retro, tree: the dad's
 // red-leaf tree close up, villa: a villa up the hill close up, kerb and carclose: close-ups,
+// garage: the double garage's corner, balcony: north_3's balcony,
 // f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole), --sizes
 // (default 960x540,1280x720), --looks (default high,low,classic: a tier, or classic). A frame
 // on SwiftShader takes seconds: each screenshot waits up to three minutes.
@@ -47,6 +48,9 @@ const VIEWS = {
   villa: { pos: [-2150, 330, -520], look: [-2450, 520, -1650], fov: 55, hero: [-2700, 160, -1150, 0.4] },
   kerb: { pos: [-150, 95, -60], look: [-1100, 10, 230], fov: 50, hero: [-700, 0, 0, -Math.PI / 2] },
   carclose: { pos: [1640, 190, 820], look: [2080, 120, 1330], fov: 42, hero: [1250, 22, 1000, 0.6] },
+  // The double garage's south-west corner (its downpipe, the clips' rust), north_3's balcony.
+  garage: { pos: [4760, 210, 470], look: [5250, 230, 60], fov: 45, hero: [4950, 0, 260, 2.4] },
+  balcony: { pos: [-1250, 470, -1750], look: [-850, 610, -2400], fov: 45 },
   // The game's camera behind him: out of the dad's door (the arrival's walk-in, then standing),
   // or from a spot facing `yaw` after `walk` ticks pushing the stick forward and `rest` idle.
   'f-arrival': { follow: { entry: 'home', rest: 50 } },

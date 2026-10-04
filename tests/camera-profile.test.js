@@ -101,7 +101,7 @@ test('the lane\'s profile set and taken off again leaves nothing behind: the sam
 
 test('the lane\'s profile: its field of view in apply() and the look-up, its look point, distances, pitches and aims; the arrival\'s eye at an adult\'s height over his feet (the classic camera\'s over twice his)', () => {
   const profile = lane.LANE_REAL.camera;
-  assert.deepEqual(Object.keys(profile).sort(), ['FOV', 'LOOK_HEIGHT', 'LOOK_RATE', 'ORBIT_MODES', 'PIVOT_RATE']);
+  assert.deepEqual(Object.keys(profile).sort(), ['EYE_HEIGHT', 'FOV', 'LOOK_HEIGHT', 'LOOK_RATE', 'ORBIT_MODES', 'PIVOT_RATE']);
   assert.ok(Object.isFrozen(profile) && Object.isFrozen(profile.ORBIT_MODES.follow) && Object.isFrozen(profile.ORBIT_MODES.hero));
   for (const mode of ['follow', 'hero']) {
     for (const key of Object.keys(K.ORBIT_MODES[mode])) assert.ok(key in profile.ORBIT_MODES[mode], `${mode}.${key}`);
@@ -144,4 +144,32 @@ test('the lane\'s profile: its field of view in apply() and the look-up, its loo
   const classic = eye(null);
   assert.ok(real > 150 && real < 240, `the realistic look's eye ${real.toFixed(0)} over his feet`);
   assert.ok(classic > 280 && classic < 370, `the classic camera's ${classic.toFixed(0)}`);
+});
+
+test('first person in the lane\'s realistic look: the eye at the smaller hero\'s eye height (cameraConfig\'s x 0.85), its field of view the classic one; cameraConfig\'s eye again once the profile is off (leaving the lane, G)', () => {
+  const profile = lane.LANE_REAL.camera;
+  assert.ok(Math.abs(profile.EYE_HEIGHT - K.EYE_HEIGHT * lane.LANE_REAL.hero) <= 1, `${profile.EYE_HEIGHT} = ${K.EYE_HEIGHT} x ${lane.LANE_REAL.hero}`);
+  // Standing at the arrival, C-up from the closest zoom: the glide in, then the eye.
+  const look = (prof, off = false) => {
+    const r = run('lane', { profile: prof, ticks: 0 });
+    const ctl = new ScriptedController();
+    const step = (input = {}) => {
+      const c = ctl.next(input);
+      r.p.update(r.cam.playerInput(c), r.cam.getYaw());
+      r.cam.update(c, r.p);
+    };
+    for (let i = 0; i < 10; i++) step();
+    step({ CU: true });
+    for (let i = 0; i < K.BLEND_TICKS + 60; i++) step(); // (the field of view eases to first person's)
+    assert.equal(r.cam.mode, 'first_person');
+    if (off) {
+      r.cam.setProfile(null);
+      step();
+    }
+    r.cam.apply(1);
+    return { eye: r.cam.pos.y - r.p.pos.y, fov: r.cam.camera.fov, hidden: r.cam.hideHero };
+  };
+  assert.deepEqual(look(null), { eye: K.EYE_HEIGHT, fov: K.FOV, hidden: true }, 'the classic eye');
+  assert.deepEqual(look(profile), { eye: profile.EYE_HEIGHT, fov: K.FOV, hidden: true }, 'the smaller hero\'s eye');
+  assert.deepEqual(look(profile, true), { eye: K.EYE_HEIGHT, fov: K.FOV, hidden: true }, 'the profile off: the classic eye again');
 });

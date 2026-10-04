@@ -13,7 +13,8 @@
 //       the shafts: without one, or once the depth's resolve has failed (depthOk false: some
 //       drivers refuse a multisampled depth blit), only the bloom runs)
 //   post.drawn                  // the passes drawn in the last render (draw calls: high 14
-//                               // facing the sun, 12 away from it; mid 10)
+//                               // facing the sun, 12 away from it; mid 10); a pass the level
+//                               // does not run has its targets freed
 //   post.compile(renderer) -> Promise   // every program it may draw with (the build's link)
 //   post.release()              // its targets freed (RealLook.detach; made again on use)
 //   post.dispose()
@@ -42,8 +43,12 @@ export class RealPost {
     const calls = renderer.info.render.calls;
     const depth = this.depthOk ? target.depthTexture : null;
     const { screen } = this;
+    // (A pass the level does not run frees its targets: the governor's steps down free memory
+    // as they free time.)
     if (post.ao > 0 && depth) fx.ao = this.ssao.render(renderer, screen, depth, camera, post);
+    else this.ssao.release();
     if (post.bloom > 0) fx.bloom = this.bloom.render(renderer, screen, target.texture, { levels: post.bloom });
+    else this.bloom.release();
     if (post.shafts && depth) {
       const s = this.shafts.render(renderer, screen, target.texture, depth, camera, sunDir);
       if (s) {
@@ -51,7 +56,7 @@ export class RealPost {
         fx.sun.copy(s.sun);
         fx.sunVis = s.vis;
       }
-    }
+    } else this.shafts.release();
     this.drawn = renderer.info.render.calls - calls;
     return fx;
   }

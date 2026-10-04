@@ -12,9 +12,11 @@
 //             reflecting that probe), buffers: { position, normal, uv, color, sway?, wear? }
 //             (Float32Arrays, uvs in world units but the leaf cards' atlas uvs); cast: casts the
 //             sun's shadow; sphere: its bounding sphere [x, y, z, r] (as three.js computes it)
-//     firs:   { parts: [{ material, buffers }], matrices, colors, cast, far }   one fir (unit
-//             height and radius) and the forest's instances (a 4 x 4 matrix and a tint each),
-//             far: the tree line's { matrices, colors } (casting none)
+//     firs:   { parts: [{ material, buffers }], matrices, colors, cast, far, edge }   one fir
+//             (unit height and radius) and the forest's instances (a 4 x 4 matrix and a tint
+//             each), far: the tree line's { matrices, colors } (casting none), edge: on high
+//             the edge's firs, nearest the street, a spruce of their own ({ parts, matrices,
+//             colors }; else null: they are the forest's)
 //     grass:  { clump: buffers }   the lawns' blade clump (grass.js; null on low)
 //     ground: the lawn mask (grass.js lawnMask: where the blades grow, the ground's height, the
 //             road's wheel track, the damp lawns): the grass's map and the weathering's ground
@@ -33,7 +35,7 @@
 
 import { Geo } from './geo.js';
 import { mailbox, kerbs, roadDecals, bedStones } from './garden.js';
-import { plants, firGeometry, firInstances } from './foliage.js';
+import { plants, firGeometry, firInstances, FIR_SHAPES } from './foliage.js';
 import { chainHouse } from './house.js';
 import { cars, carClusters } from './cars.js';
 import { grassClump, lawnMask } from './grass.js';
@@ -137,11 +139,19 @@ export function buildLaneDetail(L, tier = 'high') {
     meshes.push({ name: key, material, probe, cast: MATERIALS[material], buffers, sphere: sphereOf(buffers.position) });
     triangles += kit[key].count / 3;
   }
-  // The forest's firs and the far tree line: one fir, instanced (the far ones casting none).
+  // The forest's firs and the far tree line: one fir, instanced (the far ones casting none); on
+  // high the edge's firs (nearest the street) a second spruce of their own (FIR_SHAPES.B).
   const fir = firGeometry(tier);
-  const { matrices, colors } = firInstances(L);
-  const firs = { parts: ['leaves', 'core'].map((k) => ({ material: `fir-${k}`, buffers: fir[k].buffers() })), matrices, colors, cast: !low, far: treeLine(L, tier) };
+  const split = tier === 'high' ? L.FOREST.count : Infinity;
+  const { matrices, colors } = firInstances(L, 0, split);
+  const parts = (geo) => ['leaves', 'core'].map((k) => ({ material: `fir-${k}`, buffers: geo[k].buffers() }));
+  const firs = { parts: parts(fir), matrices, colors, cast: !low, far: treeLine(L, tier), edge: null };
   for (const k of ['leaves', 'core']) triangles += (fir[k].count / 3) * ((matrices.length + firs.far.matrices.length) / 16);
+  if (split < Infinity) {
+    const edge = firGeometry(tier, 11, FIR_SHAPES.B);
+    firs.edge = { parts: parts(edge), ...firInstances(L, split) };
+    for (const k of ['leaves', 'core']) triangles += (edge[k].count / 3) * (firs.edge.matrices.length / 16);
+  }
   // The grass's clump (none on low) and the ground's map.
   const clump = grassClump(tier);
   const grass = clump && { clump: clump.buffers() };
@@ -174,6 +184,11 @@ export function detailBuffers(detail) {
   if (detail.firs) {
     for (const p of detail.firs.parts) add(p.buffers);
     out.push(detail.firs.matrices.buffer, detail.firs.colors.buffer, detail.firs.far.matrices.buffer, detail.firs.far.colors.buffer);
+    const edge = detail.firs.edge;
+    if (edge) {
+      for (const p of edge.parts) add(p.buffers);
+      out.push(edge.matrices.buffer, edge.colors.buffer);
+    }
   }
   if (detail.grass) add(detail.grass.clump);
   if (detail.ground) out.push(detail.ground.data.buffer);

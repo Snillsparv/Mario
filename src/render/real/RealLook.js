@@ -34,10 +34,12 @@
 //   look.warmProbe(renderer)        // a blank probe of each one's size on its materials
 //                                   // meanwhile (RealAreas: before their programs compile)
 //   look.takeProbe(view, name?)     // a probe (or every one not yet), taken (RealAreas, a task
-//                                   // each; else on the first frame drawn)
+//                                   // each; else on the first frame drawn): without the actors
+//                                   // and look.probeSkip (the grass's blades), its shadows the
+//                                   // far map's once that is taken (the near box put far away)
 //   look.probeAt, look.probeMaterials   // the street's probe's place and materials
-//   look.takeFar(view)              // the far shadow map, drawn (RealAreas, after the probe;
-//                                   // else on the first frame drawn: Jonas hidden)
+//   look.takeFar(view)              // the far shadow map, drawn (RealAreas, before the
+//                                   // probes; else on the first frame drawn: Jonas hidden)
 //   look.compilePost(renderer) -> Promise   // the post chain's and the output pass's programs
 //                                   // (RealAreas' link step)
 //   look.attach(view), look.detach(view)   // N64Renderer.setLook's, around its snapshot
@@ -90,6 +92,7 @@ const SUN_DISTANCE = 8000; // the shadow camera's distance from the focus, towar
 const SHADOW_NEAR = 10;
 const SHADOW_FAR = 16000;
 const AHEAD = 0.35; // the near shadow box's middle this share of its half size ahead of the focus
+const AWAY = 1e5; // a probe's near shadow box this far off the street (its shadows the far map's)
 
 export class RealLook {
   constructor({ preset, tier = TIERS.high, probeAt = null, farBox = null, canRetro = true }) {
@@ -114,6 +117,7 @@ export class RealLook {
     if (probeAt) this.addProbe('street', probeAt, tier.probe);
     this.probeTaken = false;
     this.probeDirty = true;
+    this.probeSkip = []; // objects a probe leaves out (the grass's blades: finer than its texels)
     this.hdr = null; // the scene's HDR target (drawing buffer size)
     this.retroHdr = null; // ...at the retro filter's 240 lines
     this.size = new THREE.Vector2();
@@ -158,7 +162,7 @@ export class RealLook {
   attach(view) {
     const { renderer, scene, sun } = view;
     const { preset, tier } = this;
-    if (!this.env) this.env = skyEnvironment(renderer, this.haze);
+    if (!this.env) this.env = skyEnvironment(renderer, this.haze, { tint: preset.sky.envTint });
     scene.environment = this.env.texture;
     scene.environmentIntensity = preset.environment;
     scene.background = null; // (the sky draws)
@@ -202,6 +206,7 @@ export class RealLook {
       this.hdr = null;
     }
     this.grass?.(this.level.grass);
+    this.gpu?.reset(); // (the GPU's times are the new level's from now)
     if (view?.look === this) {
       this.fitShadow(view.sun);
       view.refit();
@@ -214,7 +219,7 @@ export class RealLook {
     const first = this.last === 0;
     this.last = now;
     if (!this.governor || first) return;
-    const index = this.governor.frame(ms);
+    const index = this.governor.frame(ms, this.gpu?.ms ?? null);
     if (index === null) return;
     if (index >= this.levels.length) {
       this.onSlow?.();
@@ -320,10 +325,12 @@ export class RealLook {
     p.taken = true;
     if (!p.materials.length || !p.size) return;
     const { renderer, scene, sun } = view;
-    this.snapped.set(p.at.x, p.at.y, p.at.z);
+    // With the far map taken, the sun's near box is put far off the street (its map drawn empty:
+    // the probe's shadows all the far map's), else round the probe.
+    this.snapped.set(p.at.x + (this.far?.taken ? AWAY : 0), p.at.y, p.at.z);
     this.placeSun(sun, this.snapped);
     const old = p.target;
-    p.target = captureProbe(renderer, scene, { at: p.at, size: p.size, hide: view.realActors.map((a) => a.object3D) });
+    p.target = captureProbe(renderer, scene, { at: p.at, size: p.size, hide: [...view.realActors.map((a) => a.object3D), ...this.probeSkip] });
     for (const m of p.materials) {
       m.envMap = p.target.texture;
       if (!old) m.needsUpdate = true; // (from the sky's environment to its own: once)
@@ -363,10 +370,11 @@ export class RealLook {
     return a.add(view.focus);
   }
 
-  // One frame; while the F1 overlay shows (and the look draws through its HDR target), its GPU
-  // time measured round it (gpuTimer.js: gpuLine()).
+  // One frame; while the F1 overlay shows or the governor runs (and the look draws through its
+  // HDR target), its GPU time measured round it (gpuTimer.js: gpuLine(), the governor's
+  // headroom before a step up).
   draw(view, storm, flash, melt, graded) {
-    const timed = view.debug?.visible && !this.tier.direct;
+    const timed = !this.tier.direct && (view.debug?.visible || !!this.governor);
     if (timed) (this.gpu ??= new GpuTimer(view.renderer.getContext())).begin();
     this.drawFrame(view, storm, flash, melt, graded);
     if (timed) this.gpu.end();
@@ -379,8 +387,8 @@ export class RealLook {
 
   drawFrame(view, storm, flash, melt, graded) {
     const { renderer, scene, camera, sun } = view;
-    if (this.probeDirty) this.takeProbe(view);
     if (this.farDirty) this.takeFar(view);
+    if (this.probeDirty) this.takeProbe(view);
     this.placeSun(sun, this.shadowFocus(view));
     const retro = view.lookRetro;
     if (this.tier.direct && !retro && !graded) {

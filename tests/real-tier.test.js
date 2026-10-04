@@ -9,7 +9,11 @@
 // their size so the pool finishes together.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TIERS, guessTier, pickTier, lookPixelRatio, ladder, Governor, savedLevel, saveLevel } from '../src/render/real/tier.js';
+import * as THREE from 'three';
+import { TIERS, guessTier, pickTier, lookPixelRatio, ladder, Governor, savedLevel, saveLevel, budgetOf } from '../src/render/real/tier.js';
+import { RealPost } from '../src/render/real/post/RealPost.js';
+import { RealLook } from '../src/render/real/RealLook.js';
+import * as lane from '../src/world/lane/layout.js';
 import { TextureStore, poolSize } from '../src/render/real/textureStore.js';
 
 test('the guess: phones low, Apple silicon and discrete GPUs high, other desktops mid; ?tier= overrides; the render size capped by pixels', () => {
@@ -50,13 +54,14 @@ test('the ladder: the build\'s tier\'s post chain stepped down first (the shafts
   assert.deepEqual(ladder(TIERS.low).map((l) => [l.name, l.samples, l.post.ao, l.post.bloom]), [['low', 0, 0, 0], ['low 85%', 0, 0, 0]]);
 });
 
-// Feeds `series` ([ms, count] runs) to a governor; returns [frame index, level] of each verdict.
+// Feeds `series` ([ms, count, gpu ms (none: not timed)] runs) to a governor; returns [frame
+// index, level] of each verdict.
 function run(gov, series) {
   const out = [];
   let i = 0;
-  for (const [ms, count] of series) {
+  for (const [ms, count, gpu = null] of series) {
     for (let k = 0; k < count; k++, i++) {
-      const level = gov.frame(ms);
+      const level = gov.frame(ms, gpu);
       if (level !== null) out.push([i, level]);
     }
   }
@@ -103,6 +108,81 @@ test('the governor holds at 50 fps and more, steps back up after 5 s of 60 fps, 
   assert.deepEqual(run(new Governor({ levels }), [[16.7, 100], [5000, 1], [16.7, 100], [400, 3], [16.7, 2000]]), []);
   // ...but a device that slow all the time steps down (the settling second, then a window).
   assert.deepEqual(run(new Governor({ levels }), [[300, 20]]).map(([, l]) => l), [1]);
+});
+
+test('the governor with the GPU timer line (where the browser times the GPU): a step up only with headroom (the GPU under 11 ms a frame), else as before; the budgets per tier (high 50 fps, mid 45: its floor, low 28); the series through the post chain\'s steps down and back up', () => {
+  const levels = ladder(TIERS.high);
+  const all = [...levels, ...ladder(TIERS.mid)];
+  assert.deepEqual(['high', 'high ao8', 'mid', 'mid -ao', 'mid 85%', 'low', 'low 85%'].map((n) => budgetOf(all.find((l) => l.name === n))), [20, 20, 22.2, 22.2, 22.2, 36, 36]);
+  // 60 fps at 'high ao8' (level 2): with the GPU at 9 ms up as without a timer; at 12 ms (a
+  // 60 Hz display hides how close it is) it stays, however long.
+  const plain = run(new Governor({ levels, level: 2 }), [[16.7, 1000]]);
+  assert.deepEqual(plain.map(([, l]) => l), [1, 0]);
+  assert.deepEqual(run(new Governor({ levels, level: 2 }), [[16.7, 1000, 9]]), plain, 'headroom: the same steps up');
+  assert.deepEqual(run(new Governor({ levels, level: 2 }), [[16.7, 3000, 12]]), [], 'no headroom: it stays');
+  // ...and once the GPU has room again (the view turned from the sun, nothing the level drew),
+  // up after 5 s of it (the windows before it never counted).
+  const later = run(new Governor({ levels, level: 2 }), [[16.7, 600, 12], [16.7, 600, 8]]);
+  assert.equal(later[0][1], 1);
+  assert.ok(later[0][0] > 600 + 5000 / 16.7 && later[0][0] < 600 + 7500 / 16.7, `up 5-7 s after the headroom came (${later[0][0]})`);
+  // The GPU's time never steps down by itself: late frames do (a CPU-bound frame too).
+  assert.deepEqual(run(new Governor({ levels }), [[16.7, 2000, 15.5]]), [], 'busy but on time: holds');
+  assert.deepEqual(run(new Governor({ levels }), [[30, 120, 6]]).map(([, l]) => l), [1], 'late with an idle GPU: down all the same');
+  // The mid tier holds at 47 fps (its floor 45), the high one does not.
+  const mid = ladder(TIERS.mid);
+  assert.deepEqual(run(new Governor({ levels: mid }), [[21, 2000]]), [], 'mid at 47 fps holds');
+  assert.deepEqual(run(new Governor({ levels: mid }), [[23, 300]]).map(([, l]) => mid[l].name), ['mid -ao', 'mid 85%'], 'at 43 fps it steps down');
+  assert.deepEqual(run(new Governor({ levels }), [[21, 300]]).map(([, l]) => levels[l].name), ['high -shafts', 'high ao8'], 'high at 47 fps steps down');
+  // A while on a MacBook: the sun in view (late frames: down through the post chain's steps),
+  // then the frames keep up (back up one step at a time, the GPU with room), a heavy moment
+  // later (one step down, and up again).
+  const gov = new Governor({ levels });
+  const evening = run(gov, [[24, 400, 19], [16.7, 1500, 8], [16.7, 380, 9], [22, 100, 17], [16.7, 3000, 8]]);
+  const names = evening.map(([, l]) => levels[l].name);
+  assert.deepEqual(names.slice(0, 3), ['high -shafts', 'high ao8', 'high bloom4'], 'down through the post chain first');
+  assert.deepEqual(names.slice(3), ['high ao8', 'high -shafts', 'high', 'high -shafts', 'high'], 'back up to the top, a step down and up again');
+  for (let i = 1; i < evening.length; i++) assert.equal(Math.abs(evening[i][1] - evening[i - 1][1]), 1, 'one level a verdict');
+});
+
+test('the post chain degrades gracefully down the high ladder: each level draws only its own passes (the occlusion\'s 8-tap program at \'ao8\', the bloom\'s 4 levels, no shafts once off), frees the targets of those it no longer draws, and the HDR target stops carrying a depth texture once nothing reads it', () => {
+  const post = new RealPost(lane.LANE_REAL.post);
+  const programs = [];
+  const renderer = {
+    info: { render: { calls: 0 } },
+    setRenderTarget() {},
+    render(scene) {
+      const m = scene.children[0].material;
+      const u = m.uniforms;
+      programs.push(u.uIntensity ? `ao${m.defines.SAMPLES}` : u.tAO ? `blur${m.defines.BLUR}` : u.uPrefilter ? 'down' : u.tSmall ? 'up' : u.uDecay ? 'rays' : 'mask');
+      this.info.render.calls++;
+    },
+  };
+  const target = { texture: { image: { width: 960, height: 540 } }, depthTexture: new THREE.DepthTexture(960, 540) };
+  const sunDir = new THREE.Vector3(...['x', 'y', 'z'].map((k) => lane.LANE_REAL.sunDir[k])).normalize();
+  const camera = new THREE.PerspectiveCamera(55, 16 / 9, 20, 45000);
+  camera.lookAt(sunDir); // (facing the sun: the shafts drawn where the level has them)
+  camera.updateMatrixWorld();
+  const look = new RealLook({ preset: lane.LANE_REAL, tier: TIERS.high });
+  const seen = [];
+  for (const [index, level] of ladder(TIERS.high).entries()) {
+    if (level.name.startsWith('low')) continue;
+    programs.length = 0;
+    post.render(renderer, target, camera, sunDir, level.post);
+    look.setLevel(index);
+    const { ao, bloom, shafts } = level.post;
+    const want = (ao ? 3 : 0) + 2 * bloom - 1 + (shafts ? 2 : 0);
+    assert.equal(post.drawn, want, `${level.name}: ${programs}`);
+    assert.equal(programs.filter((p) => p.startsWith('ao')).join(), ao ? `ao${ao}` : '', `${level.name}: the occlusion's program`);
+    assert.deepEqual(programs.filter((p) => p.startsWith('blur')), ao ? [`blur${level.post.blur}`, `blur${level.post.blur}`] : []);
+    assert.equal(programs.filter((p) => p === 'down').length, bloom, `${level.name}: the bloom's levels`);
+    assert.equal(!!post.ssao.a, ao > 0, `${level.name}: the occlusion's targets ${ao ? 'kept' : 'freed'}`);
+    assert.equal(!!post.shafts.a, shafts, `${level.name}: the shafts' targets ${shafts ? 'kept' : 'freed'}`);
+    assert.equal(look.wantsDepth(), ao > 0 || shafts, `${level.name}: the scene's depth read`);
+    seen.push(`${level.name}: ${post.drawn}`);
+  }
+  assert.deepEqual(seen, ['high: 14', 'high -shafts: 12', 'high ao8: 12', 'high bloom4: 10', 'high -ao: 7', 'high 85%: 7', 'mid: 7', 'mid 85%: 7']);
+  post.dispose();
+  look.dispose();
 });
 
 test('the last good level is kept per device and per tier (local storage, a convenience: none, the top)', () => {

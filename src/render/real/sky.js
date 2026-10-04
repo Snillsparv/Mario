@@ -10,15 +10,18 @@
 //   skyUniforms(sky, sunDir) -> uniforms   // sky: { zenith, horizonAway, horizonSun, ground
 //                                // ([r, g, b] linear), intensity, clouds }; shared by the sky,
 //                                // its environment capture and the materials' haze
-//   makeSky(uniforms, { clouds, horizonFill, radius }) -> THREE.Mesh 'realSky'   (its
+//   makeSky(uniforms, { clouds, horizonFill, radius, tint }) -> THREE.Mesh 'realSky'   (its
 //                                // uDrift: how far the cirrus has drifted, set as time goes)
 //                                // the dome, centred on the camera in its vertex shader (no
 //                                // per-frame work), on the far plane; horizonFill 1: below the
 //                                // horizon the visible dome shows the horizon's haze (the
 //                                // lane's ground ends short of it), 0: a dark ground (the
 //                                // environment capture, for lighting)
-//   skyEnvironment(renderer, uniforms) -> THREE.WebGLRenderTarget   // the sky prefiltered
-//                                // (PMREM) for scene.environment: diffuse and rough reflections
+//   skyEnvironment(renderer, uniforms, { clouds, tint }) -> THREE.WebGLRenderTarget   // the sky
+//                                // prefiltered (PMREM) for scene.environment: diffuse and rough
+//                                // reflections; tint: its light's colour beside the sky's
+//                                // (LANE_REAL.sky.envTint: less blue in the shade, as a
+//                                // camera's white balance leaves it)
 
 import * as THREE from 'three';
 
@@ -59,6 +62,7 @@ ${SKY_GLSL}
 uniform float uClouds;
 uniform float uHorizonFill;
 uniform vec2 uDrift;
+uniform vec3 uTint;
 varying vec3 vDir;
 
 float skyHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -96,7 +100,7 @@ void main() {
   c += vec3(40.0, 30.0, 18.0) * smoothstep(0.99975, 0.99992, mu);
   // Under the horizon: the horizon's haze (the visible dome) or the dark ground (the capture).
   c = mix(c, mix(uGround, skyGradient(normalize(vec3(v.x, 0.0, v.z))), uHorizonFill), smoothstep(0.0, -0.04, v.y));
-  gl_FragColor = vec4(c * uSkyIntensity, 1.0);
+  gl_FragColor = vec4(c * uSkyIntensity * uTint, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -114,9 +118,9 @@ export function skyUniforms(sky, sunDir) {
   };
 }
 
-export function makeSky(uniforms, { clouds = 0.55, horizonFill = 1, radius = 30000 } = {}) {
+export function makeSky(uniforms, { clouds = 0.55, horizonFill = 1, radius = 30000, tint = [1, 1, 1] } = {}) {
   const material = new THREE.ShaderMaterial({
-    uniforms: { ...uniforms, uClouds: { value: clouds }, uHorizonFill: { value: horizonFill }, uDrift: { value: new THREE.Vector2() } },
+    uniforms: { ...uniforms, uClouds: { value: clouds }, uHorizonFill: { value: horizonFill }, uDrift: { value: new THREE.Vector2() }, uTint: { value: new THREE.Vector3(tint[0], tint[1], tint[2]) } },
     vertexShader: SKY_VERT,
     fragmentShader: SKY_FRAG,
     side: THREE.BackSide,
@@ -130,10 +134,11 @@ export function makeSky(uniforms, { clouds = 0.55, horizonFill = 1, radius = 300
   return mesh;
 }
 
-// The sky's environment: the dome with fewer clouds over a dark ground, prefiltered once.
-export function skyEnvironment(renderer, uniforms, clouds = 0.4) {
+// The sky's environment: the dome with fewer clouds over a dark ground, prefiltered once; tint:
+// the light's colour beside the sky's (the sky.envTint: a camera's white balance for the shade).
+export function skyEnvironment(renderer, uniforms, { clouds = 0.4, tint = [1, 1, 1] } = {}) {
   const scene = new THREE.Scene();
-  const dome = makeSky(uniforms, { clouds, horizonFill: 0, radius: 100 });
+  const dome = makeSky(uniforms, { clouds, horizonFill: 0, radius: 100, tint });
   scene.add(dome);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const target = pmrem.fromScene(scene, 0, 1, 1000);

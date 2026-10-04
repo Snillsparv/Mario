@@ -123,16 +123,20 @@ function detailGroup(detail, M) {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(sphere[0], sphere[1], sphere[2]), sphere[3]); // (the worker's)
     add(new THREE.Mesh(geo, M[probe ? `${material}@${probe}` : material]), name, cast);
   }
-  const { parts, matrices, colors, cast, far } = detail.firs;
+  const { parts, matrices, colors, cast, far, edge } = detail.firs;
+  const instanced = (geo, material, set, name, casts) => {
+    const mesh = new THREE.InstancedMesh(geo, M[material], set.matrices.length / 16);
+    mesh.instanceMatrix = new THREE.InstancedBufferAttribute(set.matrices, 16);
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(set.colors, 3);
+    add(mesh, name, casts);
+  };
   for (const { material, buffers } of parts) {
     const geo = geometryOf(buffers);
-    for (const [set, casts, name] of [[{ matrices, colors }, cast, material], [far, false, `${material}-far`]]) {
-      const mesh = new THREE.InstancedMesh(geo, M[material], set.matrices.length / 16);
-      mesh.instanceMatrix = new THREE.InstancedBufferAttribute(set.matrices, 16);
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(set.colors, 3);
-      add(mesh, name, casts);
-    }
+    instanced(geo, material, { matrices, colors }, material, cast);
+    instanced(geo, material, far, `${material}-far`, false);
   }
+  // (On high the edge's firs, nearest the street, a spruce of their own.)
+  for (const { material, buffers } of edge?.parts ?? []) instanced(geometryOf(buffers), material, edge, `${material}-edge`, cast);
   return group;
 }
 
@@ -196,7 +200,7 @@ function grassGrid(group, { clump, ground }, G, haze, wind) {
     geo.instanceCount = n;
     mesh.visible = n > 0;
   };
-  return { follow, reach };
+  return { follow, reach, mesh };
 }
 
 export function buildLaneReal(layout, options) {
@@ -245,6 +249,7 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
   yield;
   const grass = detail.grass ? grassGrid(group, { clump: detail.grass.clump, ground }, GRASS[tier.name], look.haze, wind) : null;
   const follow = grass?.follow;
+  if (grass) look.probeSkip.push(grass.mesh);
   look.grass = grass?.reach ?? null;
   look.grass?.(look.level.grass);
   // Gusts: the wind's phase runs fast and slow by turns (the flags waving with it), its sway

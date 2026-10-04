@@ -206,7 +206,7 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     const { part, look } = buildLaneReal(lane, { store, tier, origin: AREA_DEFS.lane.origin, anisotropy: 2, detail });
     const D = {};
     part.object3D.getObjectByName('lane-detail').traverse((o) => o.isMesh && (D[o.name] = o));
-    assert.equal(Object.keys(D).length, detail.meshes.length + 2 * 2 + (detail.grass ? 1 : 0), `${tierName}: a mesh each, the firs' two parts for the forest and the far tree line, the grass`);
+    assert.equal(Object.keys(D).length, detail.meshes.length + 2 * (tierName === 'high' ? 3 : 2) + (detail.grass ? 1 : 0), `${tierName}: a mesh each, the firs' two parts for the forest, the far tree line (and on high the edge's spruce), the grass`);
     assert.equal(D['lane-detail-fir-leaves-far'].castShadow, false, 'the far tree line casts none');
     for (const [name, m] of Object.entries(D)) {
       if (name === 'lane-detail-shadow') {
@@ -252,7 +252,11 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
       assert.ok(look.probes.get('north').at.z < AREA_DEFS.lane.origin.z, 'over the street in front of them');
     } else assert.deepEqual(look.probeNames(), [], 'no probes on low');
     const firs = D['lane-detail-fir-leaves'];
-    assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16 && firs.count > 90, `${firs.count} firs`);
+    const edge = D['lane-detail-fir-leaves-edge'];
+    assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16, `${firs.count} firs`);
+    assert.ok(firs.count + (edge?.count ?? 0) > 90, `${firs.count} + ${edge?.count ?? 0} firs`);
+    assert.equal(!!edge, tierName === 'high', 'the edge\'s spruce on high');
+    if (edge) assert.ok(edge.isInstancedMesh && edge.material === firs.material && edge.castShadow && D['lane-detail-fir-core-edge'].material === D['lane-detail-fir-core'].material, 'the forest\'s materials: no program more');
     assert.equal(firs.castShadow, tierName !== 'low', 'the firs cast but on low');
     assert.ok(look.probeMaterials.includes(D['lane-detail-glass'].material), 'the detail\'s windows reflect the probe');
     if (tierName === 'high') {

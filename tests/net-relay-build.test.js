@@ -5,7 +5,8 @@
 // its two module workers (the title logo's, and the realistic look's with the pure code main
 // does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
 // its own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
-// offers the pad page only at addresses a phone can reach.
+// offers the pad page only at addresses a phone can reach; with E2E=1 the built bundle's
+// (minified) shaders compile and draw every look in headless Chromium.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -139,6 +140,81 @@ test('vite preview on 127.0.0.1: relay marker, pad page, relay, no unreachable Q
   assert.deepEqual(game.inbox.find((m) => m.t === 'input'), { t: 'input', s: [0, 0, 1] });
   game.close();
   pad.close();
+});
+
+// The built bundle's shaders (its /* glsl */ literals minified: tools/glslMinify.js) compile and
+// draw: headless Chromium (SwiftShader) on `vite preview` of the build: the grounds, AI RACE
+// (rain, fire, the beast, the storm's grade), the meltdown's burning sky, the retro filter, the
+// hall, the skerries, Sparrow Lane's realistic look on the high tier (its post chain, F2 over it)
+// and on the low one, and Pip's face screen; no console error, no program failing to link.
+// Opt-in: E2E=1.
+test('the built bundle\'s minified shaders compile and draw every look (E2E)', { skip: !process.env.E2E && 'browser test: set E2E=1 to run', timeout: 900000 }, async (t) => {
+  const { server, port } = await startPreview('127.0.0.1');
+  t.after(() => server.close());
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  t.after(() => browser.close());
+  const visit = async (query, tour) => {
+    const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    try {
+      await page.goto(`http://127.0.0.1:${port}/${query}`, { waitUntil: 'load', timeout: 180000 });
+      await tour(page);
+      const programs = await page.evaluate(() => {
+        const r = window.__game.view.renderer;
+        return { count: r.info.programs.length, failed: r.info.programs.filter((p) => p.diagnostics && !p.diagnostics.runnable).map((p) => p.name) };
+      });
+      t.diagnostic(`${query}: ${programs.count} programs`);
+      assert.deepEqual(programs.failed, [], `${query}: programs that failed`);
+      assert.deepEqual(errors, [], query);
+    } finally {
+      await page.close();
+    }
+  };
+  const ready = (page) => page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
+  const real = (page) => page.waitForFunction(() => window.__game.view.describeMode().startsWith('real'), null, { timeout: 300000, polling: 250 });
+  await visit('?test=1&mute=1&tier=high', async (page) => {
+    await ready(page);
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.step(30);
+      g.setDark(true);
+      g.step(90);
+      g.meltdown.skipTo(42);
+      g.step(60);
+      g.view.setN64Mode(!g.view.n64);
+      g.step(5);
+      g.view.setN64Mode(!g.view.n64);
+      g.setDark(false);
+      g.step(5);
+      for (const area of ['hall', 'skerries', 'lane']) {
+        g.enterArea(area);
+        g.step(20);
+      }
+    });
+    await real(page);
+    const mode = await page.evaluate(() => {
+      const g = window.__game;
+      g.step(10);
+      const mode = g.view.describeMode();
+      g.view.toggleRetro();
+      g.step(5);
+      g.view.toggleRetro();
+      g.step(2);
+      return mode;
+    });
+    assert.match(mode, /^real \d+x\d+ msaa4 high\b/, 'the realistic look (through the meltdown\'s grade, still burning)');
+  });
+  await visit('?test=1&mute=1&area=lane&tier=low', async (page) => {
+    await ready(page);
+    await real(page);
+    assert.match(await page.evaluate(() => (window.__game.step(10), window.__game.view.describeMode())), /^real \d+x\d+ direct low$/);
+  });
+  await visit('?face=1&mute=1', async (page) => {
+    await page.waitForFunction(() => window.__game?.state.mode === 'face' && window.__game.face?.ready, null, { timeout: 120000 });
+  });
 });
 
 test('vite preview on every interface: the offered pad page URLs answer', async (t) => {

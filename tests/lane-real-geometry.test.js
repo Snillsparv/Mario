@@ -7,7 +7,8 @@
 // mailbox, the bushes, the walls' steps), the cars standing on their wheels inside their
 // colliders (their bodies and tyres closed: no hole to see through), every tyre's patch on the
 // drive's drawn surface and each car level on it, the bonnets and roofs on the colliders Jonas
-// stands on, no plate or badge, the bird on the mailbox's ridge; every tier within its triangle
+// stands on, no plate or badge, the bird on the mailbox's ridge; the double garage's rust under
+// its downpipes' clips and the balcony's geraniums (not on low); every tier within its triangle
 // budget (section 7 of the plan: high <= 900k a frame with the grass and the shadow pass, so the
 // detail itself far under), the low tier's halved.
 import { test } from 'node:test';
@@ -185,12 +186,31 @@ test('the tile courses lie in the classic roof planes (the colliders Jonas walks
   }
 });
 
-test('the firs stand where the classic forest\'s cones stood, the classic build drawing the same spots', () => {
+test('the firs stand where the classic forest\'s cones stood, the classic build drawing the same spots; on high the edge\'s firs a second spruce (more tiers, a hanging skirt, gaps)', (t) => {
   const { firs } = forestSpots(lane);
-  assert.equal(high.firs.matrices.length / 16, firs.length);
+  // (On high the bank's firs, then the edge's, a spruce of their own; on low one set.)
+  const all = new Float32Array([...high.firs.matrices, ...high.firs.edge.matrices]);
+  assert.equal(high.firs.matrices.length / 16, lane.FOREST.count, 'the bank\'s');
+  assert.equal(all.length / 16, firs.length);
+  assert.equal(low.firs.edge, null, 'one spruce on low');
+  assert.equal(low.firs.matrices.length / 16, firs.length);
+  assert.deepEqual([...low.firs.matrices.slice(0, 16 * lane.FOREST.count)], [...high.firs.matrices].map((v) => v), 'the same places on every tier');
+  assert.deepEqual([...low.firs.colors.slice(3 * lane.FOREST.count)], [...high.firs.edge.colors], 'each its own tint');
   assert.ok(firs.length >= lane.FOREST.count + lane.EDGE_FOREST.count - 5, `${firs.length} firs`);
+  // The edge's spruce: more tiers, its lowest branches hanging lower, under 1.6 x the forest's.
+  const count = (parts) => parts.find((p) => p.material === 'fir-leaves').buffers.position.length / 9;
+  const lowest = (parts) => {
+    const p = parts.find((q) => q.material === 'fir-leaves').buffers.position;
+    let y = Infinity;
+    for (let i = 1; i < p.length; i += 3) y = Math.min(y, p[i]);
+    return y;
+  };
+  const [a, b] = [count(high.firs.parts), count(high.firs.edge.parts)];
+  t.diagnostic(`fir leaves: forest ${a}, edge ${b} triangles`);
+  assert.ok(b > a && b < 1.6 * a, `the edge's spruce ${b} triangles, the forest's ${a}`);
+  assert.ok(lowest(high.firs.edge.parts) < lowest(high.firs.parts) - 0.03, 'a hanging skirt');
   firs.forEach((s, i) => {
-    const m = high.firs.matrices.subarray(i * 16, i * 16 + 16);
+    const m = all.subarray(i * 16, i * 16 + 16);
     assert.deepEqual([m[12], m[13], m[14]].map((v) => v.toFixed(3)), [s.x, s.base, s.z].map((v) => Math.fround(v).toFixed(3)));
     assert.ok(Math.abs(m[5] - s.h) < 1e-3, 'scaled to its height');
   });
@@ -593,4 +613,50 @@ test('the walls\' weathering: a wear attribute on the houses\' walls (how far un
   let foot = Infinity;
   for (let i = 0; i < brick.wear.length; i += 3) if (brick.wear[i + 2] > 0) foot = Math.min(foot, brick.wear[i + 1]);
   assert.ok(foot < 0 && foot > -10, `the plinths' feet at the ground (${foot})`);
+});
+
+test('G3\'s details: the double garage\'s downpipes with faint rust under their clips (contact: a rust tint at a streak\'s head fading to nothing at its foot; not on low), the balcony\'s boxes of geraniums (not on low)', () => {
+  const mid = buildLaneDetail(lane, 'mid');
+  const G = lane.HOUSES.find((h) => h.kit === 'garage');
+  const F = frameOf(G);
+  const gable = F.face('front').f;
+  const o = gable.at(0, 0, 0);
+  // The streaks on the gable's render, 0.4 proud.
+  const rust = (d) => {
+    const c = mesh(d, 'contact');
+    const out = [];
+    for (let i = 0; i < c.position.length; i += 3) {
+      const [x, y, z] = c.position.subarray(i, i + 3);
+      const w = (x - o[0]) * gable.out[0] + (z - o[2]) * gable.out[2];
+      const u = (x - o[0]) * gable.right[0] + (z - o[2]) * gable.right[2];
+      if (Math.abs(w - 0.4) < 0.05 && Math.abs(u) <= G.w / 2) out.push({ u, y, rgb: [...c.color.subarray(i, i + 3)] });
+    }
+    return out;
+  };
+  for (const d of [high, mid]) {
+    const r = rust(d);
+    assert.ok(r.length >= 2 * 3 * 2 * 6, `streaks under both pipes' three clips (${r.length / 6})`);
+    for (const p of r) {
+      assert.ok(Math.abs(Math.abs(p.u) - (G.w / 2 - 16)) < 13, `beside a pipe at the gable's corner (${p.u.toFixed(1)})`);
+      assert.ok(p.rgb[0] >= p.rgb[1] && p.rgb[1] >= p.rgb[2] && p.rgb[2] >= 0.5 && p.rgb[0] <= 1, `a rust tint, or none: ${p.rgb}`);
+    }
+    assert.ok(r.some((p) => p.rgb[2] < 0.7) && r.some((p) => p.rgb.every((v) => v === 1)), 'from rust at a head to nothing at a foot');
+  }
+  assert.equal(rust(low).length, 0, 'none on low');
+  // The boxes hung outside the balcony's front rail: geraniums in leafy tufts.
+  const villa = lane.HOUSES.find((h) => h.balcony);
+  const left = frameOf(villa).face('left').f;
+  const at = left.at(0, 0, 0);
+  const planted = (d) => {
+    const p = positionsOf(d, 'foliage');
+    let n = 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const w = (p[i] - at[0]) * left.out[0] + (p[i + 2] - at[2]) * left.out[2];
+      const u = (p[i] - at[0]) * left.right[0] + (p[i + 2] - at[2]) * left.right[2];
+      if (w > 140 && w < 190 && Math.abs(u) < 270 && p[i + 1] > at[1] + 400) n++;
+    }
+    return n;
+  };
+  assert.ok(planted(high) > 300 && planted(mid) > 200, `the tufts (${planted(high)} / ${planted(mid)} vertices)`);
+  assert.equal(planted(low), 0, 'none on low');
 });

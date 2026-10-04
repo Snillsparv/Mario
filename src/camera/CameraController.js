@@ -41,11 +41,12 @@
 // ahead on screen however he grabbed the pole.
 // Profiles (setProfile): an area's look may frame him its own way. A profile replaces the
 // cameraConfig fields in PROFILE (the field of view, the look point's height, the lags and the
-// orbit modes' distances, pitches and aims: layout.LANE_REAL.camera, Sparrow Lane's realistic
-// look, lower and wider) while it is set (core/AreaSwitch.js sets it with the look and takes it
-// off with the classic one); the controller reads them from `this.k` (cameraConfig itself
-// without one, so nothing changes then). The fly-in, the title orbit, first person and the
-// cannon keep cameraConfig's own.
+// orbit modes' distances, pitches and aims, first person's eye height: layout.LANE_REAL.camera,
+// Sparrow Lane's realistic look, lower and wider, the eye at the smaller hero's) while it is set
+// (core/AreaSwitch.js sets it with the look and takes it off with the classic one); the
+// controller reads them from `this.k` (cameraConfig itself without one, so nothing changes
+// then). The fly-in, the title orbit, the cannon and first person's field of view keep
+// cameraConfig's own.
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
@@ -78,9 +79,10 @@ import * as K from './cameraConfig.js';
 
 const NEUTRAL = neutralController();
 const ZERO = { x: 0, y: 0, z: 0 };
-// The cameraConfig fields a profile may change (setProfile); the fly-in, the title orbit, first
-// person and the cannon keep cameraConfig's own.
-export const PROFILE = Object.freeze(['FOV', 'LOOK_HEIGHT', 'PIVOT_RATE', 'LOOK_RATE', 'ORBIT_MODES']);
+// The cameraConfig fields a profile may change (setProfile); the fly-in, the title orbit and the
+// cannon keep cameraConfig's own, and first person all but its eye's height (EYE_HEIGHT: the
+// smaller hero's eye).
+export const PROFILE = Object.freeze(['FOV', 'LOOK_HEIGHT', 'PIVOT_RATE', 'LOOK_RATE', 'ORBIT_MODES', 'EYE_HEIGHT']);
 const pick = (profile) => Object.fromEntries(PROFILE.filter((key) => key in profile).map((key) => [key, profile[key]]));
 
 export class CameraController {
@@ -713,7 +715,7 @@ export class CameraController {
     const fx = Math.sin(this.fp.yaw);
     const fz = Math.cos(this.fp.yaw);
     const forward = K.EYE_FORWARD - back;
-    pos.set(hero.x + fx * forward, hero.y + K.EYE_HEIGHT + (back / K.FP_HANDOVER_BACK) * K.FP_HANDOVER_RISE, hero.z + fz * forward);
+    pos.set(hero.x + fx * forward, hero.y + this.k.EYE_HEIGHT + (back / K.FP_HANDOVER_BACK) * K.FP_HANDOVER_RISE, hero.z + fz * forward);
     const cp = Math.cos(this.fp.pitch) * K.FP_LOOK_DIST;
     target.set(pos.x + fx * cp, pos.y - Math.sin(this.fp.pitch) * K.FP_LOOK_DIST, pos.z + fz * cp);
   }

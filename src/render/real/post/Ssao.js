@@ -10,8 +10,9 @@
 // The sky (depth 1) is never occluded.
 //
 //   const ssao = new Ssao({ radius, intensity, bias, maxPx })   // layout.LANE_REAL.post.ao
-//   ssao.render(renderer, screen, depth, camera, { samples, blur }) -> texture (half res: R the
-//       occlusion's light, 1 = none; G the distance)
+//   ssao.render(renderer, screen, depth, camera, { ao, blur }) -> texture (half res: R the
+//       occlusion's light, 1 = none; G the distance); ao: its taps (12 or 8: the level's
+//       post.ao), blur: the blur's half width (4 or 2)
 //   ssao.materials()        // every program it may draw with (RealPost.compile)
 //   ssao.release()          // frees its targets (made again on the next render)
 //   ssao.dispose()
@@ -104,7 +105,7 @@ export class Ssao {
     this.b = passTarget(w, h);
   }
 
-  render(renderer, screen, depth, camera, { samples = 12, blur = 4 } = {}) {
+  render(renderer, screen, depth, camera, { ao: samples = 12, blur = 4 } = {}) {
     this.fit(depth.image.width, depth.image.height);
     const ao = this.ao[samples] ?? this.ao[12];
     const u = ao.uniforms;
