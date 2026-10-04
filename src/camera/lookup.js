@@ -49,6 +49,7 @@ export class LookUp {
     this.u = 0; // how far the pull-back and the wider view go (0..1), where the tilt is not enough
     this.fresh = true; // set outright on the next tick (a reset: respawn, level start)
     this.head = BEAST_HEAD;
+    this.baseFov = K.FOV; // the field of view it widens from (the camera's profile's: setFov)
     this._apply();
     events?.on?.('darkMode', (e) => this.setMode(!!e?.on));
   }
@@ -56,6 +57,12 @@ export class LookUp {
   setMode(on) {
     if (on && !this.on) this.ticks = 0;
     this.on = on;
+  }
+
+  // The field of view it widens from (CameraController.setProfile: the profile's).
+  setFov(fov) {
+    this.baseFov = fov;
+    this._apply();
   }
 
   // A cut (reset): the next update sets the weight outright.
@@ -84,7 +91,7 @@ export class LookUp {
     } else this.vel = 0;
     this.fresh = false;
     // (Solved while it has any weight: it eases in and out with it.)
-    this.u = this.w > 0 ? spread(hero, focusY, base) : 0;
+    this.u = this.w > 0 ? spread(hero, focusY, base, this.baseFov) : 0;
     this._apply();
   }
 
@@ -93,7 +100,7 @@ export class LookUp {
     const wu = w * this.u;
     this.drop = w * K.LOOKUP_PITCH_DROP; // off the orbit pitch
     this.dist = wu * K.LOOKUP_DIST_MAX; // added to the orbit distance
-    this.fov = K.FOV + wu * (K.LOOKUP_FOV_MAX - K.FOV); // field of view (degrees)
+    this.fov = this.baseFov + wu * (K.LOOKUP_FOV_MAX - this.baseFov); // field of view (degrees)
     this.feetBelow = K.FEET_MAX_BELOW + w * (ndcAngle(K.LOOKUP_FEET_NDC, this.fov) - K.FEET_MAX_BELOW);
     this.feetHardBelow = K.FEET_HARD_BELOW + w * (ndcAngle(K.LOOKUP_FEET_HARD_NDC, this.fov) - K.FEET_HARD_BELOW);
     this.headAbove = ndcAngle(K.LOOKUP_HEAD_NDC, this.fov); // the head this far over the view axis, at most
@@ -124,28 +131,28 @@ function zone(hero, yaw, dist, focusY) {
 
 // How far (0..1) the pull-back and the wider view must go for the beast's head and the hero's
 // feet to fit in the picture together (see top), from a camera `base` + the pull-back behind
-// him, LOOKUP_CAM_UP over his feet, on the far side of him from the head: the smallest that fits
-// (bisection), or 1.
-function spread(hero, focusY, base) {
+// him, LOOKUP_CAM_UP over his feet, on the far side of him from the head, widening from `fov0`:
+// the smallest that fits (bisection), or 1.
+function spread(hero, focusY, base, fov0) {
   const dx = BEAST_HEAD.x - hero.x;
   const dz = BEAST_HEAD.z - hero.z;
   const s = Math.sqrt(dx * dx + dz * dz);
   const rise = BEAST_HEAD.y - (focusY + K.LOOKUP_CAM_UP);
-  if (fits(0, s, rise, base)) return 0;
-  if (!fits(1, s, rise, base)) return 1;
+  if (fits(0, s, rise, base, fov0)) return 0;
+  if (!fits(1, s, rise, base, fov0)) return 1;
   let lo = 0;
   let hi = 1;
   for (let i = 0; i < 10; i++) {
     const mid = (lo + hi) / 2;
-    if (fits(mid, s, rise, base)) hi = mid;
+    if (fits(mid, s, rise, base, fov0)) hi = mid;
     else lo = mid;
   }
   return hi;
 }
 
-function fits(u, s, rise, base) {
+function fits(u, s, rise, base, fov0) {
   const d = base + u * K.LOOKUP_DIST_MAX;
-  const fov = K.FOV + u * (K.LOOKUP_FOV_MAX - K.FOV);
+  const fov = fov0 + u * (K.LOOKUP_FOV_MAX - fov0);
   const need = Math.atan2(rise, s + d) + Math.atan2(K.LOOKUP_CAM_UP, d);
   return need <= ndcAngle(K.LOOKUP_HEAD_NDC, fov) + ndcAngle(K.LOOKUP_FEET_NDC, fov);
 }

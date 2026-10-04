@@ -15,11 +15,19 @@
 //   texSize(tier, kind) -> px     // a texture set's size (512 or 256; the leaf atlas, four
 //                                 // sets in one, 1024 on high)
 //   ladder(tier) -> [level]       // what the governor steps through, the tier itself first:
-//                                 // each tier's own render size, MSAA, shadow and grass from
-//                                 // this one down, each then at 85 % of its render size;
-//                                 // level { name, pixelRatio, maxPixels, samples, shadow, box,
-//                                 // grass (a share of the build's blades' reach), scale }. What
-//                                 // was built (textures, geometry) stays: these only draw it.
+//                                 // its post chain stepped down first (the shafts and the
+//                                 // colour fringing off, the occlusion's 12 taps to 8, the
+//                                 // bloom's 5 levels to 4, the occlusion off: 'high -shafts',
+//                                 // 'high ao8', 'high bloom4', 'high -ao', where they change
+//                                 // anything), then each tier's own render size, MSAA, near
+//                                 // shadow and grass from this one down, each then at 85 % of
+//                                 // its render size, the post chain never more than it was
+//                                 // stepped down to; level { name, pixelRatio, maxPixels,
+//                                 // samples, shadow, box, grass (a share of the build's blades'
+//                                 // reach), scale, post { ao (taps; 0: none), blur (the AO
+//                                 // blur's half width), bloom (levels; 0: none), shafts, ca (the
+//                                 // edge colour fringing) } }. What was built (textures,
+//                                 // geometry, the far shadow map) stays: these only draw it.
 //   new Governor({ levels, level }) // gov.frame(ms) per frame drawn, ms since the one before ->
 //                                 // the level to step to (levels.length: below the ladder, the
 //                                 // classic look) or null: frames over budget for a window (2 s:
@@ -33,16 +41,27 @@
 //                                 // storage; a convenience: unavailable, the tier's own)
 //
 // Settings: pixelRatio (cap), maxPixels, samples (the HDR target's MSAA; low draws straight to
-// the canvas, `direct`: no HDR target, three tone maps per material), shadow (map size), box
-// (the shadow camera's half size round the focus), tex (the big sets' size) and small (the
-// rest), anisotropy, probe (the reflection probe's cube size; 0 on low: none, the glass reflects
-// the sky's environment: a phone is spared the capture and every program compiled a second
-// time for it, its half-float cube drawn where nothing else draws to a target).
+// the canvas, `direct`: no HDR target, three tone maps per material), shadow (the near map's
+// size), box (the near shadow camera's half size round the focus: tight and sharp, the far map
+// covering the rest), far (the far, static map's size: the whole street's sun shadows, drawn
+// once a build; 0 on low: none, R3's single map round Jonas), tex (the big sets' size) and
+// small (the rest), anisotropy, probe (the reflection probe's cube size; 0 on low: none, the
+// glass reflects the sky's environment: a phone is spared the capture and every program
+// compiled a second time for it, its half-float cube drawn where nothing else draws to a
+// target), post (the post chain, render/real/post/*: high the occlusion at 12 taps, bloom over 5
+// levels, the sun shafts and the colour fringing; mid 8 taps and 4 levels; low none: the direct
+// path keeps R3's picture).
+
+const POST = Object.freeze({
+  high: Object.freeze({ ao: 12, blur: 4, bloom: 5, shafts: true, ca: true }),
+  mid: Object.freeze({ ao: 8, blur: 2, bloom: 4, shafts: false, ca: false }),
+  low: Object.freeze({ ao: 0, blur: 2, bloom: 0, shafts: false, ca: false }),
+});
 
 export const TIERS = Object.freeze({
-  high: Object.freeze({ name: 'high', pixelRatio: 1.5, maxPixels: 2.4e6, samples: 4, direct: false, shadow: 2048, box: 2600, tex: 512, small: 256, anisotropy: 8, probe: 256 }),
-  mid: Object.freeze({ name: 'mid', pixelRatio: 1, maxPixels: 1.6e6, samples: 2, direct: false, shadow: 1024, box: 2200, tex: 512, small: 256, anisotropy: 4, probe: 128 }),
-  low: Object.freeze({ name: 'low', pixelRatio: 1, maxPixels: 0.9e6, samples: 0, direct: true, shadow: 1024, box: 1600, tex: 256, small: 256, anisotropy: 2, probe: 0 }),
+  high: Object.freeze({ name: 'high', pixelRatio: 1.5, maxPixels: 2.4e6, samples: 4, direct: false, shadow: 2048, box: 1500, far: 4096, tex: 512, small: 256, anisotropy: 8, probe: 256, post: POST.high }),
+  mid: Object.freeze({ name: 'mid', pixelRatio: 1, maxPixels: 1.6e6, samples: 2, direct: false, shadow: 1024, box: 1300, far: 2048, tex: 512, small: 256, anisotropy: 4, probe: 128, post: POST.mid }),
+  low: Object.freeze({ name: 'low', pixelRatio: 1, maxPixels: 0.9e6, samples: 0, direct: true, shadow: 1024, box: 1600, far: 0, tex: 256, small: 256, anisotropy: 2, probe: 0, post: POST.low }),
 });
 
 // The sets drawn at the big size on high (and mid, but for the lawn and the leaves there).
@@ -95,12 +114,40 @@ export function lookPixelRatio(tier, dpr, width, height) {
 const GRASS_REACH = { high: 1, mid: 480 / 760, low: 0 };
 const NAMES = ['high', 'mid', 'low'];
 
+// The post chain's steps down, in order (before the render size's): each lowers what it names.
+const POST_STEPS = [
+  ['-shafts', { shafts: false, ca: false }],
+  ['ao8', { ao: 8, blur: 2 }],
+  ['bloom4', { bloom: 4 }],
+  ['-ao', { ao: 0 }],
+];
+
+// `post` with nothing more than `cap` has.
+const capPost = (post, cap) => ({
+  ao: Math.min(post.ao, cap.ao ?? post.ao),
+  blur: Math.min(post.blur, cap.blur ?? post.blur),
+  bloom: Math.min(post.bloom, cap.bloom ?? post.bloom),
+  shafts: post.shafts && (cap.shafts ?? true),
+  ca: post.ca && (cap.ca ?? true),
+});
+const samePost = (a, b) => a.ao === b.ao && a.blur === b.blur && a.bloom === b.bloom && a.shafts === b.shafts && a.ca === b.ca;
+
 export function ladder(tier) {
   const out = [];
+  let cap = null; // the post chain as far as it has stepped down: no level after has more
   for (const name of NAMES.slice(NAMES.indexOf(tier.name))) {
     const t = TIERS[name];
-    const level = { name, pixelRatio: t.pixelRatio, maxPixels: t.maxPixels, samples: tier.direct ? 0 : t.samples, shadow: t.shadow, box: t.box, grass: GRASS_REACH[name], scale: 1 };
-    out.push(level, { ...level, name: `${name} 85%`, scale: 0.85 });
+    let post = cap ? capPost(t.post, cap) : { ...t.post };
+    const level = { name, pixelRatio: t.pixelRatio, maxPixels: t.maxPixels, samples: tier.direct ? 0 : t.samples, shadow: t.shadow, box: t.box, grass: GRASS_REACH[name], scale: 1, post };
+    out.push(level);
+    for (const [step, change] of tier.direct ? [] : POST_STEPS) {
+      const next = capPost(post, change);
+      if (samePost(next, post)) continue;
+      post = next;
+      out.push({ ...level, name: `${name} ${step}`, post });
+    }
+    cap = post;
+    out.push({ ...level, name: `${name} 85%`, scale: 0.85, post });
   }
   return out;
 }
@@ -169,7 +216,7 @@ export class Governor {
   }
 }
 
-const SAVED = 'castleGrounds.realLevel.v1';
+const SAVED = 'castleGrounds.realLevel.v2'; // (v2: the ladder's post chain steps)
 
 export function savedLevel(tier) {
   try {

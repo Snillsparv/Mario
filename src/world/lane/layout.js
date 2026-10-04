@@ -532,6 +532,8 @@ export const LANE_SUN = (() => {
   return Object.freeze({ x: v.x / l, y: v.y / l, z: v.z / l });
 })();
 
+const DEG = Math.PI / 180;
+
 // The realistic look (world/lane/real/look.js, render/real/RealLook.js): the same golden hour,
 // physically lit. Tuned by eye against the photographs (never sampled from them).
 //   sky          the analytic sky's colours (linear: a deep blue zenith paling to a blue-white
@@ -550,16 +552,70 @@ export const LANE_SUN = (() => {
 //   atmosphere   the actors' look meanwhile (view.setAtmosphere): the sun (1, 0.82, 0.62) x 3
 //                along LANE_SUN, a pale sky and green ground hemisphere for Jonas, the classic
 //                objects' fog in the haze's horizon colour, far enough to match it
+//   post         the screen-space effects' settings (render/real/post/*: which of them run is
+//                the tier's level, tier.js): ao, the ambient occlusion from the depth buffer
+//                (its reach in world units, ~0.7 m; strength; the angle bias against flat
+//                surfaces darkening themselves; the widest it spreads, in half-res pixels);
+//                bloom (the soft threshold and knee in linear HDR, the upsample's spread);
+//                shafts (the radial blur's reach toward the sun, its decay per tap, the sky's
+//                brightness that starts to shine)
+//   grade        the output pass's composite and grade (render/real/OutputPass.js), tuned
+//                against photos 19/40 and the GTA prototype (scratch p7): ao (the occlusion's
+//                share) fading on bright pixels (aoLit), the bloom's mix and the shafts'
+//                strength and tint, a filmic S-contrast, split toning (cool shadows, warm
+//                highlights: more turns the Falu red brown in the house's shade), saturation,
+//                vignette, and the lens touches kept subtle (edge colour fringing and grain:
+//                stronger, they show on the white brick and the cars), a black-level lift
+//   camera       the camera's profile in the realistic look (CameraController.setProfile): a
+//                lower, wider third-person street view (the field of view 55, the look point
+//                at his scaled chest, closer and flatter, gentler lags: the eye ~190 over his
+//                feet at rest, an adult's; the classic camera's ~324); the lane's camera tests
+//                pass with it too
+//   hero         Jonas's model's size in the realistic look (the dad: "maybe a little smaller"):
+//                only the model, scaled about his grip (player/model/scalePivot.js); his
+//                collider and everything he does stay
 export const LANE_REAL = Object.freeze({
   sky: Object.freeze({ zenith: [0.075, 0.2, 0.62], horizonAway: [0.5, 0.66, 0.9], horizonSun: [1.25, 0.82, 0.42], ground: [0.05, 0.06, 0.035], intensity: 1, clouds: 0.55 }),
   sunDir: LANE_SUN,
   exposure: 1.3,
   environment: 1.3,
-  haze: 2.2e-5,
+  haze: 3.5e-5,
   shadow: Object.freeze({ radius: 2.5, bias: -0.0004, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
   atmosphere: Object.freeze({ fog: 0xbbd6f3, near: 3000, far: 45000, sun: 0xffeace, sunIntensity: 3, sunDir: LANE_SUN, sky: 0xcfe0ff, ground: 0x5a6040, ambientIntensity: 0.9 }),
+  post: Object.freeze({
+    ao: Object.freeze({ radius: 110, intensity: 2.6, bias: 0.12, maxPx: 90 }),
+    bloom: Object.freeze({ threshold: 1.1, knee: 0.6, radius: 1 }),
+    shafts: Object.freeze({ density: 0.9, decay: 0.965, threshold: 0.9 }),
+  }),
+  grade: Object.freeze({
+    ao: 1,
+    aoLit: 0.35,
+    bloom: 0.07,
+    shafts: 0.5,
+    shaftTint: Object.freeze([1, 0.86, 0.62]),
+    contrast: 0.25,
+    split: 0.35,
+    shadowTint: Object.freeze([0.95, 0.99, 1.05]),
+    highTint: Object.freeze([1.07, 1, 0.9]),
+    saturation: 1.08,
+    vignette: 0.3,
+    ca: 0.0015,
+    grain: 0.015,
+    black: 0,
+  }),
+  camera: Object.freeze({
+    FOV: 55,
+    LOOK_HEIGHT: 120,
+    PIVOT_RATE: 0.18,
+    LOOK_RATE: 0.45,
+    ORBIT_MODES: Object.freeze({
+      follow: Object.freeze({ dist: [1050, 1550], pitch: [4 * DEG, 9 * DEG], aim: [4 * DEG, 6 * DEG], swingGain: 0.02, swingMax: 0.8 * DEG, faceCamera: [100 * DEG, 155 * DEG] }),
+      hero: Object.freeze({ dist: [700, 1050], pitch: [4 * DEG, 8 * DEG], aim: [3 * DEG, 5 * DEG], swingGain: 0.08, swingMax: 3 * DEG, faceCamera: [150 * DEG, 175 * DEG] }),
+    }),
+  }),
+  hero: 0.85,
 });
 
 // ---------------------------------------------------------------- entries, doors, star

@@ -1,7 +1,9 @@
 // The production build and `vite preview` with the phone controller (vite.config.js,
-// tools/padRelay.js): the game stays one self-contained bundle (under its 1,700,000-byte budget)
-// beside its two module workers (the title logo's, and the realistic look's with the pure code
-// main does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
+// tools/padRelay.js): the game is one bundle (under its 1,700,000-byte budget) and one lazily
+// loaded chunk, realLook (the realistic look's main-thread code: imported by the game only
+// dynamically, importing only the game's bundle, no three.js of its own, under 90 kB), beside
+// its two module workers (the title logo's, and the realistic look's with the pure code main
+// does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
 // its own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
 // offers the pad page only at addresses a phone can reach.
 import { test, before, after } from 'node:test';
@@ -32,15 +34,16 @@ after(async () => {
 const read = (f) => fs.readFile(path.join(outDir, f), 'utf8');
 const scripts = (html) => [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
 const preloads = (html) => [...html.matchAll(/<link\b[^>]*rel="modulepreload"[^>]*>/g)];
-// Static and dynamic imports of other built files ("./x.js" or "/assets/x.js").
-const chunkImports = (js) => [...js.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'](\.{0,2}\/[^"']+\.js)["']/g)].map((m) => m[1]);
+// Static and dynamic imports of other built files ("./x.js" or "/assets/x.js"; the minifier
+// quotes a dynamic import's path in backticks).
+const chunkImports = (js) => [...js.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'`](\.{0,2}\/[^"'`]+\.js)["'`]/g)].map((m) => m[1]);
 
-test('the game is one bundle (and its workers); pad.html has its own', async () => {
+test('the game is one bundle, its lazy realLook chunk (and its workers); pad.html has its own', async () => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();
   const js = assets.filter((f) => f.endsWith('.js'));
   assert.deepEqual(
     js.map((f) => f.replace(/-[\w-]{8}\.js$/, '')).sort(),
-    ['laneRealWorker', 'logoWorker', 'main', 'pad'],
+    ['laneRealWorker', 'logoWorker', 'main', 'pad', 'realLook'],
     `built scripts: ${js.join(', ')}`,
   );
 
@@ -53,7 +56,17 @@ test('the game is one bundle (and its workers); pad.html has its own', async () 
 
   const main = await read(`assets/${js.find((f) => f.startsWith('main-'))}`);
   const padJs = await read(`assets/${js.find((f) => f.startsWith('pad-'))}`);
-  assert.deepEqual(chunkImports(main), [], 'the game imports no other chunk');
+  // The realistic look's main-thread code: one chunk, imported by the game only dynamically (at
+  // boot, beside the workers), importing nothing but the game's bundle.
+  const lookFile = js.find((f) => f.startsWith('realLook-'));
+  const look = await read(`assets/${lookFile}`);
+  assert.deepEqual(chunkImports(main), [`./${lookFile}`], 'the game imports one chunk: realLook');
+  assert.equal([...main.matchAll(/\bimport\s*\(\s*["'`]\.\/realLook-/g)].length, 1, 'only dynamically (import())');
+  assert.ok(!new RegExp(`from\\s*["'\`]\\./${lookFile.replace('.', '\\.')}`).test(main), 'never statically');
+  const mainFile = js.find((f) => f.startsWith('main-'));
+  assert.deepEqual([...new Set(chunkImports(look))], [`./${mainFile}`], 'realLook imports only the game\'s bundle');
+  assert.ok(!look.includes('WebGLRenderer'), 'no three.js in realLook');
+  assert.ok(Buffer.byteLength(look) < 90 * 1024, `realLook stays small (${Buffer.byteLength(look)} bytes)`);
   assert.deepEqual(chunkImports(padJs), [], 'the pad imports no other chunk');
   assert.ok(Buffer.byteLength(main) < 1700000, `the game stays under its budget (${Buffer.byteLength(main)} bytes)`);
   // The realistic look's worker: started by the game (new Worker(new URL(...)), not an import).

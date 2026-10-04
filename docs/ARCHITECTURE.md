@@ -2061,9 +2061,11 @@ retro filter and pillarbox persist in `localStorage['castleGrounds.render.v1']`.
 
 The dad asked for his street "as realistic as possible", the character still classic. So
 Sparrow Lane's environment has a second, realistic look (`render/real/*`, `world/lane/real/*`;
-the plan behind it is the R1, R2 and R3 milestones of the realistic-environment plan), while Jonas, the
-coins, the star, the 1-up, the signs' boards, butterflies, birds and the HUD keep their classic
-models and materials, and every other area keeps the N64 look.
+the plan behind it is the R1, R2 and R3 milestones of the realistic-environment plan, then the
+GTA plan's G1: "even more realistic, GTA feel, kind of; the character the same, maybe a little
+smaller"), while Jonas, the coins, the star, the 1-up, the signs' boards, butterflies, birds and
+the HUD keep their classic models and materials (Jonas drawn at 0.85 of his size in it: below),
+and every other area keeps the N64 look.
 
 **Visual only.** The realistic visuals are the classic builders run again with `look: 'real'`
 (`buildLane(layout, { look: 'real', materials })`): the same faces, **unbaked** (the vertex
@@ -2087,15 +2089,16 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
 **Modules.**
 
 * `render/real/RealLook.js` (`RealLook`): what a frame is drawn through: the HDR scene target
-  (half float, MSAA per tier), `OutputPass.js` (exposure 1.3, three's Khronos PBR **Neutral**
-  tone mapping, saturation 1.05, vignette 0.15, an 8 × 8 ordered dither), the analytic sky
+  (half float, MSAA per tier, a depth texture for the post chain), the post chain and
+  `OutputPass.js` (the post chain's composite, exposure 1.3, three's Khronos PBR **Neutral**
+  tone mapping, the grade, the lens, an 8 × 8 ordered dither: "The GTA look" below), the analytic sky
   (`sky.js`: an art-directed golden-hour gradient, the sun's glow and disc, cirrus; drawn on the
   far plane centred on the camera; its `hazeColor(dir)` is every material's aerial
   perspective), the sky's prefiltered environment (`scene.environment`, intensity 1.3), the
   reflection probe (`probe.js`: one half-float cube capture of the street from over the road in
-  front of the dad's house, Jonas hidden, prefiltered: the windows' envMap), the sun's soft shadow (PCF, radius 2.5) in a box round Jonas
-  (`view.setFocus`), snapped to whole shadow texels across the light so static shadows never
-  shimmer, and the light preset (`layout.LANE_REAL`). The probe is taken once, as the build is
+  front of the dad's house, Jonas hidden, prefiltered: the windows' envMap), the sun's soft shadow (PCF, radius 2.5) in a tight box round Jonas
+  (`view.setFocus`, a little ahead of him along the view), snapped to whole shadow texels across the light so static shadows never
+  shimmer, beyond it the far map over the whole street (`farShadow.js`: below), and the light preset (`layout.LANE_REAL`). The probe is taken once, as the build is
   readied (below), and kept for every later visit (the street does not change); until then a
   blank probe of its size (`warmProbe`) stands in, so the materials that reflect it compile as
   they will draw.
@@ -2104,12 +2107,14 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   (ior 2.2 for double glazing's ~14 %: its F0 set in the standard material's lighting as the
   physical material would compute it, without that class in the bundle; roughness 0.02, its
   reflection added at full strength over the room at 1 − 0.45: a premultiplied output),
-  `classicLook` (the signs' unlit boards, below), all but the last through `hazeChunk` (below);
-  fixed `customProgramCacheKey`s ('real-haze', 'real-glass'), so a handful of programs serve
-  the lane. `world/lane/real/look.js` holds the lane's catalogue (a set, cover, colour,
-  roughness and normal strength per mesh: the boards' Falu red is the house's own tint × a
-  light neutral board texture) and its build (`LANE_REAL_AREA = { jobs, build }`, the lane's
-  `def.real`).
+  `classicLook` (the signs' unlit boards, below), all but the last through `hazeChunk` (below,
+  with the sun's near and far shadow patch where the look has a far map: `sunShadowChunk`);
+  fixed `customProgramCacheKey`s ('real-haze', 'real-glass'; '-far' after them with the far
+  map), so a handful of programs serve the lane. `world/lane/real/jobs.js` holds the lane's
+  catalogue (a set, cover, colour, roughness and normal strength per mesh: the boards' Falu red
+  is the house's own tint × a light neutral board texture) and its jobs (`LANE_REAL_AREA = {
+  jobs, detail, load }`, the lane's `def.real`: in the main chunk), `world/lane/real/look.js`
+  its materials and build (in the lazy `realLook` chunk: `load()`).
 * **The clamp rule**: every realistic material's lit colour is clamped to 32 before the haze
   (`CLAMP_GLSL`, in `hazeChunk`). A GGX sun highlight on the glass is ~1e6, Inf in the probe's
   half-float cube, and the probe's prefilter smears it into NaN: every window went black. The
@@ -2143,14 +2148,17 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   |---|---|---|---|
   | render size | CSS × min(DPR, 1.5), ≤ 2.4 MP | CSS × 1, ≤ 1.6 MP | CSS × 1, ≤ 0.9 MP |
   | HDR target | RGBA16F, MSAA 4 | MSAA 2 | none: straight to the canvas, three tone maps per material |
-  | shadow map, box | 2048, ±2600 | 1024, ±2200 | 1024, ±1600 |
+  | near shadow map, box | 2048, ±1500 | 1024, ±1300 | 1024, ±1600 |
+  | far shadow map (static, the whole lane) | 4096 | 2048 | none |
+  | post chain | AO 12 taps, bloom 5 levels, sun shafts, edge fringing | AO 8 taps, bloom 4 levels | none |
   | textures | 512 (256 for render, granite, bark, fir; the leaf atlas 1024) | 512, the lawn 256, the leaf atlas 512 | 256 (the leaf atlas 512) |
   | anisotropy, probe | 8, 256 | 4, 128 | 2, none (the sky's environment) |
 
-  Budgets per frame (the shadow pass included; checked in headless Chromium by
-  `tests/lane-real-browser.test.js`, frame times by hand on real hardware): high ≤ 160 draw
-  calls, ≤ 900k triangles, ≤ 20 realistic programs; mid ≤ 130 / 450k; low ≤ 100 / 200k. Then
-  **the governor** (below) steps the drawing down from measured frame times.
+  Budgets per frame (the shadow pass and the post chain included; checked in headless Chromium
+  by `tests/lane-real-browser.test.js`, frame times by hand on real hardware: the F1 overlay's
+  GPU line): high ≤ 175 draw calls, ≤ 1.0M triangles, ≤ 24 realistic programs; mid ≤ 145 /
+  500k; low ≤ 100 / 200k. Then **the governor** (below) steps the drawing down from measured
+  frame times.
 * `render/real/RealAreas.js` (main makes one right after the renderer; `AreaSwitch` uses it):
   the tier, whether realistic looks may run (fallbacks to classic, logged once, the F1 line
   saying why: `(classic: building | chosen | too slow | <what failed>)`: `?look=classic`, G in
@@ -2281,16 +2289,19 @@ a governor step), whatever path the new frames take (MSAA, direct, graded, retro
 covered screen (the hold of a wipe) there is no fade to make.
 
 **The governor.** Unless `?test=1` or a `?tier=` (drawn as asked), the look's tier is governed
-(`tier.js Governor` on `ladder(tier)`: each tier's own render size, MSAA, shadow and grass from
-the built tier down, each then at 85 % of its render size; what was built, textures and
-geometry, stays). `N64Renderer.render` hands it each frame's time (`look.govern`): a 2 s window
+(`tier.js Governor` on `ladder(tier)`: first the built tier's post chain stepped down (the sun
+shafts and the edge fringing off, the occlusion's 12 taps to 8, the bloom's 5 levels to 4, the
+occlusion off: 'high -shafts', 'high ao8', 'high bloom4', 'high -ao'), then each tier's own
+render size, MSAA, near shadow and grass from the built tier down, each then at 85 % of its
+render size, the post chain never more than it was stepped down to; what was built, textures,
+geometry and the far shadow map, stays). `N64Renderer.render` hands it each frame's time (`look.govern`): a 2 s window
 of frames over budget (the 90th percentile over 20 ms, 50 fps; 36 ms on a low level, phones
 aiming at 30) steps down; 5 s of frames keeping 60 fps steps back up, and a step up that fails
 doubles the wait before the next (to a minute); stalls (a hidden tab, a build: over 250 ms, but
 five in a row count) and the second after a step are not counted. Each step cross-fades
-(`setLevel`: the render size, the HDR target's MSAA, the shadow map and box, the blades' reach)
-and is kept for the next visit (`localStorage` 'castleGrounds.realLevel.v1', per tier; a
-convenience). Off the ladder (still too slow at its last level) the look goes classic for the
+(`setLevel`: the render size, the HDR target's MSAA and depth texture, the near shadow map and
+box, the blades' reach, the post chain's passes) and is kept for the next visit (`localStorage`
+'castleGrounds.realLevel.v2', per tier; a convenience). Off the ladder (still too slow at its last level) the look goes classic for the
 session (`real.slow()`, the F1 line `(classic: too slow)`). The F1 line names the level and
 'auto': `real 1088x612 msaa2 mid 85% auto`.
 
@@ -2312,11 +2323,17 @@ writes it back, so leaving restores the renderer exactly:
 | `renderer.toneMapping` / exposure | none / 1 | none (the output pass) or Neutral (low) / 1.3 |
 | retro filter | the saved setting | off; F2 / R: retro over realistic for this visit (`lookRetro`), never saved |
 | pixel ratio | min(DPR, 2) | the tier's |
-| Jonas | no shadow; blob shadow | casts and receives the sun's shadow; blob at 35 % (`REAL_BLOB`) |
+| Jonas | no shadow; blob shadow | casts and receives the sun's (near) shadow; blob at 35 % (`REAL_BLOB`) |
+| `view.heroScale` (his model's size) | 1 | `LANE_REAL.hero`: 0.85, about his grip |
+| the camera's profile (`cam.k`) | `cameraConfig` (FOV 45) | `LANE_REAL.camera` (FOV 55: below); set by `AreaSwitch._look` |
+| post chain targets, HDR targets | none | made on the next frame drawn, freed on `detach` |
+| far shadow map | none | taken once a build (readying), kept; sampled only by the look's materials |
 
 The signs' boards stay unlit and baked, their colour turned back through the exposure and the
 Neutral curve (`materials.js classicLook`: exact below its shoulder; on the direct path simply
-not tone mapped), so they come out of the output pass as the classic look draws them. Keys: G
+not tone mapped), the grade (`UNGRADE_GLSL`: the vignette at its pixel, the black level, the
+vibrance, the split toning's tints and the S-contrast, within 1 %) and the bloom's mix, so
+they come out of the output pass as the classic look draws them. Keys: G
 toggles "Classic street" (the classic look, this session; `AreaSwitch.setClassic`); F2 / R in
 the realistic look is the retro TV over it for this visit. The pause legend's retro row says so
 in such a course (`REAL_LOOK_ROW` 'R / F2 / G  Retro / Classic', `CLASSIC_LOOK_ROW` 'Retro /
@@ -2326,11 +2343,104 @@ the output pass writes into the grade's target and `GradePass` finishes as in na
 retro over realistic the scene is drawn at 240 lines and goes through the output pass into the
 retro target and `N64Pass` (a real street on a 1998 TV); the recorder's capture sizes it like any
 frame and its frame hook sees the finished canvas; a `setView()` scene bypasses it. The F1 line
-reads `real 1600x900 msaa4 high` (and ' auto' while governed).
+reads `real 1600x900 msaa4 high` (and ' auto' while governed, ' post: no depth' where the depth's
+resolve failed), and on high and mid a line `gpu 8.4 ms` under it (`gpuTimer.js`:
+`EXT_disjoint_timer_query_webgl2` round the look's frames while the overlay shows; 'gpu: no
+timer' without the extension).
 
-**Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the governor's
-ladder and its verdicts on synthetic frame-time series, the kept level, the workers' pool and how
-it shares the jobs out), `tests/real-texgen.test.js` (every lane set pinned at 64 px with `TEXGEN_VERSION`,
+**The GTA look (G1).** "Even more realistic, GTA feel": a modern open-world presentation over
+the same street, not a new style (the plan's prototype, scratch only, chose every number).
+
+* **The post chain** (`render/real/post/`: `RealPost.js` runs `Ssao.js`, `Bloom.js`,
+  `Shafts.js` on the shared fullscreen triangle, `fullscreen.js`), between the HDR scene and the
+  output pass, from the scene's own colour and depth only (a `DepthTexture` on the HDR target,
+  resolved from its MSAA with the colour by three's blit: no normal pass, no second scene draw):
+  **ambient occlusion** (scalable ambient obscurance on depth alone, half res: normals rebuilt
+  from the depths, the smaller one-sided difference per axis so silhouettes make no halo; 12
+  taps on a golden-angle spiral (8 on mid, a define: two programs) within 110 units, a
+  dimensionless falloff; blurred depth-aware, 9 + 9 taps (5 + 5), each texel's distance kept for
+  the output pass's depth-weighted 4-tap upsample); **bloom** (a 5-level mip chain from a soft
+  threshold, 1.1 with a knee of 0.6, its first downsample Karis-weighted, 13-tap downsamples, tent
+  upsamples; 4 levels on mid); **sun shafts** (quarter res: the sky's bright pixels near the sun
+  blurred 40 taps toward it, only while the sun is within 1.6 frames of the picture; high
+  only). `OutputPass` composites them (the occlusion multiplies the HDR colour before the tone
+  mapping, **never on the sky** (depth 1) and **fading on bright pixels** (`aoLit` 0.35: sunlit
+  faces never look dirty); the bloom mixed in at 7 %, the shafts added), tone maps, then
+  **grades** (a filmic S-contrast 0.25, split toning 0.35: cool shadows, warm highlights;
+  more turns the Falu red brown in the house's shade; saturation 1.08 as a vibrance: the more
+  saturated a colour already is the less it is boosted, so Jonas's red shirt in the sun keeps
+  its colour) and adds the **lens**
+  (vignette 0.3; edge colour fringing 0.0015 on high and grain 0.015, kept subtle). Every
+  number is `LANE_REAL.post` / `.grade`; which passes run is the level's (`tier.js` `post`).
+  Draw calls: high +14 facing the sun (12 away from it), mid +10, low none (the direct path is
+  R3's). Every pass's uniforms are the look's (nothing global); `detach` frees the chain's
+  targets with the HDR targets; the classic look's `GradePass` and `N64Pass` are untouched. The
+  depth's resolve is checked once (a GL error after the first frame with it: some drivers
+  refuse a multisampled depth blit): then the occlusion and the shafts stay off.
+* **Shadows near and far.** The sun's own map (re-drawn each frame, PCF) is a tight, sharp box
+  (high 2048 over ±1500, texel 1.5 units; mid 1024 over ±1300) centred a little ahead of the
+  focus along the view; the **far map** (`farShadow.js`: 4096 on high, 2048 on mid, none on low)
+  covers the lane's bounds up to 3000 high, its box reaching 6000 toward the sun for casters
+  outside them, and is drawn **once a build** (the readying chain's last task, after the probe;
+  else the first frame drawn), by three's own shadow pass for a light of its own that is never in
+  the scene (so no actor's program changes), inside a render of the scene from a camera that sees
+  nothing (three's pass needs the renderer's render state). `materials.js sunShadowChunk` (in
+  every realistic material where the look has a far map) wraps three's shadow term for the sun:
+  inside the near box (fading over its outer 5 % a side) the near map, beyond it the far one
+  (`uFarShadow`, `uFarMatrix`, `uFarShadowParams`, the look's haze uniforms; its own normal
+  offset in world units, a 1.5-texel PCF). Jonas (classic materials) receives the near map only:
+  he is always inside it.
+* **Jonas and the camera in a realistic look.** Only his model is drawn smaller
+  (`view.heroScale`, the look's `heroScale` = `LANE_REAL.hero` 0.85; main scales his model by
+  `areas.heroScale(alpha) × view.heroScale`): his collider, physics, poles, grabs and every
+  gameplay number stay. Scaled about his feet his mittens would let go of a ledge (hanging from
+  the dad's eave they sank 25 under the gutter), so `player/model/scalePivot.js` scales him
+  about **his grip** (`heroPivot`: the ledge's lip under his hands for `ledge_hang` and
+  `ledge_climb`, else his feet; on a pole his feet keep his grip best, measured: his mittens wrap
+  the trunk at his sides and close in as his body draws back), the change of pivot eased over
+  0.15 s (`ScalePivot.shift`, moving the render state's feet before `model.update`: the blob
+  shadow keeps to the floor and reads his world scale). The camera reads the fields a **profile**
+  may change from `cam.k` (`CameraController.setProfile`: `FOV`, `LOOK_HEIGHT`, `PIVOT_RATE`,
+  `LOOK_RATE`, `ORBIT_MODES`; `cameraConfig` itself without one, so nothing else changes; the
+  AI RACE look-up widens from the profile's field of view); `AreaSwitch._look` sets the look's
+  (`look.camera` = `LANE_REAL.camera`) with it and none with the classic look, a change snapping
+  the camera there (under the crossfade; behind the covered wipe on entering or leaving):
+
+  | | classic (`cameraConfig`) | the lane's realistic look |
+  |---|---|---|
+  | vertical FOV | 45 | 55 |
+  | look point over his feet | 150 | 120 (his scaled chest) |
+  | follow distance (close / far) | 1250 / 1800 | 1050 / 1550 |
+  | pitch, aim (close / far) | 8 / 12°, 7 / 9° | 4 / 9°, 4 / 6° |
+  | 'hero' (R) distance, pitch, aim | 800–1250, 7–11°, 4–6° | 700–1050, 4–8°, 3–5° |
+  | pivot lag / look lag | 0.3 / 0.8 | 0.18 / 0.45 |
+  | eye over his feet at rest | ~324 | ~190 (an adult's) |
+
+  The fly-in, the title orbit, first person and the cannon keep `cameraConfig`'s own. The lane's
+  camera tests pass with the profile too (`tests/lane.test.js` runs them with each).
+* **The lazy chunk.** The realistic look's main-thread code that the boot does not need
+  (`render/real/{RealLook,OutputPass,materials,sky,probe,farShadow,gpuTimer}.js`,
+  `render/real/post/*`, `world/lane/real/look.js`) is one lazily loaded chunk, `realLook`
+  (`world/lane/real/realLook.js`, imported by `LANE_REAL_AREA.load()`), started at boot beside
+  the workers (`RealAreas.prefetch`) and long loaded before the build needs it (it waits for the
+  textures anyway); `main` keeps the boot part (`RealAreas.js`, `tier.js`, `textureStore.js`,
+  `world/lane/real/jobs.js`). If it fails to load (offline, a 404) the lane stays classic, the F1
+  line `(classic: chunk)`.
+
+**Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
+and far shadows and post chains, the governor's ladder (the post chain's steps first) and its
+verdicts on synthetic frame-time series, the kept level, the workers' pool and how it shares the
+jobs out), `tests/real-post.test.js` (each tier's post chain, the ladder's post steps, the
+grade's constants in range, the output pass's composite order, every pass's uniforms given, the
+uniform names unique across the sky, the haze, the shadow patch and each material's own patch),
+`tests/camera-profile.test.js` (without a profile the poses of scripted runs on the grounds, in
+the hall and in the lane pinned as before profiles existed; a profile set and taken off leaves
+nothing behind; the lane's profile's field of view in `apply()` and the look-up, its look point,
+the arrival's eye height), `tests/hero-scale.test.js` (the pivots; at 0.85 his mittens on the
+lip of the dad's eave, the carport's and the motorhome's roof as at full size, his grip on the
+six poles and nothing sinking into them, his lowest point on the floor, the blob at his scale,
+the eased change of pivot), `tests/lane.test.js` (its camera tests also with the realistic
+look's profile), `tests/real-texgen.test.js` (every lane set pinned at 64 px with `TEXGEN_VERSION`,
 deterministic, periodic noises and seams, plausible albedo / roughness / normals, the cut-outs'
 mips keeping their coverage, the high tier's sets within 3 × 700 ms in node),
 `tests/lane-real-build.test.js` (the colliders and collision world byte-identical to the
@@ -2344,20 +2454,27 @@ its normals point, the walls open at every window and door of the chain houses a
 the tile courses in the classic roof planes (the crowns at most 1.5 over them, the ridge line's
 top 2), the firs on the classic forest's spots, the lawn mask, the cars on their wheels
 inside their colliders and their bodies and tyres closed, the bird on the ridge), `tests/real-materials.test.js` (the haze and the
-clamp in every material's patched shader, the glass's F0 and premultiplied output, the leaf
+clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
+the glass's F0 and premultiplied output, the leaf
 cards' (no sheen on a card seen from behind), the grass's and the lacquer's patches, shared
 uniforms, ≤ 20 programs, the signs'
-inverse tone mapping), `tests/lane-real-browser.test.js` (E2E: the swap, the pixels, the grade
+inverse tone mapping and grade), `tests/lane-real-browser.test.js` (E2E: the swap, the pixels, the grade
 and the recorder's framings, a crossfade, the counts and a blue sky at five views on high, mid
 and low, G, the
 low tier, `?look=classic`, and the exact restore of the renderer after a visit, with and
-without F2); `tests/net-relay-build.test.js` (the worker chunk).
+without F2 (the camera's profile and field of view, Jonas's size, the post chain's targets
+freed, the far map kept and taken once); the GTA look: the post chain's draw calls per tier, the
+occlusion's mean neither black nor white and never on the sky, the bloom round the sun, Jonas at
+0.85 and the camera at 55° in it, 1 and 45° with G); `tests/net-relay-build.test.js` (the
+worker chunk and the lazy `realLook` chunk).
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
-own chunk (`laneRealWorker-*.js`, ~87 kB, no three.js, no imports: under 160 kB); `main`
-carries only the renderer side (R1 +~29 kB, R2 +~9 kB, R3 +~8.8 kB: the crossfade, the governor,
-the workers' pool, the build between frames: 1,691,593 bytes, under the 1,700,000-byte
-budget). `tests/net-relay-build.test.js` checks both.
+own chunk (`laneRealWorker-*.js`, ~88 kB, no three.js, no imports: under 160 kB); the renderer
+side's code that the boot does not need is the lazy `realLook` chunk (above: ~45 kB with G1's
+post chain, imported by `main` only dynamically, importing only `main`: under 90 kB; no
+modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB, R2 +~9
+kB, R3 +~8.8 kB, then G1 moved the look's code out: 1,678,476 bytes, under the 1,700,000-byte
+budget). `tests/net-relay-build.test.js` checks all three.
 
 ## Audio (`src/audio/AudioEngine.js`)
 

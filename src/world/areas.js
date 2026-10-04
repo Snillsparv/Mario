@@ -41,9 +41,11 @@
 //                                // entry in a game (HUD.showCourse)
 //   lamp,                        // the course whose star, once won, lights this area's lamp
 //                                // too (a course's own star lights its own: Area.setLit)
-//   real,                        // a realistic look ({ jobs(tier), build(layout, ctx) }:
-//                                // render/real/RealAreas.js builds it in the background; the
-//                                // lane's world/lane/real/look.js); absent: classic only
+//   real,                        // a realistic look ({ jobs(tier), detail(tier), load() ->
+//                                // Promise<build(layout, ctx)>: the build from the lazily
+//                                // loaded realLook chunk}: render/real/RealAreas.js builds it in
+//                                // the background; the lane's world/lane/real/jobs.js and
+//                                // look.js); absent: classic only
 // }
 //
 // Entries rule: every entry has at least 1300 of clear floor behind him for the camera's orbit
@@ -57,7 +59,7 @@ import { buildSkerries } from './skerries/build.js';
 import { buildSea } from './skerries/sea.js';
 import * as laneLayout from './lane/layout.js';
 import { buildLane } from './lane/build.js';
-import { LANE_REAL_AREA } from './lane/real/look.js';
+import { LANE_REAL_AREA } from './lane/real/jobs.js';
 
 // The warm hall: a golden haze (its fog, and the clear colour: the hall has no sky) that the far
 // end of the room melts into, not a brown murk, the actors lit by a warm key from the bake's

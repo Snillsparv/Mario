@@ -17,7 +17,8 @@
 // privacy and originality rules in the course's sources, and the look (the sun from the
 // south-west, the villas' street faces lit, the chain houses' in shade, the dad's walls Falu red
 // under a dark roof, the red-leaf tree a small one, its crown in several reds about the house's
-// height).
+// height). The camera's tests (the arrival, the poles, the side yards) run twice: with the
+// classic camera and with the realistic look's (its profile, layout.LANE_REAL.camera).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -74,11 +75,25 @@ function hero(x, y, z, yaw, { objects = false } = {}) {
   return { p, ctl, om, log, at: () => local(p.pos) };
 }
 
+// The follow camera; with the realistic look's profile (layout.LANE_REAL.camera) while `profile`
+// is (the camera tests run with each).
+let profile = null;
 function camera(p, opts) {
   const cam = new CameraController({ collision: col, camera: new THREE.PerspectiveCamera(45, 4 / 3, 20, 45000), events: new Events() });
+  cam.setProfile(profile);
   cam.reset(p, opts);
   return cam;
 }
+// The camera tests' runs: the classic camera's, then the realistic look's (its profile).
+const CAMERAS = [['', null], [' (the realistic look\'s camera)', lane.LANE_REAL.camera]];
+const withCamera = (prof, fn) => () => {
+  profile = prof;
+  try {
+    return fn();
+  } finally {
+    profile = null;
+  }
+};
 
 // The stick toward world yaw `yaw` with the camera where it is.
 function toward(cam, yaw) {
@@ -209,50 +224,52 @@ test('the cars parked on the drives: each on its drive and solid (a floor on its
   for (const y of [40, 150, 260]) assert.equal(col.raycast(world(B.x, y, 900), { x: 0, y: 0, z: 1 }, B.z - 900 - lane.BIN.z / 2 - 5, { floors: false, ceilings: false }), null, `the way to the bins at ${y}`);
 });
 
-test('the arrival: out of the dad\'s front door onto the path facing the street; after the walk-in the camera stands in front of him over the lawn, clear, with the star over the ridge in the picture; a lost life drops him onto the path unhurt', () => {
-  const e = lane.ENTRIES.home;
-  assert.deepEqual([e.x, e.y, e.z, e.yaw, e.camYaw, e.walkIn, e.door], [DAD.door.x, GROUND, DAD.door.faceZ - 174, Math.PI, Math.PI, 8, 'lane_home']);
-  const floor = col.findFloor(e.x + O.x, e.y + 10, e.z + O.z);
-  assert.ok(floor.surface && Math.abs(floor.y - O.y - GROUND) < 1e-6 && floor.surface.terrain === 'stone', `on the path: ${floor.y - O.y}`);
-  // The door he comes out of is the way back in.
-  const door = lane.DOORS[0];
-  assert.deepEqual([door.id, door.to, door.entry, door.x, door.z, door.yaw], ['lane_home', 'hall', 'east_2', e.x, DAD.door.faceZ, Math.PI]);
-  // Open lawn and street in front of him: a floor every 100 for 1800 (to the villas' wall).
-  for (let d = 0; d <= 1800; d += 100) {
-    const f = col.findFloor(e.x + O.x, 400, e.z - d + O.z);
-    assert.ok(f.surface && f.y - O.y <= GROUND + 1e-6, `open ground ${d} in front of him`);
-  }
-  const { p, ctl, at } = hero(0, 0, 0, 0);
-  p.placeAt(area.entries.home);
-  const cam = camera(p, { yaw: e.camYaw });
-  for (let i = 0; i < 14; i++) {
-    const c = ctl.next(i < e.walkIn ? toward(cam, e.yaw) : {});
-    p.update(cam.playerInput(c), cam.getYaw());
-    cam.update(c, p);
-    assert.ok(!insideSolid(cam.pos), `tick ${i}: the camera clear`);
-  }
-  const end = at();
-  assert.ok(end.z < e.z - 30 && Math.abs(end.x - e.x) < 20 && Math.abs(end.y - GROUND) < 1, `walked out toward the street: ${JSON.stringify(end)}`);
-  const c = local(cam.pos);
-  assert.ok(c.z < end.z - 800 && Math.abs(c.x - end.x) < 200, `the camera in front of him: ${JSON.stringify(c)}`);
-  assert.equal(cam.collider.occluded, false);
-  // The star over the ridge projects inside the picture.
-  cam.apply(1);
-  cam.camera.updateMatrixWorld(true);
-  const s = lane.STAR;
-  const v = new THREE.Vector3(s.x + O.x, s.y + O.y, s.z + O.z).project(cam.camera);
-  assert.ok(Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.95 && v.z < 1, `the star in the picture: ${v.x.toFixed(2)}, ${v.y.toFixed(2)}`);
-  // A lost life: the respawn drop (from 1000 up) lands him on the path, unhurt.
-  assert.deepEqual(AREA_DEFS.lane.respawn, { entry: 'home', drop: 1000 });
-  const r = hero(0, 0, 0, 0);
-  r.p.spawn = { ...area.respawn };
-  r.p.respawn();
-  assert.equal(r.p.action, 'spawn');
-  for (let i = 0; i < 90; i++) r.p.update(r.ctl.next({}), Math.PI);
-  const q = r.at();
-  assert.ok(r.p.grounded && Math.abs(q.y - GROUND) < 1 && Math.abs(q.z - e.z) < 5, `landed on the path: ${JSON.stringify(q)}`);
-  assert.equal(r.p.health, MAX_HEALTH);
-});
+for (const [label, prof] of CAMERAS) {
+  test('the arrival: out of the dad\'s front door onto the path facing the street; after the walk-in the camera stands in front of him over the lawn, clear, with the star over the ridge in the picture; a lost life drops him onto the path unhurt' + label, withCamera(prof, () => {
+    const e = lane.ENTRIES.home;
+    assert.deepEqual([e.x, e.y, e.z, e.yaw, e.camYaw, e.walkIn, e.door], [DAD.door.x, GROUND, DAD.door.faceZ - 174, Math.PI, Math.PI, 8, 'lane_home']);
+    const floor = col.findFloor(e.x + O.x, e.y + 10, e.z + O.z);
+    assert.ok(floor.surface && Math.abs(floor.y - O.y - GROUND) < 1e-6 && floor.surface.terrain === 'stone', `on the path: ${floor.y - O.y}`);
+    // The door he comes out of is the way back in.
+    const door = lane.DOORS[0];
+    assert.deepEqual([door.id, door.to, door.entry, door.x, door.z, door.yaw], ['lane_home', 'hall', 'east_2', e.x, DAD.door.faceZ, Math.PI]);
+    // Open lawn and street in front of him: a floor every 100 for 1800 (to the villas' wall).
+    for (let d = 0; d <= 1800; d += 100) {
+      const f = col.findFloor(e.x + O.x, 400, e.z - d + O.z);
+      assert.ok(f.surface && f.y - O.y <= GROUND + 1e-6, `open ground ${d} in front of him`);
+    }
+    const { p, ctl, at } = hero(0, 0, 0, 0);
+    p.placeAt(area.entries.home);
+    const cam = camera(p, { yaw: e.camYaw });
+    for (let i = 0; i < 14; i++) {
+      const c = ctl.next(i < e.walkIn ? toward(cam, e.yaw) : {});
+      p.update(cam.playerInput(c), cam.getYaw());
+      cam.update(c, p);
+      assert.ok(!insideSolid(cam.pos), `tick ${i}: the camera clear`);
+    }
+    const end = at();
+    assert.ok(end.z < e.z - 30 && Math.abs(end.x - e.x) < 20 && Math.abs(end.y - GROUND) < 1, `walked out toward the street: ${JSON.stringify(end)}`);
+    const c = local(cam.pos);
+    assert.ok(c.z < end.z - 800 && Math.abs(c.x - end.x) < 200, `the camera in front of him: ${JSON.stringify(c)}`);
+    assert.equal(cam.collider.occluded, false);
+    // The star over the ridge projects inside the picture.
+    cam.apply(1);
+    cam.camera.updateMatrixWorld(true);
+    const s = lane.STAR;
+    const v = new THREE.Vector3(s.x + O.x, s.y + O.y, s.z + O.z).project(cam.camera);
+    assert.ok(Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.95 && v.z < 1, `the star in the picture: ${v.x.toFixed(2)}, ${v.y.toFixed(2)}`);
+    // A lost life: the respawn drop (from 1000 up) lands him on the path, unhurt.
+    assert.deepEqual(AREA_DEFS.lane.respawn, { entry: 'home', drop: 1000 });
+    const r = hero(0, 0, 0, 0);
+    r.p.spawn = { ...area.respawn };
+    r.p.respawn();
+    assert.equal(r.p.action, 'spawn');
+    for (let i = 0; i < 90; i++) r.p.update(r.ctl.next({}), Math.PI);
+    const q = r.at();
+    assert.ok(r.p.grounded && Math.abs(q.y - GROUND) < 1 && Math.abs(q.z - e.z) < 5, `landed on the path: ${JSON.stringify(q)}`);
+    assert.equal(r.p.health, MAX_HEALTH);
+  }));
+}
 
 test('no water anywhere, and a floor everywhere inside the boundary (400 seeded points find one between -10 and 1300)', () => {
   const rng = makeRng(31);
@@ -441,101 +458,105 @@ test('every sign is read from in front of its face, never from behind; the mailb
   assert.equal(lane.SIGNS.filter((s) => s.post !== false).length, lane.SIGNS.length - 1, 'every other sign on a signpost');
 });
 
-test('six climbable poles, each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it; jumping off one never hurts', () => {
-  const built = col.poles.map((p) => ({ x: p.x - O.x, z: p.z - O.z, y0: p.y0 - O.y, y1: p.y1 - O.y, camYaw: p.camYaw }));
-  assert.equal(built.length, 6);
-  assert.deepEqual(built, lane.POLES.map(({ x, z, y0, y1, camYaw }) => ({ x, z, y0, y1, camYaw })));
-  const problems = [];
-  for (const P of lane.POLES) {
-    let sides = 0;
-    for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-      const sx = P.x + Math.sin(a) * 350;
-      const sz = P.z + Math.cos(a) * 350;
-      // Only open sides: a floor level with the pole's foot and nothing between.
-      const floor = col.findFloor(sx + O.x, P.y0 + 100 + O.y, sz + O.z);
-      const blocked = col.raycast(world(sx, P.y0 + 60, sz), { x: -Math.sin(a), y: 0, z: -Math.cos(a) }, 300, { floors: false, ceilings: false });
-      if (!floor.surface || Math.abs(floor.y - O.y - P.y0) > 30 || blocked) continue;
-      sides++;
-      const { p, ctl, at } = hero(sx, floor.y - O.y, sz, a + Math.PI);
-      const cam = camera(p);
-      const tick = (input) => {
-        const c = ctl.next(input);
-        p.update(cam.playerInput(c), cam.getYaw());
-        cam.update(c, p);
-      };
-      for (let k = 0; k < 200 && p.action !== 'pole'; k++) {
-        const q = at();
-        const s = toward(cam, Math.atan2(P.x - q.x, P.z - q.z));
-        tick({ ...s, A: Math.hypot(q.x - P.x, q.z - P.z) < 130 && p.grounded });
-      }
-      if (p.action !== 'pole') {
-        problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: not grabbed (${p.action})`);
-        continue;
-      }
-      for (let k = 0; k < 120; k++) tick({});
-      const c = local(cam.pos);
-      const ahead = (c.x - P.x) * Math.sin(P.camYaw) + (c.z - P.z) * Math.cos(P.camYaw);
-      if (ahead < 500) problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: the camera ${Math.round(ahead)} toward its side`);
-      // Up to its top, then a jump off it (away from its side, and back over it): unhurt.
-      for (let k = 0; k < 400 && p.action !== 'pole_top'; k++) tick({ stickY: 1 });
-      for (let k = 0; k < 10; k++) tick({});
-      tick({ ...toward(cam, a), A: true });
-      for (let k = 0; k < 150 && !(p.grounded && k > 5); k++) tick({ ...toward(cam, a), A: true });
-      for (let k = 0; k < 30; k++) tick({});
-      if (p.health !== MAX_HEALTH) problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: hurt jumping off (${p.health})`);
-    }
-    if (sides < 2) problems.push(`(${P.x}, ${P.z}): ${sides} open sides`);
-  }
-  assert.deepEqual(problems, []);
-});
-
-test('the side yards between the villas: walked up to the back gardens and back (turning round in them) with the follow camera, it is never in a solid and seldom trapped; C-button swings in them, under the carport and on the roof never put it in a solid', () => {
-  const yards = [-3670, -1125, 1485, 3980];
-  const out = [];
-  for (const x of yards) {
-    const z0 = lane.wallZAt(x) - 200;
-    const { p, ctl, at } = hero(x, lane.TERRACE, z0, Math.PI);
-    const cam = camera(p);
-    let trapped = 0;
-    let occluded = 0;
-    const leg = (tz, n) => {
-      for (let t = 0; t < n && Math.abs(at().z - tz) > 60; t++) {
-        const q = at();
-        const c = ctl.next(toward(cam, Math.atan2(x - q.x, tz - q.z)));
-        p.update(cam.playerInput(c), cam.getYaw());
-        cam.update(c, p);
-        if (cam.collider.trapped) trapped++;
-        if (cam.collider.occluded) occluded++;
-        if (insideSolid(cam.pos)) out.push(`yard ${x}: the camera in a solid at ${JSON.stringify(local(cam.pos))}`);
-      }
-    };
-    leg(-3300, 300);
-    if (at().z > -3000) out.push(`yard ${x}: stuck at ${JSON.stringify(at())}`);
-    leg(z0, 300);
-    if (at().z < z0 - 200) out.push(`yard ${x}: not back at ${JSON.stringify(at())}`);
-    if (trapped > 35) out.push(`yard ${x}: trapped ${trapped} ticks (occluded ${occluded})`);
-  }
-  // C-button swings round him in the yards, under the carport and on the roof, facing 8 ways.
-  const spots = [[-3670, lane.TERRACE, -2400], [-1125, lane.TERRACE, -2600], [1485, lane.TERRACE, -2200], [3980, lane.TERRACE, -2500], [2050, GROUND, 2300], [0, DAD.ridge - 40, 1860]];
-  for (const [x, y, z] of spots) {
-    for (let k = 0; k < 8; k++) {
-      const { p, ctl } = hero(x, y, z, (k / 8) * Math.PI * 2);
-      const cam = camera(p);
-      for (const button of ['CL', 'CL', 'CL', 'CR', 'CR', 'CR', 'CR', 'CR', 'CR']) {
-        for (let t = 0; t < 12; t++) {
-          const c = ctl.next(t === 0 ? { [button]: true } : {});
+for (const [label, prof] of CAMERAS) {
+  test('six climbable poles, each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it; jumping off one never hurts' + label, withCamera(prof, () => {
+    const built = col.poles.map((p) => ({ x: p.x - O.x, z: p.z - O.z, y0: p.y0 - O.y, y1: p.y1 - O.y, camYaw: p.camYaw }));
+    assert.equal(built.length, 6);
+    assert.deepEqual(built, lane.POLES.map(({ x, z, y0, y1, camYaw }) => ({ x, z, y0, y1, camYaw })));
+    const problems = [];
+    for (const P of lane.POLES) {
+      let sides = 0;
+      for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        const sx = P.x + Math.sin(a) * 350;
+        const sz = P.z + Math.cos(a) * 350;
+        // Only open sides: a floor level with the pole's foot and nothing between.
+        const floor = col.findFloor(sx + O.x, P.y0 + 100 + O.y, sz + O.z);
+        const blocked = col.raycast(world(sx, P.y0 + 60, sz), { x: -Math.sin(a), y: 0, z: -Math.cos(a) }, 300, { floors: false, ceilings: false });
+        if (!floor.surface || Math.abs(floor.y - O.y - P.y0) > 30 || blocked) continue;
+        sides++;
+        const { p, ctl, at } = hero(sx, floor.y - O.y, sz, a + Math.PI);
+        const cam = camera(p);
+        const tick = (input) => {
+          const c = ctl.next(input);
           p.update(cam.playerInput(c), cam.getYaw());
           cam.update(c, p);
-          if (insideSolid(cam.pos)) {
-            out.push(`swing at (${x}, ${y}, ${z}) facing ${k}: the camera in a solid at ${JSON.stringify(local(cam.pos))}`);
-            break;
+        };
+        for (let k = 0; k < 200 && p.action !== 'pole'; k++) {
+          const q = at();
+          const s = toward(cam, Math.atan2(P.x - q.x, P.z - q.z));
+          tick({ ...s, A: Math.hypot(q.x - P.x, q.z - P.z) < 130 && p.grounded });
+        }
+        if (p.action !== 'pole') {
+          problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: not grabbed (${p.action})`);
+          continue;
+        }
+        for (let k = 0; k < 120; k++) tick({});
+        const c = local(cam.pos);
+        const ahead = (c.x - P.x) * Math.sin(P.camYaw) + (c.z - P.z) * Math.cos(P.camYaw);
+        if (ahead < 500) problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: the camera ${Math.round(ahead)} toward its side`);
+        // Up to its top, then a jump off it (away from its side, and back over it): unhurt.
+        for (let k = 0; k < 400 && p.action !== 'pole_top'; k++) tick({ stickY: 1 });
+        for (let k = 0; k < 10; k++) tick({});
+        tick({ ...toward(cam, a), A: true });
+        for (let k = 0; k < 150 && !(p.grounded && k > 5); k++) tick({ ...toward(cam, a), A: true });
+        for (let k = 0; k < 30; k++) tick({});
+        if (p.health !== MAX_HEALTH) problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: hurt jumping off (${p.health})`);
+      }
+      if (sides < 2) problems.push(`(${P.x}, ${P.z}): ${sides} open sides`);
+    }
+    assert.deepEqual(problems, []);
+  }));
+}
+
+for (const [label, prof] of CAMERAS) {
+  test('the side yards between the villas: walked up to the back gardens and back (turning round in them) with the follow camera, it is never in a solid and seldom trapped; C-button swings in them, under the carport and on the roof never put it in a solid' + label, withCamera(prof, () => {
+    const yards = [-3670, -1125, 1485, 3980];
+    const out = [];
+    for (const x of yards) {
+      const z0 = lane.wallZAt(x) - 200;
+      const { p, ctl, at } = hero(x, lane.TERRACE, z0, Math.PI);
+      const cam = camera(p);
+      let trapped = 0;
+      let occluded = 0;
+      const leg = (tz, n) => {
+        for (let t = 0; t < n && Math.abs(at().z - tz) > 60; t++) {
+          const q = at();
+          const c = ctl.next(toward(cam, Math.atan2(x - q.x, tz - q.z)));
+          p.update(cam.playerInput(c), cam.getYaw());
+          cam.update(c, p);
+          if (cam.collider.trapped) trapped++;
+          if (cam.collider.occluded) occluded++;
+          if (insideSolid(cam.pos)) out.push(`yard ${x}: the camera in a solid at ${JSON.stringify(local(cam.pos))}`);
+        }
+      };
+      leg(-3300, 300);
+      if (at().z > -3000) out.push(`yard ${x}: stuck at ${JSON.stringify(at())}`);
+      leg(z0, 300);
+      if (at().z < z0 - 200) out.push(`yard ${x}: not back at ${JSON.stringify(at())}`);
+      if (trapped > 35) out.push(`yard ${x}: trapped ${trapped} ticks (occluded ${occluded})`);
+    }
+    // C-button swings round him in the yards, under the carport and on the roof, facing 8 ways.
+    const spots = [[-3670, lane.TERRACE, -2400], [-1125, lane.TERRACE, -2600], [1485, lane.TERRACE, -2200], [3980, lane.TERRACE, -2500], [2050, GROUND, 2300], [0, DAD.ridge - 40, 1860]];
+    for (const [x, y, z] of spots) {
+      for (let k = 0; k < 8; k++) {
+        const { p, ctl } = hero(x, y, z, (k / 8) * Math.PI * 2);
+        const cam = camera(p);
+        for (const button of ['CL', 'CL', 'CL', 'CR', 'CR', 'CR', 'CR', 'CR', 'CR']) {
+          for (let t = 0; t < 12; t++) {
+            const c = ctl.next(t === 0 ? { [button]: true } : {});
+            p.update(cam.playerInput(c), cam.getYaw());
+            cam.update(c, p);
+            if (insideSolid(cam.pos)) {
+              out.push(`swing at (${x}, ${y}, ${z}) facing ${k}: the camera in a solid at ${JSON.stringify(local(cam.pos))}`);
+              break;
+            }
           }
         }
       }
     }
-  }
-  assert.deepEqual(out.slice(0, 10), [], `${out.length} problems`);
-});
+    assert.deepEqual(out.slice(0, 10), [], `${out.length} problems`);
+  }));
+}
 
 test('privacy and originality: the course\'s sources name no one but Jonas on its signs, carry no house numbers or licence plates on them, and paint every texture in code (no image files)', () => {
   const dir = new URL('../src/world/lane/', import.meta.url);

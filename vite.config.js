@@ -7,15 +7,21 @@ import padRelay from './tools/padRelay.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.69 MB minified (1,691,593 bytes), ~553
-// kB gzipped, plus two module workers of its own (new Worker(new URL(...)), not imports): the
-// ~13 kB title-logo worker and the realistic look's (render/real/laneRealWorker.js, ~87 kB, a
-// pool of up to three of them: the pure code the realistic Sparrow Lane needs, its texture
-// generators and its geometry builders, kept out of main; it must import no three.js and stay
-// under 160 kB). The size warning was 1600 (1,584,238 bytes before it); raised to 1700 for the
-// second course, Sparrow Lane (world/lane/*, about 60 kB with its details; its realistic look's
-// renderer side about 47 kB more): the hard budget (1,700,000 bytes) is the limit. Growth goes
-// into the worker first; raising the cap is the last resort, documented here and in
+// first frame, so splitting would only add requests. ~1.68 MB minified (1,678,476 bytes), ~548
+// kB gzipped, plus one lazily loaded chunk and two module workers of its own (new Worker(new
+// URL(...)), not imports): the ~13 kB title-logo worker and the realistic look's
+// (render/real/laneRealWorker.js, ~88 kB, a pool of up to three of them: the pure code the
+// realistic Sparrow Lane needs, its texture generators and its geometry builders, kept out of
+// main; it must import no three.js and stay under 160 kB). The chunk, `realLook` (~45 kB:
+// world/lane/real/realLook.js, imported only dynamically, at boot beside the workers), is the
+// realistic look's main-thread code the boot does not need (its materials, sky, probe, far
+// shadow, post chain and output pass); it imports only from main (three.js and the classic
+// builders are not downloaded twice) and stays under 90 kB; with no modulepreload (below) the
+// game's index.html still loads main alone. The size warning was 1600 (1,584,238 bytes before
+// it); raised to 1700 for the second course, Sparrow Lane (world/lane/*, about 60 kB with its
+// details; its realistic look's renderer side about 47 kB more, until G1 moved most of it into
+// the lazy chunk): the hard budget (1,700,000 bytes) is the limit. Growth goes into the worker
+// or the lazy chunk first; raising the cap is the last resort, documented here and in
 // docs/ARCHITECTURE.md.
 const GAME_CHUNK_LIMIT_KB = 1700;
 
@@ -78,5 +84,8 @@ export default defineConfig({
     target: TARGET,
     rolldownOptions: { input: { main: 'index.html' } },
     chunkSizeWarningLimit: GAME_CHUNK_LIMIT_KB,
+    // (The realLook chunk is imported at boot, beside the workers: no preload helper, no
+    // modulepreload link in index.html.)
+    modulePreload: false,
   },
 });

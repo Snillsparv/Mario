@@ -1,6 +1,7 @@
 // The realistic look's tiers and how it gets its work done (render/real/tier.js,
-// render/real/textureStore.js): the device guess and ?tier=, the render size's cap, the
-// governor's ladder and its verdicts on synthetic frame-time series (stepping down while frames
+// render/real/textureStore.js): the device guess and ?tier=, the render size's cap, the tiers'
+// near and far shadows and post chains, the governor's ladder (the post chain's steps first) and
+// its verdicts on synthetic frame-time series (stepping down while frames
 // are late, back up after a while of keeping 60 fps, a failed step up waiting twice as long
 // before the next, stalls and the second after a step not counted, below the ladder the classic
 // look), the last good level kept per device; and the workers' pool: as many as the cores spare
@@ -23,14 +24,30 @@ test('the guess: phones low, Apple silicon and discrete GPUs high, other desktop
   assert.equal(lookPixelRatio(TIERS.mid, 2, 960, 540), 1);
 });
 
-test('the ladder: each tier\'s own settings from the build\'s down, each then at 85 % of its render size; a direct build stays without MSAA', () => {
+test('the ladder: the build\'s tier\'s post chain stepped down first (the shafts and the colour fringing off, the occlusion\'s 12 taps to 8, the bloom\'s 5 levels to 4, the occlusion off), then each tier\'s own render size, MSAA, near shadow and grass from the build\'s down, each then at 85 % of its render size, the post chain never more than it was stepped down to; a direct build stays without MSAA or post chain', () => {
+  // The tiers: the near shadow's tight box, the far map's size, the post chain.
+  assert.deepEqual(['high', 'mid', 'low'].map((n) => [TIERS[n].shadow, TIERS[n].box, TIERS[n].far]), [[2048, 1500, 4096], [1024, 1300, 2048], [1024, 1600, 0]]);
+  assert.deepEqual(TIERS.high.post, { ao: 12, blur: 4, bloom: 5, shafts: true, ca: true });
+  assert.deepEqual(TIERS.mid.post, { ao: 8, blur: 2, bloom: 4, shafts: false, ca: false });
+  assert.ok(TIERS.low.post.ao === 0 && TIERS.low.post.bloom === 0 && !TIERS.low.post.shafts && !TIERS.low.post.ca, 'none on low');
   const high = ladder(TIERS.high);
-  assert.deepEqual(high.map((l) => l.name), ['high', 'high 85%', 'mid', 'mid 85%', 'low', 'low 85%']);
-  assert.deepEqual(high.map((l) => [l.samples, l.shadow, l.box]), [[4, 2048, 2600], [4, 2048, 2600], [2, 1024, 2200], [2, 1024, 2200], [0, 1024, 1600], [0, 1024, 1600]]);
-  assert.deepEqual(high.map((l) => l.scale), [1, 0.85, 1, 0.85, 1, 0.85]);
-  assert.ok(high[0].grass === 1 && high[2].grass > 0.5 && high[2].grass < 0.7 && high[4].grass === 0, 'the blades reach less, then none');
-  assert.deepEqual(ladder(TIERS.mid).map((l) => l.name), ['mid', 'mid 85%', 'low', 'low 85%']);
-  assert.deepEqual(ladder(TIERS.low).map((l) => [l.name, l.samples]), [['low', 0], ['low 85%', 0]]);
+  assert.deepEqual(high.map((l) => l.name), ['high', 'high -shafts', 'high ao8', 'high bloom4', 'high -ao', 'high 85%', 'mid', 'mid 85%', 'low', 'low 85%']);
+  const H = [4, 2048, 1500];
+  const M = [2, 1024, 1300];
+  const L = [0, 1024, 1600];
+  assert.deepEqual(high.map((l) => [l.samples, l.shadow, l.box]), [H, H, H, H, H, H, M, M, L, L]);
+  assert.deepEqual(high.map((l) => l.scale), [1, 1, 1, 1, 1, 0.85, 1, 0.85, 1, 0.85]);
+  assert.deepEqual(high.map((l) => [l.post.ao, l.post.bloom, l.post.shafts, l.post.ca]), [[12, 5, true, true], [12, 5, false, false], [8, 5, false, false], [8, 4, false, false], [0, 4, false, false], [0, 4, false, false], [0, 4, false, false], [0, 4, false, false], [0, 0, false, false], [0, 0, false, false]]);
+  assert.deepEqual(high.map((l) => l.post.blur).slice(0, 3), [4, 4, 2], 'the 8 taps blurred less');
+  for (const [i, l] of high.entries()) {
+    const p = high[i - 1]?.post;
+    if (p) assert.ok(l.post.ao <= p.ao && l.post.bloom <= p.bloom && (!l.post.shafts || p.shafts), `${l.name}: never more than the level before`);
+  }
+  assert.ok(high[0].grass === 1 && high[5].grass === 1 && high[6].grass > 0.5 && high[6].grass < 0.7 && high[8].grass === 0, 'the blades reach less, then none');
+  const mid = ladder(TIERS.mid);
+  assert.deepEqual(mid.map((l) => l.name), ['mid', 'mid -ao', 'mid 85%', 'low', 'low 85%']);
+  assert.deepEqual(mid.map((l) => [l.post.ao, l.post.bloom]), [[8, 4], [0, 4], [0, 4], [0, 0], [0, 0]]);
+  assert.deepEqual(ladder(TIERS.low).map((l) => [l.name, l.samples, l.post.ao, l.post.bloom]), [['low', 0, 0, 0], ['low 85%', 0, 0, 0]]);
 });
 
 // Feeds `series` ([ms, count] runs) to a governor; returns [frame index, level] of each verdict.
@@ -52,11 +69,12 @@ test('the governor steps down while frames are late (a window of 2 s, after a se
   // 30 ms frames (33 fps): a second settling (34 frames), then a verdict every 2 s (67 frames),
   // down to the low level, where 30 fps is enough (its budget 36 ms).
   const steps = run(gov, [[30, 1000]]);
-  assert.deepEqual(steps.map(([, l]) => l), [1, 2, 3, 4], 'down to low');
+  assert.deepEqual(steps.map(([, l]) => l), [1, 2, 3, 4, 5, 6, 7, 8], 'the post chain\'s steps first, then down to low');
+  assert.equal(levels[8].name, 'low');
   assert.equal(steps[0][0], 100);
   assert.equal(steps[1][0] - steps[0][0], 101, 'each step settles a second before its next window');
-  // 22 fps: off the ladder (6: the classic look).
-  assert.deepEqual(run(new Governor({ levels }), [[45, 1000]]).map(([, l]) => l), [1, 2, 3, 4, 5, 6]);
+  // 22 fps: off the ladder (10: the classic look).
+  assert.deepEqual(run(new Governor({ levels }), [[45, 1000]]).map(([, l]) => l), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   // On a low level 30 fps is fine (its budget 36 ms): a phone holds.
   const phone = new Governor({ levels: ladder(TIERS.low) });
   assert.deepEqual(run(phone, [[33.3, 600]]), [], 'a phone at 30 fps stays');

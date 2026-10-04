@@ -1,11 +1,13 @@
 // The realistic look's materials (render/real/materials.js, the lane's catalogue and its detail's):
 // every one ends in the haze with the clamp to 32 before it (its patched shader really has it:
-// three's chunks it replaces are where it expects them), the glass's premultiplied output, the
+// three's chunks it replaces are where it expects them) and takes the sun's shadow near and far
+// (the far map's patch, its uniforms the look's; none on the low tier), the glass's premultiplied output, the
 // leaf cards' (both faces lit by their own normal, the sun through them, swaying), the grass's
 // (each clump placed in the shader on the lawns' mask), the cars' lacquer (three's clearcoat in
 // the standard material), the haze uniforms shared by them all and the sky, stable program cache
 // keys, and only a handful of programs for the whole lane; the sky and the output pass (Neutral
-// tone mapping, dither) compile their GLSL from three's own chunks.
+// tone mapping, dither) compile their GLSL from three's own chunks; the signs' boards turned back
+// through the exposure, the tone mapping and the output pass's grade.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -19,12 +21,13 @@ import { jobKey } from '../src/render/real/texgen/jobs.js';
 import { TIERS } from '../src/render/real/tier.js';
 import { SKY_GLSL } from '../src/render/real/sky.js';
 
+// (With the far shadow map's box, as the lane's look has it: none on the low tier.)
 function lookAndMaterials(tier = TIERS.high) {
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
   for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
-  const look = new RealLook({ preset: lane.LANE_REAL, tier });
+  const look = new RealLook({ preset: lane.LANE_REAL, tier, farBox: { x0: -9000, x1: 8000, y0: -100, y1: 3000, z0: -4000, z1: 3600 } });
   const wind = { value: new THREE.Vector4(1, 0, 0, 0) };
-  return { look, wind, M: laneMaterials(store, tier, look.haze, { exposure: lane.LANE_REAL.exposure }), D: detailMaterials(store, tier, look.haze, { wind }) };
+  return { look, wind, M: laneMaterials(store, tier, look.haze, { exposure: lane.LANE_REAL.exposure, grade: look.grade }), D: detailMaterials(store, tier, look.haze, { wind }) };
 }
 
 // A material's shaders as three would compile them: its ShaderLib program through its
@@ -56,7 +59,20 @@ test('every realistic material hazes, with the clamp to 32 before the haze, in p
     assert.ok(s.vertexShader.includes('#include <project_vertex>\n  vec4 hazePosition') && s.vertexShader.includes('vHazeWorld = (modelMatrix * hazePosition).xyz;'), `${name}: the world position after projection`);
     for (const u of ['uSunDir', 'uZenith', 'uHorizonAway', 'uHorizonSun', 'uGround', 'uSkyIntensity', 'uHazeDensity']) assert.equal(s.uniforms[u], look.haze[u], `${name}: ${u} shared`);
     assert.equal(m.fog, false);
+    // The sun's shadow: the far map where the near one's box ends (SUN_SHADOW: three's
+    // directional shadow term for the sun, wrapped), its uniforms the look's.
+    assert.ok(s.fragmentShader.includes('realSunShadow( getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize'), `${name}: the sun's shadow near and far`);
+    assert.ok(s.fragmentShader.includes('float realSunShadow(float nearShadow, vec4 nearCoord, float intensity)'));
+    assert.ok(s.vertexShader.includes('#include <shadowmap_vertex>\n  #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0\n    vFarShadowCoord = uFarMatrix *'), `${name}: the far map's coordinate after three's own`);
+    for (const u of ['uFarShadow', 'uFarMatrix', 'uFarShadowParams']) assert.equal(s.uniforms[u], look.haze[u], `${name}: ${u} shared`);
   }
+  assert.ok(THREE.ShaderChunk.lights_fragment_begin.includes('getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] )'), 'three still calls it so');
+  // The low tier: no far map, R3's single one (and no patch).
+  const low = lookAndMaterials(TIERS.low);
+  assert.equal(low.look.haze.uFarShadow, undefined);
+  assert.ok(!compiled(low.M.brick).fragmentShader.includes('realSunShadow'));
+  assert.equal(low.M.brick.customProgramCacheKey(), 'real-haze');
+  low.look.dispose();
   const glass = compiled(M.glass).fragmentShader;
   assert.ok(!glass.includes('#include <opaque_fragment>') && glass.includes('reflectedLight.indirectSpecular, diffuseColor.a);'), 'premultiplied: the reflection at full strength');
   assert.ok(!glass.includes('#include <premultiplied_alpha_fragment>'));
@@ -93,7 +109,7 @@ test('the detail\'s own: the leaf cards lit by their own normal on both faces, t
   const middle = { value: new THREE.Vector2() };
   const grass = grassMaterial({ lawn, rect: new THREE.Vector4(), grid, middle, wind }, look.haze);
   const g = compiled(grass);
-  assert.equal(grass.customProgramCacheKey(), 'real-grass');
+  assert.equal(grass.customProgramCacheKey(), 'real-grass-far', 'its own program (with the far shadow map)');
   assert.ok(g.vertexShader.includes('attribute vec2 cell;') && g.vertexShader.includes('texture2D(uLawn'), 'on the mask');
   assert.ok(g.vertexShader.includes('vColor.rgb *= mix('), 'tinted per clump (three\'s vColor is a vec4)');
   assert.ok(g.vertexShader.indexOf('vec2 grassAt') < g.vertexShader.indexOf('transformed *= grassSize'), 'placed before it is sized');
@@ -103,7 +119,7 @@ test('the detail\'s own: the leaf cards lit by their own normal on both faces, t
   // The lacquer: three's own clearcoat lobe, switched on in the standard material.
   const coat = compiled(D.carPaint);
   assert.ok(D.carPaint.defines.USE_CLEARCOAT === '' && coat.uniforms.clearcoat.value === 1 && coat.uniforms.clearcoatRoughness.value === 0.05);
-  assert.equal(D.carPaint.customProgramCacheKey(), 'real-coat');
+  assert.equal(D.carPaint.customProgramCacheKey(), 'real-coat-far');
   assert.ok(THREE.ShaderChunk.lights_physical_fragment.includes('material.clearcoat = clearcoat;'), 'three still reads it so');
   // The car's glass: opaque, dark, its F0 from ior 2.
   assert.ok(!D.carGlass.transparent && D.carGlass.depthWrite && D.carGlass.userData.ior === 2);
@@ -144,14 +160,22 @@ test('the sky and the output pass: the sky\'s gradient and haze share the unifor
   look.dispose();
 });
 
-test('the signs\' boards through the look as the classic look draws them: their colour turned back through the exposure and Neutral tone mapping (exact below its shoulder); not tone mapped on the direct path', () => {
-  const { M } = lookAndMaterials();
+test('the signs\' boards through the look as the classic look draws them: their colour turned back through the exposure, Neutral tone mapping (exact below its shoulder) and the output pass\'s grade (within 1 %, anywhere in the picture); not tone mapped on the direct path', () => {
+  const { M, look } = lookAndMaterials();
   const lib = THREE.ShaderLib.basic;
   const shader = { uniforms: {}, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
   M.signs.onBeforeCompile(shader, null);
-  assert.ok(shader.fragmentShader.includes('gl_FragColor.rgb = untoneNeutral(gl_FragColor.rgb);\n#include <tonemapping_fragment>'));
+  assert.ok(shader.fragmentShader.includes('gl_FragColor.rgb = untoneNeutral(ungrade(gl_FragColor.rgb)) / (1.0 - uBloom);\n#include <tonemapping_fragment>'));
   assert.equal(shader.uniforms.uExposure.value, lane.LANE_REAL.exposure);
-  assert.equal(M.signs.customProgramCacheKey(), 'real-classic');
+  for (const u of ['uContrast', 'uSplit', 'uShadowTint', 'uHighTint', 'uSaturation', 'uBlack', 'uVignette', 'uGradeScreen', 'uBloom']) assert.equal(shader.uniforms[u], look.grade[u], `${u}: the output pass's`);
+  assert.equal(look.grade.uBloom, look.output.material.uniforms.uBloom, 'the bloom\'s share as the pass mixes it');
+  assert.equal(M.signs.customProgramCacheKey(), 'real-classic-graded');
+  // Without a grade (a look without one), the tone mapping's alone.
+  const plain = classicLook(new THREE.MeshBasicMaterial(), { exposure: 1.3 });
+  const ps = { uniforms: {}, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
+  plain.onBeforeCompile(ps, null);
+  assert.ok(ps.fragmentShader.includes('gl_FragColor.rgb = untoneNeutral(gl_FragColor.rgb);\n#include <tonemapping_fragment>'));
+  assert.equal(plain.customProgramCacheKey(), 'real-classic');
   // The GLSL's arithmetic: three's NeutralToneMapping (r186) after untoneNeutral gives c back.
   const neutral = (c, e) => {
     c = c.map((v) => v * e);
@@ -171,6 +195,49 @@ test('the signs\' boards through the look as the classic look draws them: their 
   for (const c of [[0.3, 0.13, 0.04], [0.5, 0.4, 0.2], [0.02, 0.01, 0.005], [0.7, 0.6, 0.5], [0.0, 0.2, 0.1]]) {
     const back = neutral(untone(c, 1.3), 1.3);
     c.forEach((v, i) => assert.ok(Math.abs(back[i] - v) < 1e-9, `${c} -> ${back}`));
+  }
+  // The grade's arithmetic (OutputPass.js GRADE_GLSL) after the GLSL's ungrade gives c back.
+  const g = lane.LANE_REAL.grade;
+  const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const tint = (l) => [0, 1, 2].map((i) => (1 + (g.shadowTint[i] - 1) * g.split * (1 - l) * (1 - l)) * (1 + (g.highTint[i] - 1) * g.split * l * l));
+  const vig = (d) => 1 - g.vignette * (d[0] * d[0] + d[1] * d[1]) * 2;
+  const vibrance = (c) => {
+    const m = Math.max(...c);
+    const s = m > 1e-4 ? (m - Math.min(...c)) / m : 0;
+    return g.saturation + (1 - g.saturation) * s * s;
+  };
+  const grade = (c, d) => {
+    const t = tint(luma(c));
+    c = c.map((v, i) => (v + g.contrast * (v * v * (3 - 2 * v) - v)) * t[i]);
+    const l = luma(c);
+    const k = vibrance(c);
+    return c.map((v) => Math.min(1, Math.max(0, (g.black + (l + (v - l) * k) * (1 - g.black)) * vig(d))));
+  };
+  const unS = (y) => {
+    let x = y;
+    for (let i = 0; i < 4; i++) x = Math.min(1, Math.max(0, x - (x + g.contrast * (x * x * (3 - 2 * x) - x) - y) / (1 + g.contrast * (6 * x - 6 * x * x - 1))));
+    return x;
+  };
+  const ungrade = (c, d) => {
+    c = c.map((v) => (v / Math.max(vig(d), 1e-3) - g.black) / (1 - g.black));
+    const l = luma(c);
+    const y = c;
+    for (let i = 0; i < 3; i++) {
+      const k = vibrance(c);
+      c = y.map((v) => l + (v - l) / k);
+    }
+    let x = c;
+    for (let i = 0; i < 2; i++) {
+      const t = tint(luma(x));
+      x = c.map((v, k) => unS(v / t[k]));
+    }
+    return x;
+  };
+  for (const d of [[0, 0], [0.2, -0.1], [-0.45, 0.4]]) {
+    for (const c of [[0.3, 0.13, 0.04], [0.5, 0.4, 0.2], [0.05, 0.03, 0.02], [0.6, 0.55, 0.45], [0.1, 0.25, 0.12]]) {
+      const back = grade(ungrade(c, d), d);
+      c.forEach((v, i) => assert.ok(Math.abs(back[i] - v) < 0.01, `${c} at ${d} -> ${back}`));
+    }
   }
   const direct = classicLook(new THREE.MeshBasicMaterial(), { exposure: 1.3, direct: true });
   assert.equal(direct.toneMapped, false);

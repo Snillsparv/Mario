@@ -1,5 +1,6 @@
-// Small F1 performance readout (fps, draw calls, triangles, render mode). The DOM element
-// is only created when the overlay is first shown, so this module is safe to import in node.
+// Small F1 performance readout (fps, draw calls, triangles, render mode, and a realistic look's
+// GPU time where it measures it). The DOM element is only created when the overlay is first
+// shown, so this module is safe to import in node.
 
 const REFRESH_SECONDS = 0.5;
 
@@ -26,9 +27,10 @@ export class DebugOverlay {
     this.windowStart = 0;
   }
 
-  // Call once per rendered frame with a timestamp in seconds, renderer.info and a function
-  // describing the render mode. Text is refreshed a couple of times per second.
-  frame(now, info, describeMode) {
+  // Call once per rendered frame with a timestamp in seconds, renderer.info, a function
+  // describing the render mode and one giving an extra line (or nothing). Text is refreshed a
+  // couple of times per second.
+  frame(now, info, describeMode, extra = null) {
     if (!this.visible) return;
     if (!this.windowStart) {
       this.windowStart = now;
@@ -45,6 +47,8 @@ export class DebugOverlay {
       `${this.fps.toFixed(0)} fps\n` +
       `${info.render.calls} calls  ${tris >= 1000 ? (tris / 1000).toFixed(1) + 'k' : tris} tris\n` +
       describeMode();
+    const more = extra?.();
+    if (more) this.el.textContent += `\n${more}`;
   }
 
   dispose() {

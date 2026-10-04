@@ -1,14 +1,15 @@
-// Sparrow Lane's realistic look (render/real/*): the texture sets it asks the worker for, its
-// material catalogue (a material for each of the course's meshes) and its build. The visuals
-// are the classic builders' faces built again unbaked (lane/build.js look 'real'); the colliders,
-// poles, signs, coins and entries stay the classic build's. (This folder, world/lane/real/, holds
-// the lane's realistic-look code; this module runs on the main thread.)
+// Sparrow Lane's realistic look (render/real/*): its materials (from the catalogue in jobs.js:
+// a material for each of the course's meshes) and its build. In the lazily loaded realLook
+// chunk (realLook.js: RealAreas loads it at boot, beside the workers, from LANE_REAL_AREA.load),
+// with the render/real code only it needs. The visuals are the classic builders' faces built
+// again unbaked (lane/build.js look 'real'); the colliders, poles, signs, coins and entries stay
+// the classic build's. (This folder, world/lane/real/, holds the lane's realistic-look code; this
+// module runs on the main thread.)
 //
-//   LANE_REAL_AREA = { jobs, detail, build }   // world/areas.js lane def.real (RealAreas builds it;
-//                                              // build: laneRealSteps)
-//   laneJobs(tier) -> [{ kind, size, opts }]   // the texture sets at the tier's sizes
-//   laneDetail(tier) -> { area, tier }   // the worker's geometry job (world/lane/real/detail.js)
-//   laneMaterials(store, tier, haze, { anisotropy }) -> { [mesh name]: material }
+//   laneJobs, laneDetail, LANE_REAL_AREA   // jobs.js's (in the game's main chunk: this module is
+//                                          // in the lazy realLook chunk), re-exported
+//   laneMaterials(store, tier, haze, { anisotropy, exposure, grade }) -> { [mesh name]: material }
+//       (grade: the look's grade uniforms, RealLook.grade, which the signs turn back)
 //   detailMaterials(store, tier, haze, { anisotropy }) -> { [detail material]: material }
 //   buildLaneReal(layout, { store, tier, origin, anisotropy, canRetro, detail }) -> { part, look }
 //   laneRealSteps(layout, options)   // the same a step at a time (a generator whose return value
@@ -16,15 +17,15 @@
 //       part: the WorldPart 'lane' (its object3D 'lane-real', under the area's root: the classic
 //       builders' faces the realistic look keeps, and the worker's `detail` in its own
 //       materials), look: the RealLook from layout.LANE_REAL (its probe over the road in world
-//       coordinates)
+//       coordinates, its far shadow map over the course's bounds up to FAR_TOP)
 //
 // The catalogue (CATALOGUE): each mesh's set (and its options), the world units one repeat of
 // the set covers, a colour the map and the vertex tint are multiplied by (linear: the tints stay
 // each house's own colour from layout.js, the sets are near neutral), its roughness (a
 // multiplier of the map's), the normal map's strength. The glass is physical (the reflection
 // probe's street over a dim room); paint and cloth are flat; the signs keep the classic look
-// (unlit, baked), their colour turned back through the exposure and tone mapping, so they read
-// exactly as before through the output pass (materials.js classicLook).
+// (unlit, baked), their colour turned back through the exposure, the tone mapping and the grade,
+// so they read exactly as before through the output pass (materials.js classicLook).
 //
 // The detail's catalogue (DETAIL): the worker's meshes come with uvs in world units, so a set
 // repeats once over `cover` units; plain materials are flat (paint, metal, enamel...); `leaf`
@@ -40,77 +41,25 @@ import * as THREE from 'three';
 import { RealLook } from '../../../render/real/RealLook.js';
 import { pbrMaterial, plainMaterial, glassMaterial, foliageMaterial, grassMaterial, shadowCaster, classicLook } from '../../../render/real/materials.js';
 import { jobKey } from '../../../render/real/texgen/jobs.js';
-import { texSize } from '../../../render/real/tier.js';
 import { GRASS } from './grass.js';
+import { CATALOGUE, DETAIL, jobOf } from './jobs.js';
 import { worldMaterial } from '../../../render/materials.js';
 import { woodTexture as signWoodTexture } from '../../props/textures.js';
 import { laneSteps, REPEAT, REAL_REPEAT } from '../build.js';
 
-// The terraces' split-face blocks and the steps: grey, coarse.
-const BLOCKS = { cols: 3, rows: 7, seed: 23, tone: [0.5, 0.5, 0.48], mortar: [0.32, 0.32, 0.31], jitter: 0.12 };
+export { laneJobs, laneDetail, LANE_REAL_AREA } from './jobs.js';
 
-const CATALOGUE = {
-  asphalt: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.8 },
-  grass: { set: 'grass', cover: 300, color: [1.6, 1.79, 1.52] },
-  blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, normalScale: 1.6 },
-  brick: { set: 'brick', cover: 100, color: 1.1, normalScale: 1.2 },
-  render: { set: 'render', cover: 300 },
-  boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
-  roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
-  cobbles: { set: 'pavers', opts: { cols: 10, seed: 73 }, cover: 240, color: 1.6 },
-  path: { set: 'pavers', cover: 240, color: [1.2, 1.42, 0.98], vertexColors: false }, // (mossy)
-};
 const PAINT = { roughness: 0.5 };
 const CLOTH = { roughness: 0.85, side: THREE.DoubleSide };
-const DETAIL = {
-  boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
-  brick: { set: 'brick', cover: 100, color: 1.1, normalScale: 1.2 },
-  render: { set: 'render', cover: 300 },
-  roof: { set: 'tiles', cover: 270, color: 5, roughness: 0.85 },
-  tiles: { set: 'tiles', opts: { relief: 0 }, cover: 270, color: 5, roughness: 0.8 },
-  granite: { set: 'granite', cover: 120, color: 0.95 },
-  patch: { set: 'asphalt', cover: 420, color: 4.2, normalScale: 0.5 },
-  bark: { set: 'bark', cover: 120, normalScale: 1.2 },
-  birch: { set: 'bark', opts: { birch: 1 }, cover: 140 },
-  paint: { roughness: 0.55, side: THREE.DoubleSide },
-  metal: { roughness: 0.35, metalness: 0.3 },
-  steel: { roughness: 0.45, metalness: 0.6 },
-  enamel: { roughness: 0.3 },
-  bird: { roughness: 0.38, side: THREE.DoubleSide },
-  gloss: { roughness: 0.15 },
-  cloth: { roughness: 0.9, side: THREE.DoubleSide },
-  glass: { glass: true },
-  shadow: { shadow: true },
-  carPaint: { roughness: 0.4, metalness: 0.45, clearcoat: [1, 0.05] },
-  carGlass: { glass: { color: 0x050607, ior: 2, opacity: 1 } },
-  tyre: { roughness: 0.9 },
-  rim: { roughness: 0.3, metalness: 1 },
-  trim: { roughness: 0.6 },
-  lamp: { roughness: 0.08, metalness: 0.2 },
-  tail: { roughness: 0.15 },
-  core: { roughness: 1, envMapIntensity: 0.6 },
-  'fir-core': { roughness: 1, envMapIntensity: 0.6 },
-  foliage: { set: 'leaves', leaf: { roughness: 0.75, translucency: 0.6, envMapIntensity: 0.5 } },
-  'fir-leaves': { set: 'fir', leaf: { roughness: 0.85, translucency: 0.2, envMapIntensity: 0.35 } },
-};
 const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1 };
 const WIND_SPEED = 1.7; // the plants' sway, radians a second
+const FAR_TOP = 3000; // the far shadow map's box reaches this high (the hill's trees' tops)
 const CLOUD_DRIFT = 0.002; // the cirrus's drift along the wind (the sky's units a second)
 
 const repeatOf = (name) => REPEAT[name] ?? REAL_REPEAT[name];
 const colorOf = (c = 1) => (Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2]) : new THREE.Color(c, c, c));
-const jobOf = (tier, { set, opts = {} }) => ({ kind: set, size: texSize(tier, set, opts), opts });
 
-export function laneJobs(tier) {
-  const jobs = [];
-  for (const entry of [...Object.values(CATALOGUE), ...Object.values(DETAIL).filter((e) => e.set)]) {
-    const job = jobOf(tier, entry);
-    if (!jobs.some((j) => jobKey(j) === jobKey(job))) jobs.push(job);
-  }
-  return jobs;
-}
-
-export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy, exposure = 1 } = {}) {
+export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy, exposure = 1, grade = null } = {}) {
   const M = {};
   for (const [name, entry] of Object.entries(CATALOGUE)) {
     const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
@@ -119,12 +68,10 @@ export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy,
   M.paint = plainMaterial(PAINT, haze);
   M.cloth = plainMaterial(CLOTH, haze);
   M.glass = glassMaterial({}, haze);
-  M.signs = classicLook(worldMaterial({ map: signWoodTexture() }), { exposure, direct: tier.direct });
+  M.signs = classicLook(worldMaterial({ map: signWoodTexture() }), { exposure, direct: tier.direct, grade });
   for (const [name, m] of Object.entries(M)) m.name = `lane-real-${name}`;
   return M;
 }
-
-export const laneDetail = (tier) => ({ area: 'lane', tier: tier.name });
 
 export function detailMaterials(store, tier, haze, { anisotropy = tier.anisotropy, wind } = {}) {
   const M = {};
@@ -239,8 +186,11 @@ export function buildLaneReal(layout, options) {
 export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRetro = true, detail = null }) {
   const preset = layout.LANE_REAL;
   const p = preset.probe;
-  const look = new RealLook({ preset, tier, probeAt: { x: p.x + origin.x, y: p.y + origin.y, z: p.z + origin.z }, canRetro });
-  const materials = laneMaterials(store, tier, look.haze, { anisotropy, exposure: preset.exposure });
+  const xs = layout.BOUNDS.map(([x]) => x + origin.x);
+  const zs = layout.BOUNDS.map(([, z]) => z + origin.z);
+  const farBox = { x0: Math.min(...xs), x1: Math.max(...xs), y0: origin.y - 100, y1: origin.y + FAR_TOP, z0: Math.min(...zs), z1: Math.max(...zs) };
+  const look = new RealLook({ preset, tier, probeAt: { x: p.x + origin.x, y: p.y + origin.y, z: p.z + origin.z }, farBox, canRetro });
+  const materials = laneMaterials(store, tier, look.haze, { anisotropy, exposure: preset.exposure, grade: look.grade });
   look.useProbe([materials.glass]);
   yield;
   const part = yield* laneSteps(layout, { look: 'real', materials });
@@ -275,5 +225,3 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
   };
   return { part, look };
 }
-
-export const LANE_REAL_AREA = Object.freeze({ jobs: laneJobs, detail: laneDetail, build: laneRealSteps });

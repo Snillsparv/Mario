@@ -32,7 +32,8 @@
 //                                      // the door leaves swinging (alpha: the frame's way into
 //                                      // the next tick)
 //   areas.heroScale(alpha) -> scale    // per render frame: Jonas's size (main scales his model
-//                                      // by it): 1, but for the dive into the bottle (below)
+//                                      // by it, and by a realistic look's view.heroScale): 1,
+//                                      // but for the dive into the bottle (below)
 //   areas.heroOffset(alpha) -> { x, z }   // per render frame: how far his model is drawn off
 //                                      // where he stands (main moves it by that): nothing, but
 //                                      // for his step into a door's opening (below); reused
@@ -47,7 +48,10 @@
 // background; once ready the area holds it (Area.setReal) and, while it is the current area and
 // realistic looks are wanted, shows it and the renderer draws through its look (_look:
 // view.setLook; the grounds' sky dome hides for the look's own sky; else view.setLookNote says
-// why not: 'building', 'chosen' or what failed). A failed build leaves it classic.
+// why not: 'building', 'chosen' or what failed). A failed build leaves it classic. The camera
+// takes the look's profile with it (cam.setProfile(look.camera): Sparrow Lane's lower, wider
+// street framing) and cameraConfig's own again with the classic look (G, leaving the area).
+// Jonas's model's size in a look (look.heroScale) is the renderer's (view.heroScale, main).
 //
 // Switching (_swap, the only place that points the game at another area), in this order: an
 // open dialog closes; the old area hides and the new one shows; the renderer drops any
@@ -196,6 +200,7 @@ export class AreaSwitch {
     this.offset = { x: 0, z: 0 }; // heroOffset's, reused
     this.won = new Set(); // courses whose own star he has won this game (their lamps lit)
     this.realBuilding = new Set(); // areas whose realistic build is under way
+    this.profile = null; // the camera's profile (_look: the look's), null: cameraConfig's
     if (real) real.onChange = () => this._look(this.current, true); // (too slow: classic again)
     events.on('warpRequest', (w) => this.request(w));
     events.on('starCollected', (e) => this.onStar(e));
@@ -266,8 +271,11 @@ export class AreaSwitch {
 
   // The area's look: its realistic one where ready and wanted (its realistic part shown), else
   // classic; the grounds' sky dome where def.sky and no realistic sky draws. fade: the picture
-  // on screen cross-fades to it (real.fade seconds; none behind the covered screen).
-  _look(area, fade = false) {
+  // on screen cross-fades to it (real.fade seconds; none behind the covered screen). The
+  // camera's profile follows the look (look.camera: a realistic look's own framing, else
+  // cameraConfig's); a change snaps the camera to it (keeping its yaw: under the crossfade, or
+  // behind the covered screen), unless `snap` is false (_swap, which resets it itself).
+  _look(area, fade = false, snap = true) {
     const look = this.real?.wanted && area.look ? area.look : null;
     if (fade && this.real.fade > 0 && look !== this.view.look) this.view.crossfade?.(this.real.fade);
     area.showReal?.(look !== null);
@@ -275,6 +283,11 @@ export class AreaSwitch {
     this.view.setLook?.(look);
     // (The F1 line: why an area with a realistic look draws classic.)
     this.view.setLookNote?.(this.real && area.def.real && !look ? this.real.reason || 'building' : '');
+    const profile = look?.camera ?? null;
+    if (profile === this.profile) return;
+    this.profile = profile;
+    this.cam.setProfile?.(profile);
+    if (snap) this.cam.reset(this.player, { yaw: this.cam.yaw });
   }
 
   // Switch at once, cancelling any transition (the wipe opens straight away).
@@ -653,7 +666,7 @@ export class AreaSwitch {
     to.setVisible(true);
     this.view.setLook?.(null);
     this.view.setAtmosphere(to.def.atmosphere ?? null);
-    this._look(to);
+    this._look(to, false, false);
     this.view.setWaterLevelFn(to.waterFn);
     player.setWorld({ collision: to.collision, spawn: to.respawn, signs: to.signs, groundAt: to.groundAt });
     player.placeAt(entry);

@@ -42,6 +42,7 @@ import { Input, neutralController } from './core/input.js';
 import { buildLevel } from './world/level.js';
 import { Player } from './player/Player.js';
 import { PlayerModel } from './player/PlayerModel.js';
+import { ScalePivot } from './player/model/scalePivot.js';
 import { CameraController } from './camera/CameraController.js';
 import { CameraShake } from './camera/shake.js';
 import { N64Renderer } from './render/N64Renderer.js';
@@ -103,6 +104,7 @@ async function start() {
   view.setWaterLevelFn((x, z) => level.collision.waterLevelAt(x, z));
   const player = new Player({ collision: level.collision, events, spawn: level.spawn });
   const model = new PlayerModel();
+  const pivot = new ScalePivot(); // where his model is scaled about (poseHero)
   scene.add(model.object3D);
   view.addRealActor(model.object3D, model.shadow.mesh); // (he casts a realistic look's shadow)
 
@@ -425,12 +427,17 @@ async function start() {
 
   let renderAlpha = 1;
   // Pose the hero model; its own clocks (pose blends, blinks, wing flaps) run by dt while playing.
+  // Drawn smaller (a realistic look's view.heroScale), the model is scaled about his grip (his
+  // hands on a ledge's lip: player/model/scalePivot.js), not his feet.
   function poseHero(dt) {
     const running = state.mode === 'play' && !state.paused;
-    model.update(player.getRenderState(renderAlpha), running ? dt : 0); // pause freezes them too
+    const rs = player.getRenderState(renderAlpha);
+    pivot.shift(rs, model.object3D.scale.y, player, running ? dt : 0);
+    model.update(rs, running ? dt : 0); // pause freezes them too
   }
   function draw(dt) {
-    model.object3D.scale.setScalar(areas.heroScale(renderAlpha)); // (shrinking into the bottle)
+    // (Shrinking into the bottle; and a realistic look's size for him, Sparrow Lane's 0.85.)
+    model.object3D.scale.setScalar(areas.heroScale(renderAlpha) * view.heroScale);
     poseHero(dt);
     const step = areas.heroOffset(renderAlpha); // (stepping into a door's opening)
     model.object3D.position.x += step.x;

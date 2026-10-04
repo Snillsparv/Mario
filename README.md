@@ -131,10 +131,15 @@ fly over the gardens. Nothing here can hurt him.
 The street **looks real**, while Jonas, the coins and the star stay classic: low golden sunlight
 with real shadows, a deep blue sky with drifting cirrus, painted-in-code brick, boards, roof tiles,
 asphalt and lawns with blades of grass, windows set in the walls that reflect the street, leafy
-hedges and trees swaying in the gusts, spruces up the hill, lacquered cars. The game picks the
-detail for your computer or phone and steps it down (or back up) by itself if the picture
-stutters (F1 shows how it draws); **G** shows the street in the classic look instead (and back),
-and **R** / **F2** there shows the real street through the retro TV.
+hedges and trees swaying in the gusts, spruces up the hill, lacquered cars. And it is filmed
+like a modern open-world game: soft contact shadows where things meet the ground, a glow round
+the low sun and its rays through the trees, the houses' and trees' shadows all the way down the
+street, a cinematic colour grade with subtle film grain, and a lower, wider camera over the
+shoulder. Jonas is himself, just a little smaller there. The game picks the detail for your
+computer or phone and steps it down (or back up) by itself if the picture stutters (F1 shows
+how it draws, and on a computer how long the graphics card takes a frame); **G** shows the
+street in the classic look instead (and back, Jonas and the camera with it), and **R** / **F2**
+there shows the real street through the retro TV.
 
 * The course's **star** twinkles over the ridge of Jonas's roof. Climb a **wheelie bin** by the
   carport, jump onto the carport's flat roof and hop across onto the roof's slope, then walk up to
@@ -214,7 +219,8 @@ URL flags: `?skipTitle=1` (straight into play), `?mute=1`, `?test=1` (no real-ti
 driven through `window.__game`, see the docs), `?area=hall`, `?area=skerries` or `?area=lane`
 (with `?skipTitle=1` or `?test=1`: start inside the Great Hall, in Midsummer Skerries or in
 Sparrow Lane), `?look=classic` (Sparrow Lane in its classic look), `?tier=high`, `mid` or `low`
-(its real look at that detail, as asked: no automatic stepping).
+(its real look at that detail, as asked: no automatic stepping; high has every film effect,
+mid the contact shadows and the glow, low, for phones, none of them).
 
 ## Play with your phone as a controller
 

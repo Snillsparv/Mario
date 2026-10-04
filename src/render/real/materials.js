@@ -23,8 +23,11 @@
 //       Vector4(x0, z0, 1 / width, 1 / depth), grid { value: Vector4(corner x, corner z, cell,
 //       radius) } and the grid's middle { value: Vector2 } (the part's update moves both)
 //   hazeChunk(material, haze, key)                           // patches any standard material
-//   classicLook(material, { exposure, direct })              // an unlit classic material (the
-//       signs' boards) drawn through the look as it looked in the classic one (below)
+//       (and, where the look has a far shadow map, haze.uFarShadow, sunShadowChunk: key '-far')
+//   sunShadowChunk(shader)                                   // the sun's shadow near and far
+//   classicLook(material, { exposure, direct, grade })       // an unlit classic material (the
+//       signs' boards) drawn through the look as it looked in the classic one (below; grade:
+//       the look's grade uniforms, RealLook.grade, turned back too)
 //   CLAMP_GLSL                                               // the clamp's source (the tests')
 //
 // `haze` is the look's uniforms (sky.js skyUniforms + uHazeDensity), shared by every material,
@@ -94,15 +97,58 @@ const HAZE_FRAG = /* glsl */ `{
     gl_FragColor.rgb = mix(${CLAMP_GLSL}, hazeTint, 1.0 - exp(-hazeDist * uHazeDensity));
   }`;
 
+// The sun's shadow near and far (SUN_SHADOW): the look's far map (haze.uFarShadow: the whole
+// street, drawn once a build; RealLook.takeFar) where the near one (the sun's own, a tight box
+// round the focus) ends, cross-faded over its outer 5 % on each side (10 % of the box).
+// uFarShadowParams: (on, the depth bias, the map's size, the normal bias in world units).
+const FAR_VERT = /* glsl */ `#include <shadowmap_vertex>
+  #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+    vFarShadowCoord = uFarMatrix * (worldPosition + vec4(shadowWorldNormal * uFarShadowParams.w, 0.0));
+  #endif`;
+const FAR_PARS_VERT = /* glsl */ `#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+  uniform mat4 uFarMatrix;
+  uniform vec4 uFarShadowParams;
+  varying vec4 vFarShadowCoord;
+#endif
+`;
+const FAR_PARS_FRAG = /* glsl */ `#include <shadowmap_pars_fragment>
+  #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+    varying vec4 vFarShadowCoord;
+    #if defined( SHADOWMAP_TYPE_PCF )
+      uniform sampler2DShadow uFarShadow;
+      uniform vec4 uFarShadowParams;
+      float realSunShadow(float nearShadow, vec4 nearCoord, float intensity) {
+        vec3 n = nearCoord.xyz / nearCoord.w;
+        float k = smoothstep(0.0, 0.05, min(min(n.x, 1.0 - n.x), min(n.y, 1.0 - n.y)));
+        if (k >= 1.0 || uFarShadowParams.x < 0.5) return nearShadow;
+        float farShadow = getShadow(uFarShadow, vec2(uFarShadowParams.z), intensity, uFarShadowParams.y, 1.5, vFarShadowCoord);
+        return mix(farShadow, nearShadow, k);
+      }
+    #else
+      float realSunShadow(float nearShadow, vec4 nearCoord, float intensity) { return nearShadow; }
+    #endif
+  #endif`;
+const SUN_CALL = 'getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] )';
+
+export function sunShadowChunk(shader) {
+  shader.vertexShader = FAR_PARS_VERT + shader.vertexShader.replace('#include <shadowmap_vertex>', FAR_VERT);
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <shadowmap_pars_fragment>', FAR_PARS_FRAG)
+    .replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin)
+    .replace(SUN_CALL, `realSunShadow( ${SUN_CALL}, vDirectionalShadowCoord[ i ], directionalLightShadow.shadowIntensity )`);
+}
+
 export function hazeChunk(material, haze, key = 'real-haze', patch = null) {
   material.fog = false; // (the haze is the fog)
+  const far = !!haze.uFarShadow;
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, haze);
     shader.vertexShader = 'varying vec3 vHazeWorld;\n' + shader.vertexShader.replace('#include <project_vertex>', HAZE_VERT);
     shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG);
     patch?.(shader);
+    if (far) sunShadowChunk(shader);
   };
-  material.customProgramCacheKey = () => key;
+  material.customProgramCacheKey = () => (far ? `${key}-far` : key);
   return material;
 }
 
@@ -265,15 +311,62 @@ vec3 untoneNeutral(vec3 c) {
 }
 `;
 
-export function classicLook(material, { exposure, direct = false }) {
+// ...and the colour its grade (OutputPass.js GRADE_GLSL, its uniforms the pass's own) turns into
+// c: the vignette (at this pixel: uGradeScreen, the drawing buffer's size), the black level,
+// the saturation (a vibrance, luma kept: its strength from the colour before it, found in three
+// rounds) undone; the split toning's tints (from the luma before them, found in two rounds) and
+// the S-contrast (Newton, per channel) after them. (And before the
+// tone mapping, the bloom's mix: uBloom of the picture is the glow's, ~nothing at a sign.)
+const UNGRADE_GLSL = /* glsl */ `
+uniform float uContrast;
+uniform float uSplit;
+uniform vec3 uShadowTint;
+uniform vec3 uHighTint;
+uniform float uSaturation;
+uniform float uBlack;
+uniform float uVignette;
+uniform vec2 uGradeScreen;
+uniform float uBloom;
+vec3 unsCurve(vec3 y) {
+  vec3 x = y;
+  for (int i = 0; i < 4; i++) {
+    vec3 f = x + uContrast * (x * x * (3.0 - 2.0 * x) - x) - y;
+    x = clamp(x - f / (1.0 + uContrast * (6.0 * x - 6.0 * x * x - 1.0)), 0.0, 1.0);
+  }
+  return x;
+}
+vec3 ungrade(vec3 c) {
+  vec2 d = gl_FragCoord.xy / uGradeScreen - 0.5;
+  c /= max(1.0 - uVignette * dot(d, d) * 2.0, 1e-3);
+  c = (c - uBlack) / (1.0 - uBlack);
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  vec3 y = c;
+  for (int i = 0; i < 3; i++) {
+    float m = max(c.r, max(c.g, c.b));
+    float s = m > 1e-4 ? (m - min(c.r, min(c.g, c.b))) / m : 0.0;
+    c = l + (y - l) / mix(uSaturation, 1.0, s * s);
+  }
+  vec3 x = c;
+  for (int i = 0; i < 2; i++) {
+    float l0 = dot(x, vec3(0.2126, 0.7152, 0.0722));
+    x = unsCurve(c / (mix(vec3(1.0), uShadowTint, uSplit * (1.0 - l0) * (1.0 - l0)) * mix(vec3(1.0), uHighTint, uSplit * l0 * l0)));
+  }
+  return x;
+}
+`;
+
+// (grade: the output pass's uniforms, OutputPass.grade, with uGradeScreen: what it grades with.)
+export function classicLook(material, { exposure, direct = false, grade = null }) {
   if (direct) {
     material.toneMapped = false;
     return material;
   }
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uExposure = { value: exposure };
-    shader.fragmentShader = UNTONE_GLSL + shader.fragmentShader.replace('#include <tonemapping_fragment>', 'gl_FragColor.rgb = untoneNeutral(gl_FragColor.rgb);\n#include <tonemapping_fragment>');
+    const back = grade ? 'untoneNeutral(ungrade(gl_FragColor.rgb)) / (1.0 - uBloom)' : 'untoneNeutral(gl_FragColor.rgb)';
+    if (grade) Object.assign(shader.uniforms, grade);
+    shader.fragmentShader = UNTONE_GLSL + (grade ? UNGRADE_GLSL : '') + shader.fragmentShader.replace('#include <tonemapping_fragment>', `gl_FragColor.rgb = ${back};\n#include <tonemapping_fragment>`);
   };
-  material.customProgramCacheKey = () => 'real-classic';
+  material.customProgramCacheKey = () => (grade ? 'real-classic-graded' : 'real-classic');
   return material;
 }

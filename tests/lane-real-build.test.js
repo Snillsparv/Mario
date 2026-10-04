@@ -218,11 +218,13 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
       for (const attr of Object.values(m.geometry.attributes)) for (const v of attr.array) assert.ok(Number.isFinite(v), `${name}: finite`);
     }
     const leaves = D['lane-detail-foliage'].material;
-    assert.equal(leaves.customProgramCacheKey(), 'real-foliage');
+    // (Its own program with the far shadow map: high, not low.)
+    const far = tier.far > 0 ? '-far' : '';
+    assert.equal(leaves.customProgramCacheKey(), `real-foliage${far}`);
     assert.ok(leaves.alphaTest > 0 && leaves.side === THREE.DoubleSide && leaves.map.mipmaps.length > 1, 'alpha-tested cards, coverage mips');
     assert.equal(leaves.alphaToCoverage, tier.samples > 0, 'alpha to coverage with MSAA');
     assert.ok(D['lane-detail-foliage'].geometry.attributes.sway, 'the cards sway');
-    assert.equal(D['lane-detail-carPaint'].material.customProgramCacheKey(), 'real-coat', 'lacquer');
+    assert.equal(D['lane-detail-carPaint'].material.customProgramCacheKey(), `real-coat${far}`, 'lacquer');
     assert.ok(D['lane-detail-carPaint'].material.defines.USE_CLEARCOAT !== undefined);
     const firs = D['lane-detail-fir-leaves'];
     assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16 && firs.count > 90, `${firs.count} firs`);

@@ -13,7 +13,8 @@
 //     widens the view). setCapture(null) restores the settings and zoom 1. setFrameHook(fn)
 //     calls fn right after every render() (the drawing buffer is still valid for drawImage);
 //     null (the default) costs nothing.
-//   F1: debug overlay (fps, draw calls, triangles, render mode; see describeMode/MODE_LABELS).
+//   F1: debug overlay (fps, draw calls, triangles, render mode; see describeMode/MODE_LABELS;
+//     and a realistic look's GPU time on the high and mid tiers: look.gpuLine()).
 //   Underwater: when the camera is below the water surface the fog switches to a short
 //     blue-green one and the sky dome is tinted toward it (surface heights from
 //     layout.waterLevelAt unless setWaterLevelFn overrides it).
@@ -39,13 +40,17 @@
 //     ambientIntensity }; a field left out keeps the grounds' value, and null is the grounds
 //     exactly. No light is added or removed, so the actors' shader programs never change.
 //   Realistic look (an area drawn physically lit: Sparrow Lane, render/real/RealLook.js):
-//     setLook(look) draws the world through it (an HDR target, its sky, the sun's shadow, the
-//     output pass's tone mapping) instead of the classic path, which stays untouched; null goes
-//     back. Setting one first snapshots every field a look may touch (the shadow map's settings,
-//     the sun's shadow and place, the scene's environment and background, the tone mapping and
-//     exposure, the atmosphere preset, the pixel ratio, the actors' shadow flags: lookState())
-//     and null writes the snapshot back, so leaving the area leaves the renderer exactly as it
-//     was. While a look is set the retro filter is off whatever the saved setting; F2 / R toggles
+//     setLook(look) draws the world through it (look.draw: an HDR target, its sky, the sun's
+//     near and far shadows, its post chain of ambient occlusion, bloom and sun shafts, the
+//     output pass's tone mapping, grade and lens) instead of the classic path, which stays
+//     untouched; null goes back. Setting one first snapshots every field a look may touch (the
+//     shadow map's settings, the sun's shadow and place, the scene's environment and background,
+//     the tone mapping and exposure, the atmosphere preset, the pixel ratio, the actors' shadow
+//     flags, heroScale: lookState()) and null writes the snapshot back, so leaving the area
+//     leaves the renderer exactly as it was (the look frees its own targets: look.detach).
+//     heroScale is Jonas's model's size while a look is set (look.heroScale: Sparrow Lane's
+//     0.85; main scales his model by it, about his grip: player/model/scalePivot.js), 1
+//     without one. While a look is set the retro filter is off whatever the saved setting; F2 / R toggles
 //     "retro over realistic" for this visit only (lookRetro: the realistic frame through the
 //     240-line target and the N64 pass), never saved. The storm grade, a flash and the meltdown
 //     grade its output as in native mode; the recorder's capture sizes it as any frame; a
@@ -176,6 +181,7 @@ export class N64Renderer {
     this.focus = new THREE.Vector3(); // setFocus(): the look's shadow box centres here
     this.realActors = []; // addRealActor(): { object3D, blob } casting the look's shadow
     this.lookNote = ''; // setLookNote(): why an area that has a realistic look draws classic
+    this.heroScale = 1; // Jonas's model's size while a look is set (look.heroScale; main reads it)
 
     const settings = loadSettings(storage);
     this.n64 = settings.n64;
@@ -481,6 +487,7 @@ export class N64Renderer {
     if (!look) return;
     this.lookSaved = this.lookState();
     this.look = look;
+    this.heroScale = look.heroScale ?? 1;
     look.attach(this);
     this.setAtmosphere(look.preset.atmosphere);
     for (const { object3D, blob } of this.realActors) {
@@ -518,6 +525,7 @@ export class N64Renderer {
       environmentIntensity: scene.environmentIntensity,
       background: scene.background,
       atmosphere: this.atmosphere,
+      heroScale: this.heroScale,
       sun: {
         castShadow: sun.castShadow,
         mapSize: sun.shadow.mapSize.clone(),
@@ -565,6 +573,7 @@ export class N64Renderer {
     sun.target.position.copy(s.sun.target);
     sun.target.updateMatrixWorld();
     this.setAtmosphere(s.atmosphere);
+    this.heroScale = s.heroScale;
     sun.position.copy(s.sun.position);
     for (const { meshes, blob, opacity, transparent } of s.actors) {
       for (const [o, cast, receive] of meshes) {
@@ -843,7 +852,7 @@ export class N64Renderer {
     if (this.look && !this.viewScene) this.look.govern(this, performance.now()); // (its tier's governor)
     this.draw();
     this.frameHook?.();
-    this.debug.frame(performance.now() / 1000, this.renderer.info, () => this.describeMode());
+    this.debug.frame(performance.now() / 1000, this.renderer.info, () => this.describeMode(), () => (this.look && !this.viewScene ? this.look.gpuLine() : null));
   }
 
   // Draws the current scene and camera state (also used to repaint after a resize), and over it

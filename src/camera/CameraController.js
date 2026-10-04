@@ -39,6 +39,13 @@
 // one he jumps off toward a landmark) swings the orbit round to that yaw while he holds it,
 // instead of round to his back (he works his way round to that side too), so the landmark is
 // ahead on screen however he grabbed the pole.
+// Profiles (setProfile): an area's look may frame him its own way. A profile replaces the
+// cameraConfig fields in PROFILE (the field of view, the look point's height, the lags and the
+// orbit modes' distances, pitches and aims: layout.LANE_REAL.camera, Sparrow Lane's realistic
+// look, lower and wider) while it is set (core/AreaSwitch.js sets it with the look and takes it
+// off with the classic one); the controller reads them from `this.k` (cameraConfig itself
+// without one, so nothing changes then). The fly-in, the title orbit, first person and the
+// cannon keep cameraConfig's own.
 //
 // update() runs at 30 Hz and keeps the previous tick so apply(alpha) can interpolate.
 // Besides the contract (reset/update/apply/getYaw/startIntro/titleOrbit) the game reads:
@@ -71,6 +78,10 @@ import * as K from './cameraConfig.js';
 
 const NEUTRAL = neutralController();
 const ZERO = { x: 0, y: 0, z: 0 };
+// The cameraConfig fields a profile may change (setProfile); the fly-in, the title orbit, first
+// person and the cannon keep cameraConfig's own.
+export const PROFILE = Object.freeze(['FOV', 'LOOK_HEIGHT', 'PIVOT_RATE', 'LOOK_RATE', 'ORBIT_MODES']);
+const pick = (profile) => Object.fromEntries(PROFILE.filter((key) => key in profile).map((key) => [key, profile[key]]));
 
 export class CameraController {
   constructor({ collision, camera, events }) {
@@ -78,6 +89,7 @@ export class CameraController {
     this.camera = camera;
     this.events = events;
     this.collider = new CameraCollider(collision);
+    this.k = K; // the numbers a profile may change (setProfile), else cameraConfig's own
 
     this.pos = new THREE.Vector3(); // this tick's camera pose (what apply() interpolates)
     this.target = new THREE.Vector3();
@@ -91,9 +103,9 @@ export class CameraController {
     this.orbitMode = 'follow'; // orbit mode to return to after first-person / intro
     this.zoom = 0;
     this.yaw = Math.PI; // orbit yaw: direction from the hero to the camera
-    this.dist = K.ORBIT_MODES.follow.dist[0];
-    this.basePitch = K.ORBIT_MODES.follow.pitch[0];
-    this.aimPitch = K.ORBIT_MODES.follow.aim[0]; // eased configured aim above the look point
+    this.dist = this.k.ORBIT_MODES.follow.dist[0];
+    this.basePitch = this.k.ORBIT_MODES.follow.pitch[0];
+    this.aimPitch = this.k.ORBIT_MODES.follow.aim[0]; // eased configured aim above the look point
     this.aimRise = 0; // eased total aim (radians) of the rendered target above the look point...
     this.aimFresh = true; // ...set outright on the next tick (after a reset or teleport)
     this.restAim = 0; // eased extra aim of the resting view (cameraConfig REST_*)...
@@ -131,8 +143,8 @@ export class CameraController {
     this._waterPrev = NO_WATER; // water level at last tick's and this tick's pose
     this._waterNow = NO_WATER;
     this.cut = false; // this tick's pose must not be interpolated from the previous one
-    this.fov = K.FOV; // vertical field of view (degrees) this tick and last (the AI RACE look-up
-    this.prevFov = K.FOV; // widens it near the castle; apply() interpolates)
+    this.fov = this.k.FOV; // vertical field of view (degrees) this tick and last (the AI RACE look-up
+    this.prevFov = this.k.FOV; // widens it near the castle; apply() interpolates)
     this._tmp = new THREE.Vector3();
   }
 
@@ -183,6 +195,16 @@ export class CameraController {
     this._probe = null;
   }
 
+  // The camera's profile (see the top): `profile` (layout.LANE_REAL.camera: its PROFILE fields)
+  // read instead of cameraConfig's from now on, or cameraConfig's own again with null. The
+  // orbit's goals change at once (its distance, pitch and aim ease to them); a reset(player)
+  // after it snaps to them (a look's switch does it under its crossfade, an area's behind the
+  // covered wipe).
+  setProfile(profile = null) {
+    this.k = profile ? { ...K, ...pick(profile) } : K;
+    this.lookUp.setFov(this.k.FOV);
+  }
+
   // Snap behind the hero (level start, respawn), or to the nearest open side if walled in.
   // `yaw`: the orbit yaw to snap to instead (the direction from the hero to the camera; an
   // area entry that places the camera in front of him, with the doorway behind his back).
@@ -209,7 +231,7 @@ export class CameraController {
     this.pitchOffset = 0;
     this.squeezePitch = 0;
     this.slideRate = 0;
-    const cfg = K.ORBIT_MODES[this.orbitMode];
+    const cfg = this.k.ORBIT_MODES[this.orbitMode];
     this.dist = cfg.dist[0];
     this.basePitch = cfg.pitch[0];
     this.aimPitch = cfg.aim[0];
@@ -303,7 +325,7 @@ export class CameraController {
     const n = this._heroNow;
     const f = this._focus;
     f.x = p.x + (n.x - p.x) * a;
-    f.y = p.y + (n.y - p.y) * a + K.LOOK_HEIGHT;
+    f.y = p.y + (n.y - p.y) * a + this.k.LOOK_HEIGHT;
     f.z = p.z + (n.z - p.z) * a;
     ud.focus = f;
   }
@@ -364,7 +386,7 @@ export class CameraController {
       else this._rotate(dir);
     }
     if (c.CD.pressed) {
-      if (this.zoom < K.ORBIT_MODES[this.mode].dist.length - 1) {
+      if (this.zoom < this.k.ORBIT_MODES[this.mode].dist.length - 1) {
         this.zoom++;
         this._sfx('camera_move');
       } else this._sfx('camera_buzz');
@@ -446,7 +468,7 @@ export class CameraController {
   // ------------------------------------------------------------------ modes
 
   _updateOrbit(c, hero) {
-    const cfg = K.ORBIT_MODES[this.mode] || K.ORBIT_MODES[this.orbitMode];
+    const cfg = this.k.ORBIT_MODES[this.mode] || this.k.ORBIT_MODES[this.orbitMode];
     // Flight camera blend (flight.js): a C-button swing under way stops at take-off.
     const fl = this.flight;
     if (fl.update(hero, this.basePitch, this.collider)) this.tween = null;
@@ -518,7 +540,7 @@ export class CameraController {
     this.pitchOffset = clamp(this.pitchOffset, K.PITCH_MIN - this.basePitch, K.PITCH_MAX - this.basePitch);
 
     this.cover.ease(hero.covered);
-    const lookY = this.focusY + K.LOOK_HEIGHT - this.cover.drop;
+    const lookY = this.focusY + this.k.LOOK_HEIGHT - this.cover.drop;
     this.cover.updateCap(hero, lookY, this.dist);
     const pitch = this._orbitPitch();
     this.look.y = this.pivot.y = lookY;
@@ -598,14 +620,14 @@ export class CameraController {
       this._snapToHero(hero);
       return;
     }
-    this.pivot.x += dx * K.PIVOT_RATE;
-    this.pivot.z += dz * K.PIVOT_RATE;
-    this.look.x += (hero.x - this.look.x) * K.LOOK_RATE;
-    this.look.z += (hero.z - this.look.z) * K.LOOK_RATE;
+    this.pivot.x += dx * this.k.PIVOT_RATE;
+    this.pivot.z += dz * this.k.PIVOT_RATE;
+    this.look.x += (hero.x - this.look.x) * this.k.LOOK_RATE;
+    this.look.z += (hero.z - this.look.z) * this.k.LOOK_RATE;
   }
 
   _snapToHero(hero) {
-    this.pivot.set(hero.x, this.focusY + K.LOOK_HEIGHT - this.cover.drop, hero.z);
+    this.pivot.set(hero.x, this.focusY + this.k.LOOK_HEIGHT - this.cover.drop, hero.z);
     this.look.copy(this.pivot);
     this.aimFresh = true;
   }
@@ -720,7 +742,7 @@ export class CameraController {
     const aimYaw = player.cannon?.yaw ?? hero.faceYaw;
     this.mode = this.orbitMode;
     this.zoom = 0;
-    const cfg = K.ORBIT_MODES[this.orbitMode];
+    const cfg = this.k.ORBIT_MODES[this.orbitMode];
     const flying = K.FLY_ACTION.test(hero.action);
     this.flight.reset(flying, cfg.pitch[0], hero.pitch);
     this.dist = flying ? K.FLY_DIST[0] : cfg.dist[0];

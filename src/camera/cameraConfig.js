@@ -1,5 +1,8 @@
 // Tuning for the follow camera. Distances are world units, angles radians, rates are per
-// 30 Hz tick unless noted otherwise.
+// 30 Hz tick unless noted otherwise. A camera profile (CameraController.setProfile: an area's
+// look framing him its own way, layout.LANE_REAL.camera in Sparrow Lane's realistic look) may
+// replace FOV, LOOK_HEIGHT, PIVOT_RATE, LOOK_RATE and ORBIT_MODES while it is set; the controller
+// reads those from its `k` (this module itself without one), everything else from here.
 
 const DEG = Math.PI / 180;
 

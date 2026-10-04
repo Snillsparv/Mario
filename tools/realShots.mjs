@@ -3,15 +3,21 @@
 // beside the classic look for comparison. Starts its own Vite dev server and headless Chromium
 // (SwiftShader) like tools/shot.mjs, boots the game straight into the lane, waits for the
 // realistic look to swap in, hides the HUD, and for each view puts Jonas and the camera there
-// and draws one frame (the camera set after the game's own: no follow camera in the picture).
+// and draws one frame (the camera set after the game's own: no follow camera in the picture);
+// the follow views (f-*) instead show the game's own camera behind him after a few steps (the
+// realistic look's camera profile: its framing), and the contact checks Jonas, drawn smaller in
+// the realistic look, holding on (hang: from the dad's front eave, seen from the side; pole: on
+// the junction's lamppost).
 //
 // Usage:
 //   node tools/realShots.mjs --out shots/real
 //   node tools/realShots.mjs --out shots/real --views arrival,door --sizes 960x540 \
 //     --looks high,classic
 // Options: --views (default all: arrival, door, west, turn, cars, roof, retro, tree: the dad's
-// red-leaf tree close up, villa: a villa up the hill close up), --sizes (default
-// 960x540,1280x720), --looks (default high,low,classic: a tier, or classic).
+// red-leaf tree close up, villa: a villa up the hill close up, kerb and carclose: close-ups,
+// f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole), --sizes
+// (default 960x540,1280x720), --looks (default high,low,classic: a tier, or classic). A frame
+// on SwiftShader takes seconds: each screenshot waits up to three minutes.
 // Files: <out>/<look>-<view>-<width>.png. Prints each view's F1 line and draw calls.
 
 import { createServer } from 'vite';
@@ -39,6 +45,18 @@ const VIEWS = {
   retro: { pos: [0, 346, -82], look: [0, 303, 1156], fov: 45, retro: true },
   tree: { pos: [640, 260, 380], look: [1050, 470, 850], fov: 50, hero: [760, 22, 520, 0.7] },
   villa: { pos: [-2150, 330, -520], look: [-2450, 520, -1650], fov: 55, hero: [-2700, 160, -1150, 0.4] },
+  kerb: { pos: [-150, 95, -60], look: [-1100, 10, 230], fov: 50, hero: [-700, 0, 0, -Math.PI / 2] },
+  carclose: { pos: [1640, 190, 820], look: [2080, 120, 1330], fov: 42, hero: [1250, 22, 1000, 0.6] },
+  // The game's camera behind him: out of the dad's door (the arrival's walk-in, then standing),
+  // or from a spot facing `yaw` after `walk` ticks pushing the stick forward and `rest` idle.
+  'f-arrival': { follow: { entry: 'home', rest: 50 } },
+  'f-west': { follow: { hero: [-500, 0, 150, -Math.PI / 2], walk: 10, rest: 6 } },
+  'f-cars': { follow: { hero: [1500, 22, 900, 0.5], walk: 6, rest: 40 } },
+  'f-turn': { follow: { hero: [1700, 0, 120, Math.PI / 2], walk: 10, rest: 40 } },
+  // Contact checks: a standing jump at the dad's front wall grabs the eave (seen from the side);
+  // a jump at the junction's lamppost grabs it.
+  hang: { grab: { hero: [-500, 22, 1220, 0], jump: true }, pos: [-920, 330, 1070], look: [-500, 360, 1330], fov: 35 },
+  pole: { grab: { hero: [-8120, 0, 1360, 0], pole: [-8120, 1590] }, pos: [-8420, 240, 1420], look: [-8120, 200, 1590], fov: 40 },
 };
 
 const out = opt('out', 'shots/real');
@@ -77,11 +95,43 @@ try {
           const g = window.__game;
           const view = g.view;
           const o = g.areas.current.def.origin;
-          const [hx, hy, hz, yaw] = v.hero ?? [0, 22, 1156, Math.PI];
+          const info = () => {
+            const r = view.renderer.info.render;
+            return `${view.describeMode()}: ${r.calls} calls, ${r.triangles} triangles (Jonas ${g.player.action}, model ${g.model.object3D.scale.y.toFixed(2)}, fov ${view.camera.fov.toFixed(0)})`;
+          };
+          if (v.follow) {
+            const f = v.follow;
+            if (f.entry) g.enterArea('lane', f.entry);
+            else {
+              const [hx, hy, hz, yaw] = f.hero;
+              g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
+              g.player.setAction('idle');
+              g.camera.reset(g.player);
+              g.step(f.walk, { stickY: 1 });
+            }
+            g.step(f.rest);
+            return info();
+          }
+          const [hx, hy, hz, yaw] = v.grab?.hero ?? v.hero ?? [0, 22, 1156, Math.PI];
           g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
           g.player.setAction('idle');
           g.camera.reset(g.player);
-          g.step(5);
+          g.step(v.grab ? 2 : 5);
+          if (v.grab) {
+            // (The stick pushes along the camera's view: turn it to where he faces.)
+            const push = () => {
+              const a = Math.atan2(Math.sin(g.camera.getYaw() - yaw), Math.cos(g.camera.getYaw() - yaw));
+              return { stickX: Math.sin(a), stickY: Math.cos(a) };
+            };
+            const holding = () => (v.grab.pole ? g.player.action === 'pole' : g.player.action === 'ledge_hang');
+            const jump = (t) => {
+              if (!v.grab.pole) return t < 15;
+              const [px, pz] = v.grab.pole;
+              return g.player.grounded && Math.hypot(g.player.pos.x - o.x - px, g.player.pos.z - o.z - pz) < 130;
+            };
+            for (let t = 0; t < 60 && !holding(); t++) g.step(1, { ...push(), A: jump(t) });
+            g.step(12);
+          }
           if (v.retro) (classic ? view.setN64Mode(true) : view.toggleRetro());
           const cam = view.camera;
           cam.fov = v.fov;
@@ -91,11 +141,10 @@ try {
           view.setFocus({ x: v.look[0] + o.x, y: 0, z: v.look[2] + o.z });
           g.areas.update(1, cam); // (what follows the camera: the realistic look's grass)
           view.render();
-          const info = view.renderer.info.render;
-          return `${view.describeMode()}: ${info.calls} calls, ${info.triangles} triangles`;
+          return info();
         }, [v, look === 'classic']);
         const file = path.join(out, `${look}-${name}-${width}.png`);
-        await page.screenshot({ path: path.resolve(root, file) });
+        await page.screenshot({ path: path.resolve(root, file), timeout: 180000 });
         console.log(`${file}  ${line}`);
         if (v.retro) await page.evaluate((classic) => (classic ? window.__game.view.setN64Mode(false) : window.__game.view.toggleRetro()), look === 'classic');
       }

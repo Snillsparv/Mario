@@ -1,30 +1,50 @@
 // A realistic look the renderer draws an area through (render/N64Renderer.js setLook): Sparrow
 // Lane's (world/lane/real/look.js makes it from layout.LANE_REAL). It owns everything that makes
-// the picture physically lit instead of baked: the HDR scene target (half float, MSAA per tier)
-// and the output pass (exposure, Khronos PBR Neutral, dither: OutputPass.js), the analytic sky
-// and its haze (sky.js), the sky's prefiltered environment (scene.environment), the reflection
-// probe (probe.js), the sun's soft shadow following Jonas, and the light preset.
+// the picture physically lit instead of baked: the HDR scene target (half float, MSAA per tier,
+// with a depth texture for the post chain), the post chain (ambient occlusion, bloom, sun shafts:
+// post/RealPost.js) and the output pass (their composite, exposure, Khronos PBR Neutral, the
+// grade, the lens, dither: OutputPass.js), the analytic sky and its haze (sky.js), the sky's
+// prefiltered environment (scene.environment), the reflection probe (probe.js), the sun's soft
+// shadow near Jonas and its far map over the whole street (farShadow.js), and the light preset;
+// and how Jonas is framed and drawn meanwhile (the camera's profile, his model's size).
 //
-//   const look = new RealLook({ preset, tier, probeAt, canRetro })
+//   const look = new RealLook({ preset, tier, probeAt, farBox, canRetro })
 //       preset: { sky, sunDir, exposure, environment, haze, shadow: { radius, bias, normalBias },
-//                 atmosphere }   (layout.LANE_REAL: atmosphere is the view.setAtmosphere preset
-//                 the look's sun and hemisphere come from)
-//       tier: tier.js TIERS[name]; probeAt: the probe's place { x, y, z } (world); canRetro:
-//       half-float targets work (else F2 leaves the look as it is)
+//                 atmosphere, post, grade, camera, hero }   (layout.LANE_REAL: atmosphere is the
+//                 view.setAtmosphere preset the look's sun and hemisphere come from; post and
+//                 grade the post chain's and the output pass's settings; camera the camera's
+//                 profile, hero Jonas's model's size)
+//       tier: tier.js TIERS[name]; probeAt: the probe's place { x, y, z } (world); farBox: the
+//       far shadow map's box { x0, x1, y0, y1, z0, z1 } (world; none: no far map, as on the low
+//       tier); canRetro: half-float targets work (else F2 leaves the look as it is)
+//   look.camera, look.heroScale     // the camera's profile (core/AreaSwitch.js sets it with the
+//                                   // look) and Jonas's model's size (view.heroScale) meanwhile
+//   look.grade                      // the output pass's grade uniforms (its bloom's share too,
+//                                   // and uGradeScreen: the picture's size), for materials.js
+//                                   // classicLook (the signs)
 //   look.pixelRatio(dpr, width, height)   // the drawing buffer's pixel ratio (tier.js)
 //   look.haze                       // the uniforms every realistic material's haze shares
 //   look.useProbe(materials)        // these take the probe as their envMap (the glass)
 //   look.warmProbe(renderer)        // a blank probe of its size on them meanwhile (RealAreas:
 //                                   // before their programs compile)
 //   look.takeProbe(view)            // the probe, taken (else on the first frame drawn)
+//   look.takeFar(view)              // the far shadow map, drawn (RealAreas, after the probe;
+//                                   // else on the first frame drawn: Jonas hidden)
+//   look.compilePost(renderer) -> Promise   // the post chain's and the output pass's programs
+//                                   // (RealAreas' link step)
 //   look.attach(view), look.detach(view)   // N64Renderer.setLook's, around its snapshot
 //   look.draw(view, storm, flash, melt, graded)   // one frame (N64Renderer.draw's branch)
 //   look.sceneTarget(renderer)      // the HDR target at the drawing buffer's size (null on the
 //                                   // direct path)
 //   look.describe(width, height) -> 'real 1600x900 msaa4 high'   // the F1 overlay's line (the
 //                                   // level drawn, 'mid 85%'..., and 'auto' while governed)
+//   look.gpuLine() -> 'gpu 8.4 ms' | null   // the F1 overlay's GPU line while it shows (high,
+//                                   // mid: gpuTimer.js)
 //   look.levels, look.level         // tier.js ladder(tier) and the level drawn (its render
-//                                   // size, MSAA, shadow, grass: setLevel(index, view))
+//                                   // size, MSAA, near shadow, grass, post chain: setLevel(index,
+//                                   // view))
+//   look.post                       // the post chain (null on the direct path): post.drawn, the
+//                                   // passes it drew last frame
 //   look.governor                   // a tier.js Governor, or null (RealAreas sets one but under
 //                                   // ?test=1 and with ?tier=): look.govern(view, now) per frame
 //                                   // steps the level, cross-fading (view.crossfade), and keeps
@@ -32,21 +52,28 @@
 //   look.grass                      // (r) => the grass's reach (world/lane/real/look.js sets it)
 //   look.dispose()
 //
-// A frame: the shadow map (the sun's box round the view's focus, snapped to whole shadow texels
-// so the static shadows never shimmer as Jonas walks), the scene into the HDR target, the output
-// pass to the canvas. With the storm's grade, a flash or the meltdown the output pass writes
-// into the grade's target and post/GradePass.js finishes the frame as native mode does; with the
+// A frame: the near shadow map (the sun's tight box round the view's focus, a little ahead of it
+// along the view, snapped to whole shadow texels so the static shadows never shimmer as Jonas
+// walks; the far map, static, beyond it), the scene into the HDR target (its depth resolved with
+// it), the post chain from them at the level's settings, the output pass to the canvas (the depth
+// resolve is checked once: where a driver refuses it, the occlusion and the shafts stay off and
+// the F1 line says 'post: no depth'). With the storm's grade, a flash or the meltdown the output
+// pass writes into the grade's target and post/GradePass.js finishes the frame as native mode
+// does; with the
 // retro filter (F2 in the area: "retro over realistic", the view's lookRetro) the scene is drawn
 // at the retro filter's 240 lines, through the output pass into the view's retro target and
 // post/N64Pass.js (a real street on a 1998 TV). The low tier draws straight to the canvas
 // (`direct`: three tone maps per material; no HDR target, no output pass) unless graded or
 // retro. The probe is taken once (RealAreas takes it as it readies the build, else the first
 // frame drawn does; Jonas hidden; none on the low tier, whose glass reflects the sky's
-// environment) and kept for every later visit; the HDR targets are freed on detach and made
-// again on the next frame drawn.
+// environment) and kept for every later visit, as is the far shadow map; the HDR targets and the
+// post chain's are freed on detach and made again on the next frame drawn.
 
 import * as THREE from 'three';
 import { OutputPass } from './OutputPass.js';
+import { RealPost } from './post/RealPost.js';
+import { FarShadow } from './farShadow.js';
+import { GpuTimer } from './gpuTimer.js';
 import { makeSky, skyEnvironment, skyUniforms } from './sky.js';
 import { captureProbe, blankProbe } from './probe.js';
 import { TIERS, lookPixelRatio, ladder, saveLevel } from './tier.js';
@@ -54,16 +81,25 @@ import { TIERS, lookPixelRatio, ladder, saveLevel } from './tier.js';
 const SUN_DISTANCE = 8000; // the shadow camera's distance from the focus, toward the sun
 const SHADOW_NEAR = 10;
 const SHADOW_FAR = 16000;
+const AHEAD = 0.35; // the near shadow box's middle this share of its half size ahead of the focus
 
 export class RealLook {
-  constructor({ preset, tier = TIERS.high, probeAt = null, canRetro = true }) {
+  constructor({ preset, tier = TIERS.high, probeAt = null, farBox = null, canRetro = true }) {
     this.preset = preset;
     this.tier = tier;
     this.probeAt = probeAt;
     this.canRetro = canRetro; // (retro over realistic needs half-float targets)
+    this.camera = preset.camera ?? null; // the camera's profile meanwhile (core/AreaSwitch.js)
+    this.heroScale = preset.hero ?? 1; // Jonas's model's size meanwhile (view.heroScale)
     this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze } };
+    this.far = farBox && tier.far ? new FarShadow({ size: tier.far, sunDir: preset.sunDir, box: farBox }) : null;
+    if (this.far) Object.assign(this.haze, this.far.uniforms); // (every realistic material's)
+    this.farDirty = !!this.far;
     this.sky = makeSky(this.haze, { clouds: preset.sky.clouds });
-    this.output = new OutputPass();
+    this.output = new OutputPass({ grade: preset.grade });
+    this.grade = { ...this.output.grade, uBloom: this.output.material.uniforms.uBloom, uGradeScreen: { value: new THREE.Vector2(1, 1) } };
+    this.post = tier.direct ? null : new RealPost(preset.post);
+    this.depthChecked = false; // (the depth's resolve, checked on the first frame with it)
     this.env = null; // the sky's PMREM (made on the first attach, kept)
     this.probe = null; // the reflection probe's PMREM (a blank stand-in till taken: warmProbe)
     this.probeMaterials = [];
@@ -79,6 +115,7 @@ export class RealLook {
     this.axisX = new THREE.Vector3().setFromMatrixColumn(basis, 0);
     this.axisY = new THREE.Vector3().setFromMatrixColumn(basis, 1);
     this.snapped = new THREE.Vector3();
+    this.ahead = new THREE.Vector3();
     this.levels = ladder(tier);
     this.index = 0;
     this.level = this.levels[0];
@@ -167,6 +204,13 @@ export class RealLook {
     this.hdr?.dispose();
     this.retroHdr?.dispose();
     this.hdr = this.retroHdr = null;
+    this.post?.release();
+  }
+
+  // The level's post chain reads the scene's depth (the occlusion, the shafts).
+  wantsDepth() {
+    const post = this.level.post;
+    return !!this.post && this.post.depthOk && (post.ao > 0 || post.shafts);
   }
 
   // The pixel ratio a width x height CSS picture is drawn at (the tier's cap).
@@ -183,23 +227,32 @@ export class RealLook {
     return this.hdr;
   }
 
+  // (Linear filtering: the output pass's colour fringing reads between texels; a depth texture
+  // where the post chain reads it: made again when that changes.)
   fitTarget(target, width, height, samples) {
+    if (target && !!target.depthTexture !== this.wantsDepth()) {
+      target.dispose();
+      target = null;
+    }
     if (target && target.width === width && target.height === height) return target;
     if (target) {
       target.setSize(width, height);
       return target;
     }
-    return new THREE.WebGLRenderTarget(width, height, {
+    const made = new THREE.WebGLRenderTarget(width, height, {
       type: THREE.HalfFloatType,
       samples,
-      magFilter: THREE.NearestFilter,
-      minFilter: THREE.NearestFilter,
+      magFilter: THREE.LinearFilter,
+      minFilter: THREE.LinearFilter,
       generateMipmaps: false,
       depthBuffer: true,
     });
+    if (this.wantsDepth()) made.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
+    return made;
   }
 
-  // The sun (and its shadow box) over `focus`, snapped to whole shadow texels across the light.
+  // The sun (and its near shadow box) over `focus`, snapped to whole shadow texels across the
+  // light.
   placeSun(sun, focus) {
     const texel = (2 * this.level.box) / this.level.shadow;
     const { axisX, axisY, sunDir, snapped } = this;
@@ -239,10 +292,57 @@ export class RealLook {
     old?.dispose();
   }
 
+  // The far shadow map, from what the scene shows (RealAreas: the build alone), Jonas hidden.
+  takeFar(view) {
+    this.farDirty = false;
+    if (!this.far) return;
+    const hide = view.realActors.map((a) => a.object3D);
+    const shown = hide.map((o) => o.visible);
+    for (const o of hide) o.visible = false;
+    try {
+      this.far.take(view.renderer, view.scene, view.camera);
+    } finally {
+      hide.forEach((o, i) => (o.visible = shown[i]));
+    }
+  }
+
+  // The post chain's and the output pass's programs, compiled as they will draw.
+  compilePost(renderer) {
+    const done = [this.post?.compile(renderer)];
+    if (!this.tier.direct) done.push(renderer.compileAsync(this.output.scene, this.output.camera));
+    return Promise.all(done);
+  }
+
+  // The near shadow box's focus: the view's, a little ahead of it along the camera's view (what
+  // he looks at), across the ground.
+  shadowFocus(view) {
+    const a = this.ahead;
+    view.camera.getWorldDirection(a);
+    a.y = 0;
+    const l = a.length();
+    if (l > 1e-6) a.multiplyScalar((AHEAD * this.level.box) / l);
+    return a.add(view.focus);
+  }
+
+  // One frame; while the F1 overlay shows (and the look draws through its HDR target), its GPU
+  // time measured round it (gpuTimer.js: gpuLine()).
   draw(view, storm, flash, melt, graded) {
+    const timed = view.debug?.visible && !this.tier.direct;
+    if (timed) (this.gpu ??= new GpuTimer(view.renderer.getContext())).begin();
+    this.drawFrame(view, storm, flash, melt, graded);
+    if (timed) this.gpu.end();
+  }
+
+  // The F1 overlay's GPU line ('gpu 8.4 ms'), or null (not measured: the direct path).
+  gpuLine() {
+    return this.gpu?.line() ?? null;
+  }
+
+  drawFrame(view, storm, flash, melt, graded) {
     const { renderer, scene, camera, sun } = view;
     if (this.probeDirty) this.takeProbe(view);
-    this.placeSun(sun, view.focus);
+    if (this.farDirty) this.takeFar(view);
+    this.placeSun(sun, this.shadowFocus(view));
     const retro = view.lookRetro;
     if (this.tier.direct && !retro && !graded) {
       view.underwater.warm(view.compileObject, 'realDirect');
@@ -252,13 +352,19 @@ export class RealLook {
       return;
     }
     const target = retro ? (this.retroHdr = this.fitTarget(this.retroHdr, view.internal.width, view.internal.height, 4)) : this.sceneTarget(renderer, true);
+    this.grade.uGradeScreen.value.set(target.width, target.height);
+    const check = target.depthTexture && !this.depthChecked;
+    if (check) renderer.getContext().getError(); // (the flag cleared: the resolve's own below)
     renderer.setRenderTarget(target);
     view.underwater.warm(view.compileObject, 'real');
     view.warmObjects('real');
     renderer.render(scene, camera);
+    if (check) this.checkDepth(renderer);
+    const fx = this.post?.render(renderer, target, camera, this.sunDir, this.level.post) ?? null;
+    const out = { fx, depth: this.post?.depthOk ? target.depthTexture : null, camera, ca: this.level.post.ca };
     if (retro) {
       renderer.setRenderTarget(view.target);
-      this.output.render(renderer, target.texture, { encode: false });
+      this.output.render(renderer, target.texture, { ...out, encode: false });
       renderer.setRenderTarget(null);
       view.pass.setGrade(storm, flash);
       view.pass.setMeltdown(melt);
@@ -268,14 +374,24 @@ export class RealLook {
     if (graded) {
       const grade = view.gradePass.targetFor(target.width, target.height);
       renderer.setRenderTarget(grade);
-      this.output.render(renderer, target.texture, { encode: false });
+      this.output.render(renderer, target.texture, { ...out, encode: false });
       renderer.setRenderTarget(null);
       view.gradePass.render(renderer, grade.texture, storm, flash, melt);
       return;
     }
     renderer.setRenderTarget(null);
-    this.output.render(renderer, target.texture);
+    this.output.render(renderer, target.texture, out);
     this.releaseGrade(view);
+  }
+
+  // Once: the multisampled depth's resolve into the depth texture worked (some drivers refuse
+  // the blit: then the post chain runs without the depth, the bloom and the grade only).
+  checkDepth(renderer) {
+    this.depthChecked = true;
+    const gl = renderer.getContext();
+    if (gl.getError() === gl.NO_ERROR) return;
+    console.warn('realistic look: the depth resolve failed, no ambient occlusion or sun shafts');
+    this.post.depthOk = false; // (the targets are made again without it)
   }
 
   // The storm is over: free the grade's full-size target (as native mode does).
@@ -285,7 +401,8 @@ export class RealLook {
 
   describe(width, height) {
     const path = this.tier.direct ? 'direct' : `msaa${this.level.samples}`;
-    return `real ${width}x${height} ${path} ${this.level.name}${this.governor ? ' auto' : ''}`;
+    const note = this.post && !this.post.depthOk ? ' post: no depth' : '';
+    return `real ${width}x${height} ${path} ${this.level.name}${this.governor ? ' auto' : ''}${note}`;
   }
 
   dispose() {
@@ -293,6 +410,9 @@ export class RealLook {
     this.retroHdr?.dispose();
     this.env?.dispose();
     this.probe?.dispose();
+    this.far?.dispose();
+    this.post?.dispose();
+    this.gpu?.dispose();
     this.output.dispose();
     this.sky.geometry.dispose();
     this.sky.material.dispose();
