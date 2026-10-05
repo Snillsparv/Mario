@@ -33,7 +33,9 @@
 // a roof, on the car itself, away (Critters.js AWAY: reading, on a pole or a ledge, ...), blinking
 // after a hit, in a dialog or a warp; and once it has parked again, not until he has been REARM
 // away from it (so he may climb the car). From `notice` its T lights blink at him now and then
-// with a soft chirp. Its first wake of a game is an intro (150 ticks: Jonas held, the camera's
+// with a soft chirp, its indicators flashing amber (as with its wake's blinks and the tame car's
+// hello). Up, its T lights show its mood (_mood: angry in its attacks, tired with its battery low,
+// bored, sheepish, dizzy and spinning: BOSS.MOOD); it rocks on its wheels as it rises. Its first wake of a game is an intro (150 ticks: Jonas held, the camera's
 // own, its name card); later wakes are quick (60 ticks).
 //
 // The car's collider (named dad_ev: lane/props.js) is parked under the world (moveSurfaces) from
@@ -73,16 +75,20 @@ const CLUNK = { core: 0.7, tail: 0.75, canopy: 0.72, head: 0.8, doorFL: 0.95, do
 const CONTACT_GONE = 0.25; // (the realistic car's contact shadow hidden this far into the morph)
 const BLOB = 230; // (the classic look's shadow under each foot, across)
 const UP = { x: 0, y: 1, z: 0 };
+const AMBER = [1, 0.6, 0.12]; // (its indicators' flash)
+const _amber = { x: 0, y: 0, z: 0 };
 // A step's legs (hip, knee, ankle) and their turns about x at its top.
 const LEG_L = [INDEX.hipL, INDEX.knL, INDEX.anL];
 const LEG_R = [INDEX.hipR, INDEX.knR, INDEX.anR];
 const STEP_X = [STEP_UP.hip[0], STEP_UP.kn[0], STEP_UP.an[0]];
 
 function makeState() {
-  return { x: 0, y: 0, z: 0, yaw: 0, m: 0, lift: 0, bob: 0, turns: new Float32Array(N * 3), blinkL: 0, blinkR: 0, hatch: 0, gate: 0, lights: 3, spin: 0, heel: 0 };
+  return { x: 0, y: 0, z: 0, yaw: 0, m: 0, lift: 0, bob: 0, turns: new Float32Array(N * 3), blinkL: 0, blinkR: 0, hatch: 0, gate: 0, lights: 3, spin: 0, heel: 0, rollL: 0, rollR: 0, eyeLen: 1, rock: 0 };
 }
 // States in which its head follows him (and its eyes blink by themselves).
 const LOOKING = { shoo: 1, stand: 1, watch: 1, gap: 1, stomp_tell: 1, dash_tell: 1, swipe_tell: 1, dizzy: 1, walk: 1, unplug: 1 };
+// Its eyes' mood in each fight state (BOSS.MOOD; the others 'set': ready, a little narrowed).
+const MOODS = { stomp_tell: 'angry', stomp_hop: 'angry', stomp_land: 'angry', dash_tell: 'angry', dash: 'angry', dash_skid: 'angry', swipe_tell: 'angry', swipe: 'angry', low: 'tired', kneel: 'tired', plug: 'tired', open: 'tired', zapped: 'dizzy', dizzy: 'dizzy', dash_bonk: 'dizzy', shortout: 'dizzy', home: 'calm', shoo: 'calm', unmorph: 'calm', wake: 'calm' };
 // Car-form states (no frame posing, no bump on its body).
 const CAR_FORM = { parked: 1, notice: 1, tame: 1, reverse: 1, settle: 1 };
 
@@ -234,6 +240,8 @@ export class LaneBoss {
     c.hatch = 0;
     c.gate = 0;
     c.spin = c.heel = 0;
+    c.rollL = c.rollR = c.rock = 0;
+    c.eyeLen = 1;
     c.lights = 3 - this.hits;
     c.turns.set(POSE.fold);
     this.ease.set(POSE.stand);
@@ -333,6 +341,8 @@ export class LaneBoss {
     this._copy(this.prev, this.cur);
     this.markers.keep();
     if (this.state === 'pose') return;
+    // (The easier fight chosen on the pause screen: main sets LANE_BOSS.easy.)
+    if (this.easy !== !!this.spec.easy) this.setEasy(!!this.spec.easy);
     this._read(player, hold);
     // A lost life: it goes home (folds back) once it is up (beaten, it carries on parking).
     if (player.action === 'spawn' && this.lastAction !== 'spawn' && CAR_FORM[this.state] !== 1 && !this.beaten) this.leave = true;
@@ -395,6 +405,7 @@ export class LaneBoss {
     if (this.state === 'notice') {
       const k = this.t;
       c.blinkL = c.blinkR = k >= 3 && k <= 6 ? 1 : 0;
+      if (k === 3) this._hazard();
       if (k >= 10) {
         this._set('parked');
         this._show(false);
@@ -434,6 +445,7 @@ export class LaneBoss {
     if (t <= P.BLINK) {
       const b = this.intro ? (t >= 2 && t <= 5) || (t >= 10 && t <= 13) : t >= 2 && t <= 5;
       c.blinkL = c.blinkR = b ? 1 : 0;
+      if (t === 2 || (t === 10 && this.intro)) this._hazard();
       return;
     }
     const tr = t - P.BLINK;
@@ -445,9 +457,12 @@ export class LaneBoss {
     if (tr <= P.RISE) {
       c.lift = BOSS.LIFT * smooth(tr / P.RISE);
       c.bob = 0;
+      // (Rocking on its wheels as it rises, settling.)
+      c.rock = BOSS.ROCK * Math.sin(tr * 1.2) * (1 - tr / P.RISE);
       return;
     }
     // ...then the morph: the panels fly up on their arcs to their places as the frame unfolds.
+    c.rock = 0;
     const tm = tr - P.RISE;
     if (tm <= P.MORPH) {
       c.m = tm / P.MORPH;
@@ -492,6 +507,22 @@ export class LaneBoss {
     const b = piece ? this.classic.rig.bones[BONE[piece]] : null;
     const pos = b ? { x: b.matrixWorld.elements[12], y: b.matrixWorld.elements[13], z: b.matrixWorld.elements[14] } : { x: c.x, y: c.y + 40, z: c.z };
     o.sparkles?.burst(pos, o.time ?? 0, TINT.box, n);
+  }
+
+  // Its indicators flashing amber (a glow at each corner of the car), as a car unlocking does.
+  _hazard() {
+    const sp = this.objects.sparkles;
+    if (!sp) return;
+    const c = Math.cos(this.yaw0);
+    const s = Math.sin(this.yaw0);
+    for (let i = 0; i < 4; i++) {
+      const u = (i & 1 ? 1 : -1) * (this.hw - 12);
+      const w = i & 2 ? this.hl - 34 : 14 - this.hl;
+      _amber.x = this.spot.x + u * c + w * s;
+      _amber.y = this.spot.y + 100;
+      _amber.z = this.spot.z - u * s + w * c;
+      sp.flash(_amber, this.objects.time ?? 0, AMBER, 130, 0.35);
+    }
   }
 
   // Turning toward yaw (when more than `slack` off it), stepping as it turns; true once facing it.
@@ -570,8 +601,10 @@ export class LaneBoss {
     const c = this.cur;
     c.m = 0;
     c.lift = BOSS.LIFT * (1 - smooth(this.t / BOSS.SETTLE));
+    c.rock = BOSS.ROCK * 0.6 * Math.sin(this.t * 1.6) * (1 - this.t / BOSS.SETTLE);
     if (this.t < BOSS.SETTLE) return;
     c.lift = 0;
+    c.rock = 0;
     this._sfx('robot_clunk', { pitch: 0.6 });
     this._collider(false);
     // (Standing where the car settled: lifted onto it.)
@@ -616,7 +649,12 @@ export class LaneBoss {
     const fold = POSE.fold;
     const t = c.turns;
     for (let i = 0; i < t.length; i++) t[i] = fold[i] + (e[i] - fold[i]) * k;
-    if (c.m < 1 || CAR_FORM[this.state] === 1) return;
+    if (c.m < 1 || CAR_FORM[this.state] === 1) {
+      // (Its eyes the car's lights again.)
+      c.rollL = c.rollR = 0;
+      c.eyeLen = 1;
+      return;
+    }
     // Stepping round: each foot up and down in turn.
     c.bob = 0;
     if (this.turning) {
@@ -648,14 +686,37 @@ export class LaneBoss {
     t[n + 1] += this.look;
     t[n] += this.lookUp;
     t[n + 2] += this.tilt;
-    // Blinks now and then (unless its state drives its eyes: low, dizzy, a dash's tell, ...).
+    // Its eyes: its mood, and blinks now and then (unless its state drives its eyes: low, a
+    // dash's tell, ...).
+    const shut = this._mood(c);
     if (this.eyes) return;
     if (this.tick >= this.nextBlink) {
       this.blinkT = BOSS.BLINK_LEN;
       this.nextBlink = this.tick + Math.round(BOSS.BLINK_EVERY * (0.6 + 0.8 * noise(this.tick)));
     }
     if (this.blinkT > 0) this.blinkT--;
-    c.blinkL = c.blinkR = this.blinkT > 0 ? 1 : 0;
+    c.blinkL = c.blinkR = this.blinkT > 0 ? 1 : shut;
+  }
+
+  // Its eyes' expression this tick (the T lights narrowed and turned in its face, BOSS.MOOD):
+  // angry in its attacks, tired with its battery low, bored watching him, sheepish beaten; zapped
+  // and dizzy, short and spinning. Returns how far they are narrowed.
+  _mood(c) {
+    const s = this.state;
+    const w = this.walkMode;
+    const mood = s === 'walk' ? (w === 'charge' ? 'tired' : w === 'prepark' ? 'sheepish' : w === 'range' ? 'angry' : 'set') : s === 'watch' ? (this.t > 60 ? 'bored' : 'set') : MOODS[s] ?? 'set';
+    const M = BOSS.MOOD;
+    if (mood === 'dizzy') {
+      c.eyeLen = M.dizzy[0];
+      c.rollL = wrap(c.rollL + M.dizzy[1]);
+      c.rollR = wrap(c.rollR + M.dizzy[1]);
+      return 0;
+    }
+    const [shut, roll] = M[mood];
+    c.eyeLen = 1;
+    c.rollL = wrap(c.rollL + wrap(roll - c.rollL) * 0.3);
+    c.rollR = wrap(c.rollR + wrap(roll - c.rollR) * 0.3);
+    return shut;
   }
 
   // He cannot walk through it: his feet pushed out of its feet and body (car form: its footprint).
@@ -732,6 +793,10 @@ export class LaneBoss {
     to.lights = from.lights;
     to.spin = from.spin;
     to.heel = from.heel;
+    to.rollL = from.rollL;
+    to.rollR = from.rollR;
+    to.eyeLen = from.eyeLen;
+    to.rock = from.rock;
   }
 
   // Its realistic model's programs compiled ahead (in the background where the browser can), once
@@ -772,6 +837,10 @@ export class LaneBoss {
     d.lights = c.lights;
     d.spin = p.spin + (c.spin - p.spin) * a;
     d.heel = p.heel + (c.heel - p.heel) * a;
+    d.rollL = p.rollL + wrap(c.rollL - p.rollL) * a;
+    d.rollR = p.rollR + wrap(c.rollR - p.rollR) * a;
+    d.eyeLen = c.eyeLen;
+    d.rock = p.rock + (c.rock - p.rock) * a;
     for (let i = 0; i < this.models.length; i++) this.models[i].pose(d);
     this._fightAnimate(a, clock, camera);
     // Its feet's blob shadows (the classic look's), as it stands up (on the ground under them).
@@ -806,6 +875,8 @@ export class LaneBoss {
     c.lift = opts.lift ?? (c.m > 0 ? BOSS.LIFT : 0);
     c.yaw = opts.yaw ?? this.yaw0;
     c.blinkL = c.blinkR = opts.blink ?? 0;
+    c.rollL = c.rollR = opts.roll ?? 0;
+    c.eyeLen = opts.eyeLen ?? 1;
     c.hatch = opts.hatch ?? 0;
     c.lights = opts.lights ?? 3;
     c.spin = c.heel = 0;

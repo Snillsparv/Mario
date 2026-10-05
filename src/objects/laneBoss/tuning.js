@@ -20,6 +20,11 @@
 //               this much a tick (player/model/anims/bin.js eases his mittens by as much)
 //   PARK        a held bin's collider waits this far under the world (moveSurfaces)
 //   SHOVE       shoved by STOMPWATT, a bin slides this far a tick (LaneBins.shove)
+//   KNOCK_GAP   his attack on a bin (a punch, a kick, a dive, a pound beside it) knocks it at
+//               most once in this many ticks: JOLT, JOLT_TICKS: it rocks on its wheels away from
+//               him this far (radians), this long (also stopping after rolling), its lid
+//               clacking (bin_lid); it stays where it is
+//   ROLL_EVERY  rolling, its wheels' rumble (bin_roll) this often (ticks)
 
 export const BINS_TUNING = Object.freeze({
   PUSH: 6,
@@ -38,6 +43,10 @@ export const BINS_TUNING = Object.freeze({
   TIP_RATE: 0.26 / 6,
   PARK: -60000,
   SHOVE: 12,
+  KNOCK_GAP: 10,
+  JOLT: 0.09,
+  JOLT_TICKS: 12,
+  ROLL_EVERY: 8,
 });
 
 // STOMPWATT (LaneBoss.js), in ticks (30 a second) and lane units. (Its wake's reach and dwell,
@@ -63,6 +72,12 @@ export const BINS_TUNING = Object.freeze({
 //                and close by tilted this far (curious)
 //   BLINK_EVERY  its eyes blink about this often (BLINK_LEN ticks shut)
 //   IDLE_EVERY   an idle move (a wave, a flex, a look round, a foot tap) about this often
+//   MOOD         its eyes' expressions (LaneBoss._mood): [how far narrowed, each turned in its face
+//                (radians: + the inner ends down)]: calm, set (fighting: ready), angry (its tells and
+//                attacks), tired (its battery low, charging), bored (watching him out of reach),
+//                sheepish (beaten); dizzy (zapped, dizzy, short-circuiting): [their length, their
+//                spin a tick]
+//   ROCK         rocking on its wheels as it rises (and settles back): this far (radians)
 //   BUMP         he cannot walk through it: his feet are pushed out of its feet (BUMP.foot round
 //                each) and body (BUMP.body round its middle), at most BUMP.step a tick
 //   PARK         the car's collider waits this far under the world while it is a robot
@@ -85,6 +100,8 @@ export const BOSS = Object.freeze({
   BLINK_EVERY: 110,
   BLINK_LEN: 4,
   IDLE_EVERY: 150,
+  MOOD: { calm: [0, 0], set: [0.18, 0.12], angry: [0.45, 0.34], tired: [0.5, -0.26], bored: [0.55, -0.1], sheepish: [0.3, -0.24], dizzy: [0.45, 0.45] },
+  ROCK: 0.035,
   BUMP: { foot: 70, body: 115, step: 48, kneel: 120, heel: 60 },
   PARK: -60000,
 });
@@ -113,7 +130,8 @@ export const BOSS = Object.freeze({
 //                arc locks `lock` before the swipe; the fist sweeps the arc in `ticks`, hurting
 //                him there with his feet under `high` over its floor (a jump clears it), or
 //                within `slack` of the fist's way
-//   TURN         its turn toward him or its goal (radians a tick); WALK_STEP ticks a step
+//   TURN         its turn toward him or its goal (radians a tick); STRIDE: a step carries it this
+//                far (its steps' ticks: STRIDE / its speed, 16 at 7 a tick: its feet planted)
 //   FEET         its feet circle against walls as it walks (and its body's top for headroom)
 //   LOW .. UNPLUG   the charging loop's beats: low battery (slumped), kneel, plug in, the
 //                hatch opening (then the window), zapped, dizzy, unplugging (no hit)
@@ -146,7 +164,7 @@ export const FIGHT = Object.freeze({
   DASH: { min: 300, max: 1100, near: 900, speed: 30, ticks: 30, r: 95, lane: 220, top: 450, bonk: 40, skid: 10 },
   SWIPE: { reach: 380, half: 1.05, lock: 10, ticks: 8, high: 90, slack: 0.3 },
   TURN: 0.08,
-  WALK_STEP: 16,
+  STRIDE: 112,
   FEET: 120,
   LOW: 30,
   KNEEL: 20,

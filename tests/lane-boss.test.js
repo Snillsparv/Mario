@@ -268,10 +268,14 @@ test('it wakes when he stays near it on the drive (the dwell) and blinks at him 
   const h = hero(CAR.x, CAR.z - HL - 150, N);
   const { boss } = h;
   assert.equal(boss.state, 'parked');
-  // The notice: a blink and a soft chirp (the car form shown for it).
+  // The notice: a blink and a soft chirp (the car form shown for it), its indicators flashing
+  // amber at its four corners (B4: round glows).
   h.tick();
   assert.equal(boss.state, 'notice');
   assert.ok(h.sounds.includes('ev_chirp'));
+  const amber = () => h.om.sparkles.parts.slice(0, h.om.sparkles.count).filter((q) => q.cell === 2 && q.tint[0] === 1 && q.tint[2] < 0.3).length;
+  h.run(3);
+  assert.equal(amber(), 4, 'four amber flashes');
   // The dwell: it wakes on the 20th tick near it.
   let woke = -1;
   h.run(40, {}, (i) => {
@@ -281,7 +285,7 @@ test('it wakes when he stays near it on the drive (the dwell) and blinks at him 
     }
     return true;
   });
-  assert.ok(woke >= LANE_BOSS.wake.dwell - 3 && woke <= LANE_BOSS.wake.dwell + 1, `woke after ${woke} ticks`);
+  assert.ok(woke + 3 >= LANE_BOSS.wake.dwell - 3 && woke + 3 <= LANE_BOSS.wake.dwell + 1, `woke after ${woke + 3} ticks`);
   assert.equal(boss.cinematic, true, 'the intro holds him');
   assert.equal(h.om.cinematic, true);
   assert.equal(h.om.cameraOverlay, boss.camera);
@@ -563,7 +567,7 @@ test('its sounds: registered into the game\'s table as the chunk attaches, each 
 });
 
 test('hot paths avoid allocating constructs; the parked car costs no query a tick but the notice\'s distance', () => {
-  const hot = { LaneBoss: ['update', '_parked', '_read', '_touching', '_wake', '_face', '_home', '_unmorph', '_frame', '_bump', '_push', 'animate', '_copy'], Rig: ['pose'], RobotModel: ['pose'] };
+  const hot = { LaneBoss: ['update', '_parked', '_read', '_touching', '_wake', '_face', '_home', '_unmorph', '_frame', '_mood', '_hazard', '_bump', '_push', 'animate', '_copy'], Rig: ['pose'], RobotModel: ['pose'] };
   const classes = { LaneBoss, Rig, RobotModel };
   for (const [cls, names] of Object.entries(hot)) {
     for (const name of names) {

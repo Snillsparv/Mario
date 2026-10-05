@@ -30,6 +30,9 @@
 //   robot_tink        a hit anywhere else: a metal tink
 //   boss_win          its defeat: a short bright sting (the star's fanfare follows on the star)
 //   bin_clatter       a bin shoved aside: a plastic clatter
+// The bins (B4: LaneBins.js):
+//   bin_roll          rolling: its plastic wheels' rumble on the drive, a seam's click
+//   bin_lid           knocked or stopping: its lid's hollow clack and a bounce (`pitch` lower: a pound)
 //
 // Its fight's music, 'stompwatt' (STOMPWATT_SONG, audio/songs.js format, registered into SONGS
 // with a handclap instrument of its own: registerSong): an original bouncy electro-polka in A
@@ -193,6 +196,18 @@ export const ROBOT_SFX = {
     tone(ctx, out, t, { freq: 120 * p, to: 70 * p, dur: 0.15, gain: 0.08, attack: 0.003 });
     return 0.4;
   },
+  bin_roll(ctx, out, t, { p }) {
+    noise(ctx, out, t, { filter: 'lowpass', freq: 380 * p, dur: 0.26, gain: 0.09, attack: 0.03, kind: 'brown' });
+    noise(ctx, out, t + 0.09, { filter: 'bandpass', freq: 900 * p, q: 4, dur: 0.025, gain: 0.05, attack: 0.002 });
+    return 0.28;
+  },
+  bin_lid(ctx, out, t, { p }) {
+    for (const [at, g] of [[0, 0.16], [0.075, 0.07]]) {
+      noise(ctx, out, t + at, { filter: 'bandpass', freq: 1150 * p, q: 5, dur: 0.05, gain: g, attack: 0.001 });
+      tone(ctx, out, t + at, { freq: 210 * p, to: 110 * p, dur: 0.08, gain: g * 0.6, attack: 0.002 });
+    }
+    return 0.2;
+  },
 };
 
 // (Its notice chirp and steps carry less far; nothing piles up.)
@@ -219,6 +234,8 @@ export const ROBOT_SFX_INFO = {
   robot_tink: { range: 1.5, gap: 0.12, max: 2 },
   boss_win: { range: 4, gap: 2, max: 1 },
   bin_clatter: { range: 1.2, gap: 0.15, max: 2 },
+  bin_roll: { range: 0.8, gap: 0.12, max: 2 },
+  bin_lid: { range: 1.2, gap: 0.2, max: 1 },
 };
 
 export function register(sfx, info) {

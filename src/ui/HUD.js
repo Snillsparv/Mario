@@ -11,6 +11,7 @@
 //   hud.setCourse(areaName)                     // the pause screen's course name (COURSE_NAMES)
 //   hud.setLeave(bool)                          // its "Leave course" line (main: as the game
 //                                               // pauses in a course whose way out is open)
+//   hud.setRobot(easy | null)                   // Sparrow Lane's robot fight on it (main)
 //   hud.setLook('real' | 'classic' | null)      // its legend's look row in a course with a
 //                                               // realistic look (pauseScreen.js controlsLegend)
 //   hud.showCourse(areaName)                    // the course card: its name big in gold for
@@ -138,6 +139,12 @@ export class HUD {
     this.dirty = true;
   }
 
+  // Sparrow Lane's robot fight on the pause screen: easy (true), normal (false) or none (null).
+  setRobot(easy) {
+    this.robot = easy ?? null;
+    this.dirty = true;
+  }
+
   // The pause legend's look row: 'real' (a realistic look draws: R / F2 the retro TV over it, G
   // the classic look), 'classic' (one could, the classic look by choice) or null.
   setLook(look) {
@@ -235,7 +242,7 @@ export class HUD {
     ctx.imageSmoothingEnabled = false;
     if (this.paused) {
       const { coins, stars } = this.state;
-      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course, leave: this.leave, look: this.look });
+      drawPauseScreen(ctx, this.cache, { W: this.W, H: this.H, s, coins, stars, controls: this.controls, course: this.course, leave: this.leave, look: this.look, robot: this.robot ?? null });
     }
     this._drawCounters();
     if (!this.paused) this._drawMeter(now);

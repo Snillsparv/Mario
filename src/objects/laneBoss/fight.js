@@ -48,7 +48,7 @@ import { PLAYER_RADIUS } from '../../core/constants.js';
 import { TINT } from '../Sparkles.js';
 import { BossStar } from '../BossStar.js';
 import { FIGHT as F, BOSS } from './tuning.js';
-import { KNEEL_DROP, WALK, footLift } from './rig.js';
+import { BONE, KNEEL_DROP, WALK, footLift } from './rig.js';
 import { INDEX, POSE } from './poses.js';
 import { Markers, Cable } from './markers.js';
 
@@ -66,6 +66,8 @@ const CHARGER = { from: [7, 130, 18], holster: [6, 84, 38], light: [16, 196, 0] 
 const PORT = [92, 90, 110];
 const LEG_L = [INDEX.hipL, INDEX.knL, INDEX.anL];
 const LEG_R = [INDEX.hipR, INDEX.knR, INDEX.anR];
+// Its joints the short circuit sparks off, in turn.
+const JOINTS = ['shL', 'knR', 'elR', 'neck', 'hipL', 'elL', 'shR', 'knL', 'hipR', 'chest'].map((b) => BONE[b]);
 const ARM_L = INDEX.shL;
 const ARM_R = INDEX.shR;
 
@@ -121,6 +123,7 @@ export const FIGHT_METHODS = {
     this.tinkAt = -Infinity;
     this.walking = false;
     this.walkT = 0;
+    this.stepLen = 16;
     this.walkMode = '';
     this.walkKind = '';
     this.best = Infinity;
@@ -466,9 +469,11 @@ export const FIGHT_METHODS = {
     if (!this.walking) {
       this.walking = true;
       this.walkT = 0;
+      // (Its steps as long as its speed carries it: its feet planted, not sliding.)
+      this.stepLen = Math.round(F.STRIDE / speed);
     }
     this.walkT++;
-    if (this.walkT % F.WALK_STEP === 0) this._sfx('robot_step');
+    if (this.walkT % this.stepLen === 0) this._sfx('robot_step');
     if (k > 0) this._move(Math.sin(c.yaw) * speed * k, Math.cos(c.yaw) * speed * k);
     return false;
   },
@@ -909,14 +914,14 @@ export const FIGHT_METHODS = {
     } else if (this.t === S.ticks) this.markers.arc.on = false;
   },
 
-  // A few sparks (Sparkles.burst) at a world point.
-  _sparksAt(x, y, z, tint, n) {
+  // A few sparks (Sparkles.burst, `scale` times as big) at a world point.
+  _sparksAt(x, y, z, tint, n, scale = 1) {
     const sp = this.objects.sparkles;
     if (!sp) return;
     _pt.x = x;
     _pt.y = y;
     _pt.z = z;
-    sp.burst(_pt, this.objects.time ?? 0, tint, n);
+    sp.burst(_pt, this.objects.time ?? 0, tint, n, scale);
   },
 
   // ---------------------------------------------------------------- hurting him
@@ -1099,13 +1104,8 @@ export const FIGHT_METHODS = {
 
   // Dizzy (its eyes spinning), turning round to face him; then an angry honk and the next phase.
   _dizzy() {
-    const c = this.cur;
-    this.eyes = true;
-    c.blinkL = this.t % 6 < 3 ? 0.6 : 0;
-    c.blinkR = this.t % 6 < 3 ? 0 : 0.6;
     this._face(Math.atan2(this.rdx, this.rdz), 0.3);
     if (this.t < F.DIZZY) return;
-    c.blinkL = c.blinkR = 0;
     this._sfx('robot_horn', { pitch: 0.8 });
     this.setIndex = 0;
     this._set('stand');
@@ -1136,20 +1136,28 @@ export const FIGHT_METHODS = {
     this._sfx('boss_win');
   },
 
-  // Short-circuiting: sparks off its joints, smoke, its eyes flickering; sagging, sheepish.
+  // Short-circuiting: big sparks crackling off its joints in turn (blue-white and yellow), bits
+  // flying off its neck, its power gauge sputtering, its eyes flickering and spinning (its mood);
+  // sagging, sheepish.
   _shortout() {
     const c = this.cur;
     const t = this.t;
     this.eyes = true;
     c.blinkL = c.blinkR = t % 9 < 3 ? 0.8 : 0;
+    c.lights = t < F.SHORT - 20 && (t * 7) % 11 < 3 ? 1 : 0;
     if (t === 30) this.goal = POSE.sheepish;
-    if (t % 6 === 0) {
-      const k = (t * 7) % 5;
-      this._sparksAt(c.x + (k - 2) * 50, c.y + 250 + k * 60, c.z, TINT.box, 4);
+    if (t % 3 === 0) {
+      const e = this.classic.rig.bones[JOINTS[(t / 3) % JOINTS.length]].matrixWorld.elements;
+      this._sparksAt(e[12], e[13], e[14], t % 2 ? TINT.coin : TINT.box, 6, 2.2);
     }
-    if (t % 10 === 5) this._sparksAt(c.x, c.y + 520, c.z, TINT.scrap, 3);
+    if (t % 16 === 2) this._sfx('robot_zap', { pitch: 0.7 + (t % 5) * 0.08 });
+    if (t % 10 === 5) {
+      const e = this.classic.rig.bones[BONE.neck].matrixWorld.elements;
+      this._sparksAt(e[12], e[13], e[14], TINT.scrap, 4, 1.4);
+    }
     if (t < F.SHORT) return;
     c.blinkL = c.blinkR = 0;
+    c.lights = 0;
     this._walkTo('prepark');
   },
 
@@ -1196,6 +1204,7 @@ export const FIGHT_METHODS = {
     if (this.state === 'tame' && this.noticeT > 0) {
       this.noticeT++;
       c.blinkL = c.blinkR = (this.noticeT >= 3 && this.noticeT <= 6) || (this.noticeT >= 11 && this.noticeT <= 14) ? 1 : 0;
+      if (this.noticeT === 3 || this.noticeT === 11) this._hazard();
       if (this.noticeT === 9) this._sfx('ev_chirp', { quiet: 1 });
       if (this.noticeT >= 18) {
         this.noticeT = 0;
@@ -1234,15 +1243,16 @@ export const FIGHT_METHODS = {
     this.kneeling = KNEELING[this.state] === 1 && this.kneelBob < -KNEEL_DROP * 0.5;
     // Walking: each leg up in turn, the arms swinging, the pelvis bobbing.
     if (this.walking) {
-      const s = this.walkT % (2 * F.WALK_STEP);
-      const legs = s < F.WALK_STEP ? LEG_L : LEG_R;
-      const back = s < F.WALK_STEP ? LEG_R : LEG_L;
-      const up = Math.sin((Math.PI * (s % F.WALK_STEP)) / F.WALK_STEP);
+      const L = this.stepLen;
+      const s = this.walkT % (2 * L);
+      const legs = s < L ? LEG_L : LEG_R;
+      const back = s < L ? LEG_R : LEG_L;
+      const up = Math.sin((Math.PI * (s % L)) / L);
       t[legs[0] * 3] += WALK.hip[0] * up;
       t[legs[1] * 3] += WALK.kn[0] * up;
       t[legs[2] * 3] += WALK.an[0] * up;
       t[back[0] * 3] += WALK.back[0] * up;
-      const swing = (s < F.WALK_STEP ? 1 : -1) * WALK.arm * up;
+      const swing = (s < L ? 1 : -1) * WALK.arm * up;
       t[ARM_L * 3] += swing;
       t[ARM_R * 3] -= swing;
       c.bob -= WALK.bob * up;
@@ -1252,6 +1262,11 @@ export const FIGHT_METHODS = {
       const w = Math.sin(this.tick * 0.35);
       t[INDEX.chest * 3 + 2] += w * 0.12;
       t[INDEX.neck * 3 + 2] -= w * 0.2;
+    } else if (this.state === 'shortout') {
+      // (Shuddering as it crackles.)
+      const j = this.tick % 4 < 2 ? 0.05 : -0.05;
+      t[INDEX.chest * 3 + 2] += j;
+      t[INDEX.neck * 3] += j;
     } else if (this.state === 'watch' && this.t > 40) {
       t[INDEX.anR * 3] += (this.tick % 16 < 8 ? -0.25 : 0) * (this.t % 90 < 60 ? 1 : 0);
     }

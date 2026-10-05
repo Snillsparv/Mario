@@ -65,6 +65,15 @@ const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1, wear: 3 }
 const WIND_SPEED = 1.7; // the plants' sway, radians a second
 const FAR_TOP = 3000; // the far shadow map's box reaches this high (the hill's trees' tops)
 const CLOUD_DRIFT = 0.002; // the cirrus's drift along the wind (the sky's units a second)
+// The meshes that cast no sun shadow on mid and low (B4: the fight's draw calls within the tiers'
+// budgets): the front door's leaf (flush with its wall) and the charger's cable; on mid the cars'
+// lamps, T lights, tail lamps, rims and trim (inside the body's own shadow: on low they are merged
+// into casting-free materials already), the window sills' pots and the mailbox's carved bird; on
+// low the signs and the flags too (lost in its coarse map).
+const QUIET = {
+  mid: new Set(['lane-door', 'lane-cable', ...['drl', 'lamp', 'tail', 'rim', 'trim', 'enamel', 'bird'].map((n) => `lane-detail-${n}`)]),
+  low: new Set(['lane-door', 'lane-cable', 'lane-signs', 'lane-cloth']),
+};
 
 const repeatOf = (name) => REPEAT[name] ?? REAL_REPEAT[name];
 const colorOf = (c = 1) => (Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2]) : new THREE.Color(c, c, c));
@@ -230,6 +239,12 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
   look.useProbe([materials.glass]);
   yield;
   const part = yield* laneSteps(layout, { look: 'real', materials });
+  // (B4, the fight's budgets: on mid and low the small things cast no sun shadow, QUIET.)
+  const quiet = QUIET[tier.name];
+  const hush = (list) => {
+    if (quiet) for (const o of list) if (quiet.has(o.name)) o.castShadow = false;
+  };
+  hush(part.object3D.children);
   yield;
   for (const o of part.object3D.children) o.geometry?.computeBoundingSphere(); // (not in the first frame)
   if (!detail) return { part, look };
@@ -248,6 +263,7 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
     look.useProbe(own.filter((m) => m.probe === p.name).map((m) => D[`${m.material}@${p.name}`]), p.name);
   }
   const group = detailGroup(detail, D);
+  hush(group.children);
   part.object3D.add(group);
   // The movers: the bins (one bin in its own frame, instanced, each at home: casting), and the
   // dad's car's hide range in each detail mesh it shares (it is drawn last into them).

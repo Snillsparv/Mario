@@ -28,7 +28,7 @@ import { PLAYER_RADIUS } from '../src/core/constants.js';
 import { attackZone } from '../src/player/actions/attacks.js';
 import * as chunk from '../src/objects/laneBoss/index.js';
 import { LaneBoss } from '../src/objects/laneBoss/index.js';
-import { FIGHT } from '../src/objects/laneBoss/tuning.js';
+import { FIGHT, BOSS } from '../src/objects/laneBoss/tuning.js';
 import { FIGHT_METHODS } from '../src/objects/laneBoss/fight.js';
 import { Markers, Cable } from '../src/objects/laneBoss/markers.js';
 import { LaneBossCam, FIGHT_CAM } from '../src/objects/laneBoss/camera.js';
@@ -185,7 +185,7 @@ test('its attack sets per phase, each told 30 / 26 / 22 ticks with its orange ma
   }
 });
 
-test('the easier fight (LANE_BOSS.easy, off by default): longer tells and windows, no dash in the second round', () => {
+test('the easier fight (LANE_BOSS.easy, off by default; the pause screen sets it): longer tells and windows, no dash in the second round', () => {
   const h = hero();
   assert.equal(h.boss.easy, LANE_BOSS.easy);
   assert.equal(LANE_BOSS.easy, false);
@@ -200,6 +200,17 @@ test('the easier fight (LANE_BOSS.easy, off by default): longer tells and window
   assert.equal(h.boss._phase().set.includes('dash'), false);
   h.boss.setEasy(false);
   assert.equal(h.boss._phase(), FIGHT.PHASES[1]);
+  // (Chosen on the lane's pause screen: main sets LANE_BOSS.easy, the boss follows next tick.)
+  try {
+    LANE_BOSS.easy = true;
+    h.tick();
+    assert.equal(h.boss.easy, true, 'it follows LANE_BOSS.easy');
+    assert.equal(h.boss._phase().window, FIGHT.PHASES[1].window + FIGHT.EASY.window);
+  } finally {
+    LANE_BOSS.easy = false;
+  }
+  h.tick();
+  assert.equal(h.boss.easy, false);
 });
 
 test('R1/R2: the Wheel Stomp: standing still its wave hits him (one wedge, the stomp\'s foot or wave, never both); a jump 1 .. 10 ticks before the wave reaches him clears it, in phase 1 and phase 3', () => {
@@ -698,4 +709,56 @@ test('hot paths avoid allocating constructs (the fight\'s too)', () => {
   }
   assert.doesNotMatch(Cable.prototype.set.toString(), /new [A-Z]|\[\.\.\.|=>/, 'Cable.set');
   assert.doesNotMatch(LaneBossCam.prototype._fight.toString(), /new [A-Z]|\[\.\.\.|=>/, 'LaneBossCam._fight');
+});
+
+test('B4: its eyes\' moods (angry in a tell, tired with its battery low, spinning when dizzy, the car\'s lights again parked), rocking as it rises, its short circuit\'s big sparks off its joints', () => {
+  const h = hero();
+  // Rocking on its wheels as it rises (and level again once it parts).
+  let rock = 0;
+  for (let i = 0; i < 80 && h.boss.cur.m === 0; i++) {
+    h.tick();
+    rock = Math.max(rock, Math.abs(h.boss.cur.rock));
+  }
+  assert.ok(rock > 0.01 && rock <= BOSS.ROCK, `it rocks (${rock.toFixed(3)})`);
+  assert.equal(h.boss.cur.rock, 0, 'level as it parts');
+  h.up();
+  // Angry in a stomp's tell: narrowed, its inner ends down.
+  assert.ok(h.until('stomp_tell', 400) >= 0);
+  h.run(12);
+  const c = h.boss.cur;
+  assert.ok(c.rollL > 0.25 && c.rollR > 0.25 && c.eyeLen === 1, `angry: turned ${c.rollL.toFixed(2)}`);
+  assert.ok(c.blinkL === 1 || Math.abs(c.blinkL - BOSS.MOOD.angry[0]) < 1e-9, `narrowed (${c.blinkL})`);
+  // Tired with its battery low: drooping.
+  h.boss.setIndex = 99;
+  for (let i = 0; i < 600 && h.boss.state !== 'low'; i++) h.tick();
+  h.run(10);
+  assert.ok(h.boss.cur.rollL < -0.15, `tired: drooping (${h.boss.cur.rollL.toFixed(2)})`);
+  // Dizzy after a hit: short and spinning, opposite ways.
+  for (let i = 0; i < 900 && h.boss.state !== 'open'; i++) {
+    h.put(2700, 600, GROUND, 0);
+    h.tick();
+  }
+  h.boss._zap();
+  h.run(2);
+  const r0 = [h.boss.cur.rollL, h.boss.cur.rollR];
+  h.run(1);
+  assert.equal(h.boss.state, 'zapped');
+  assert.equal(h.boss.cur.eyeLen, BOSS.MOOD.dizzy[0], 'short');
+  assert.ok(Math.abs(h.boss.cur.rollL - r0[0]) > 0.3 && Math.abs(h.boss.cur.rollR - r0[1]) > 0.3, 'spinning');
+  // The short circuit: big sparks (2.2 times a burst's) off its joints, a crackle.
+  h.boss.hits = 2;
+  for (let i = 0; i < 900 && h.boss.state !== 'open'; i++) {
+    h.put(2700, 600, GROUND, 0);
+    h.tick();
+  }
+  h.boss._zap();
+  assert.ok(h.until('shortout', 60) >= 0);
+  const sp = h.om.sparkles;
+  h.run(9);
+  const big = sp.parts.slice(0, sp.count).filter((q) => q.cell === 0 && q.size0 > 38 * 2).length;
+  assert.ok(big >= 12, `big sparks (${big})`);
+  assert.ok(h.sounds.filter((s) => s === 'robot_zap').length >= 2, 'it crackles');
+  // Parked again: the car's own lights, level.
+  assert.ok(h.until('tame', 2000) >= 0, 'tame');
+  assert.deepEqual([h.boss.cur.rollL, h.boss.cur.rollR, h.boss.cur.eyeLen, h.boss.cur.rock], [0, 0, 1, 0]);
 });

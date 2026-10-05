@@ -32,6 +32,8 @@ import {
   LEAVE_HEIGHT,
   leaveLine,
   pauseLeaveRect,
+  ROBOT_KEYS,
+  robotLine,
   TITLE_HINT,
 } from '../src/ui/hudLogic.js';
 import { watchPixelRatio, pixelRatio } from '../src/ui/pixelRatio.js';
@@ -481,6 +483,40 @@ test('the pause screen draws the leave line only while the HUD offers the way ou
   hud.setLeave(true);
   hud.setCourse('hall');
   assert.equal(shown(), false, 'gone with the switch');
+});
+
+test("Sparrow Lane's robot fight on its pause screen (B4): \"L  Robot: Normal\" or \"Easy\" beside the leave line, in each legend's crouch binding (the game's Z), its glyphs, fitting every screen; drawn only where the HUD has it", () => {
+  assert.deepEqual(ROBOT_KEYS, { keys: 'L', pad: 'LB', switch: 'ZL', touch: 'Z' });
+  const measure = (t) => measureText(SMALL_FONT, t);
+  for (const kind of Object.keys(ROBOT_KEYS)) {
+    assert.ok(controlsLegend(kind).some(([k, action]) => /Crouch/.test(action) && k.split(' / ').includes(ROBOT_KEYS[kind])), `${kind}: ${ROBOT_KEYS[kind]}`);
+    for (const easy of [false, true]) {
+      const line = robotLine(kind, easy);
+      assert.match(line, easy ? /Robot: Easy$/ : /Robot: Normal$/);
+      assert.ok(SMALL_STRINGS.includes(line), `glyph coverage checks "${line}"`);
+      assert.deepEqual(missingGlyphs(SMALL_FONT, line), [], line);
+      // (Both on one line, as drawn, on the narrowest screen.)
+      assert.ok(measure(`${leaveLine(kind)}     ${line}`) <= 320 - 8, `${kind}: fits 320 wide`);
+    }
+  }
+  const [W, H, s] = [320, 240, 2];
+  const draw = (opts) => {
+    const r = recordingCanvas(W * s, H * s);
+    drawPauseScreen(r.ctx, r.cache, { W, H, s, coins: 0, stars: 0, controls: 'keys', course: COURSE_NAMES.lane, ...opts });
+    return r.rows();
+  };
+  assert.ok(draw({ leave: true, robot: false }).includes('JLeavecourseLRobot:Normal'), draw({ leave: true, robot: false }).join(' | '));
+  assert.ok(draw({ leave: true, robot: true }).includes('JLeavecourseLRobot:Easy'));
+  assert.ok(draw({ leave: false, robot: true }).includes('LRobot:Easy'), 'alone while the way out is shut');
+  assert.ok(!draw({ leave: true }).some((t) => t.includes('Robot')), 'none elsewhere');
+  const hud = new HUD(null);
+  hud.update({ coins: 0 });
+  hud.setPaused(true);
+  hud.setRobot(true);
+  const h = recordingCanvas(W * s, H * s);
+  Object.assign(hud, { ctx: h.ctx, cache: h.cache, canvas: h.ctx.canvas, W, H, s, _dpr: pixelRatio(), _last: 0 });
+  hud._draw(16);
+  assert.ok(h.rows().some((t) => t.includes('Robot:Easy')), 'through the HUD');
 });
 
 test("the course card: a course's name big in gold for COURSE_CARD.ticks game ticks, sliding in and out, waiting while paused", () => {

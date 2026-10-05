@@ -129,10 +129,11 @@ export class Player {
     this.tailDir = 0;
     this.tailRelease = -1;
     // A wheelie bin's grip (Sparrow Lane's movable bins set it: LaneBins.grip; null = none
-    // here) and how long the stick has been held across his facing while holding one
-    // (actions/bin.js).
+    // here), how long the stick has been held across his facing while holding one and how long
+    // B has been held since it was pressed (actions/bin.js).
     this.binGrip = null;
     this.binSide = 0;
+    this.binB = 0;
     // The cannon (actions/cannon.js): { desc, phase, yaw, pitch, inside, ... } once he climbed in;
     // falls until this tick are safe (a shot that landed on a roof too steep to stand on).
     this.cannon = null;
@@ -174,8 +175,12 @@ export class Player {
 
     // B next to Rustmaw's tail coupling grabs it (actions/tail.js) instead of a punch or dive.
     if (c.B.pressed && this.tailGrip !== null) tryGrabTail(this);
-    // B next to a wheelie bin, facing it, grabs it (actions/bin.js) instead of a punch.
-    if (c.B.pressed && this.binGrip !== null) tryGrabBin(this);
+    // B next to a wheelie bin, facing it, grabs it (actions/bin.js) instead of a punch: pressed
+    // standing or pushing it, else held a moment (a quick press running at it punches).
+    if (this.binGrip !== null) {
+      this.binB = c.B.down && (c.B.pressed || this.binB > 0) && this.action !== 'bin_hold' ? this.binB + 1 : 0;
+      if (c.B.pressed || this.binB === T.BIN_GRAB_HOLD) tryGrabBin(this, this.binB >= T.BIN_GRAB_HOLD);
+    }
     for (let i = 0; i < MAX_CHAINED_ACTIONS; i++) {
       if (!ACTIONS[this.action].update(this, c)) break;
     }
@@ -384,6 +389,7 @@ export class Player {
     this.tailSpeed = 0;
     this.tailRelease = -1;
     this.binGrip = null;
+    this.binB = 0;
     this.invincibleUntil = 0;
     this.drownTicks = 0;
     this.breath = 1;

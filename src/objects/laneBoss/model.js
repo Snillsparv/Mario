@@ -283,6 +283,8 @@ const BAY_AT = BONES.findIndex((b) => b[0] === BAY);
 const PELVIS_REST = REST.pelvis[1];
 const PELVIS_LOW = 60; // (folded inside the car: its pelvis in the car's floor)
 const SHADOW_GONE = 0.25; // (the car's soft shadow gone this far into the morph)
+const EYE_DROP = 8; // (an eye turned upright: this much lower, ...)
+const EYE_OUT = 10; // (... and out of the face)
 
 // One look's bones: the root (where the robot stands, its turn), the frame's bones under it, the
 // pieces' bones under it too (set each frame: in the car, flying, or on their frame bone).
@@ -327,11 +329,13 @@ export class Rig {
   // 'frame' first), blinkL, blinkR (0 open .. 1 shut), hatch (the battery bay's hatch open,
   // radians), gate (the backpack's tailgate lifted, radians; default 0), lights (its
   // power lights still lit, 0 .. 3; default 3), spin, heel (the fists' and the heel rollers' turn
-  // on their axles, radians) }
+  // on their axles, radians), rollL, rollR (each eye turned in the face, radians: + its inner end
+  // down, angry; default 0), eyeLen (the eyes' length, 1; dizzy, shorter: they spin), rock (the
+  // whole of it rolled about its forward axis, radians: rocking as it rises; default 0) }
   pose(st) {
     const root = this.root;
     root.position.set(st.x, st.y, st.z);
-    root.rotation.set(0, st.yaw, 0);
+    root.rotation.set(0, st.yaw, st.rock || 0);
     const m = st.m;
     // The frame: grown from nothing inside the car, its pelvis risen from the car's floor.
     const s = grow(m);
@@ -378,16 +382,27 @@ export class Rig {
     // The car's soft shadow (the classic look's) on the ground under it, shrinking away as it parts.
     const k = m >= SHADOW_GONE ? 0 : 1 - m / SHADOW_GONE;
     bones[PIECE.shadow].matrix.makeScale(k, 1, k);
-    // The followers: the eyes on the head (squashed shut as they blink), the hatch on the tail.
+    // The followers: the eyes on the head (squashed shut as they blink, turned in the face: its
+    // expressions), the hatch on the tail.
     for (let i = 0; i < FOLLOWERS.length; i++) {
       const p = FOLLOWERS[i];
       const on = LEADERS[i];
       const a = this.pivots[p];
       const o = this.pivots[on];
       _t.makeTranslation(a[0] - o[0], a[1] - o[1], a[2] - o[2]);
-      const shut = p === 'eyeL' ? st.blinkL : st.blinkR;
+      const left = p === 'eyeL';
+      const shut = left ? st.blinkL : st.blinkR;
       if (p === 'hatch') _t.multiply(_m.makeRotationX(st.gate || 0));
-      else _t.multiply(_m.makeScale(1, shut > 0.92 ? 0.08 : 1 - shut, 1));
+      else {
+        // (Turned, a little lower and out of the raked face: its ends neither poke over the
+        // face's top edge nor sink into it.)
+        const roll = (left ? st.rollL : -st.rollR) || 0;
+        if (roll !== 0) {
+          const k = Math.abs(Math.sin(roll));
+          _t.multiply(_m.makeTranslation(0, -EYE_DROP * k, EYE_OUT * k)).multiply(_m.makeRotationZ(roll));
+        }
+        _t.multiply(_m.makeScale(st.eyeLen || 1, shut > 0.92 ? 0.08 : 1 - shut, 1));
+      }
       bones[PIECE[p]].matrix.multiplyMatrices(bones[PIECE[on]].matrix, _t);
     }
     root.updateMatrixWorld(true);

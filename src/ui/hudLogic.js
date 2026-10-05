@@ -212,6 +212,10 @@ export const LEAVE_KEYS = Object.freeze({ keys: 'J', pad: 'B', switch: 'B', touc
 export const LEAVE_Y = 23; // the line's top, below pauseY
 export const LEAVE_HEIGHT = 9; // SMALL_FONT's rows
 export const leaveLine = (kind) => `${LEAVE_KEYS[kind] ?? LEAVE_KEYS.keys}  ${LEAVE_COURSE}`;
+// Sparrow Lane's robot fight, normal or easy (LANE_BOSS.easy; main: Z while paused there,
+// remembered on the device), on the same line, in the bindings of the legend shown.
+export const ROBOT_KEYS = Object.freeze({ keys: 'L', pad: 'LB', switch: 'ZL', touch: 'Z' });
+export const robotLine = (kind, easy) => `${ROBOT_KEYS[kind] ?? ROBOT_KEYS.keys}  Robot: ${easy ? 'Easy' : 'Normal'}`;
 
 // Logical rect { x, y, w, h } of the leave line on the pause screen of a W x H logical screen
 // (pauseLayout's stack for the `controls` legend; `kind` names its bindings, as
@@ -306,6 +310,7 @@ export const SMALL_STRINGS = [
   ...REC_SMALL_STRINGS,
   ...RACE_SMALL_STRINGS,
   ...Object.keys(LEAVE_KEYS).map(leaveLine),
+  ...Object.keys(ROBOT_KEYS).flatMap((k) => [robotLine(k, false), robotLine(k, true)]),
   'starring',
   'CONTROLS',
   START_PROMPT,

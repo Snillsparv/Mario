@@ -28,7 +28,9 @@
 // the fist), fight-charge (kneeling at the charger, the hatch open), fight-cable (its cable from
 // the charger to its chest, from under the carport), fight-zap (a hit
 // on the cells), fight-cam (the game's own camera mid-fight), beaten-short (its defeat's short
-// circuit), beaten-park (reversing into its slot), boss-star (its reward star)), --sizes
+// circuit), beaten-park (reversing into its slot), boss-star (its reward star); B4: eyes-angry,
+// eyes-tired, eyes-dizzy (its eyes' moods close up), fight-squat (a stomp's landing from the
+// side), notice (the amber flash of its notice), bins-knock (a bin punched, rocking)), --sizes
 // (default 960x540,1280x720), --looks (default high,low,classic: a tier, or classic). A frame
 // on SwiftShader takes seconds: each screenshot waits up to three minutes.
 // Files: <out>/<look>-<view>-<width>.png. Prints each view's F1 line and draw calls.
@@ -120,6 +122,15 @@ const VIEWS = {
   'beaten-short': { fight: { hits: 2, charge: true, until: ['open', 20], punch: true, then: ['shortout', 40] }, rel: true, pos: [560, 430, -880], look: [20, 280, -40], fov: 50 },
   'beaten-park': { fight: { hits: 2, charge: true, until: ['open', 20], punch: true, then: ['reverse', 24] }, pos: [2420, 300, 640], look: [1900, 130, 1300], fov: 48 },
   'boss-star': { fight: { hits: 2, charge: true, until: ['open', 20], punch: true, then: ['tame', 90], hero: [2000, 22, 820, Math.PI] }, pos: [2380, 300, 420], look: [1920, 280, 1100], fov: 50 },
+  // B4: its eyes' moods close up (angry in a stomp's tell, tired with its battery low, dizzy
+  // after a hit), the deep squat of a stomp's landing from the side, the amber flash of its
+  // notice (the car parked), a bin knocked by a punch (rocking, its lid clacking).
+  'eyes-angry': { fight: { hits: 0, set: 0, hero: [1960, 22, 1040, -0.15], until: ['stomp_tell', 20] }, rel: true, turn: true, pos: [150, 700, 620], look: [0, 610, 0], fov: 40 },
+  'eyes-tired': { fight: { charge: true, until: ['low', 24] }, rel: true, turn: true, pos: [150, 660, 620], look: [0, 560, 0], fov: 40 },
+  'eyes-dizzy': { fight: { charge: true, until: ['open', 20], punch: true, then: ['dizzy', 26], hero: [1889, 22, 1677, Math.PI] }, rel: true, turn: true, pos: [120, 640, 560], look: [0, 600, 0], fov: 40 },
+  'fight-squat': { fight: { hits: 0, set: 0, hero: [1960, 22, 1040, -0.15], until: ['stomp_land', 6], out: 380 }, rel: true, turn: true, pos: [-1250, 560, 420], look: [0, 330, 0], fov: 50 },
+  notice: { notice: true, hero: [2450, 22, 1150, -2.3], pos: [2250, 300, 820], look: [1900, 110, 1445], fov: 42 },
+  'bins-knock': { knock: true, hero: [1665, 22, 1300, 0], pos: [1790, 300, 1170], look: [1665, 110, 1600], fov: 45 },
 };
 
 const out = opt('out', 'shots/real');
@@ -269,6 +280,14 @@ try {
             }
           } else if (v.robot) boss.pose({ m: v.robot.m, pose: v.robot.pose ?? 'stand', yaw: v.robot.yaw !== undefined ? Math.PI + v.robot.yaw : undefined });
           else boss.pose(null);
+          if (v.notice) {
+            // (Its notice: Jonas near the parked car, the T lights and the amber flash.)
+            const [hx, hy, hz, yaw] = v.hero;
+            g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
+            g.player.setAction('idle');
+            boss.lastNotice = -Infinity;
+            g.step(200, {}, () => boss.state === 'notice' && boss.t >= 5);
+          }
           if (v.follow) {
             const f = v.follow;
             if (f.entry) g.enterArea('lane', f.entry);
@@ -283,11 +302,18 @@ try {
             return info();
           }
           const [hx, hy, hz, yaw] = v.bins?.hero ?? v.grab?.hero ?? v.hero ?? [0, 22, 1156, Math.PI];
-          if (!v.fight) {
+          if (!v.fight && !v.notice) {
             g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
             g.player.setAction('idle');
             g.camera.reset(g.player);
             g.step(v.grab ? 2 : 5);
+          }
+          if (v.knock) {
+            // (Running at the first bin, a quick B: a punch, the bin rocking.)
+            const face = (await g.laneBoss).bins.list[0].z - 45;
+            for (let i = 0; i < 60 && face - g.player.pos.z > 76; i++) g.step(1, { stickY: 0.75 });
+            g.step(1, { stickY: 0.75, B: true });
+            g.step(4);
           }
           if (v.bins) {
             // The lane's bins (its lazy chunk, attached once in): grab the first with B, pull it

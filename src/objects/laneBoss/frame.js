@@ -145,6 +145,9 @@ export function buildFrame(look, tint, { chest = 100 } = {}) {
   // car's tail on its back).
   on('chest');
   const cy = R.chest[1];
+  // (Its waist: a block under the chest reaching down into the hip block, so however the torso
+  // leans, a squat's or an arched back's, it never floats over the hips.)
+  block(gloss(G.paint), [0, cy - 24, -6], [66, 46, 42], 12);
   taper(gloss(G.paint), cy, cy + 70, [0, -8], [72, 46], [0, -10], [98, 54], 14);
   taper(body(G.paint), cy + 56, cy + 214, [0, -2], [100, 58], [0, -8], [136, 64], 20);
   block(body(G.paint), [0, R.shL[1] + 8, -8], [R.shL[0] + 6, 26, 54], 18);

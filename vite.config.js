@@ -8,8 +8,9 @@ import glslMinify from './tools/glslMinify.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.69 MB minified (1,690,122 bytes with
-// B2's STOMPWATT hooks and three's skinning, and B3's fight hooks), ~550 kB gzipped, plus two
+// first frame, so splitting would only add requests. ~1.69 MB minified (1,691,039 bytes with
+// B2's STOMPWATT hooks and three's skinning, B3's fight hooks and B4's robot line on the pause
+// screen), ~550 kB gzipped, plus two
 // lazily loaded chunks and two
 // module workers of its own (new Worker(new
 // URL(...)), not imports): the ~13 kB title-logo worker and the realistic look's
@@ -20,7 +21,7 @@ const TARGET = 'es2022';
 // realistic look's main-thread code the boot does not need (its materials, sky, probe, far
 // shadow, post chain and output pass); it imports only from main (three.js and the classic
 // builders are not downloaded twice) and stays under 90 kB; with no modulepreload (below) the
-// game's index.html still loads main alone. The second chunk, `laneBoss` (~84 kB: objects/
+// game's index.html still loads main alone. The second chunk, `laneBoss` (~89 kB: objects/
 // laneBoss/index.js, imported only dynamically by objects/laneBoss/area.js, at boot), is
 // Sparrow Lane's movers (the movable bins) and its boss, STOMPWATT, with its fight, sounds and
 // music: the same rules, under

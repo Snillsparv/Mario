@@ -1,13 +1,14 @@
 // Pause overlay: dimmed screen, the course name (the area Jonas is in: `course`, default
 // CASTLE GROUNDS) with the collected coins/stars, a big PAUSE, in a course with a way out
-// (`leave`) a gold "J  Leave course" line under it (the button in the legend's bindings), and
+// (`leave`) a gold "J  Leave course" line under it (the button in the legend's bindings; in
+// Sparrow Lane `robot`, its robot fight's "L  Robot: Normal" or "Easy" beside it), and
 // a controls legend (the touch controller's while it is shown, else gamepad bindings while a
 // pad is connected, else keyboard). Drawn into the HUD canvas (logical coords × s).
 
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
 import { drawText, drawIcon, textWidth } from './raster.js';
-import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, REAL_LOOK_ROW, CLASSIC_LOOK_ROW, phoneEntry, pauseLayout, pauseLeaveRect, leaveLine } from './hudLogic.js';
+import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, REAL_LOOK_ROW, CLASSIC_LOOK_ROW, phoneEntry, pauseLayout, pauseLeaveRect, leaveLine, robotLine } from './hudLogic.js';
 import { padLayout } from '../core/input.js';
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -84,7 +85,7 @@ export function pauseItemRect(W, H, kind, item) {
   return null;
 }
 
-export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys', course = COURSE_NAME, leave = false, look = null }) {
+export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = false, controls = gamepad ? 'pad' : 'keys', course = COURSE_NAME, leave = false, look = null, robot = null }) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   ctx.fillStyle = 'rgba(0,0,12,0.5)';
@@ -105,10 +106,12 @@ export function drawPauseScreen(ctx, cache, { W, H, s, coins, stars, gamepad = f
 
   // PAUSE at double size.
   drawText(ctx, cache, BIG_FONT, 'PAUSE', cx, pauseY * s, { px: s * 2, align: 'center' });
-  // A course's way out, in the gap under it.
-  if (leave) {
+  // A course's way out, in the gap under it; beside it Sparrow Lane's robot fight (`robot`:
+  // easy or not; null elsewhere).
+  if (leave || robot !== null) {
     const r = pauseLeaveRect(W, H, (t) => measureText(SMALL_FONT, t), controlsLegend(controls, look), controls);
-    drawText(ctx, cache, SMALL_FONT, leaveLine(controls), cx, r.y * s, { px: s, align: 'center', style: 'key' });
+    const line = (leave ? leaveLine(controls) : '') + (leave && robot !== null ? '     ' : '') + (robot !== null ? robotLine(controls, robot) : '');
+    drawText(ctx, cache, SMALL_FONT, line, cx, r.y * s, { px: s, align: 'center', style: 'key' });
   }
 
   // Controls legend on a dark rounded panel.

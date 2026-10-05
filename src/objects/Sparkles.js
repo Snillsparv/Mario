@@ -93,12 +93,13 @@ export class Sparkles {
     }
   }
 
-  // A ring of star sparkles flying outward plus a quick central flash (coin pickup).
-  burst(pos, t0, tint, count = 7) {
+  // A ring of star sparkles flying outward plus a quick central flash (coin pickup); `scale`
+  // makes them bigger and fly further (a robot's short circuit).
+  burst(pos, t0, tint, count = 7, scale = 1) {
     const rng = this.rng;
     for (let i = 0; i < count; i++) {
       const a = ((i + rng() * 0.5) / count) * TAU;
-      const speed = 240 + rng() * 80;
+      const speed = (240 + rng() * 80) * scale;
       const p = this._spawn(t0, 0.45 + rng() * 0.15, tint);
       if (!p) return;
       p.x = pos.x;
@@ -108,8 +109,8 @@ export class Sparkles {
       p.vy = 140 + rng() * 120;
       p.vz = Math.sin(a) * speed;
       p.gy = -500;
-      p.size0 = 38;
-      p.size1 = 12;
+      p.size0 = 38 * scale;
+      p.size1 = 12 * scale;
       p.cell = 0;
     }
     const f = this._spawn(t0, 0.25, tint);
@@ -118,7 +119,7 @@ export class Sparkles {
     f.y = pos.y;
     f.z = pos.z;
     f.vx = f.vy = f.vz = 0;
-    f.size0 = f.size1 = 110;
+    f.size0 = f.size1 = 110 * scale;
     f.cell = 1;
     f.twinkle = true;
   }
@@ -159,6 +160,20 @@ export class Sparkles {
     p.size0 = 44;
     p.size1 = 8;
     p.cell = rng() < 0.5 ? 0 : 1;
+  }
+
+  // A soft round glow lit at pos for `life` seconds, fading (a lamp flashing: the lane's robot's
+  // indicators).
+  flash(pos, t0, tint, size, life) {
+    const p = this._spawn(t0, life, tint);
+    if (!p) return;
+    p.x = pos.x;
+    p.y = pos.y;
+    p.z = pos.z;
+    p.vx = p.vy = p.vz = 0;
+    p.size0 = size;
+    p.size1 = size * 0.7;
+    p.cell = 2;
   }
 
   // A twinkle that grows and shrinks in place somewhere within `radius` of pos.

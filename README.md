@@ -180,11 +180,20 @@ there shows the real street through the retro TV.
   reverses into its parking spot and a **star** rises in front of it (a small jump reaches it;
   you stay in the street). It stays a friendly parked car for the rest of the game. A hit from it
   costs one health wedge; walk away (or climb up on the bins or the carport) and it waits, then
-  parks itself again, keeping its lost lights for next time.
+  parks itself again, keeping its lost lights for next time. Its eyes (the car's T-shaped lights)
+  show how it feels: narrowed and angry when it attacks, droopy when its battery is low,
+  spinning when it is dizzy after a hit.
+* **An easier robot fight** for the youngest: pause in Sparrow Lane and press **L** (or Shift;
+  LB / ZL on a gamepad, Z on the touch screen) to switch the line under PAUSE from "Robot:
+  Normal" to "Robot: Easy" (and back). Easy gives longer warnings before each attack, three
+  more seconds at the charger to hit its cells and no dash in the second round. The game
+  remembers the choice on that computer or phone.
 * The dad's two **wheelie bins** by the gable move: walk into one to push it, or stand at it,
   face it and press **attack** to grab it, then pull it out (stick back) or push it along (stick
-  forward); attack, crouch or jump lets go. They stay on the drive, and roll back home by
-  themselves when left (and whenever Jonas comes back into the street).
+  forward); attack, crouch or jump lets go. Running at a bin, a quick attack is a punch (the bin
+  rocks and its lid clacks); hold attack for a moment to grab it anyway. They rumble as they
+  roll, stay on the drive, and roll back home by themselves when left (and whenever Jonas
+  comes back into the street).
 * The lampposts at the junction and the turning area, the three flagpoles and the red-leaf tree
   can be climbed: a handstand on top shows the lane.
 * Up the steps at the turning area there is a **trampoline** in a garden: jump onto it and keep
@@ -211,7 +220,7 @@ there shows the real street through the retro TV.
 | swim | jump to stroke, hold jump to kick along; at the surface pull back and jump to leap out, crouch (or push up and jump) to dive |
 | fly | with the winged cap (from the crystal box), triple jump (or flip off a tree top): Jonas takes off at the top of the jump and climbs. Like an aeroplane: pull back to climb, push forward to dive, left/right to bank. The run-up's forward push counts as "level" until you let go once. Crouch to drop |
 | grab & throw a tail | attack next to Rustmaw's glowing tail coupling grabs it; rotate the stick in circles to spin (faster each circle), attack again to throw; crouch lets go |
-| move a wheelie bin | walk into it to push it; attack facing it grabs it (any side): stick back pulls, stick forward pushes, attack, crouch or jump lets go |
+| move a wheelie bin | walk into it to push it; attack facing it, standing or pushing it, grabs it (any side; running at it, hold attack a moment): stick back pulls, stick forward pushes, attack, crouch or jump lets go |
 | cannon | step onto the glowing pad beside the cannon: Jonas hops into the barrel. Aim with the stick (up raises the barrel; the reticle shows where it points), jump fires, attack or crouch climbs back out. Mid-shot, crouch ground-pounds and attack dives; a landing from a shot never hurts. With the winged cap the shot turns into flight at its peak |
 
 ## Controls
@@ -226,6 +235,7 @@ there shows the real street through the retro TV.
 | C | RB | camera mode |
 | Enter / Esc | Start | pause (shows the controls) |
 | J (while paused in a course) | B (while paused in a course) | leave the course (back out of the ship in the bottle) |
+| L or Shift (while paused in Sparrow Lane) | LB / ZL (while paused in Sparrow Lane) | the robot fight: normal or easy (remembered) |
 | R (or F2) | | retro filter (the low-resolution N64 look on/off; in Sparrow Lane's real look, for that visit) |
 | G | | Sparrow Lane: the classic look instead of the real one (and back), for this session |
 | 4 (or F3) | | 4:3 screen |

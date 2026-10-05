@@ -158,7 +158,7 @@ test('its lawns are grey tints (the lawn texture is green), its roofs\' uvs run 
   assert.ok(tris < classicTris * 1.05 && tris < 100000, `${tris} triangles (classic ${classicTris})`);
 });
 
-test('the realistic lane: each mesh in its catalogue material, shadows cast by all but the ground and the glass, the glass on the probe, the signs classic', () => {
+test('the realistic lane: each mesh in its catalogue material, shadows cast by all but the ground and the glass (on low not by the small things either), the glass on the probe, the signs classic', () => {
   const tier = TIERS.low;
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
   for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
@@ -177,7 +177,8 @@ test('the realistic lane: each mesh in its catalogue material, shadows cast by a
     assert.equal(mat.fog, false, `${name}: hazed, not fogged`);
     assert.match(mat.customProgramCacheKey(), /^real-/, name);
     assert.equal(m.receiveShadow, true, name);
-    assert.equal(m.castShadow, !['lane-asphalt', 'lane-grass', 'lane-cobbles', 'lane-path', 'lane-glass'].includes(name), `${name} casts`);
+    // (On low the small things cast none: the signs, the flags, the door's leaf, the cable.)
+    assert.equal(m.castShadow, !['lane-asphalt', 'lane-grass', 'lane-cobbles', 'lane-path', 'lane-glass', 'lane-signs', 'lane-cloth', 'lane-door', 'lane-cable'].includes(name), `${name} casts`);
   }
   assert.ok(M['lane-glass'].material.isMeshStandardMaterial && M['lane-glass'].material.transparent && M['lane-glass'].material.userData.ior === 2.2);
   assert.deepEqual(look.probeMaterials, [M['lane-glass'].material], 'the glass reflects the probe');
@@ -300,6 +301,19 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     }
     look.dispose();
   }
+});
+
+test('B4, the fight\'s budgets: on mid the front door\'s leaf, the charger\'s cable, the cars\' lamps, T lights, tail lamps, rims and trim, the sills\' pots and the mailbox\'s bird cast no sun shadow; the cars\' bodies, glass and tyres, the houses and the bins still do', () => {
+  const tier = TIERS.mid;
+  const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
+  for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
+  const detail = buildLaneDetail(lane, 'mid');
+  const { part, look } = buildLaneReal(lane, { store, tier, origin: AREA_DEFS.lane.origin, anisotropy: 2, detail });
+  const M = {};
+  part.object3D.traverse((o) => o.isMesh && (M[o.name] = o));
+  for (const name of ['lane-door', 'lane-cable', 'lane-detail-drl', 'lane-detail-lamp', 'lane-detail-tail', 'lane-detail-rim', 'lane-detail-trim', 'lane-detail-enamel', 'lane-detail-bird']) assert.equal(M[name]?.castShadow, false, `${name} casts none`);
+  for (const name of ['lane-signs', 'lane-cloth', 'lane-boards', 'lane-detail-carPaint@0', 'lane-detail-carGlass@0', 'lane-detail-tyre', 'lane-detail-bins', 'lane-detail-paint', 'lane-detail-roof']) assert.equal(M[name]?.castShadow, true, `${name} casts`);
+  look.dispose();
 });
 
 test('privacy and originality: the realistic look\'s sources load no image, read no photograph and fetch nothing (every texture is painted in code), name no street and letter nothing', () => {

@@ -83,11 +83,19 @@ export class LaneBins {
         homing: 0, // ticks it has been trying to get home
         tip: 0,
         ptip: 0,
-        tnx: 0, // the side it tips toward (the held face's normal)
+        tnx: 0, // the side it tips toward (the held face's normal; a knock's way)
         tnz: 0,
+        jk: 1,
         shoveT: 0, // ticks of a shove left, and its step
         svx: 0,
         svz: 0,
+        roll: 0, // ticks it has been rolling (its wheels' rumble), and its last step
+        mx: 0,
+        mz: 0,
+        jolt: 0, // ticks of a knock's rock left (a punch, a pound, a stop), its rock now and last tick's
+        rock: 0,
+        prock: 0,
+        hitT: 0, // (a punch knocks it once)
         stale: true, // its instances to be written (a look attached, put home)
         dx: NaN, // where its instances were last written (frames may be skipped)
         dz: NaN,
@@ -205,7 +213,7 @@ export class LaneBins {
     b.svx = dx * B.SHOVE;
     b.svz = dz * B.SHOVE;
     b.homing = 0;
-    this.events?.emit('sfx', { name: 'bin_clatter', pos: { x: b.x, y: b.y + 80, z: b.z } });
+    this._sound('bin_clatter', b);
     return true;
   }
 
@@ -265,6 +273,62 @@ export class LaneBins {
     }
     g.release = false;
     this._homeByThemselves(player, cameraYaw);
+    this._knocks(player);
+  }
+
+  // A bin's feel: his attack on it (a punch, a kick, a pound beside it) rocks it on its wheels
+  // away from him with a lid clack (it stays where it is: his to grab); rolling, its wheels
+  // rumble; stopping, its lid clacks and it rocks forward.
+  _knocks(player) {
+    const a = player.getAttack ? player.getAttack() : null;
+    for (let i = 0; i < this.list.length; i++) {
+      const b = this.list[i];
+      b.prock = b.rock;
+      if (b.hitT > 0) b.hitT--;
+      if (a !== null && a.radius > 0 && !b.held && b.hitT === 0) {
+        const cx = a.x < b.x - b.hw ? b.x - b.hw : a.x > b.x + b.hw ? b.x + b.hw : a.x;
+        const cz = a.z < b.z - b.hd ? b.z - b.hd : a.z > b.z + b.hd ? b.z + b.hd : a.z;
+        const cy = a.y < b.y ? b.y : a.y > b.y + b.h ? b.y + b.h : a.y;
+        const dx = cx - a.x;
+        const dz = cz - a.z;
+        const dy = cy - a.y;
+        if (dx * dx + dy * dy + dz * dz <= a.radius * a.radius) {
+          b.hitT = B.KNOCK_GAP;
+          // (Away from him along the face's axis.)
+          const p = player.pos;
+          const alongX = Math.abs(p.x - b.x) - b.hw > Math.abs(p.z - b.z) - b.hd;
+          this._jolt(b, alongX ? (p.x < b.x ? 1 : -1) : 0, alongX ? 0 : p.z < b.z ? 1 : -1, a.kind === 'ground_pound_land' ? 1.6 : 1);
+        }
+      }
+      const moved = b.x !== b.px || b.z !== b.pz;
+      if (moved) {
+        b.mx = b.x - b.px;
+        b.mz = b.z - b.pz;
+        if (b.roll++ % B.ROLL_EVERY === 0) this._sound('bin_roll', b);
+      } else if (b.roll > 0) {
+        b.roll = 0;
+        const ax = Math.abs(b.mx) >= Math.abs(b.mz);
+        if (b.held) this._sound('bin_lid', b);
+        else this._jolt(b, ax ? Math.sign(b.mx) : 0, ax ? 0 : Math.sign(b.mz), 0.5);
+      }
+      if (b.jolt > 0) b.jolt--;
+      b.rock = b.jolt > 0 && b.tip === 0 ? b.jk * B.JOLT * Math.abs(Math.sin(b.jolt * 0.9)) * (b.jolt / B.JOLT_TICKS) : 0;
+    }
+  }
+
+  // Rocking on its wheels toward (sx, sz) (an axis), `k` times as hard, its lid clacking.
+  _jolt(b, sx, sz, k) {
+    if (b.tip === 0) {
+      b.tnx = sx;
+      b.tnz = sz;
+    }
+    b.jolt = B.JOLT_TICKS;
+    b.jk = k;
+    this._sound('bin_lid', b, k);
+  }
+
+  _sound(name, b, k = 1) {
+    this.events?.emit('sfx', { name, pos: { x: b.x, y: b.y + 80, z: b.z }, pitch: k > 1 ? 0.85 : 1 });
   }
 
   // The held bin follows him at the grip distance along the held face's axis; where it may not
@@ -397,7 +461,7 @@ export class LaneBins {
       const b = this.list[i];
       const x = b.px + (b.x - b.px) * alpha - this.origin.x;
       const z = b.pz + (b.z - b.pz) * alpha - this.origin.z;
-      const tip = b.ptip + (b.tip - b.ptip) * alpha;
+      const tip = b.ptip + (b.tip - b.ptip) * alpha + b.prock + (b.rock - b.prock) * alpha;
       if (!b.stale && x === b.dx && z === b.dz && tip === b.dtip) continue;
       b.dx = x;
       b.dz = z;

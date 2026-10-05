@@ -5,7 +5,8 @@
 //   morph=0..1          the morph (0 the car, 1 the robot; default 1)
 //   pose=<a rig.js POSES name>   its pose (default stand; on bent legs its pelvis lowered: rig.footLift)
 //   lift=<units>        the car's body raised off its wheels (default 0; 50 during a wake)
-//   blink=0..1          its eyes shut that far
+//   blink=0..1          its eyes shut that far; roll=<radians> turned in its face (+ the inner
+//                       ends down: angry), eyelen=<0..1> their length (dizzy: short, spinning)
 //   look=<radians>      its head turned round
 //   hatch=<radians>     its backpack's hatch open that far (the battery's cells show)
 //   lights=0..3         its power lights still lit (default 3)
@@ -49,7 +50,7 @@ export async function setup({ THREE, scene, params }) {
     const t = turnsOf(pose, m, num('look', 0));
     const lift = (hip, kn) => footLift(t[INDEX[hip] * 3], t[INDEX[kn] * 3]);
     const bob = m >= 1 ? -Math.min(lift('hipL', 'knL'), lift('hipR', 'knR')) : 0;
-    model.pose({ x: (i - (list.length - 1) / 2) * gap, y: 0, z: 0, yaw: num('turn', 0), m, lift: num('lift', 0), bob, turns: t, blinkL: num('blink', 0), blinkR: num('blink', 0), hatch: num('hatch', 0), lights: num('lights', 3) });
+    model.pose({ x: (i - (list.length - 1) / 2) * gap, y: 0, z: 0, yaw: num('turn', 0), m, lift: num('lift', 0), bob, turns: t, blinkL: num('blink', 0), blinkR: num('blink', 0), rollL: num('roll', 0), rollR: num('roll', 0), eyeLen: num('eyelen', 1), hatch: num('hatch', 0), lights: num('lights', 3) });
   });
   // The drive under it.
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(gap * list.length + 1600, 2400).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5a5a58 }));

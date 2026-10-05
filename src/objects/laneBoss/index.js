@@ -29,8 +29,8 @@ export function attach(objects, area, { boss = true } = {}) {
   const layout = area.objectsLayout;
   const bins = layout.MOVABLE_BINS?.length ? new LaneBins({ collision: area.collision, events: objects.events, layout, meshes: area.parts.map((p) => p.movers?.bins).filter(Boolean) }) : null;
   let laneBoss = null;
+  register(SFX, SFX_INFO); // (the bins' sounds and the robot's)
   if (boss && layout.NAMED?.[LANE.LANE_BOSS.car]) {
-    register(SFX, SFX_INFO);
     registerSong(SONGS, INSTRUMENTS, CHANNELS);
     laneBoss = new LaneBoss({ objects, area, layout: LANE });
   }

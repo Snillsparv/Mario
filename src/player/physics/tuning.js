@@ -322,3 +322,7 @@ export const BIN_HOLD = 54; // (PLAYER_RADIUS + 4)
 export const BIN_DRAG_SPEED = 6; // (WALL_PUSH_SPEED: as fast as a push)
 export const BIN_ALONG_COS = 0.6; // the stick drags along his facing within acos(this)
 export const BIN_SIDE_TICKS = 10;
+// A press grabs only with him standing or slow (pushing it): running at a bin faster than
+// BIN_GRAB_SPEED, B punches (or dives) as ever; B held BIN_GRAB_HOLD ticks grabs it anyway.
+export const BIN_GRAB_SPEED = 10;
+export const BIN_GRAB_HOLD = 8;

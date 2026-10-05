@@ -20,7 +20,7 @@ import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { Events } from '../src/core/events.js';
 import { PLAYER_RADIUS } from '../src/core/constants.js';
-import { BIN_HOLD, BIN_DRAG_SPEED } from '../src/player/physics/tuning.js';
+import { BIN_HOLD, BIN_DRAG_SPEED, BIN_GRAB_SPEED, BIN_GRAB_HOLD } from '../src/player/physics/tuning.js';
 import * as chunk from '../src/objects/laneBoss/index.js';
 import { LaneBins, BINS_TUNING } from '../src/objects/laneBoss/index.js';
 
@@ -339,10 +339,87 @@ test('idle bins cost nothing: no collision query a tick with him away from them;
     for (const [k] of wrap) delete col[k];
   }
   assert.equal(n, 0, `${n} queries`);
-  for (const name of ['update', 'animate', '_follow', '_push', '_homeByThemselves', 'free', '_place']) {
+  for (const name of ['update', 'animate', '_follow', '_push', '_homeByThemselves', 'free', '_place', '_knocks', '_jolt']) {
     const src = LaneBins.prototype[name].toString();
     assert.doesNotMatch(src, /Math\.(hypot|max|min)\(/, name);
     assert.doesNotMatch(src, /for \((const|let|var) [^;]* of /, name);
     assert.doesNotMatch(src, /new [A-Z]|\[\.\.\.|=>/, `${name}: no allocation`);
   }
+});
+
+test('the bins\' feel (B4): running at one a quick B punches (it rocks on its wheels with a lid clack and stays), held a moment B grabs it; standing or pushing it a press grabs at once; rolling it rumbles, stopping its lid clacks; a pound beside it rocks it harder', () => {
+  const [bx, bz] = [2000, 760];
+  const face = bz - HD;
+  const setup = (z) => {
+    const h = hero(bx, z, S);
+    h.put(0, bx, bz);
+    h.sounds = [];
+    h.om.events.on('sfx', (e) => h.sounds.push(e));
+    h.tick();
+    return h;
+  };
+  // Running at it (faster than BIN_GRAB_SPEED), B pressed once in reach: a punch.
+  const runIn = () => {
+    const h = setup(face - 400);
+    for (let t = 0; t < 60 && face - h.at().z > 76; t++) h.tick({ stickY: 0.75 }, S);
+    assert.ok(face - h.at().z <= 76 && h.p.forwardVel > BIN_GRAB_SPEED, `running in reach (${(face - h.at().z).toFixed(0)} off, at ${h.p.forwardVel.toFixed(1)})`);
+    return h;
+  };
+  const h = runIn();
+  h.tick({ stickY: 0.75, B: true }, S);
+  assert.equal(h.p.action, 'punch', 'a quick press running at it: a punch');
+  let rocked = 0;
+  for (let t = 0; t < 14; t++) {
+    h.tick({}, S);
+    rocked = Math.max(rocked, h.bins.list[0].rock);
+  }
+  assert.ok(h.sounds.some((e) => e.name === 'bin_lid'), 'its lid clacks');
+  assert.ok(rocked > 0.02 && h.bins.list[0].tnz === 1, `it rocks away from him (${rocked.toFixed(3)})`);
+  assert.deepEqual(h.bin(0), { x: bx, z: bz }, 'and stays where it is');
+  assert.notEqual(h.p.action, 'bin_hold');
+  // Held a moment: it grabs.
+  const g = runIn();
+  for (let t = 0; t < BIN_GRAB_HOLD - 1; t++) g.tick({ stickY: 0.75, B: true }, S);
+  assert.notEqual(g.p.action, 'bin_hold', 'not yet');
+  g.tick({ stickY: 0.75, B: true }, S);
+  assert.equal(g.p.action, 'bin_hold', `B held ${BIN_GRAB_HOLD} ticks grabs it`);
+  for (let t = 0; t < 20; t++) g.tick({ B: true }, S);
+  assert.equal(g.p.action, 'bin_hold', 'still holding B: no let-go, no punch');
+  g.tick({}, S);
+  g.tick({ B: true }, S);
+  assert.equal(g.p.action, 'idle', 'B lets go');
+  for (let t = 0; t < 2 * BIN_GRAB_HOLD; t++) g.tick({ B: true }, S);
+  assert.equal(g.p.action, 'idle', 'the press that let go never grabs again, held');
+  // Standing in reach: a press grabs at once.
+  const s = setup(face - 70);
+  s.tick({ B: true }, S);
+  assert.equal(s.p.action, 'bin_hold', 'standing: at once');
+  // Pushing it (walking into it): it rumbles as it rolls; a press grabs at once; let go and
+  // pushed on, stopped: its lid clacks.
+  const p = setup(face - 60);
+  for (let t = 0; t < 30; t++) p.tick({ stickY: 1 }, S);
+  assert.ok(p.bin(0).z > bz + 60, `pushed (${p.bin(0).z - bz})`);
+  assert.ok(p.sounds.filter((e) => e.name === 'bin_roll').length >= 3, 'its wheels rumble');
+  p.tick({ stickY: 1, B: true }, S);
+  assert.equal(p.p.action, 'bin_hold', 'pushing: a press grabs at once');
+  p.tick({}, S);
+  p.tick({ B: true }, S);
+  assert.equal(p.p.action, 'idle', 'let go');
+  for (let t = 0; t < 10; t++) p.tick({ stickY: 1 }, S);
+  const lids = p.sounds.filter((e) => e.name === 'bin_lid').length;
+  for (let t = 0; t < 6; t++) p.tick({}, S);
+  assert.ok(p.sounds.filter((e) => e.name === 'bin_lid').length > lids, 'stopping: its lid clacks');
+  // A ground pound beside it: rocked harder, a lower clack.
+  const q = setup(face - 70);
+  q.tick({ A: true }, S);
+  for (let t = 0; t < 8; t++) q.tick({}, S);
+  q.tick({ Z: true }, S);
+  let pound = 0;
+  for (let t = 0; t < 40; t++) {
+    q.tick({}, S);
+    pound = Math.max(pound, q.bins.list[0].rock);
+  }
+  const clack = q.sounds.find((e) => e.name === 'bin_lid');
+  assert.ok(clack && clack.pitch < 1 && pound > rocked, `a pound beside it (${pound.toFixed(3)})`);
+  assert.deepEqual(q.bin(0), { x: bx, z: bz });
 });

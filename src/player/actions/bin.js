@@ -1,6 +1,7 @@
 // Grabbing a wheelie bin and pulling (or pushing) it about (Sparrow Lane's bins,
 // objects/laneBoss/LaneBins.js; docs/ARCHITECTURE.md "Sparrow Lane"): B next to a bin, facing
-// it, grabs it with both mittens; the stick then moves Pip along his facing only, forward
+// it (standing or pushing it: running at it, a quick press punches; held a moment, it grabs),
+// grabs it with both mittens; the stick then moves Pip along his facing only, forward
 // pushing it ahead of him, back pulling it after him, as the bin follows (LaneBins moves it after
 // his tick); B, Z, A (a jump), a sideways stick, a hurt or the bin sent home lets go.
 //
@@ -38,12 +39,13 @@ function stop(p) {
   p.vel.y = 0;
 }
 
-// B pressed: grabs the bin in reach, if any (Pip on the ground, standing or walking, his feet
-// within BIN_GRAB_REACH of one of its faces and in front of it, on its level, facing it within
-// acos(BIN_GRAB_COS)); he squares up to that face. Returns true when the grab started.
-export function tryGrabBin(p) {
+// B pressed: grabs the bin in reach, if any (Pip on the ground, standing or walking no faster
+// than BIN_GRAB_SPEED, or B `held` BIN_GRAB_HOLD ticks; his feet within BIN_GRAB_REACH of one of
+// its faces and in front of it, on its level, facing it within acos(BIN_GRAB_COS)); he squares
+// up to that face. Returns true when the grab started.
+export function tryGrabBin(p, held = false) {
   const g = p.binGrip;
-  if (!g || !p.grounded || !GRAB_FROM.has(p.action)) return false;
+  if (!g || !p.grounded || !GRAB_FROM.has(p.action) || (!held && p.forwardVel > T.BIN_GRAB_SPEED)) return false;
   const fx = Math.sin(p.faceYaw);
   const fz = Math.cos(p.faceYaw);
   let best = -1;

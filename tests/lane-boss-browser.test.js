@@ -11,12 +11,14 @@
 // scripted input (tests/helpers/laneBossPolicy.js, through the dev server: the stick and the
 // buttons each tick from the boss's state), G pressed after the first hit and again after the
 // second (the fight carries on in the other look), the car reversed into its slot (Jonas stands
-// on its roof), its reward star collected (+1 star, no star exit: still in the lane). No page
-// errors.
+// on its roof), its reward star collected (+1 star, no star exit: still in the lane). The
+// easier fight chosen on the lane's pause screen (classic: its line, Z toggling it, the boss
+// following, remembered on the device). No page errors.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FIGHT } from '../src/objects/laneBoss/tuning.js';
 
 const skip = !process.env.E2E && 'browser test: set E2E=1 to run';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -72,6 +74,31 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         return { boss: !!lane?.boss, state: lane?.boss?.state, shown: lane?.boss?.shown };
       });
       assert.deepEqual(attached, { boss: true, state: 'parked', shown: false });
+      if (label === 'classic') {
+        // The easier fight from the lane's pause screen: its line, Z (L) toggling it, the boss
+        // following, remembered on the device; and back.
+        const easy = await page.evaluate(async () => {
+          const g = window.__game;
+          const { boss } = await g.laneBoss;
+          g.step(1, { START: true });
+          const before = { paused: g.state.paused, robot: g.hud.robot, easy: boss.easy };
+          g.step(1, { Z: true });
+          g.step(1);
+          const toggled = { robot: g.hud.robot, saved: localStorage.getItem('jonas.robotEasy') };
+          g.step(1, { START: true });
+          g.step(2);
+          const after = { paused: g.state.paused, easy: boss.easy, tell: boss._phase().tell };
+          g.step(1, { START: true });
+          g.step(1, { Z: true });
+          g.step(1, { START: true });
+          g.step(2);
+          return { before, toggled, after, back: { easy: boss.easy, saved: localStorage.getItem('jonas.robotEasy'), paused: g.state.paused } };
+        });
+        assert.deepEqual(easy.before, { paused: true, robot: false, easy: false }, 'paused in the lane: "Robot: Normal"');
+        assert.deepEqual(easy.toggled, { robot: true, saved: '1' }, 'Z: "Robot: Easy", remembered');
+        assert.deepEqual(easy.after, { paused: false, easy: true, tell: FIGHT.PHASES[0].tell + FIGHT.EASY.tell }, 'the boss follows: longer tells');
+        assert.deepEqual(easy.back, { easy: false, saved: '0', paused: false }, 'and back');
+      }
       // Jonas walks up to it: it notices him, then wakes into its intro, holding him.
       const woke = await page.evaluate(async () => {
         const g = window.__game;
@@ -149,6 +176,41 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         if (B.programs) assert.ok(f.programs <= B.programs, `${what}: ${f.programs} realistic programs`);
       };
       within(f, 'up');
+      // B4: its first round fought by the scripted player through the game's own camera (its
+      // fight framing pulled back over the street), a frame every 30 ticks: every one within the
+      // tier's budgets.
+      const run = await page.evaluate(async () => {
+        const g = window.__game;
+        const { boss } = await g.laneBoss;
+        const { policy } = await import('/tests/helpers/laneBossPolicy.js');
+        const { FIGHT } = await import('/src/objects/laneBoss/tuning.js');
+        const o = g.areas.current.def.origin;
+        g.player.teleport(1900 + o.x, 22 + o.y, 900 + o.z, 0);
+        g.player.setAction('idle');
+        g.camera.reset(g.player);
+        let at = -1;
+        let cur = null;
+        const get = () => {
+          if (at !== g.state.frame) {
+            at = g.state.frame;
+            cur = policy(boss, g.player, g.camera.getYaw(), at, { FIGHT });
+          }
+          return cur;
+        };
+        const pol = { get stickX() { return get().stickX; }, get stickY() { return get().stickY; }, get A() { return get().A; }, get B() { return get().B; } };
+        const r = g.view.renderer.info.render;
+        let worst = { calls: 0 };
+        const states = new Set();
+        for (let n = 0; n < 600 && boss.state !== 'low'; n += 30) {
+          g.step(30, pol);
+          states.add(boss.state);
+          if (r.calls > worst.calls) worst = { calls: r.calls, triangles: r.triangles, state: boss.state, programs: g.view.renderer.info.programs.filter((p) => p.cacheKey.includes('real-')).length };
+        }
+        return { ...worst, states: [...states] };
+      });
+      t.diagnostic(`${label} its first round through the game's camera, the worst frame: ${JSON.stringify(run)}`);
+      assert.ok(run.states.includes('stomp_land') || run.states.includes('gap'), `it fought (${run.states})`);
+      within(run, 'its first round');
       // Two fight framings through the game's own camera: a stomp's ring out under him, and the
       // robot kneeling at the charger with its cable, the hatch open, him behind it.
       for (const [what, moment] of [['stomp', 'stomp_tell'], ['window', 'open']]) {

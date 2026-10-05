@@ -67,6 +67,7 @@ import { Meltdown } from './fx/Meltdown.js';
 import { AreaSwitch } from './core/AreaSwitch.js';
 import { RealAreas } from './render/real/RealAreas.js';
 import { AREA_DEFS } from './world/areas.js';
+import { LANE_BOSS } from './world/lane/layout.js';
 import { ScreenWipe } from './ui/ScreenWipe.js';
 
 const params = new URLSearchParams(location.search);
@@ -188,6 +189,15 @@ async function start() {
   });
   // The pause legend's look row: in a course with a realistic look, drawn so or classic by choice.
   const lookRow = () => (view.look ? 'real' : areas.current.def.real && real.reason === 'chosen' ? 'classic' : null);
+  // Sparrow Lane's robot fight, normal or easy (LANE_BOSS.easy: its chunk follows it): on the
+  // pause screen there, Z toggles it, remembered on this device.
+  const EASY = 'jonas.robotEasy';
+  try {
+    LANE_BOSS.easy = localStorage.getItem(EASY) === '1';
+  } catch {
+    // (No storage: normal.)
+  }
+  const robotRow = () => (areas.current.def.boss ? LANE_BOSS.easy : null);
   // G: "Classic street", the realistic look off (or back on) for this session.
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyG' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -369,6 +379,7 @@ async function start() {
       const leave = state.paused && areas.canLeave();
       hud.setLeave?.(leave);
       hud.setLook?.(lookRow());
+      hud.setRobot?.(robotRow());
       hud.setPaused?.(state.paused);
       events.emit(state.paused ? 'pause' : 'unpause', { leave });
     }
@@ -380,6 +391,15 @@ async function start() {
         hud.setPaused?.(false);
         events.emit('unpause');
         areas.leave();
+      } else if (controller.Z.pressed && robotRow() !== null) {
+        LANE_BOSS.easy = !LANE_BOSS.easy;
+        try {
+          localStorage.setItem(EASY, LANE_BOSS.easy ? '1' : '0');
+        } catch {
+          // (Kept for this visit only.)
+        }
+        hud.setRobot?.(LANE_BOSS.easy);
+        events.emit('sfx', { name: 'menu_select' });
       }
       return;
     }
