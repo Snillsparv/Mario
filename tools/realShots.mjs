@@ -22,7 +22,13 @@
 // its transformation apart, from the street), robot-front, robot-q34, robot-back, robot-scale
 // (Jonas beside it), robot-flex, robot-wave, intro-040, intro-090, intro-135 (its first wake
 // through the game's own camera: rising, mid-morph, flexing), gswap (mid-morph, the look swapped
-// with G: the other look's model carrying on)), --sizes
+// with G: the other look's model carrying on); B3: fight-stomp-tell (the ring under Jonas),
+// fight-slam (its stomp landing), fight-wave (Jonas over the shockwave), fight-dash-tell (the
+// chevrons), fight-dash (skating past him, stepped aside), fight-swipe (Jonas over
+// the fist), fight-charge (kneeling at the charger, the hatch open), fight-cable (its cable from
+// the charger to its chest, from under the carport), fight-zap (a hit
+// on the cells), fight-cam (the game's own camera mid-fight), beaten-short (its defeat's short
+// circuit), beaten-park (reversing into its slot), boss-star (its reward star)), --sizes
 // (default 960x540,1280x720), --looks (default high,low,classic: a tier, or classic). A frame
 // on SwiftShader takes seconds: each screenshot waits up to three minutes.
 // Files: <out>/<look>-<view>-<width>.png. Prints each view's F1 line and draw calls.
@@ -95,6 +101,25 @@ const VIEWS = {
   'intro-090': { intro: 90 },
   'intro-135': { intro: 135 },
   gswap: { intro: 85, swap: true },
+  // The fight (B3): run through its own steps (a quick wake, then its attacks with Jonas put
+  // where the moment needs him: `hero` lane-local, or `ahead` that far in front of it) up to a
+  // state `until` [state, ticks into it]; `charge`: its set skipped, him well away until its
+  // window; `punch`: then him behind it pressing B (a hit), on to `then`; `jump`: him jumping
+  // `jump` ticks before the moment; `hits`, `set`: its phase and its next attack; `cam: 'game'`:
+  // the game's own camera (its fight framing) instead of a fixed one.
+  'fight-stomp-tell': { fight: { hits: 0, set: 0, hero: [1960, 22, 1040, -0.15], until: ['stomp_tell', 24] }, pos: [1380, 470, 380], look: [1940, 260, 1150], fov: 55 },
+  'fight-wave': { fight: { hits: 0, set: 0, hero: [1960, 22, 1040, -0.15], until: ['stomp_land', 12], out: 380, wave: 90 }, rel: true, pos: [880, 380, -820], look: [-60, 150, -220], fov: 50 },
+  'fight-slam': { fight: { hits: 0, set: 0, hero: [1960, 22, 1040, -0.15], until: ['stomp_land', 2], out: 380 }, rel: true, pos: [880, 420, -900], look: [-60, 170, -160], fov: 50 },
+  'fight-dash': { fight: { hits: 1, set: 1, ahead: 650, until: ['dash', 9], side: 260 }, rel: true, turn: true, pos: [-650, 420, 1150], look: [80, 180, 250], fov: 52 },
+  'fight-dash-tell': { fight: { hits: 1, set: 1, ahead: 650, until: ['dash_tell', 20] }, rel: true, pos: [-640, 480, -1080], look: [0, 230, -330], fov: 52 },
+  'fight-swipe': { fight: { hits: 2, set: 1, ahead: 280, until: ['swipe', 4], jump: 9 }, rel: true, pos: [-580, 400, -980], look: [0, 270, -170], fov: 50 },
+  'fight-charge': { fight: { charge: true, until: ['open', 40] }, rel: true, pos: [500, 430, -860], look: [30, 240, -60], fov: 50 },
+  'fight-zap': { fight: { charge: true, until: ['open', 20], punch: true, then: ['zapped', 4] }, rel: true, pos: [500, 430, -860], look: [30, 240, -60], fov: 50 },
+  'fight-cable': { fight: { charge: true, until: ['open', 30] }, rel: true, pos: [170, 300, 500], look: [-130, 220, 120], fov: 55 },
+  'fight-cam': { fight: { hits: 0, set: 1, hero: [2050, 22, 680, 0], until: ['stomp_tell', 22] }, cam: 'game' },
+  'beaten-short': { fight: { hits: 2, charge: true, until: ['open', 20], punch: true, then: ['shortout', 40] }, rel: true, pos: [560, 430, -880], look: [20, 280, -40], fov: 50 },
+  'beaten-park': { fight: { hits: 2, charge: true, until: ['open', 20], punch: true, then: ['reverse', 24] }, pos: [2420, 300, 640], look: [1900, 130, 1300], fov: 48 },
+  'boss-star': { fight: { hits: 2, charge: true, until: ['open', 20], punch: true, then: ['tame', 90], hero: [2000, 22, 820, Math.PI] }, pos: [2380, 300, 420], look: [1920, 280, 1100], fov: 50 },
 };
 
 const out = opt('out', 'shots/real');
@@ -141,7 +166,10 @@ try {
           const o = g.areas.current.def.origin;
           const info = () => {
             const r = view.renderer.info.render;
-            return `${view.describeMode()}: ${r.calls} calls, ${r.triangles} triangles (Jonas ${g.player.action}, model ${g.model.object3D.scale.y.toFixed(2)}, fov ${view.camera.fov.toFixed(0)})`;
+            const p = g.player.pos;
+            const c = boss.cur; // (boss: below, set before any view calls this)
+            const where = v.fight ? `, at ${Math.round(p.x - o.x)} ${Math.round(p.y - o.y)} ${Math.round(p.z - o.z)}; robot ${boss.state} ${Math.round(c.x - o.x)} ${Math.round(c.y - o.y)} ${Math.round(c.z - o.z)}` : '';
+            return `${view.describeMode()}: ${r.calls} calls, ${r.triangles} triangles (Jonas ${g.player.action}${where}, model ${g.model.object3D.scale.y.toFixed(2)}, fov ${view.camera.fov.toFixed(0)})`;
           };
           const { boss } = await g.laneBoss;
           if (v.intro) {
@@ -166,7 +194,80 @@ try {
             }
             return line;
           }
-          if (v.robot) boss.pose({ m: v.robot.m, pose: v.robot.pose ?? 'stand', yaw: v.robot.yaw !== undefined ? Math.PI + v.robot.yaw : undefined });
+          if (v.fight) {
+            // The fight run to its moment (see VIEWS).
+            const f = v.fight;
+            const at = (x, z, yaw = 0, y = 22) => {
+              g.player.teleport(x + o.x, y + o.y, z + o.z, yaw);
+              g.player.setAction('idle');
+            };
+            const state = (s, t) => () => boss.state === s && boss.t >= t;
+            boss.reset();
+            boss.introDone = true;
+            boss.hits = f.hits ?? 0;
+            boss.cur.lights = 3 - boss.hits;
+            at(1900, 1000);
+            g.camera.reset(g.player);
+            g.step(400, {}, () => boss.state === 'stand');
+            boss.setIndex = f.charge ? 99 : f.set ?? 0;
+            const c = boss.cur;
+            const place = () => {
+              if (f.charge) at(2700, 600);
+              else if (f.ahead) at(c.x - o.x + Math.sin(c.yaw) * f.ahead, c.z - o.z + Math.cos(c.yaw) * f.ahead, c.yaw + Math.PI);
+              else at(...f.hero.slice(0, 1), f.hero[2], f.hero[3], f.hero[1]);
+            };
+            place();
+            g.camera.reset(g.player);
+            const [s0, t0] = f.until;
+            if (f.out) {
+              // (Out of its ring once it hops: watching it land.)
+              g.step(600, {}, () => boss.state === 'stomp_hop');
+              const ring = boss.markers.ring;
+              at(ring.x - o.x, ring.z - o.z - f.out, 0);
+            }
+            if (f.side) {
+              // (Off the dash's line once it has locked, before it goes: stepped aside.)
+              g.step(600, {}, () => boss.state === 'dash_tell' && boss.t >= boss._phase().tell - 6);
+              const a = boss.atk;
+              at(g.player.pos.x - o.x + a.dz * f.side, g.player.pos.z - o.z - a.dx * f.side, c.yaw + Math.PI);
+            }
+            if (f.jump) {
+              g.step(600, {}, state(s0 === 'swipe' ? 'swipe_tell' : s0, 0));
+              g.step(600, {}, () => boss.state === 'swipe' || boss.t >= boss._phase().tell - f.jump);
+              g.step(30, { A: true }, state(s0, t0));
+            } else g.step(900, {}, () => {
+              if (f.charge && boss.state !== 'open') place();
+              return boss.state === s0 && boss.t >= t0;
+            });
+            if (f.wave) {
+              // Him out where the wave is about to pass, jumping it.
+              const w = boss.markers.wave;
+              at(w.x - o.x, w.z - o.z - w.r - f.wave, 0);
+              g.step(7, { A: true });
+            }
+            if (f.charge && !f.punch) {
+              const bx = -Math.sin(c.yaw);
+              const bz = -Math.cos(c.yaw);
+              at(c.x - o.x + bx * 300, c.z - o.z + bz * 300, Math.atan2(-bx, -bz));
+              g.step(2);
+            }
+            if (f.punch) {
+              const bx = -Math.sin(c.yaw);
+              const bz = -Math.cos(c.yaw);
+              at(c.x - o.x + bx * 205, c.z - o.z + bz * 205, Math.atan2(-bx, -bz));
+              let k = 0;
+              g.step(40, { get B() {
+                return k++ % 2 === 0;
+              } }, () => boss.state !== 'open');
+              const [s1, t1] = f.then;
+              if (s1 !== 'zapped') at(...(f.hero ? [f.hero[0], f.hero[2], f.hero[3]] : [2300, 700, Math.PI]));
+              g.step(1200, {}, state(s1, t1));
+            }
+            if (v.cam === 'game') {
+              g.render();
+              return `${info()} [${boss.state} t ${boss.t}]`;
+            }
+          } else if (v.robot) boss.pose({ m: v.robot.m, pose: v.robot.pose ?? 'stand', yaw: v.robot.yaw !== undefined ? Math.PI + v.robot.yaw : undefined });
           else boss.pose(null);
           if (v.follow) {
             const f = v.follow;
@@ -182,10 +283,12 @@ try {
             return info();
           }
           const [hx, hy, hz, yaw] = v.bins?.hero ?? v.grab?.hero ?? v.hero ?? [0, 22, 1156, Math.PI];
-          g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
-          g.player.setAction('idle');
-          g.camera.reset(g.player);
-          g.step(v.grab ? 2 : 5);
+          if (!v.fight) {
+            g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
+            g.player.setAction('idle');
+            g.camera.reset(g.player);
+            g.step(v.grab ? 2 : 5);
+          }
           if (v.bins) {
             // The lane's bins (its lazy chunk, attached once in): grab the first with B, pull it
             // out `pull` ticks; then (`push`) let go, stand west of it and walk into it.
@@ -229,10 +332,17 @@ try {
           if (v.retro) (classic ? view.setN64Mode(true) : view.toggleRetro());
           const cam = view.camera;
           cam.fov = v.fov;
-          cam.position.set(v.pos[0] + o.x, v.pos[1] + o.y, v.pos[2] + o.z);
-          cam.lookAt(v.look[0] + o.x, v.look[1] + o.y, v.look[2] + o.z);
+          // (Relative to the robot where it stands: its feet's world point less the origin.)
+          // (`turn`: and turned with it, x its right, z its front.)
+          const r = v.rel ? [boss.cur.x - o.x, boss.cur.y - o.y, boss.cur.z - o.z] : [0, 0, 0];
+          const cy = v.turn ? Math.cos(boss.cur.yaw) : 1;
+          const sy = v.turn ? Math.sin(boss.cur.yaw) : 0;
+          const P = [v.pos[0] * cy + v.pos[2] * sy, v.pos[1], -v.pos[0] * sy + v.pos[2] * cy];
+          const L = [v.look[0] * cy + v.look[2] * sy, v.look[1], -v.look[0] * sy + v.look[2] * cy];
+          cam.position.set(P[0] + r[0] + o.x, P[1] + r[1] + o.y, P[2] + r[2] + o.z);
+          cam.lookAt(L[0] + r[0] + o.x, L[1] + r[1] + o.y, L[2] + r[2] + o.z);
           cam.updateProjectionMatrix();
-          view.setFocus({ x: v.look[0] + o.x, y: 0, z: v.look[2] + o.z });
+          view.setFocus({ x: L[0] + r[0] + o.x, y: 0, z: L[2] + r[2] + o.z });
           g.areas.update(1, cam); // (what follows the camera: the realistic look's grass)
           view.render();
           return info();
@@ -240,6 +350,14 @@ try {
         const file = path.join(out, `${look}-${name}-${width}.png`);
         await page.screenshot({ path: path.resolve(root, file), timeout: 180000 });
         console.log(`${file}  ${line}`);
+        // (The fight's views: the boss parked again.)
+        if (v.fight) {
+          await page.evaluate(async () => {
+            const { boss } = await window.__game.laneBoss;
+            boss.reset();
+            boss.armed = false;
+          });
+        }
         // (G back, the boss parked again.)
         if (v.swap) {
           await page.evaluate(async (classic) => {

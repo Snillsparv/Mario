@@ -1,11 +1,14 @@
-// The reward for beating Rustmaw (AI RACE mode's mechanical lizard, RobotBeast.js): a second
+// The reward for beating Rustmaw (AI RACE mode's mechanical lizard, RobotBeast.js; and, its own
+// instance, Sparrow Lane's STOMPWATT, objects/laneBoss/fight.js): a second
 // star (Star.js, the same original design with a warmer, redder glow, as if forged in its
 // furnace) that spirals up out of the crash site once the wreck has sunk away. It shows once
 // per game: throwing the repaired beast off the roof again brings no second one. Touching it is
 // like touching the red-coin star: player.collectStar() (the celebration), 'starCollected'
 // { pos, boss: true }. reset() (a new game) hides it and takes it back off the hero's count.
 //
-//   const bs = new BossStar({ events, collision, sparkles, shadows, shadowSlot, envMap })
+//   const bs = new BossStar({ events, collision, sparkles, shadows, shadowSlot, envMap, over? })
+//                                        (over: how high it hovers over the ground, default
+//                                        OVER_GROUND; Sparrow Lane's boss's star lower)
 //   bs.mesh                              (one draw call while it shows)
 //   bs.update(player, beast, time, tick) 30 Hz: spawn when beast.starDue, rise, pickup
 //   bs.animate(clock, alpha, camera, glowFree)  render; glowFree: the halo sprite is free to use
@@ -26,7 +29,8 @@ const OVER_WATER = 150; // ...or over the water, where a swimmer at the surface 
 const _toCam = new THREE.Vector3();
 
 export class BossStar {
-  constructor({ events, collision, sparkles, shadows = null, shadowSlot = -1, envMap = null }) {
+  constructor({ events, collision, sparkles, shadows = null, shadowSlot = -1, envMap = null, over = OVER_GROUND }) {
+    this.over = over;
     this.events = events;
     this.collision = collision;
     this.sparkles = sparkles;
@@ -45,7 +49,7 @@ export class BossStar {
   spawn(wreck) {
     if (this.awarded) return false;
     this.awarded = true;
-    const y = wreck.floorY + (wreck.water ? OVER_WATER : OVER_GROUND);
+    const y = wreck.floorY + (wreck.water ? OVER_WATER : this.over);
     this.star.spawn({ x: wreck.x, y, z: wreck.z }, wreck.floorY + 40);
     this.floor = null;
     this.events.emit('sfx', { name: 'star_appear', pos: { x: wreck.x, y, z: wreck.z } });

@@ -72,6 +72,7 @@ import { SolidBuilder } from '../src/world/castle/geom.js';
 import * as hall from '../src/world/hall/layout.js';
 import * as sk from '../src/world/skerries/layout.js';
 import * as lane from '../src/world/lane/layout.js';
+import * as laneChunk from '../src/objects/laneBoss/index.js';
 
 const HALL_Z = AREA_DEFS.hall.origin.z;
 const SK = AREA_DEFS.skerries.origin; // Midsummer Skerries: world = local + SK
@@ -1618,4 +1619,50 @@ test("Midsummer Skerries' critters: every arrival and GAME OVER bring all six ba
     assert.equal(g.player.health, health, `no hit during the ${g.areas.phase}`);
   }
   assert.equal(crit.hits, 0);
+});
+
+test("Sparrow Lane's boss through the area switch (its chunk attached by hand): leaving the lane mid-fight and coming back parks it at once (its collider back, the bins home); its reward star gives no star exit; GAME OVER from the lane mid-fight resets it (unbeaten, parked, the intro again)", () => {
+  const g = game();
+  g.areas.enter('lane');
+  const area = g.areas.current;
+  area.objects.attachLane(laneChunk, area);
+  const boss = area.objects.laneBoss;
+  const bins = area.objects.bins;
+  const collider = () => JSON.stringify(area.named.dad_ev.surfaces.map((s) => [s.a, s.b, s.c, s.d]));
+  const rest = collider();
+  const car = lane.CARS[0];
+  g.place(car.x + LN.x, lane.GROUND + LN.y, 1000 + LN.z, 0);
+  assert.ok(g.until(() => boss.state === 'stand', 400) < 400, 'up for the fight');
+  assert.notEqual(collider(), rest, 'the car\'s collider parked');
+  bins._moveTo(bins.list[0], bins.list[0].x + 300, bins.list[0].z - 400);
+  // Out through the dad's front door to the hall and back: parked at once.
+  g.areas.enter('hall');
+  g.areas.enter('lane');
+  assert.equal(boss.state, 'parked');
+  assert.equal(collider(), rest, 'its collider back');
+  assert.ok(bins.list.every((b) => b.x === b.home.x && b.z === b.home.z), 'the bins home');
+  // Its star (as if beaten): taken in the street, no star exit.
+  boss.star.spawn(boss.starSpot);
+  g.until(() => boss.star.star.state === 'idle', 120);
+  const s = boss.star.star.pos;
+  g.place(s.x, lane.GROUND + LN.y, s.z, 0);
+  const stars = g.player.stars;
+  g.until(() => g.player.stars > stars, 40, { A: true });
+  assert.equal(g.player.stars, stars + 1, 'counted');
+  g.until(() => false, 120);
+  assert.equal(g.areas.phase, null, 'no star exit');
+  assert.equal(g.areas.name, 'lane');
+  // GAME OVER mid-fight: main's order (the grounds back, then the resets).
+  g.place(car.x + LN.x, lane.GROUND + LN.y, 1000 + LN.z, 0);
+  boss.introDone = true;
+  g.until(() => boss.state === 'stand', 300);
+  boss.hits = 2;
+  g.areas.enter('grounds', 'start');
+  g.areas.resetCourses();
+  g.objects.reset();
+  assert.equal(boss.state, 'parked');
+  assert.equal(boss.hits, 0);
+  assert.equal(boss.introDone, false, 'its intro again');
+  assert.equal(boss.star.star.active, false, 'its star taken back');
+  assert.equal(collider(), rest);
 });

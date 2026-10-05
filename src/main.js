@@ -517,10 +517,12 @@ async function start() {
     // Advance n simulation ticks with a fixed controller state (partial, like setOverride),
     // then draw once. The hero model is posed after every tick, as a 30 fps real-time run
     // would, so after a big step its pose blends, blinks and wing flaps have caught up instead of
-    // showing the pose from before the step blended by a single 1/30 s frame.
-    step(n = 1, controllerState = null) {
+    // showing the pose from before the step blended by a single 1/30 s frame. until(): checked
+    // before each tick, true stops early (a scripted run up to a moment).
+    step(n = 1, controllerState = null, until = null) {
       renderAlpha = 1;
       for (let i = 0; i < n; i++) {
+        if (until?.()) break;
         input.setOverride(controllerState ?? {});
         tick(input.poll());
         if (i < n - 1 && !inMenu()) poseHero(FRAME_DT); // draw() poses the last

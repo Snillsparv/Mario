@@ -161,10 +161,26 @@ there shows the real street through the retro TV.
   the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
   double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof.
 * The dad's car is not just a car: stand beside it on the drive for a moment, or bump into it,
-  and it blinks its lights, rises on its wheels and **stands up into STOMPWATT**, a big friendly
+  and it blinks its lights, rises on its wheels and **stands up into STOMPWATT**, a big cheeky
   robot made of its own panels (its front is its face, its doors its shoulder pads and shin
-  guards, its wheels its fists and heels, its black roof its chest). It watches Jonas, waves and
-  shows off for a while, then folds back up into the car and parks itself. It doesn't hurt (yet).
+  guards, its wheels its fists and heels, its black roof its chest), and the **boss fight**
+  starts, with music of its own. Watch for the orange marks on the ground:
+  * **Wheel Stomp**: it lifts a leg and an orange ring appears under Jonas: run out of the ring,
+    then **jump** the shockwave that rolls out over the ground when it lands.
+  * **Roll Dash**: it crouches, its heel wheels screech and orange arrows show its path:
+    **step aside** off the arrows.
+  * **Wheel Swipe** (in the last round, when you stand close in front of it): it draws its wheel
+    fist back over an orange arc: **jump** it, or step back out of the arc.
+
+  After a few attacks its battery runs low: it walks to the dad's wall charger, kneels and plugs
+  in, and a hatch on its lower back opens on three glowing green cells. Run round behind it and
+  **hit the cells** (punch, kick, jump kick, dive, belly slide or ground pound all work) before it
+  has charged up. Each hit puts out one of the green lights on its chest and drops three coins;
+  each round it gets a little faster. After three hits it fizzles out, folds back into the car,
+  reverses into its parking spot and a **star** rises in front of it (a small jump reaches it;
+  you stay in the street). It stays a friendly parked car for the rest of the game. A hit from it
+  costs one health wedge; walk away (or climb up on the bins or the carport) and it waits, then
+  parks itself again, keeping its lost lights for next time.
 * The dad's two **wheelie bins** by the gable move: walk into one to push it, or stand at it,
   face it and press **attack** to grab it, then pull it out (stick back) or push it along (stick
   forward); attack, crouch or jump lets go. They stay on the drive, and roll back home by
@@ -204,7 +220,7 @@ there shows the real street through the retro TV.
 |---|---|---|
 | WASD (Q: walk slowly) | left stick | move |
 | Space / K | A (bottom) / A (right) | jump |
-| J | X or B / B (bottom) | attack (punch, kick, dive; grabs a wheelie bin) |
+| J | X or B / B (bottom) | attack (punch, kick, dive; grabs a wheelie bin; hits STOMPWATT's battery cells) |
 | Shift / L | triggers, LB / ZL, ZR, L | crouch, ground pound |
 | arrow keys, mouse drag | right stick, d-pad | camera (up from close: first-person look) |
 | C | RB | camera mode |

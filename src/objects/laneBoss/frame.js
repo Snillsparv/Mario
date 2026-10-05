@@ -161,14 +161,33 @@ export function buildFrame(look, tint, { chest = 100 } = {}) {
   block(G.metal, [gx, gy + 42, front - 1.5], [8, 5, 2.5], 2);
   G.black.color(PLASTIC);
   block(G.black, [gx, gy, front - 0.5], [15, 33, 2.2], 2);
+  // (Each light on a bone of its own: it goes out with a hit, B3.)
+  [-21, 0, 21].forEach((dy, i) => {
+    on(`pw${i}`);
+    G.glow.rgb(...(flat ? GLOW_CLASSIC : GLOW));
+    block(G.glow, [gx, gy + dy, front + 1], [11.5, 8, 2.2], 2);
+  });
+  // Its battery (B3) in its belt, where the car keeps it, under the floor: a hatch on its lower
+  // back (the bay, hinged at its top: it swings up while it charges) and behind it a dark tray
+  // with three glowing green cells (shown only while the hatch is open).
+  on('bay');
+  const bz = R.bay[2];
+  block(body(G.paint), [0, R.bay[1] - 32, bz - 2], [70, 32, 3], 3);
+  G.metal.color(STEEL);
+  block(G.metal, [0, R.bay[1] - 2, bz - 2], [60, 3, 4], 1.5);
+  on('cells');
+  G.black.color(PLASTIC);
+  block(G.black, [0, R.cells[1], R.cells[2] + 3], [66, 30, 2], 1.5);
   G.glow.rgb(...(flat ? GLOW_CLASSIC : GLOW));
-  for (const dy of [-21, 0, 21]) block(G.glow, [gx, gy + dy, front + 1], [11.5, 8, 2.2], 2);
-  // The neck: a steel column in a black collar.
+  for (const k of [-1, 0, 1]) block(G.glow, [k * 42, R.cells[1], R.cells[2] - 1], [16, 25, 3], 2);
+  // A collar over the shoulders (the head sits on it), round a stout steel neck.
+  on('chest');
+  block(gloss(G.paint), [0, R.neck[1] - 14, 6], [78, 14, 50], 12);
   on('neck');
   G.metal.color(STEEL);
-  cylY(G.metal, R.neck, 28, R.neck[1] - 12, R.neck[1] + 46);
+  cylY(G.metal, R.neck, 38, R.neck[1] - 10, R.neck[1] + 30);
   G.black.color(PLASTIC);
-  cylY(G.black, R.neck, 40, R.neck[1] - 16, R.neck[1] + 4);
+  cylY(G.black, R.neck, 50, R.neck[1] - 2, R.neck[1] + 12);
   for (const s of [1, -1]) {
     const S = s > 0 ? 'L' : 'R';
     // Arms: a steel shoulder ball, a gloss black upper arm, a steel elbow, a big gauntlet in the

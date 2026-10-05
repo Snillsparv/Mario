@@ -1,24 +1,29 @@
 // STOMPWATT, Sparrow Lane's boss (the lane's lazy chunk: objects/laneBoss/index.js attaches it):
 // the dad's car, woken by Jonas, stands up into a chunky, cheeky robot made of its own panels
-// (docs/ARCHITECTURE.md "STOMPWATT"). B2: it wakes, transforms, stands and watches him (its
-// head following him, its eyes blinking, turning on the spot to face him, now and then a wave, a
-// flex or a look round), shoos him off its parking spot with a horn honk, and folds back into
-// the car and parks after a while or when he has gone; harmless (it never hurts, he cannot walk
-// through it).
+// (docs/ARCHITECTURE.md "STOMPWATT"). It wakes and transforms (here), then fights him on the
+// dad's drive and the street (fight.js, mixed into this class: its attacks, its battery running
+// low and the charging window at the wall charger, the hits, its defeat and reward star); beaten
+// it folds back into the car, reverses into its slot and stays tame until a new game. Away from
+// it a while, or after a lost life, it walks home, folds back and parks (its hits kept).
 //
 //   new LaneBoss({ objects, area, layout })   objects: the lane's ObjectManager (events,
-//       sparkles, view), area: world/area.js's Area (its collision, the named colliders, the
-//       classic part's hide range), layout: lane/layout.js
+//       sparkles, view, bins, coins), area: world/area.js's Area (its collision, the named
+//       colliders, the classic part's hide range), layout: lane/layout.js
 //   boss.update(player, tick, hold)   30 Hz, after the player's tick (hold: a dialog or a warp)
-//   boss.animate(alpha)               per frame: both looks' rigs posed between the last two ticks
+//   boss.animate(alpha, clock, camera)   per frame: both looks' rigs posed between the last two
+//                                     ticks, the markers, the cable, the reward star
 //   boss.setLook(part | null)         the realistic part shown (its model built then; its hide
 //                                     range), or the classic look again
-//   boss.reset()                      a new game: parked at once, its first wake's intro again
-//   boss.enter()                      an arrival: parked at once
-//   boss.state                        'parked' | 'notice' | 'wake' | 'show' | 'home' | 'shoo' |
-//                                     'unmorph' | 'settle' (| 'pose': posed by hand, pose())
+//   boss.reset()                      a new game: parked at once, unbeaten, its star taken back,
+//                                     its first wake's intro again
+//   boss.enter()                      an arrival: parked at once (tame if beaten; hits kept)
+//   boss.state                        'parked' | 'notice' | 'wake' | 'home' | 'shoo' | 'unmorph' |
+//                                     'settle' | 'tame' (| 'pose': posed by hand, pose()) and the
+//                                     fight's (fight.js)
+//   boss.hits, boss.beaten            its power lights out (0 .. 3), beaten this game
 //   boss.cinematic                    the intro holds Jonas (main: a neutral controller)
 //   boss.camera                       its camera overlay (camera.js; main hands it to the camera)
+//   boss.markers, boss.star           its ground markers and wave (markers.js), its reward star
 //   boss.pose({ m, pose, yaw, ... })  posed by hand (previews, shots, tests): see there
 //   boss.cur                          this tick's pose state (rig.js / model.js Rig.pose)
 //
@@ -38,7 +43,8 @@
 // .hide.dad_ev); the robot's car form is exactly those triangles, so the swap never shows.
 //
 // Deterministic (no Math.random, no clock): its idle moves and blinks come from a hash of the
-// tick. Allocation: none per tick or frame on its hot paths but event payloads.
+// tick. Allocation: none per tick or frame on its hot paths but event payloads and collision
+// results.
 
 import { PLAYER_RADIUS } from '../../core/constants.js';
 import { moveSurfaces } from '../../collision/CollisionWorld.js';
@@ -47,19 +53,13 @@ import { heroInvincible } from '../Minions.js';
 import { TINT } from '../Sparkles.js';
 import { BlobShadows } from '../BlobShadows.js';
 import { BOSS } from './tuning.js';
-import { BONES, BONE, POSES, STEP_UP, ATTACH, arrive, unfold } from './rig.js';
+import { BONE, STEP_UP, ATTACH, arrive, unfold, footLift } from './rig.js';
+import { N, INDEX, POSE } from './poses.js';
 import { RobotModel, classicCar } from './model.js';
 import { LaneBossCam } from './camera.js';
+import { FIGHT_METHODS, FIGHTING } from './fight.js';
 import { BOSS_CARD } from '../../ui/hudLogic.js';
 
-const N = BONES.length;
-const INDEX = Object.fromEntries(BONES.map(([name], i) => [name, i]));
-const poseArray = (name) => {
-  const a = new Float32Array(N * 3);
-  for (const [bone, t] of Object.entries(POSES[name])) a.set(t, INDEX[bone] * 3);
-  return a;
-};
-const POSE = Object.fromEntries(Object.keys(POSES).map((name) => [name, poseArray(name)]));
 const MOVERS = Object.keys(ATTACH);
 const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const wrap = (a) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
@@ -70,7 +70,6 @@ const noise = (n) => {
 };
 // The pitch of each piece's clunk as it locks in (big pieces lower).
 const CLUNK = { core: 0.7, tail: 0.75, canopy: 0.72, head: 0.8, doorFL: 0.95, doorFR: 1, doorRL: 1.05, doorRR: 1.1, wheelFL: 1.2, wheelFR: 1.25, wheelRL: 1.15, wheelRR: 1.18 };
-const IDLES = ['wave', 'flex', 'hips', 'hips'];
 const CONTACT_GONE = 0.25; // (the realistic car's contact shadow hidden this far into the morph)
 const BLOB = 230; // (the classic look's shadow under each foot, across)
 const UP = { x: 0, y: 1, z: 0 };
@@ -80,8 +79,12 @@ const LEG_R = [INDEX.hipR, INDEX.knR, INDEX.anR];
 const STEP_X = [STEP_UP.hip[0], STEP_UP.kn[0], STEP_UP.an[0]];
 
 function makeState() {
-  return { x: 0, y: 0, z: 0, yaw: 0, m: 0, lift: 0, bob: 0, turns: new Float32Array(N * 3), blinkL: 0, blinkR: 0, hatch: 0 };
+  return { x: 0, y: 0, z: 0, yaw: 0, m: 0, lift: 0, bob: 0, turns: new Float32Array(N * 3), blinkL: 0, blinkR: 0, hatch: 0, gate: 0, lights: 3, spin: 0, heel: 0 };
 }
+// States in which its head follows him (and its eyes blink by themselves).
+const LOOKING = { shoo: 1, stand: 1, watch: 1, gap: 1, stomp_tell: 1, dash_tell: 1, swipe_tell: 1, dizzy: 1, walk: 1, unplug: 1 };
+// Car-form states (no frame posing, no bump on its body).
+const CAR_FORM = { parked: 1, notice: 1, tame: 1, reverse: 1, settle: 1 };
 
 export class LaneBoss {
   constructor({ objects, area, layout }) {
@@ -119,28 +122,40 @@ export class LaneBoss {
     objects.view?.prewarm?.(this.classic.group);
     this.realModel = null;
     this.models = [this.classic];
-    // (The classic look's: a blob shadow under each foot, the realistic look's are the sun's.)
-    this.blobs = new BlobShadows(2);
+    // (The classic look's: a blob shadow under each foot, the realistic look's are the sun's;
+    // and its reward star's, in both looks.)
+    this.blobs = new BlobShadows(3);
     this.blobs.mesh.visible = false;
     this.blobs.mesh.name = 'lane-boss-shadows';
     this.group.add(this.blobs.mesh);
-    this.camera = new LaneBossCam();
+    this.camera = new LaneBossCam(area.collision);
     this.prev = makeState();
     this.cur = makeState();
     this.draw = makeState();
     this.ease = new Float32Array(N * 3); // the frame's turns, easing toward the goal pose
     this.goal = POSE.stand;
-    this._parkNow();
-    this.introDone = false;
-    this.armed = true;
+    this.chestBone = BONE.chest;
+    this.player = null;
+    this._from = { x: 0, y: 0, z: 0 }; // (a hurt's fromPos, reused)
+    this.hurts = 0; // wedges it took off him (tests)
+    this.kneelBob = 0;
+    this.kneeling = false;
+    this.noticeT = 0;
+    this.beatenFold = false;
+    this.eyes = false; // (a state drives its eyes itself this tick)
     this.look = 0; // (its head turned toward him, round, down, tilted)
     this.lookUp = 0;
     this.tilt = 0;
     this.warm = false;
     this.blinkT = 0;
+    this.nextBlink = 0;
     this.turning = false;
     this.stepT = 0;
-    this.idle = null;
+    this._initFight(objects, area, layout);
+    for (const part of area.parts) this._cableOf(part);
+    this._parkNow();
+    this.introDone = false;
+    this.armed = true;
   }
 
   // ---------------------------------------------------------------- looks
@@ -159,6 +174,7 @@ export class LaneBoss {
     this.real = part;
     if (part) {
       this._hideRange(part);
+      this._cableOf(part);
       if (!this.realModel && part.robot) {
         const tier = part.robot.tier;
         this.realModel = new RobotModel(tier, part.robot, { tint: this.car.tint, hl: this.hl });
@@ -216,11 +232,22 @@ export class LaneBoss {
     c.bob = 0;
     c.blinkL = c.blinkR = 0;
     c.hatch = 0;
+    c.gate = 0;
+    c.spin = c.heel = 0;
+    c.lights = 3 - this.hits;
     c.turns.set(POSE.fold);
     this.ease.set(POSE.stand);
     this.goal = POSE.stand;
+    this._clearFight();
+    this.kneelBob = 0;
+    this.kneeling = false;
+    this.beatenFold = false;
+    this.wait = 0;
+    this.noticeT = 0;
     this._copy(this.prev, c);
-    this._set('parked');
+    this._set(this.beaten ? 'tame' : 'parked');
+    // (Beaten but parked at once before its star rose: it rises now.)
+    if (this.beaten && !this.star.awarded) this.starDue = true;
     this.dwell = 0;
     this.lastNotice = -Infinity;
     this.intro = false;
@@ -231,7 +258,12 @@ export class LaneBoss {
     this._show(false);
   }
 
+  // A new game: unbeaten, its lights all on, its star hidden and taken back off his count.
   reset() {
+    this.hits = 0;
+    this.beaten = false;
+    this.starDue = false;
+    this.star.reset();
     this._parkNow();
     this.introDone = false;
     this.armed = true;
@@ -244,7 +276,7 @@ export class LaneBoss {
 
   _emit(phase) {
     const s = this.spot;
-    this.events.emit('laneBoss', { phase, pos: { x: s.x, y: s.y, z: s.z } });
+    this.events.emit('laneBoss', { phase, hits: this.hits, pos: { x: s.x, y: s.y, z: s.z } });
   }
 
   _sfx(name, extra = null) {
@@ -269,7 +301,10 @@ export class LaneBoss {
     this.grounded = !!(f && f.surface) && p.y <= f.y + 1;
     this.onCar = this.grounded && this.carSurfaces.has(f.surface);
     this.level = Math.abs(p.y - s.y) <= this.spec.wake.level;
-    this.away = hold || AWAY[player.action] === 1 || heroInvincible(player);
+    this.awayAct = AWAY[player.action] === 1;
+    this.invincible = heroInvincible(player);
+    this.away = hold || this.awayAct || this.invincible;
+    this._fightRead(player, hold);
   }
 
   // Touching the parked car: his feet against its sides (on its level), or his attack on it.
@@ -294,14 +329,20 @@ export class LaneBoss {
 
   update(player, tick, hold = false) {
     this.tick = tick;
+    this.player = player;
     this._copy(this.prev, this.cur);
+    this.markers.keep();
     if (this.state === 'pose') return;
     this._read(player, hold);
-    // A lost life: it goes home (folds back) once it is up.
-    if (player.action === 'spawn' && this.lastAction !== 'spawn' && this.state !== 'parked' && this.state !== 'notice') this.leave = true;
+    // A lost life: it goes home (folds back) once it is up (beaten, it carries on parking).
+    if (player.action === 'spawn' && this.lastAction !== 'spawn' && CAR_FORM[this.state] !== 1 && !this.beaten) this.leave = true;
     this.lastAction = player.action;
     if (!this.armed && this.dist > BOSS.REARM) this.armed = true;
     this.t++;
+    this.eyes = false;
+    // (He wins a tie: his attack on the cells before its own step; on its body, a tink.)
+    if (this.state === 'open') this._cellsHit(player);
+    else if (FIGHTING[this.state] === 1) this._tink(player);
     switch (this.state) {
       case 'parked':
       case 'notice':
@@ -309,9 +350,6 @@ export class LaneBoss {
         break;
       case 'wake':
         this._wake();
-        break;
-      case 'show':
-        this._showing(player);
         break;
       case 'home':
         this._home(player);
@@ -325,11 +363,22 @@ export class LaneBoss {
       case 'settle':
         this._settle(player);
         break;
+      default:
+        this._fightStep(player);
     }
+    this._waveTick(player);
+    this.markers.tick();
+    // (Its reward star: rising once it is due, then waiting to be touched.)
+    this.star.update(player, this, this.objects.time, tick);
+    // (Its camera: the fight's framing while it is up, turning to its back in the window, to the
+    // car as it goes home beaten.)
+    const up = FIGHTING[this.state] === 1;
+    const mode = this.state === 'open' ? 2 : this.beaten ? 3 : 1;
+    this.camera.fight(up || (this.beaten && this.state !== 'tame'), this.cur.x, this.cur.z, mode);
     this.camera.tick();
     this._frame();
     if (this.shown && this.cur.m > CONTACT_GONE !== this.parted) this._show(true);
-    if (this.state !== 'parked' && this.state !== 'notice') this._bump(player);
+    if (this.state !== 'parked' && this.state !== 'notice' && this.state !== 'tame') this._bump(player);
   }
 
   _parked(player) {
@@ -418,14 +467,9 @@ export class LaneBoss {
     if (tf >= P.FLEX) {
       this.introDone = true;
       this.intro = false;
-      this._set(this.leave ? 'home' : 'show');
-      this.goal = POSE.stand;
-      this.showT = 0;
-      this.awayT = 0;
       this.nextBlink = this.tick + 40;
-      this.nextIdle = this.tick + 60;
-      this.idle = null;
-      this._emit('show');
+      if (this.leave) this._goHome();
+      else this._startFight();
     }
   }
 
@@ -450,23 +494,6 @@ export class LaneBoss {
     o.sparkles?.burst(pos, o.time ?? 0, TINT.box, n);
   }
 
-  // Standing: it faces him (turning on the spot, stepping), its head following him, blinking, now
-  // and then an idle move; after SHOW, or once he has been away AWAY, or a lost life: home.
-  _showing(player) {
-    this.showT++;
-    const out = this.away || this.dist > BOSS.FAR || !this.level;
-    this.awayT = out ? this.awayT + 1 : 0;
-    if (this.leave || this.showT >= BOSS.SHOW || this.awayT >= BOSS.AWAY) {
-      this._set('home');
-      this.idle = null;
-      this.goal = POSE.stand;
-      return;
-    }
-    this._face(Math.atan2(this.dx, this.dz), 0.5);
-    this._idle();
-    void player;
-  }
-
   // Turning toward yaw (when more than `slack` off it), stepping as it turns; true once facing it.
   _face(yaw, slack) {
     const c = this.cur;
@@ -484,25 +511,6 @@ export class LaneBoss {
       if (this.stepT % BOSS.STEP === 0) this._sfx('robot_step');
     }
     return !this.turning && Math.abs(wrap(yaw - c.yaw)) < 0.03;
-  }
-
-  _idle() {
-    if (this.tick >= this.nextBlink) {
-      this.blinkT = BOSS.BLINK_LEN;
-      this.nextBlink = this.tick + Math.round(BOSS.BLINK_EVERY * (0.6 + 0.8 * noise(this.tick)));
-    }
-    if (this.idle) {
-      if (--this.idleT <= 0) {
-        this.idle = null;
-        this.goal = POSE.stand;
-      }
-    } else if (this.tick >= this.nextIdle && !this.turning) {
-      this.idle = IDLES[Math.floor(noise(this.tick * 3.1) * IDLES.length)];
-      this.idleT = this.idle === 'flex' ? 50 : 75;
-      this.goal = POSE[this.idle];
-      if (this.idle === 'flex') this._sfx('robot_whirr');
-      this.nextIdle = this.tick + this.idleT + Math.round(BOSS.IDLE_EVERY * (0.7 + 0.6 * noise(this.tick * 1.7)));
-    }
   }
 
   // Going home: back round to the car's heading, then folding up (or shooing him off its spot).
@@ -534,11 +542,10 @@ export class LaneBoss {
   _fold() {
     this._set('unmorph');
     this.goal = POSE.stand;
-    this.idle = null;
     this.turning = false;
+    this.walking = false;
     this.arrived = 0;
     this._sfx('robot_power_down');
-    this._emit('home');
   }
 
   _unmorph() {
@@ -552,7 +559,11 @@ export class LaneBoss {
       this.arrived |= bit;
       this._sfx('robot_clunk', { pitch: CLUNK[MOVERS[i]] * 1.1 });
     }
-    if (c.m <= 0) this._set('settle');
+    if (c.m <= 0) {
+      // (Beaten: folded in front of its slot, it reverses in.)
+      this._set(this.beatenFold ? 'reverse' : 'settle');
+      this.wait = 0;
+    }
   }
 
   _settle(player) {
@@ -572,12 +583,20 @@ export class LaneBoss {
         if (player.vel) player.vel.y = 0;
       }
     }
-    this._set('parked');
+    this._set(this.beaten ? 'tame' : 'parked');
     this._show(false);
     this.armed = false;
     this.lifting = false;
     this.leave = false;
+    this.beatenFold = false;
     this._sfx('ev_chirp');
+    // (The bins it shoved aside go home; beaten, its reward star rises in front of it.)
+    if (this.shoved) this.objects.bins?.sendHome();
+    this.shoved = false;
+    if (this.beaten && !this.star.awarded) {
+      this.starDue = true;
+      this._sfx('ev_chirp', { pitch: 1.2 });
+    }
     this._emit('parked');
   }
 
@@ -597,9 +616,7 @@ export class LaneBoss {
     const fold = POSE.fold;
     const t = c.turns;
     for (let i = 0; i < t.length; i++) t[i] = fold[i] + (e[i] - fold[i]) * k;
-    if (c.m < 1 || this.state === 'parked' || this.state === 'notice') return;
-    // A wave's hand.
-    if (this.idle === 'wave') t[INDEX.elL * 3 + 2] += Math.sin(this.tick * 0.45) * 0.35;
+    if (c.m < 1 || CAR_FORM[this.state] === 1) return;
     // Stepping round: each foot up and down in turn.
     c.bob = 0;
     if (this.turning) {
@@ -609,9 +626,11 @@ export class LaneBoss {
       for (let j = 0; j < 3; j++) t[legs[j] * 3] += STEP_X[j] * up;
       c.bob = -5 * up;
     }
+    // The fight's: kneeling, walking, swaying, tapping (fight.js).
+    this._fightFrame(t);
     // Its head following him (a little round and up or down), unless folding up.
     const n = INDEX.neck * 3;
-    if (this.state === 'show' || this.state === 'shoo') {
+    if (LOOKING[this.state] === 1 && (this.state !== 'walk' || this.walkMode === 'range')) {
       const L = BOSS.LOOK;
       const rel = wrap(Math.atan2(this.dx, this.dz) - c.yaw);
       const yaw = rel > L.yaw ? L.yaw : rel < -L.yaw ? -L.yaw : rel;
@@ -629,7 +648,12 @@ export class LaneBoss {
     t[n + 1] += this.look;
     t[n] += this.lookUp;
     t[n + 2] += this.tilt;
-    // Blinks.
+    // Blinks now and then (unless its state drives its eyes: low, dizzy, a dash's tell, ...).
+    if (this.eyes) return;
+    if (this.tick >= this.nextBlink) {
+      this.blinkT = BOSS.BLINK_LEN;
+      this.nextBlink = this.tick + Math.round(BOSS.BLINK_EVERY * (0.6 + 0.8 * noise(this.tick)));
+    }
     if (this.blinkT > 0) this.blinkT--;
     c.blinkL = c.blinkR = this.blinkT > 0 ? 1 : 0;
   }
@@ -643,9 +667,9 @@ export class LaneBoss {
     const sn = Math.sin(c.yaw);
     const B = BOSS.BUMP;
     if (c.m < 0.35) {
-      // (The car rising: its footprint. Folding back it lets him be: standing where it parks he
-      // is lifted onto it.)
-      if (this.state !== 'wake') return;
+      // (The car rising, or reversing into its slot: its footprint. Folding back it lets him be:
+      // standing where it parks he is lifted onto it.)
+      if (this.state !== 'wake' && this.state !== 'reverse') return;
       const dx = p.x - c.x;
       const dz = p.z - c.z;
       const u = dx * cs - dz * sn;
@@ -662,9 +686,22 @@ export class LaneBoss {
       p.z += -du * sn + dw * cs;
       return;
     }
-    this._push(p, c.x, c.z, B.body);
-    this._push(p, c.x + 72 * cs + 20 * sn, c.z - 72 * sn + 20 * cs, B.foot);
-    this._push(p, c.x - 72 * cs + 20 * sn, c.z + 72 * sn + 20 * cs, B.foot);
+    let pushed = false;
+    if (this.kneeling) {
+      // (Kneeling: its body, and its right shin and foot down behind it.)
+      pushed = this._push(p, c.x, c.z, B.kneel);
+      pushed = this._push(p, c.x - 76 * cs - 150 * sn, c.z + 76 * sn - 150 * cs, B.heel) || pushed;
+    } else {
+      pushed = this._push(p, c.x, c.z, B.body);
+      pushed = this._push(p, c.x + 72 * cs + 20 * sn, c.z - 72 * sn + 20 * cs, B.foot) || pushed;
+      pushed = this._push(p, c.x - 72 * cs + 20 * sn, c.z + 72 * sn + 20 * cs, B.foot) || pushed;
+    }
+    // (Never into a wall: the house, the cars.)
+    if (pushed) {
+      const w = this.collision.findWalls(p.x, p.y + 50, p.z, 0, PLAYER_RADIUS);
+      p.x = w.x;
+      p.z = w.z;
+    }
   }
 
   _push(p, x, z, r) {
@@ -672,10 +709,11 @@ export class LaneBoss {
     const dz = p.z - z;
     const d = Math.sqrt(dx * dx + dz * dz);
     const need = r + PLAYER_RADIUS - d;
-    if (need <= 0) return;
+    if (need <= 0) return false;
     const k = (need < BOSS.BUMP.step ? need : BOSS.BUMP.step) / (d || 1);
     p.x += (d ? dx : 1) * k;
     p.z += (d ? dz : 0) * k;
+    return true;
   }
 
   _copy(to, from) {
@@ -690,6 +728,10 @@ export class LaneBoss {
     to.blinkL = from.blinkL;
     to.blinkR = from.blinkR;
     to.hatch = from.hatch;
+    to.gate = from.gate;
+    to.lights = from.lights;
+    to.spin = from.spin;
+    to.heel = from.heel;
   }
 
   // Its realistic model's programs compiled ahead (in the background where the browser can), once
@@ -702,13 +744,16 @@ export class LaneBoss {
   }
 
   // Per frame: both looks' rigs (G may swap them any moment) between the last two ticks.
-  animate(alpha) {
+  animate(alpha, clock = 0, camera = null) {
     if (this.warm) this._warm();
+    const a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
     if (!this.shown) {
-      this.blobs.mesh.visible = false;
+      this.blobs.hide(0);
+      this.blobs.hide(1);
+      this._fightAnimate(a, clock, camera);
+      this.blobs.mesh.visible = this.star.star.active;
       return;
     }
-    const a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
     const p = this.prev;
     const c = this.cur;
     const d = this.draw;
@@ -723,21 +768,31 @@ export class LaneBoss {
     d.blinkL = c.blinkL;
     d.blinkR = c.blinkR;
     d.hatch = p.hatch + (c.hatch - p.hatch) * a;
+    d.gate = p.gate + (c.gate - p.gate) * a;
+    d.lights = c.lights;
+    d.spin = p.spin + (c.spin - p.spin) * a;
+    d.heel = p.heel + (c.heel - p.heel) * a;
     for (let i = 0; i < this.models.length; i++) this.models[i].pose(d);
-    // Its feet's blob shadows (the classic look's), as it stands up.
+    this._fightAnimate(a, clock, camera);
+    // Its feet's blob shadows (the classic look's), as it stands up (on the ground under them).
     const feet = this.classic.group.visible && d.m > 0.4;
-    this.blobs.mesh.visible = feet;
-    if (!feet) return;
+    this.blobs.mesh.visible = feet || this.star.star.active;
+    if (!feet) {
+      this.blobs.hide(0);
+      this.blobs.hide(1);
+      return;
+    }
     const bones = this.classic.rig.bones;
     const size = (BLOB * (d.m - 0.4)) / 0.6;
     for (let i = 0; i < 2; i++) {
       const e = bones[i ? BONE.anR : BONE.anL].matrixWorld.elements;
-      this.blobs.place(i, e[12], this.spot.y, e[14], UP, size);
+      this.blobs.place(i, e[12], this._ground(e[12], e[14]), e[14], UP, size);
     }
   }
 
   // Posed by hand (previews, shots, tests): { m: the morph 0 .. 1, pose: a POSES name, yaw (its
-  // heading; default the car's), lift, blink (0 .. 1), look (its head round, radians), hatch };
+  // heading; default the car's), x, z (where it stands, lane-local; default its spot), lift,
+  // blink (0 .. 1), look (its head round, radians), hatch (its battery bay open), lights };
   // null lets it go (parked at once).
   pose(opts) {
     if (!opts) {
@@ -752,13 +807,25 @@ export class LaneBoss {
     c.yaw = opts.yaw ?? this.yaw0;
     c.blinkL = c.blinkR = opts.blink ?? 0;
     c.hatch = opts.hatch ?? 0;
-    c.bob = 0;
+    c.lights = opts.lights ?? 3;
+    c.spin = c.heel = 0;
+    if (opts.x !== undefined) {
+      c.x = opts.x + this.origin.x;
+      c.z = opts.z + this.origin.z;
+      c.y = this._ground(c.x, c.z);
+    }
     const goal = POSE[opts.pose ?? 'stand'] ?? POSE.stand;
     const k = unfold(c.m);
     for (let i = 0; i < c.turns.length; i++) c.turns[i] = POSE.fold[i] + (goal[i] - POSE.fold[i]) * k;
+    // (On its bent legs' lower foot: fight.js _fightFrame.)
+    const l = footLift(goal[INDEX.hipL * 3], goal[INDEX.knL * 3]);
+    const r = footLift(goal[INDEX.hipR * 3], goal[INDEX.knR * 3]);
+    c.bob = c.m >= 1 ? -(l < r ? l : r) : 0;
     c.turns[INDEX.neck * 3 + 1] += opts.look ?? 0;
     this._copy(this.prev, c);
     this._show(true);
     this.animate(1);
   }
 }
+
+Object.assign(LaneBoss.prototype, FIGHT_METHODS);

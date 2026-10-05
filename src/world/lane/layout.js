@@ -400,8 +400,25 @@ export const CARS = [
 // car (`car`: its id in CARS) stands up into a robot made of its own panels when Jonas comes near
 // it on the ground (`wake`: within r of its middle on the drive's level (his feet within `level`
 // of its ground) for `dwell` ticks, or touching it), never while he is up on the bins, the carport
-// or a roof; from `notice` its T lights blink at him.
-export const LANE_BOSS = { car: 'dad_ev', wake: { r: 520, dwell: 20, level: 60 }, notice: 900 };
+// or a roof; from `notice` its T lights blink at him. The fight (objects/laneBoss/fight.js): its
+// `arena` (Jonas within r + 200 of its middle is in the fight), the ground it may walk on (`walk`:
+// its middle stays in these boxes, [x0, x1, z0, z1]: the street and the lawns' fronts in front of
+// the cars, and the drive between the dad's gable and the SUV, never behind the cars, under the
+// carport or in a garden), where it kneels to charge (`charge`: at the wall charger, DAD.charger,
+// facing it, its back to the open drive), where it folds back into the car once beaten
+// (`prepark`, then reversing into its slot) and where its reward star hovers (`star`, in front
+// of the car: a small jump reaches it).
+export const LANE_BOSS = {
+  car: 'dad_ev',
+  wake: { r: 520, dwell: 20, level: 60 },
+  notice: 900,
+  arena: { x: 2050, z: 700, r: 1350 },
+  walk: [[800, 3300, -400, 980], [1720, 2040, 980, 1660]],
+  charge: { x: 1790, z: 1290, yaw: -0.75 },
+  prepark: { x: 1900, z: 1145 },
+  star: { x: 1900, y: GROUND + 320, z: 1000 },
+  easy: false, // (the easier fight for the youngest: objects/laneBoss/tuning.js FIGHT.EASY)
+};
 
 // The basketball hoop on north_5's front wall west of its garage door, a children's one: a black
 // post `out` in front of the wall, a white board (w by h, its foot at `board` up, at the top of

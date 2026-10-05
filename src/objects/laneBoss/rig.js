@@ -17,6 +17,9 @@
 //                              SPAN of it to arrive) and how high its arc swings on the way
 //   FOLLOW                     the pieces that ride on another (the eyes on the head, the hatch
 //                              on the tail)
+//   LIGHTS, BAY, CELLS         the power lights' bones (lit while it has that many hits left),
+//                              the battery bay's hatch (on its lower back: open by `hatch`) and
+//                              the cells' (shown while it is open)
 //   POSES[name]                bone -> [x, y, z] turns (radians, three.js Euler XYZ) over the
 //                              standing rest; bones left out stand at rest
 //   pivotsOf(K, hl)            each piece's pivot in the car's frame (from its cuts, pieces.js):
@@ -44,9 +47,20 @@ export const BONES = [
   ['hipR', 'pelvis', [-72, 252, 0]],
   ['knR', 'hipR', [-76, 150, 14]],
   ['anR', 'knR', [-76, 54, -4]],
+  // (Its three power lights on its chest, each going out with a hit on it; its battery in its
+  // belt, where the car's floor keeps it: the bay's hatch on its lower back, hinged at its top,
+  // and the cells behind it, shown while it is open.)
+  ['pw0', 'chest', [44, 449, 72]],
+  ['pw1', 'chest', [44, 470, 72]],
+  ['pw2', 'chest', [44, 491, 72]],
+  ['bay', 'pelvis', [0, 300, -64]],
+  ['cells', 'pelvis', [0, 268, -58]],
 ];
 export const BONE = Object.freeze(Object.fromEntries([...PIECES, 'root', ...BONES.map((b) => b[0])].map((name, i) => [name, i])));
 export const BONE_COUNT = PIECES.length + 1 + BONES.length;
+export const LIGHTS = ['pw0', 'pw1', 'pw2'];
+export const BAY = 'bay';
+export const CELLS = 'cells';
 // Each frame bone's rest position (the robot's frame).
 export const REST = Object.freeze(Object.fromEntries([['root', [0, 0, 0]], ...BONES.map(([name, , at]) => [name, at])]));
 
@@ -69,7 +83,7 @@ const PAULDRON_L = axesOf(0, -0.25, 0.28);
 const PAULDRON_R = axesOf(0, 0.25, -0.28);
 
 export const ATTACH = {
-  head: ['neck', [0, 82, 16], I, [1.08, 1.3, 0.82]],
+  head: ['neck', [0, 64, 16], I, [1.08, 1.3, 0.82]],
   canopy: ['chest', [0, 120, 66], UPRIGHT, [0.8, 0.9, 0.5]],
   tail: ['chest', [0, 136, -98], I, [0.92, 1.25, 0.62]],
   core: ['pelvis', [0, -4, 2], I, [0.66, 0.6, 0.42]],
@@ -110,7 +124,50 @@ export const POSES = {
   shoo: mirror({ chest: [0.1, 0, 0], neck: [0.1, 0, 0], shL: [-1.2, 0, 0.25], elL: [-0.5, 0, 0], wrL: [-0.6, 0, 0], shR: [0.25, 0, -0.55], elR: [-1.9, 0, 0], hipL: [-0.08, 0, 0.06], knL: [0.16, 0, 0], anL: [-0.08, 0, -0.06] }),
   // Looking round, hands on its hips.
   hips: mirror({ chest: [0, 0, 0], shL: [0.3, 0, 0.55], elL: [-1.9, 0, 0], wrL: [0, 0, 0], hipL: [-0.08, 0, 0.08], knL: [0.14, 0, 0], anL: [-0.06, 0, -0.08] }),
+  // The fight (B3). Fists up, knees bent, ready: between its attacks and walking.
+  guard: mirror({ chest: [0.12, 0, 0], neck: [0.04, 0, 0], shL: [-0.35, 0, 0.32], elL: [-1.25, 0, 0], wrL: [0.1, 0, 0], hipL: [-0.22, 0, 0.1], knL: [0.42, 0, 0], anL: [-0.2, 0, -0.1] }),
+  // The Wheel Stomp's tell: its right leg raised high (the heel wheel spinning up), arms out to
+  // balance, leaning back a little ...
+  stompTell: mirror({ chest: [-0.12, 0, 0.05], neck: [0.12, 0, -0.05], shL: [-0.2, 0, 0.75], elL: [-0.9, 0, 0], shR: [-0.2, 0, -0.75], elR: [-0.9, 0, 0], hipL: [-0.12, 0, 0.12], knL: [0.24, 0, 0], anL: [-0.12, 0, -0.12], hipR: [-1.7, 0, -0.1], knR: [1.45, 0, 0], anR: [0.2, 0, 0] }),
+  // ... in the air (both knees up, fists over its head) ...
+  stompHop: mirror({ chest: [0.1, 0, 0], neck: [0.15, 0, 0], shL: [-2.4, 0, 0.3], elL: [-0.5, 0, 0], hipL: [-1.1, 0, 0.12], knL: [1.5, 0, 0], anL: [-0.3, 0, 0] }),
+  // ... and the landing: a deep squat, both fists down on the ground.
+  stompLand: mirror({ chest: [0.55, 0, 0], neck: [-0.35, 0, 0], shL: [-0.9, 0, 0.35], elL: [-0.25, 0, 0], wrL: [0.3, 0, 0], hipL: [-0.95, 0, 0.18], knL: [1.45, 0, 0], anL: [-0.5, 0, -0.18] }),
+  // The Roll Dash's tell: crouched low, arms swept back, head up at him ...
+  crouch: mirror({ chest: [0.45, 0, 0], neck: [-0.4, 0, 0], shL: [0.85, 0, 0.3], elL: [-0.3, 0, 0], hipL: [-0.75, 0, 0.12], knL: [1.25, 0, 0], anL: [-0.5, 0, -0.12] }),
+  // ... and skating on its heel rollers: leaning forward, arms back, one foot ahead.
+  skate: mirror({ chest: [0.35, 0, 0], neck: [-0.3, 0, 0], shL: [0.95, 0, 0.25], elL: [-0.2, 0, 0], hipL: [-0.45, 0, 0.14], knL: [0.55, 0, 0], anL: [-0.1, 0, -0.14], hipR: [0.05, 0, -0.14], knR: [0.45, 0, 0], anR: [-0.35, 0, 0.14] }),
+  // The Wheel Swipe's tell: its right arm drawn back, the torso wound up ...
+  swipeTell: mirror({ chest: [0.08, -0.5, 0], neck: [0, 0.45, 0], shL: [-0.5, 0, 0.45], elL: [-1.2, 0, 0], shR: [0.55, 0, -1.25], elR: [-0.6, 0, 0], hipL: [-0.2, 0, 0.14], knL: [0.38, 0, 0], anL: [-0.18, 0, -0.14] }),
+  // ... and the swipe: the arm swung round in front, low, the torso unwound.
+  swipe: mirror({ chest: [0.2, 0.55, 0], neck: [0, -0.4, 0], shL: [0.4, 0, 0.35], elL: [-0.9, 0, 0], shR: [-1.15, 0, -1.2], elR: [-0.1, 0, 0], hipL: [-0.25, 0, 0.14], knL: [0.42, 0, 0], anL: [-0.18, 0, -0.14] }),
+  // Its battery low: slumped, arms hanging, head down, knees sagging.
+  lowbat: mirror({ chest: [0.32, 0, 0], neck: [0.45, 0, 0], shL: [-0.12, 0, 0.06], elL: [-0.08, 0, 0], wrL: [0.1, 0, 0], hipL: [-0.28, 0, 0.06], knL: [0.5, 0, 0], anL: [-0.22, 0, -0.06] }),
+  // Kneeling at the wall charger: its right knee down, the left foot planted ahead, leaning in,
+  // its left hand at the charger, the right on its knee (its pelvis lowered: footLift, ~97).
+  kneel: mirror({ chest: [0.36, 0, 0], neck: [-0.22, 0, 0], shL: [-1.1, 0, 0.12], elL: [-0.55, 0, 0], wrL: [0.2, 0, 0], shR: [-0.55, 0, -0.1], elR: [-0.9, 0, 0], hipL: [-1.4, 0, 0.12], knL: [1.3, 0, 0], anL: [0.1, 0, -0.12], hipR: [0.12, 0, -0.08], knR: [1.45, 0, 0], anR: [1.2, 0, 0.08] }),
+  // Zapped: arched back, arms flung out, head back.
+  zapped: mirror({ chest: [-0.35, 0, 0], neck: [-0.4, 0, 0], shL: [-0.3, 0, 1.75], elL: [0, 0, 0.3], wrL: [0, 0, 0], hipL: [0.05, 0, 0.22], knL: [0.05, 0, 0], anL: [0, 0, -0.22] }),
+  // Dizzy: arms loose, head lolling (its sway added as it stands there).
+  dizzy: mirror({ chest: [0.18, 0, 0], neck: [0.25, 0, 0.25], shL: [0.05, 0, 0.35], elL: [-0.15, 0, 0], hipL: [-0.18, 0, 0.12], knL: [0.36, 0, 0], anL: [-0.18, 0, -0.12] }),
+  // Beaten and sheepish: head tilted, its right hand rubbing the back of its head.
+  sheepish: mirror({ chest: [0.12, 0, 0], neck: [0.2, 0, 0.3], shL: [0.02, 0, 0.12], elL: [-0.25, 0, 0], shR: [0.25, 0, -2.4], elR: [-1.95, 0, 0], wrR: [0.4, 0, 0], hipL: [-0.06, 0, 0.04], knL: [0.12, 0, 0], anL: [-0.06, 0, -0.04] }),
 };
+// A walking step (the stepping side's leg; `k` 0 .. 1 .. 0 over a step) and the arms' swing.
+export const WALK = { hip: [-0.7, 0, 0], kn: [1.05, 0, 0], an: [-0.35, 0, 0], back: [0.32, 0, 0], arm: 0.42, bob: 14 };
+// About how far its pelvis drops kneeling (footLift's; past half of it its bump is the kneeling body's).
+export const KNEEL_DROP = 96;
+// How far a leg's ankle rises with its hip and knee turned (about x, radians) from where it
+// stands straight: the pelvis is lowered by the lower foot's (fight.js: a crouch's bent legs with
+// its soles on the ground, not floating).
+const THIGH = [REST.knL[1] - REST.hipL[1], REST.knL[2] - REST.hipL[2]];
+const SHIN = [REST.anL[1] - REST.knL[1], REST.anL[2] - REST.knL[2]];
+const LEG = -(THIGH[0] + SHIN[0]);
+export function footLift(hip, knee) {
+  const b = hip + knee;
+  const up = LEG + THIGH[0] * Math.cos(hip) - THIGH[1] * Math.sin(hip) + SHIN[0] * Math.cos(b) - SHIN[1] * Math.sin(b);
+  return up > 0 ? up : 0;
+}
 // A step while it turns on the spot (the stepping foot's side; `k` 0 .. 1 .. 0 over a step).
 export const STEP_UP = { hip: [-0.55, 0, 0], kn: [0.95, 0, 0], an: [-0.4, 0, 0] };
 

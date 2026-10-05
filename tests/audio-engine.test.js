@@ -42,6 +42,8 @@ import { smoothRamp } from '../src/audio/synth.js';
 import { PROFILES } from '../src/audio/ambience.js';
 import { AREA_DEFS } from '../src/world/areas.js';
 import { worldAudio } from '../src/world/area.js';
+import { registerSong } from '../src/objects/laneBoss/audio.js';
+import { CHANNELS } from '../src/audio/instruments.js';
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.
@@ -738,6 +740,52 @@ test("in an area the winged hat's theme (or the storm's track) hands the music s
     events.emit('wingHat', { on: false });
     assert.equal(audio.track, null);
     assert.equal(audio.wantMusic, null);
+  } finally {
+    audio.stopMusic();
+    mock.timers.tick(5000);
+  }
+});
+
+test("Sparrow Lane's boss: its fight's track (registered by the lane's chunk) takes the slot on 'laneBoss' fight and hands it back to the lane's loop on home and beaten; leaving for the grounds stops it", async () => {
+  registerSong(SONGS, INSTRUMENTS, CHANNELS);
+  const events = new Events();
+  const audio = new AudioEngine(events);
+  await audio.unlock();
+  try {
+    audio.ctx.currentTime = 20;
+    enterArea(events, 'hall', 'lane', 'home');
+    run(audio, 3);
+    assert.equal(audio.track?.name, 'skerries');
+    events.emit('laneBoss', { phase: 'wake' });
+    assert.equal(audio.track?.name, 'skerries', 'not while it wakes');
+    events.emit('laneBoss', { phase: 'fight' });
+    assert.equal(audio.track?.name, 'stompwatt');
+    run(audio, 3);
+    events.emit('laneBoss', { phase: 'charging' });
+    events.emit('laneBoss', { phase: 'hit' });
+    assert.equal(audio.track?.name, 'stompwatt', 'all through the fight');
+    events.emit('laneBoss', { phase: 'home' });
+    assert.equal(audio.track?.name, 'skerries', 'going home: the lane\'s own');
+    run(audio, 3);
+    events.emit('laneBoss', { phase: 'fight' });
+    run(audio, 3);
+    events.emit('laneBoss', { phase: 'beaten' });
+    assert.equal(audio.track?.name, 'skerries', 'beaten: the lane\'s own');
+    run(audio, 3);
+    events.emit('laneBoss', { phase: 'fight' });
+    run(audio, 3);
+    enterArea(events, 'lane', 'grounds', 'start');
+    run(audio, 3);
+    assert.equal(audio.track, null, 'the grounds have no music');
+    // The tune: an original loop (no finalBar), A minor, 140 bpm, 16 bars, its handclap.
+    const song = compileSong(SONGS.stompwatt);
+    assert.equal(SONGS.stompwatt.finalBar, undefined);
+    assert.equal(song.bpm, 140);
+    assert.equal(song.loopBeats, 64);
+    assert.ok(song.events.some((e) => e.inst === 'clap') && song.events.some((e) => e.inst === 'pulse') && song.events.some((e) => e.inst === 'synarp') && song.events.some((e) => e.inst === 'glock'));
+    const seq = new Sequencer(audio.ctx, song, audio.ctx.createGain());
+    seq.start(0, { realtime: false });
+    seq.scheduleUntil(30);
   } finally {
     audio.stopMusic();
     mock.timers.tick(5000);

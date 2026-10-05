@@ -140,7 +140,7 @@ function missing(arrays, others, tol = 0.02) {
   return n;
 }
 const count = (arrays) => arrays.reduce((n, a) => n + a.length / 9, 0);
-const stateOf = (st) => ({ x: st.x, y: st.y, z: st.z, yaw: st.yaw, m: st.m, lift: st.lift, bob: st.bob, turns: Array.from(st.turns), blinkL: st.blinkL, blinkR: st.blinkR });
+const stateOf = (st) => ({ x: st.x, y: st.y, z: st.z, yaw: st.yaw, m: st.m, lift: st.lift, bob: st.bob, turns: Array.from(st.turns), blinkL: st.blinkL, blinkR: st.blinkR, hatch: st.hatch, lights: st.lights });
 const carPose = (x, y, z) => ({ ...stateOf({ x, y, z, yaw: CAR.yaw, m: 0, lift: 0, bob: 0, turns: new Float32Array(BONES.length * 3), blinkL: 0, blinkR: 0 }), turns: new Float32Array(BONES.length * 3), hatch: 0 });
 const realPieces = (tier) => ({ ...DETAIL[tier].robot, tier, meshes: DETAIL[tier].robot.meshes.map((m) => ({ name: m.material, material: new THREE.MeshStandardMaterial(), buffers: m.buffers })) });
 
@@ -293,9 +293,9 @@ test('it wakes when he stays near it on the drive (the dwell) and blinks at him 
     return boss.state === 'wake';
   });
   assert.ok(held >= 148 && held <= 150, `the intro: 150 ticks (${held})`);
-  assert.equal(boss.state, 'show');
+  assert.equal(boss.state, 'stand', 'up for the fight (fight.js)');
   assert.deepEqual(h.log.filter((e) => e.name === 'bossCard').map((e) => e.lines[0][0]), ['STOMPWATT'], 'its name card once');
-  assert.deepEqual(h.log.filter((e) => e.name === 'laneBoss').map((e) => e.phase), ['wake', 'show']);
+  assert.deepEqual(h.log.filter((e) => e.name === 'laneBoss').map((e) => e.phase), ['wake', 'fight']);
   for (const s of ['robot_power_up', 'robot_clunk', 'robot_horn']) assert.ok(h.sounds.includes(s), s);
   assert.equal(h.sounds.filter((s) => s === 'robot_clunk').length, 12, 'a clunk as each piece locks in');
   assert.equal(boss.cur.m, 1);
@@ -343,24 +343,26 @@ test('touching the car wakes it at once (his feet against its side, his punch); 
   assert.notEqual(h.boss.state, 'wake', 'reading');
 });
 
-test('it stands and watches him (turning on the spot to face him, stepping), then folds back and parks when he has been away 10 s; once parked it wakes no more until he has gone and come back, then quickly (60 ticks, nobody held)', () => {
+test('out of its reach it watches him (turning on the spot to face him, stepping), then walks home, folds back and parks after 10 s; once parked it wakes no more until he has gone and come back, then quickly (60 ticks, nobody held)', () => {
   const h = hero(CAR.x, CAR.z - HL - 150, N);
   const { boss } = h;
-  until(h, 'show', 300);
-  // He walks round to its left: it turns to face him, stepping.
-  h.put(CAR.x - 260, CAR.z - 250, -Math.PI / 2);
+  until(h, 'stand', 300);
+  // Up on a bin (perched: out of its reach): it watches him, turning to face him, stepping.
+  h.put(lane.BINS[0].x, lane.BINS[0].z, lane.BIN.top, N);
+  h.run(3);
+  assert.equal(boss.state, 'watch', 'he is out of its reach');
   h.run(80);
   const face = Math.atan2(h.p.pos.x - boss.cur.x, h.p.pos.z - boss.cur.z);
   assert.ok(Math.abs(Math.atan2(Math.sin(face - boss.cur.yaw), Math.cos(face - boss.cur.yaw))) < 0.6, 'facing him');
   assert.ok(h.sounds.includes('robot_step'), 'stepping round');
-  // Away (beyond its reach) for 10 s: home.
+  // Away (beyond its reach) for 10 s in all: home.
   h.put(CAR.x, CAR.z - 2600, N);
-  const n = until(h, 'home', 400);
-  assert.ok(n >= BOSS.AWAY - 2 && n <= BOSS.AWAY + 2, `home after ${n} ticks away`);
-  until(h, 'parked', 400);
+  const n = until(h, 'walk', 400);
+  assert.ok(n >= BOSS.AWAY - 90 && n <= BOSS.AWAY - 80, `home after ${n + 83} ticks out of its reach`);
+  until(h, 'parked', 600);
   assert.equal(colliderNow(), COLLIDER, 'its collider back exactly');
   assert.equal(roofAt(), GROUND + K.roof, 'the car to stand on again');
-  assert.deepEqual(h.log.filter((e) => e.name === 'laneBoss').map((e) => e.phase), ['wake', 'show', 'home', 'parked']);
+  assert.deepEqual(h.log.filter((e) => e.name === 'laneBoss').map((e) => e.phase), ['wake', 'fight', 'home', 'parked']);
   // Next to it again at once: it stays parked (he may climb it) ...
   h.put(CAR.x, CAR.z - HL - 200, N);
   h.run(80);
@@ -380,12 +382,13 @@ test('it stands and watches him (turning on the spot to face him, stepping), the
   assert.ok(len >= 59 && len <= 61, `a quick wake (${len})`);
   assert.equal(held, 0, 'nobody held');
   assert.equal(h.log.filter((e) => e.name === 'bossCard').length, 1, 'no card again');
+  boss.enter();
 });
 
 test('a lost life sends it home; an arrival parks it at once; a new game parks it and brings its intro back', () => {
   const h = hero(CAR.x, CAR.z - HL - 150, N);
   const { boss } = h;
-  until(h, 'show', 300);
+  until(h, 'stand', 300);
   h.p.loseLife();
   until(h, 'home', 120);
   until(h, 'parked', 300);
@@ -394,14 +397,14 @@ test('a lost life sends it home; an arrival parks it at once; a new game parks i
   h.put(CAR.x, CAR.z - 2600, N);
   h.run(2);
   h.put(CAR.x, CAR.z - HL - 150, N);
-  until(h, 'show', 300);
+  until(h, 'stand', 300);
   h.om.enter(h.p);
   assert.equal(boss.state, 'parked');
   assert.equal(boss.shown, false);
   assert.equal(colliderNow(), COLLIDER);
-  // A new game mid-intro.
+  // A new game mid-fight.
   h.put(CAR.x, CAR.z - HL - 150, N);
-  until(h, 'show', 300);
+  until(h, 'stand', 300);
   h.om.reset();
   assert.equal(boss.state, 'parked');
   assert.equal(boss.introDone, false);
@@ -413,7 +416,7 @@ test('a lost life sends it home; an arrival parks it at once; a new game parks i
 
 test('folding back with him on its parking spot it shoos him off with its horn and waits; stepping off lets it park; staying, it parks anyway and lifts him onto its roof', () => {
   let h = hero(CAR.x, CAR.z - HL - 150, N);
-  until(h, 'show', 300);
+  until(h, 'stand', 300);
   // He stands where the car will be: it goes home (lost life cannot be used: walk away and come back
   // onto the spot).
   h.boss.leave = true;
@@ -429,7 +432,7 @@ test('folding back with him on its parking spot it shoos him off with its horn a
   h.boss.enter();
   // Staying put: after SHOO_MAX it parks anyway, lifting him onto the car.
   h = hero(CAR.x, CAR.z - HL - 150, N);
-  until(h, 'show', 300);
+  until(h, 'stand', 300);
   h.boss.leave = true;
   const spot = [CAR.x + 60, CAR.z + 150];
   h.put(...spot, GROUND, N);
@@ -443,9 +446,10 @@ test('folding back with him on its parking spot it shoos him off with its horn a
 test('he cannot walk through it: walking into it from in front he stops at its feet; the car rising, its footprint', () => {
   const h = hero(CAR.x, CAR.z - HL - 150, N);
   const { boss } = h;
-  until(h, 'show', 300);
+  until(h, 'stand', 300);
+  boss._set('dizzy'); // (a while it does nothing but face him)
   let closest = Infinity;
-  h.run(120, toward(0), () => {
+  h.run(55, toward(0), () => {
     closest = Math.min(closest, Math.hypot(h.p.pos.x - boss.cur.x, h.p.pos.z - boss.cur.z));
   });
   assert.ok(closest > BOSS.BUMP.body + PLAYER_RADIUS - 30, `kept out of its body (${closest.toFixed(0)})`);
@@ -476,13 +480,13 @@ test('both looks\' models: the realistic one built with its part (mid-morph G sw
   assert.equal(boss.realModel.group.visible, false);
   assert.equal(boss.classic.group.visible, true);
   assert.equal(boss.realModel.meshes.length, 6, 'high: paint, glass, black, lamp, metal, glow');
-  until(h, 'show', 200);
+  until(h, 'stand', 200);
   boss.enter();
   assert.equal(render.geometry.drawRange.count, Infinity);
   assert.equal(mesh.geometry.drawRange.count, Infinity);
   // Slots per tier.
   assert.equal(new RobotModel('mid', realPieces('mid'), { tint: CAR.tint }).meshes.length, 3);
-  assert.equal(new RobotModel('low', realPieces('low'), { tint: CAR.tint }).meshes.length, 2);
+  assert.equal(new RobotModel('low', realPieces('low'), { tint: CAR.tint }).meshes.length, 1, 'low: one draw call');
   assert.equal(boss.classic.meshes.length, 2);
 });
 
@@ -503,7 +507,7 @@ test('deterministic: two lanes fed the same ticks wake, stand, turn and fold ali
   const b = runOne();
   assert.deepEqual(a.trace, b.trace);
   assert.equal(a.log.some((e) => e.name === 'bossDefeated'), false);
-  assert.ok(a.trace.some(([s]) => s === 'parked') && a.trace.some(([s]) => s === 'show'));
+  assert.ok(a.trace.some(([s]) => s === 'parked') && a.trace.some(([s]) => s === 'stand'));
 });
 
 test('its camera: the intro shot blends in from the drive\'s mouth, rises, hands back; a cut drops it', () => {
@@ -559,7 +563,7 @@ test('its sounds: registered into the game\'s table as the chunk attaches, each 
 });
 
 test('hot paths avoid allocating constructs; the parked car costs no query a tick but the notice\'s distance', () => {
-  const hot = { LaneBoss: ['update', '_parked', '_read', '_touching', '_wake', '_showing', '_face', '_idle', '_home', '_unmorph', '_frame', '_bump', '_push', 'animate', '_copy'], Rig: ['pose'], RobotModel: ['pose'] };
+  const hot = { LaneBoss: ['update', '_parked', '_read', '_touching', '_wake', '_face', '_home', '_unmorph', '_frame', '_bump', '_push', 'animate', '_copy'], Rig: ['pose'], RobotModel: ['pose'] };
   const classes = { LaneBoss, Rig, RobotModel };
   for (const [cls, names] of Object.entries(hot)) {
     for (const name of names) {

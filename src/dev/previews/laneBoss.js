@@ -3,19 +3,22 @@
 // bake: model.js), on a patch of drive under the lane's sky colour. (The realistic look's model
 // is the worker's car: see it in the game, tools/realShots.mjs's robot views.)
 //   morph=0..1          the morph (0 the car, 1 the robot; default 1)
-//   pose=stand|flex|wave|shoo|hips|fold   its pose (default stand)
+//   pose=<a rig.js POSES name>   its pose (default stand; on bent legs its pelvis lowered: rig.footLift)
 //   lift=<units>        the car's body raised off its wheels (default 0; 50 during a wake)
 //   blink=0..1          its eyes shut that far
 //   look=<radians>      its head turned round
-//   sheet=poses|morph   a row of them instead: every pose (but fold), or the morph at 0, 1/4, 1/2,
-//                       3/4, 1
+//   hatch=<radians>     its backpack's hatch open that far (the battery's cells show)
+//   lights=0..3         its power lights still lit (default 3)
+//   sheet=poses|morph   a row of them instead: every pose (but fold; poses=a,b,c: those), or the
+//                       morph at 0, 1/4, 1/2, 3/4, 1
+//   turn=<radians>      its own heading (default 0: facing the camera's yaw 0)
 //   yaw=<radians>       the camera's angle round it (0: in front; default a three-quarter view),
 //                       spin=1 orbits slowly; dist=<units> its distance
 import * as layout from '../../world/lane/layout.js';
 import { dadCar } from '../../world/lane/props.js';
 import { LIGHT } from '../../world/lane/build.js';
 import { RobotModel, classicCar } from '../../objects/laneBoss/model.js';
-import { BONES, POSES, unfold } from '../../objects/laneBoss/rig.js';
+import { BONES, POSES, unfold, footLift } from '../../objects/laneBoss/rig.js';
 
 const N = BONES.length;
 const INDEX = Object.fromEntries(BONES.map(([name], i) => [name, i]));
@@ -38,12 +41,15 @@ export async function setup({ THREE, scene, params }) {
   const pieces = classicCar(layout, { ownCar: (id, paint, mark) => dadCar(paint, layout, car, mark) });
   const num = (k, d) => (params.has(k) ? Number(params.get(k)) : d);
   const sheet = params.get('sheet');
-  const list = sheet === 'poses' ? Object.keys(POSES).filter((p) => p !== 'fold').map((pose) => ({ pose, m: 1 })) : sheet === 'morph' ? [0, 0.25, 0.5, 0.75, 1].map((m) => ({ pose: 'stand', m })) : [{ pose: params.get('pose') ?? 'stand', m: num('morph', 1) }];
-  const gap = sheet === 'morph' ? 760 : 600;
+  const list = sheet === 'poses' ? (params.get('poses')?.split(',') ?? Object.keys(POSES).filter((p) => p !== 'fold')).map((pose) => ({ pose, m: 1 })) : sheet === 'morph' ? [0, 0.25, 0.5, 0.75, 1].map((m) => ({ pose: 'stand', m })) : [{ pose: params.get('pose') ?? 'stand', m: num('morph', 1) }];
+  const gap = sheet === 'morph' ? 760 : sheet === 'poses' ? 640 : 600;
   list.forEach(({ pose, m }, i) => {
     const model = new RobotModel('classic', pieces, { tint: car.classicTint ?? car.tint, light: { ...LIGHT, sun: layout.LANE_SUN } });
     scene.add(model.group);
-    model.pose({ x: (i - (list.length - 1) / 2) * gap, y: 0, z: 0, yaw: 0, m, lift: num('lift', 0), bob: 0, turns: turnsOf(pose, m, num('look', 0)), blinkL: num('blink', 0), blinkR: num('blink', 0), hatch: 0 });
+    const t = turnsOf(pose, m, num('look', 0));
+    const lift = (hip, kn) => footLift(t[INDEX[hip] * 3], t[INDEX[kn] * 3]);
+    const bob = m >= 1 ? -Math.min(lift('hipL', 'knL'), lift('hipR', 'knR')) : 0;
+    model.pose({ x: (i - (list.length - 1) / 2) * gap, y: 0, z: 0, yaw: num('turn', 0), m, lift: num('lift', 0), bob, turns: t, blinkL: num('blink', 0), blinkR: num('blink', 0), hatch: num('hatch', 0), lights: num('lights', 3) });
   });
   // The drive under it.
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(gap * list.length + 1600, 2400).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5a5a58 }));
@@ -51,7 +57,7 @@ export async function setup({ THREE, scene, params }) {
   const dist = num('dist', 1700 + (list.length - 1) * gap * 0.32);
   let yaw = num('yaw', sheet ? 0.25 : 0.55);
   const spin = params.get('spin') === '1';
-  const camera = { pos: [Math.sin(yaw) * dist, 420, Math.cos(yaw) * dist], look: [0, 330, 0] };
+  const camera = { pos: [Math.sin(yaw) * dist, num('camy', 420), Math.cos(yaw) * dist], look: [0, num('looky', 330), 0] };
   return {
     camera,
     update(dt) {

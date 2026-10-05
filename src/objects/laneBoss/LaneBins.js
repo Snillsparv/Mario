@@ -11,6 +11,10 @@
 //   bins.animate(alpha)        per frame: the moving bins' instances, between the last two ticks
 //   bins.setLook(part)         the realistic part shown (its bin mesh posed too), or null
 //   bins.sendHome()            every bin home at once (an arrival, a lost life, a new game)
+//   bins.shove(bin, dx, dz, dist) -> moved   STOMPWATT shoving a bin out of its way (fight.js):
+//                              it slides SHOVE a tick along (dx, dz) (a unit) for dist where it
+//                              may go (stopping short of walls, the other bin and Jonas), with
+//                              a clatter; not one he holds
 //   bins.reset()               a new game (sendHome)
 //   bins.list                  [{ id, x, z, home, held, homing, ... }] (tests)
 //
@@ -81,6 +85,9 @@ export class LaneBins {
         ptip: 0,
         tnx: 0, // the side it tips toward (the held face's normal)
         tnz: 0,
+        shoveT: 0, // ticks of a shove left, and its step
+        svx: 0,
+        svz: 0,
         stale: true, // its instances to be written (a look attached, put home)
         dx: NaN, // where its instances were last written (frames may be skipped)
         dz: NaN,
@@ -167,6 +174,7 @@ export class LaneBins {
     b.held = false;
     b.parked = false;
     b.homing = 0;
+    b.shoveT = 0;
     b.idle = 0;
     b.tip = b.ptip = 0;
     b.px = b.home.x;
@@ -187,6 +195,27 @@ export class LaneBins {
   reset() {
     this.sendHome();
     this.lastAction = null;
+  }
+
+  // Shoved by the robot (fight.js): sliding off along (dx, dz) for `dist`, a clatter; false if
+  // he holds it or it is already sliding.
+  shove(b, dx, dz, dist) {
+    if (b.held || b.shoveT > 0) return false;
+    b.shoveT = Math.ceil(dist / B.SHOVE);
+    b.svx = dx * B.SHOVE;
+    b.svz = dz * B.SHOVE;
+    b.homing = 0;
+    this.events?.emit('sfx', { name: 'bin_clatter', pos: { x: b.x, y: b.y + 80, z: b.z } });
+    return true;
+  }
+
+  // A shove under way: a step where the bin may go, else it stops.
+  _slide(b, player) {
+    b.shoveT--;
+    const x = b.x + b.svx;
+    const z = b.z + b.svz;
+    if (this.free(b, x, z, player)) this._moveTo(b, x, z);
+    else b.shoveT = 0;
   }
 
   // ------------------------------------------------------------------ the tick
@@ -219,6 +248,7 @@ export class LaneBins {
         b.held = false;
         this._park(b, false);
       }
+      if (b.shoveT > 0 && !b.held) this._slide(b, player);
       // The tip: pulled, it tips toward him; else it rolls level again.
       const pull = holding && g.held === i && player.anim === 'bin_pull';
       if (pull) {

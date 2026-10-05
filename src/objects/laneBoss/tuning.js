@@ -19,6 +19,7 @@
 //   TIP, TIP_RATE   pulled, the drawn bin tips toward him onto its wheels this far (radians),
 //               this much a tick (player/model/anims/bin.js eases his mittens by as much)
 //   PARK        a held bin's collider waits this far under the world (moveSurfaces)
+//   SHOVE       shoved by STOMPWATT, a bin slides this far a tick (LaneBins.shove)
 
 export const BINS_TUNING = Object.freeze({
   PUSH: 6,
@@ -36,6 +37,7 @@ export const BINS_TUNING = Object.freeze({
   TIP: 0.26,
   TIP_RATE: 0.26 / 6,
   PARK: -60000,
+  SHOVE: 12,
 });
 
 // STOMPWATT (LaneBoss.js), in ticks (30 a second) and lane units. (Its wake's reach and dwell,
@@ -83,6 +85,88 @@ export const BOSS = Object.freeze({
   BLINK_EVERY: 110,
   BLINK_LEN: 4,
   IDLE_EVERY: 150,
-  BUMP: { foot: 70, body: 115, step: 48 },
+  BUMP: { foot: 70, body: 115, step: 48, kneel: 120, heel: 60 },
   PARK: -60000,
+});
+
+// The fight (B3: fight.js), in ticks and lane units; every number a difficulty knob (a family
+// with young children: kind, readable, a whole fight about two to three minutes).
+//   PHASES       one per power light (3 hits win): its attack set in order, its tells' length,
+//                its walking speed, its charging window (the hatch open: 8, 7, 6 s) and how far
+//                its stomp's shockwave runs. 'swipe' when he is not in front within its reach,
+//                and 'dash' when he is too near or too far, are a stomp instead.
+//   GAP          ticks between two attacks (it guards, facing him)
+//   LOCK         an attack's target stops following him this long before the tell ends (R2)
+//   STOMP        the Wheel Stomp: started within `reach` (it walks in to `near`); its ring under
+//                him grows from ring[0] to ring[1] across (orange); `hop` ticks onto the locked
+//                spot (at most `far` from where it stood, `peak` high); its foot hurts within
+//                `foot` of where it lands (his feet circle); `land` ticks squatting; then the
+//                shockwave runs out `wave` a tick (to the phase's `wave` reach), a band `band`
+//                wide and `high` tall, hurting him only standing on the ground within `level`
+//                of its floor (any jump clears it)
+//   DASH         the Roll Dash: when he is min .. max away (it walks in to `near`); `speed` a tick
+//                along the locked line for at most `ticks`; its body (r `r`, up to `top`) hurts
+//                and knocks him sideways off its line; a wall stops it (`bonk` ticks wobbling),
+//                else it skids `skid` ticks; the chevrons show its line on the ground, `lane`
+//                wide (wider than it hurts: off the chevrons he is safe)
+//   SWIPE        the Wheel Swipe: he within `reach` in front (within `half` of its facing); the
+//                arc locks `lock` before the swipe; the fist sweeps the arc in `ticks`, hurting
+//                him there with his feet under `high` over its floor (a jump clears it), or
+//                within `slack` of the fist's way
+//   TURN         its turn toward him or its goal (radians a tick); WALK_STEP ticks a step
+//   FEET         its feet circle against walls as it walks (and its body's top for headroom)
+//   LOW .. UNPLUG   the charging loop's beats: low battery (slumped), kneel, plug in, the
+//                hatch opening (then the window), zapped, dizzy, unplugging (no hit)
+//   SHORT        the defeat's short-circuit before it walks off to fold back, sheepish
+//   CELLS        the battery cells' sphere while it kneels (its frame: `up` over its ground,
+//                `back` behind its middle), r; any of his attacks touching it is a hit
+//   COINS        coins dropped by each hit (in a fan behind it, FAN apart)
+//   PERCH        his floor more than this over the drive (the bins, the carport, a roof): out
+//                of its reach (no attack; it watches him)
+//   OUT          he more than the arena's r + this from its middle: out of the fight
+//   WATCH        out or away this long: it goes home (the fight kept: hits stay)
+//   REVERSE      beaten: folded back into the car in front of its slot, it reverses in this
+//                fast; WAIT ticks it waits (honking) for him to step out of its slot
+//   KNOCK        a hurt's knockback probed here (near, far along it; a floor within `dy` of
+//                his): unsafe, he is knocked toward the arena's middle instead
+//   TINK_GAP     a hit on its body outside the window: a metal tink at most this often
+//   HATCH        the battery bay's hatch opens this far (radians)
+//   EASY         the easier fight (layout.LANE_BOSS.easy, off; boss.setEasy): every tell this much
+//                longer, every window this much longer, and no dash in the second round
+//   SHOVE        a bin in its way is shoved this far aside (LaneBins.shove)
+export const FIGHT = Object.freeze({
+  PHASES: [
+    { set: ['stomp', 'stomp'], tell: 30, walk: 7, window: 240, wave: 500 },
+    { set: ['stomp', 'dash', 'stomp'], tell: 26, walk: 8, window: 210, wave: 600 },
+    { set: ['dash', 'swipe', 'dash', 'stomp'], tell: 22, walk: 9, window: 180, wave: 700 },
+  ],
+  GAP: 40,
+  LOCK: 12,
+  STOMP: { reach: 900, near: 700, ring: [140, 200], hop: 20, far: 450, peak: 160, foot: 140, land: 24, wave: 12, band: 40, high: 50, level: 60 },
+  DASH: { min: 300, max: 1100, near: 900, speed: 30, ticks: 30, r: 95, lane: 220, top: 450, bonk: 40, skid: 10 },
+  SWIPE: { reach: 380, half: 1.05, lock: 10, ticks: 8, high: 90, slack: 0.3 },
+  TURN: 0.08,
+  WALK_STEP: 16,
+  FEET: 120,
+  LOW: 30,
+  KNEEL: 20,
+  PLUG: 12,
+  OPEN: 12,
+  ZAPPED: 20,
+  DIZZY: 60,
+  UNPLUG: 30,
+  SHORT: 90,
+  CELLS: { up: 172, back: 70, r: 95 },
+  COINS: 3,
+  FAN: 110,
+  PERCH: 60,
+  OUT: 200,
+  WATCH: 300,
+  REVERSE: 6,
+  WAIT: 300,
+  KNOCK: { near: 145, far: 290, dy: 60, from: 100 },
+  TINK_GAP: 12,
+  HATCH: 1.35,
+  SHOVE: 220,
+  EASY: { tell: 8, window: 90 },
 });

@@ -28,6 +28,10 @@
 // stinger, once per storm. The castle door's laugh (locked or sealed) and the doors' creaks
 // and thuds ring in one shared hall reverb, made ahead at idle time (see prepare).
 //
+// Sparrow Lane's boss ('laneBoss' { phase }): its fight's track ('stompwatt', registered into SONGS
+// by the lane's lazy chunk) takes the music slot on 'fight' and hands it back to the area's own
+// track on 'home' or 'beaten' (leaving the lane for an area without a track of its own stops it).
+//
 // Areas ('areaChange' { audio: { music, ambience, reverb, ... } }, core/AreaSwitch.js): setArea()
 // switches the ambience to the area's profile (ambience.js PROFILES: the hall's room tone and
 // its fire crackling in the hearth, the sea's waves and gulls; the birds, the pastoral bed and
@@ -90,6 +94,7 @@ const NO_INFO = {};
 // The areas' own loops (world/areas.js def.audio.music): the only music that going back to the
 // grounds stops.
 export const AREA_TRACKS = new Set(['castle_hall', 'skerries']);
+const BOSS_TRACK = 'stompwatt'; // (Sparrow Lane's boss's: it stops too, leaving the lane)
 
 // Only a table's own entries count: names like 'toString' or '__proto__' are unknown.
 const own = (table, name) => (typeof name === 'string' && Object.hasOwn(table, name) ? table[name] : null);
@@ -370,7 +375,7 @@ export class AudioEngine {
     this.baseMusic = own(SONGS, music) ? music : null;
     if (this.baseMusic) {
       if (!this.flying && !this.dark && !this.melt.doom) this.playMusic(this.baseMusic);
-    } else if (AREA_TRACKS.has(this.wantMusic)) this.stopMusic(AREA_FADE);
+    } else if (AREA_TRACKS.has(this.wantMusic) || this.wantMusic === BOSS_TRACK) this.stopMusic(AREA_FADE);
     this.area = ambience ?? 'grounds';
     this.areaAudio = audio ?? null;
     this.ambience?.setProfile(this.area, AREA_FADE, this.areaAudio);
@@ -587,6 +592,12 @@ export class AudioEngine {
     on('wingHat', (e) => this.setFlying(e.on));
     // Another area (core/AreaSwitch.js): its ambience, music and reverb.
     on('areaChange', (e) => this.setArea(e.audio));
+    // Sparrow Lane's boss: its fight's track (the lane's chunk registers it: SONGS.stompwatt)
+    // has the music slot while it fights; going home or beaten hands it back to the area's own.
+    on('laneBoss', (e) => {
+      if (e.phase === 'fight') this.playMusic(BOSS_TRACK);
+      else if ((e.phase === 'home' || e.phase === 'beaten') && this.wantMusic === BOSS_TRACK) this.backToBase(MUSIC_FADE);
+    });
   }
 
   installBrowserHooks() {

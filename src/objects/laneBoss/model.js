@@ -22,13 +22,14 @@
 // draws them in the car's own materials (shared with the parked car's meshes). Slots (draw calls):
 // classic 2 (the baked faces, the glow); high 6 (paint, glass, black, lamp, metal, glow: the
 // paint, black, lamp and metal casting the sun's shadow); mid 3 (everything opaque in the paint,
-// the glass, the glow); low 2 (everything in the paint, the glow).
+// the glass, the glow); low 1 (everything in the paint, its lights lit bright there as the
+// parked car's T lights are on low: one draw call).
 
 import * as THREE from 'three';
 import { GeoBuilder } from '../../world/castle/geom.js';
 import { renderTexture } from '../../world/lane/textures.js';
 import { PIECES, PIECE, pieceOf } from '../../world/lane/real/pieces.js';
-import { BONE, BONES, BONE_COUNT, ATTACH, FOLLOW, pivotsOf, grow, rise, arrive, ARC } from './rig.js';
+import { BONE, BONES, BONE_COUNT, ATTACH, FOLLOW, LIGHTS, BAY, CELLS, pivotsOf, grow, rise, arrive, ARC } from './rig.js';
 import { buildFrame } from './frame.js';
 
 const ATTRS = { position: 3, normal: 3, color: 3 };
@@ -38,7 +39,8 @@ const ATTRS_UV = { ...ATTRS, uv: 2 }; // (the classic look's: render's grain tex
 const SLOTS = {
   high: { carPaint: 'paint', carGlass: 'glass', trim: 'black', tyre: 'black', lamp: 'lamp', tail: 'lamp', metal: 'metal', rim: 'metal', drl: 'glow', paint: 'paint', black: 'black', glow: 'glow' },
   mid: { carPaint: 'paint', carGlass: 'glass', trim: 'paint', tyre: 'paint', lamp: 'paint', tail: 'paint', metal: 'paint', rim: 'paint', drl: 'glow', paint: 'paint', black: 'paint', glow: 'glow' },
-  low: { carPaint: 'paint', carGlass: 'paint', tyre: 'paint', gloss: 'paint', metal: 'paint', paint: 'paint', black: 'paint', glow: 'glow' },
+  // (Low: one draw call, its lights lit bright in the paint as the parked car's T lights are.)
+  low: { carPaint: 'paint', carGlass: 'paint', tyre: 'paint', gloss: 'paint', metal: 'paint', paint: 'paint', black: 'paint', glow: 'paint' },
   classic: { car: 'bake', paint: 'bake', black: 'bake', metal: 'bake', glow: 'glow' },
 };
 const CASTS = new Set(['paint', 'black', 'lamp', 'metal', 'bake']);
@@ -154,9 +156,10 @@ export class RobotModel {
     for (const [slot, names] of Object.entries(SLOT_MATERIAL)) {
       for (const n of names) mat[slot] ??= pieces.meshes.find((m) => m.name === n)?.material;
     }
+    const toGlow = !classic && slotOf.glow === 'glow';
     for (const m of pieces.meshes) {
       const slot = slotOf[m.name] ?? 'paint';
-      add(slot, slot === 'glow' && !classic ? scaled(m.buffers, EYE_BRIGHT) : m.buffers, !classic);
+      add(slot, slot === 'glow' && !classic ? scaled(m.buffers, EYE_BRIGHT) : m.buffers, toGlow);
     }
     // Each piece's pivot; the eyes' (the middle of each T) and the hatch's hinge (its top edge at
     // the back) from the geometry.
@@ -164,8 +167,6 @@ export class RobotModel {
     // (The car's roof's face on its chest: the classic roof slab stands 3 over the roof.)
     const [, off, , scale] = ATTACH.canopy;
     const chest = off[2] + (pieces.cuts.roof + (classic ? 3 : 0) - pivots.canopy[1]) * scale[1];
-    const frame = buildFrame(look, tint, { chest });
-    for (const [name, g] of Object.entries(frame)) if (g.count) add(slotOf[name], g.buffers());
     const box = (id) => {
       const lo = [Infinity, Infinity, Infinity];
       const hi = [-Infinity, -Infinity, -Infinity];
@@ -189,6 +190,8 @@ export class RobotModel {
     const [hlo, hhi] = box(PIECE.hatch);
     pivots.hatch = hlo[0] <= hhi[0] ? [0, hhi[1], hlo[2]] : pivots.tail;
     pivots.shadow = [0, 0, 0];
+    const frame = buildFrame(look, tint, { chest });
+    for (const [name, g] of Object.entries(frame)) if (g.count) add(slotOf[name], g.buffers());
     this.rig = new Rig(pivots);
     // Materials: the classic bake and glow; the realistic slots' from the car's own (the frame's
     // black and metal fall back to the paint where the car has none of them), the glow unlit.
@@ -273,6 +276,10 @@ const FOLLOWERS = Object.keys(FOLLOW);
 const LEADERS = FOLLOWERS.map((p) => FOLLOW[p]);
 const REST = Object.fromEntries(BONES.map(([name, , at]) => [name, at]));
 REST.root = [0, 0, 0];
+const SPINS = MOVERS.map((p) => (p === 'wheelFL' || p === 'wheelFR' ? 1 : p === 'wheelRL' || p === 'wheelRR' ? 2 : 0)); // (fists, heels)
+const LIGHT_AT = LIGHTS.map((n) => BONES.findIndex((b) => b[0] === n));
+const CELLS_AT = BONES.findIndex((b) => b[0] === CELLS);
+const BAY_AT = BONES.findIndex((b) => b[0] === BAY);
 const PELVIS_REST = REST.pelvis[1];
 const PELVIS_LOW = 60; // (folded inside the car: its pelvis in the car's floor)
 const SHADOW_GONE = 0.25; // (the car's soft shadow gone this far into the morph)
@@ -317,7 +324,10 @@ export class Rig {
 
   // state: { x, y, z, yaw, m (the morph: 0 the car .. 1 the robot), lift (the car's body raised off
   // its wheels), bob (the pelvis up or down), turns (the frame bones' [x, y, z] in BONES order,
-  // 'frame' first), blinkL, blinkR (0 open .. 1 shut), hatch (its opening, radians) }
+  // 'frame' first), blinkL, blinkR (0 open .. 1 shut), hatch (the battery bay's hatch open,
+  // radians), gate (the backpack's tailgate lifted, radians; default 0), lights (its
+  // power lights still lit, 0 .. 3; default 3), spin, heel (the fists' and the heel rollers' turn
+  // on their axles, radians) }
   pose(st) {
     const root = this.root;
     root.position.set(st.x, st.y, st.z);
@@ -334,6 +344,12 @@ export class Rig {
       const b = this.frameBones[i];
       b.rotation.set(t[i * 3], t[i * 3 + 1], t[i * 3 + 2]);
     }
+    // Its power lights (one out for each hit it took) and the battery cells (while the hatch is
+    // open), shrunk away to nothing when not shown.
+    const lights = st.lights === undefined ? 3 : st.lights;
+    for (let i = 0; i < LIGHT_AT.length; i++) this.frameBones[LIGHT_AT[i]].scale.setScalar(i < lights ? 1 : 1e-4);
+    this.frameBones[BAY_AT].rotation.set(st.hatch, 0, 0);
+    this.frameBones[CELLS_AT].scale.setScalar(st.hatch > 0.02 ? 1 : 1e-4);
     root.updateMatrixWorld(true);
     _inv.copy(root.matrixWorld).invert();
     // The pieces: in the car (their pivots, the body lifted), on their way (an arc), or on their
@@ -349,6 +365,8 @@ export class Rig {
       _s.copy(ONE);
       if (u > 0) {
         _m.multiplyMatrices(_inv, bones[BONE[ATTACH[p][0]]].matrixWorld).multiply(this.attach[p]);
+        // (A wheel spinning on its axle: the fists' and the heel rollers'.)
+        if (SPINS[i] !== 0) _m.multiply(_t.makeRotationX(SPINS[i] === 1 ? st.spin || 0 : st.heel || 0));
         _m.decompose(_p1, _q1, _s1);
         _p.lerp(_p1, u);
         _p.y += Math.sin(Math.PI * u) * ARC[p];
@@ -368,7 +386,7 @@ export class Rig {
       const o = this.pivots[on];
       _t.makeTranslation(a[0] - o[0], a[1] - o[1], a[2] - o[2]);
       const shut = p === 'eyeL' ? st.blinkL : st.blinkR;
-      if (p === 'hatch') _t.multiply(_m.makeRotationX(-st.hatch));
+      if (p === 'hatch') _t.multiply(_m.makeRotationX(st.gate || 0));
       else _t.multiply(_m.makeScale(1, shut > 0.92 ? 0.08 : 1 - shut, 1));
       bones[PIECE[p]].matrix.multiplyMatrices(bones[PIECE[on]].matrix, _t);
     }

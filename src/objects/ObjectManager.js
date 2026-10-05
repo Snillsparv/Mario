@@ -662,7 +662,7 @@ export class ObjectManager {
     if (this.cannon !== null) this.cannon.animate(alpha, clock);
     if (this.critters !== null) this.critters.animate(alpha, clock);
     if (this.bins !== null) this.bins.animate(alpha);
-    if (this.laneBoss !== null) this.laneBoss.animate(alpha);
+    if (this.laneBoss !== null) this.laneBoss.animate(alpha, clock, camera);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);
