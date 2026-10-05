@@ -18,7 +18,11 @@
 // garage: the double garage's corner, balcony: north_3's balcony,
 // f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole; B1: ev37, ev36,
 // evfront, evside, evrear, evleft (the dad's car), bins-home, bins-pulled, bins-pushed,
-// bins-return), --sizes
+// bins-return; B2: morph-000 .. morph-100 (STOMPWATT, the lane's boss, posed by hand a quarter of
+// its transformation apart, from the street), robot-front, robot-q34, robot-back, robot-scale
+// (Jonas beside it), robot-flex, robot-wave, intro-040, intro-090, intro-135 (its first wake
+// through the game's own camera: rising, mid-morph, flexing), gswap (mid-morph, the look swapped
+// with G: the other look's model carrying on)), --sizes
 // (default 960x540,1280x720), --looks (default high,low,classic: a tier, or classic). A frame
 // on SwiftShader takes seconds: each screenshot waits up to three minutes.
 // Files: <out>/<look>-<view>-<width>.png. Prints each view's F1 line and draw calls.
@@ -77,6 +81,20 @@ const VIEWS = {
   'bins-pushed': { bins: { hero: [1665, 22, 1480, 0], pull: 100, push: [0, 22, 0, -Math.PI / 2], walk: 40 }, pos: [1560, 240, 640], look: [1800, 110, 1000], fov: 45 },
   // ...and one left alone rolling home (Jonas gone off down the street).
   'bins-return': { bins: { hero: [1665, 22, 1480, 0], pull: 70, away: 440 }, pos: [1420, 240, 960], look: [1690, 110, 1330], fov: 45 },
+  // STOMPWATT (B2): posed by hand (robot: the morph, its pose, its heading off the car's), or its
+  // first wake run through its own steps to `intro` ticks in (the game's camera: its intro shot;
+  // `swap`: then G, the other look drawing it).
+  ...Object.fromEntries([0, 25, 50, 75, 100].map((m) => [`morph-${String(m).padStart(3, '0')}`, { robot: { m: m / 100 }, pos: [2420, 420, 640], look: [1900, 330, 1445], fov: 50 }])),
+  'robot-front': { robot: { m: 1 }, pos: [1960, 330, 330], look: [1900, 360, 1445], fov: 50 },
+  'robot-q34': { robot: { m: 1 }, pos: [2420, 420, 640], look: [1900, 340, 1445], fov: 50 },
+  'robot-back': { robot: { m: 1, yaw: Math.PI }, pos: [1960, 330, 330], look: [1900, 360, 1445], fov: 50 },
+  'robot-scale': { robot: { m: 1 }, pos: [2380, 300, 420], look: [1950, 260, 1200], fov: 50, hero: [2060, 22, 1020, Math.PI * 0.85] },
+  'robot-flex': { robot: { m: 1, pose: 'flex' }, pos: [1960, 330, 330], look: [1900, 380, 1445], fov: 50 },
+  'robot-wave': { robot: { m: 1, pose: 'wave' }, pos: [2420, 420, 640], look: [1900, 340, 1445], fov: 50 },
+  'intro-040': { intro: 40 },
+  'intro-090': { intro: 90 },
+  'intro-135': { intro: 135 },
+  gswap: { intro: 85, swap: true },
 };
 
 const out = opt('out', 'shots/real');
@@ -104,6 +122,11 @@ try {
       await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
       if (look !== 'classic') await page.waitForFunction(() => window.__game.view.describeMode().startsWith('real'), null, { timeout: 180000, polling: 250 });
       await page.evaluate(() => window.__game.laneBoss); // (the lane's lazy chunk: the bins move)
+      // (The dad's car stays a car unless a view wakes or poses it: Jonas near it would wake it.)
+      await page.evaluate(async () => {
+        const { boss } = await window.__game.laneBoss;
+        if (boss) boss.armed = false;
+      });
       // Native size for the classic look too (its saved default is the retro filter).
       await page.evaluate((classic) => {
         if (classic) window.__game.view.setN64Mode(false);
@@ -112,7 +135,7 @@ try {
       }, look === 'classic');
       for (const name of views) {
         const v = VIEWS[name];
-        const line = await page.evaluate(([v, classic]) => {
+        const line = await page.evaluate(async ([v, classic]) => {
           const g = window.__game;
           const view = g.view;
           const o = g.areas.current.def.origin;
@@ -120,6 +143,31 @@ try {
             const r = view.renderer.info.render;
             return `${view.describeMode()}: ${r.calls} calls, ${r.triangles} triangles (Jonas ${g.player.action}, model ${g.model.object3D.scale.y.toFixed(2)}, fov ${view.camera.fov.toFixed(0)})`;
           };
+          const { boss } = await g.laneBoss;
+          if (v.intro) {
+            // Its first wake: Jonas walked up to the car, the intro run to that tick, drawn through
+            // the game's own camera (then G: the other look).
+            boss.reset();
+            g.player.teleport(1900 + o.x, 22 + o.y, 1000 + o.z, 0);
+            g.player.setAction('idle');
+            g.camera.reset(g.player);
+            for (let n = 0; n < 80 && boss.state !== 'wake'; n++) g.step(1);
+            g.step(v.intro);
+            if (v.swap) {
+              g.areas.setClassic(!classic);
+              view.setN64Mode(false); // (the classic look's own picture, not through the retro TV)
+              g.step(2);
+            }
+            g.render();
+            const line = `${info()} [${boss.state} m ${boss.cur.m.toFixed(2)}]`;
+            if (!v.swap) {
+              boss.pose(null);
+              boss.armed = false;
+            }
+            return line;
+          }
+          if (v.robot) boss.pose({ m: v.robot.m, pose: v.robot.pose ?? 'stand', yaw: v.robot.yaw !== undefined ? Math.PI + v.robot.yaw : undefined });
+          else boss.pose(null);
           if (v.follow) {
             const f = v.follow;
             if (f.entry) g.enterArea('lane', f.entry);
@@ -192,6 +240,17 @@ try {
         const file = path.join(out, `${look}-${name}-${width}.png`);
         await page.screenshot({ path: path.resolve(root, file), timeout: 180000 });
         console.log(`${file}  ${line}`);
+        // (G back, the boss parked again.)
+        if (v.swap) {
+          await page.evaluate(async (classic) => {
+            const g = window.__game;
+            g.areas.setClassic(classic);
+            const { boss } = await g.laneBoss;
+            boss.pose(null);
+            boss.armed = false;
+          }, look === 'classic');
+          if (look !== 'classic') await page.waitForFunction(() => window.__game.view.describeMode().startsWith('real'), null, { timeout: 180000, polling: 250 });
+        }
         if (v.retro) await page.evaluate((classic) => (classic ? window.__game.view.setN64Mode(false) : window.__game.view.toggleRetro()), look === 'classic');
       }
       await page.close();

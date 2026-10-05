@@ -21,7 +21,8 @@
 //       part: the WorldPart 'lane' (its object3D 'lane-real', under the area's root: the classic
 //       builders' faces the realistic look keeps, and the worker's `detail` in its own
 //       materials; part.movers: the bins (the worker's, instanced: lane-detail-bins) and the
-//       charger's cable; part.hide: the dad's car's first vertex in each detail mesh), look: the
+//       charger's cable; part.hide: the dad's car's first vertex in each detail mesh; part.robot:
+//       the dad's car as the lane's boss's pieces, detail.js robotPieces, in their materials), look: the
 //       RealLook from layout.LANE_REAL (its probe over the road in world coordinates, its far
 //       shadow map over the course's bounds up to FAR_TOP)
 //
@@ -262,6 +263,10 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
     part.hide[id] = {};
     for (const [name, vertex] of Object.entries(at)) part.hide[id][`lane-detail-${name}`] = vertex;
   }
+  // The lane's boss's car as STOMPWATT's pieces (objects/laneBoss/model.js skins them), each in
+  // the material the car is drawn in.
+  const robot = detail.robot;
+  if (robot) part.robot = { cuts: robot.cuts, tier: tier.name, meshes: robot.meshes.map((m) => ({ name: m.material, material: D[m.probe ? `${m.material}@${m.probe}` : m.material], buffers: m.buffers })) };
   yield;
   const grass = detail.grass ? grassGrid(group, { clump: detail.grass.clump, ground }, GRASS[tier.name], look.haze, wind) : null;
   const follow = grass?.follow;

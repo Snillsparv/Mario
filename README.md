@@ -127,7 +127,8 @@ yards up to the forest; along his side long low houses joined by flat-roofed car
 area at the far end with a double garage and a footpath, the junction with its big trees and a
 motorhome at the other. Cars stand on the drives (his own two in front of the carport: the blue
 one his dad's own electric car, just as it is in real life, only with no badge and no plate) and
-flags fly over the gardens. Nothing here can hurt him.
+flags fly over the gardens. Nothing here can hurt him (the dad's car has a surprise in it,
+though: see below).
 
 The street **looks real**, while Jonas, the coins and the star stay classic: low golden sunlight
 with real shadows, a blue sky with drifting cirrus, painted-in-code brick, boards, roof tiles,
@@ -159,6 +160,11 @@ there shows the real street through the retro TV.
 * 50 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
   the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
   double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof.
+* The dad's car is not just a car: stand beside it on the drive for a moment, or bump into it,
+  and it blinks its lights, rises on its wheels and **stands up into STOMPWATT**, a big friendly
+  robot made of its own panels (its front is its face, its doors its shoulder pads and shin
+  guards, its wheels its fists and heels, its black roof its chest). It watches Jonas, waves and
+  shows off for a while, then folds back up into the car and parks itself. It doesn't hurt (yet).
 * The dad's two **wheelie bins** by the gable move: walk into one to push it, or stand at it,
   face it and press **attack** to grab it, then pull it out (stick back) or push it along (stick
   forward); attack, crouch or jump lets go. They stay on the drive, and roll back home by

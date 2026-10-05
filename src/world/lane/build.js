@@ -81,7 +81,7 @@ import { faluPlankTexture, sailTexture } from '../skerries/textures.js';
 import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
-import { propsSteps, waveFlags } from './props.js';
+import { propsSteps, waveFlags, dadCar } from './props.js';
 import { normals, inside, band, roadPieces } from './real/plan.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
@@ -110,7 +110,7 @@ const TINT = {
 
 const UP = [0, 1, 0];
 // Golden hour, a touch warmer than the skerries'.
-const LIGHT = { ambient: 0.6, diffuse: 0.55, maxBright: 1.1, tint: [1.07, 1.0, 0.9] };
+export const LIGHT = { ambient: 0.6, diffuse: 0.55, maxBright: 1.1, tint: [1.07, 1.0, 0.9] };
 const GROUND_RECT = { x0: -16000, x1: 16000, z0: -8000, z1: 10000, tile: 2000 };
 const SAMPLE = 150; // the kerbs' run is tested for the road's edge this often
 const ARC_STEP = 300; // the terraces' fronts along the turning area: straight this long
@@ -239,7 +239,7 @@ function assemble(kit, layout, leaf) {
   // The dad's car's faces are lane-render's last (props.js draws it last): hidden from there.
   const hide = {};
   for (const [id, at] of Object.entries(kit.hideAt ?? {})) hide[id] = { 'lane-render': at.paint };
-  return lanePart(kit, group, wave, door, movers, hide);
+  return lanePart(kit, group, wave, door, movers, hide, layout);
 }
 
 // The bins' instanced mesh (lane-bins): one bin drawn in its own frame (origin at its foot's
@@ -292,7 +292,7 @@ function assembleReal(kit, layout, leaf, materials) {
     group.add(cable);
     movers.charger_cable = cable;
   }
-  return lanePart(kit, group, wave, door, movers, {});
+  return lanePart(kit, group, wave, door, movers, {}, layout);
 }
 
 // The realistic look's meshes that cast no shadow: the ground's (nothing stands under them) and
@@ -312,7 +312,7 @@ function greyLawns(b, lawn) {
   }
 }
 
-function lanePart(kit, group, wave, door, movers, hide) {
+function lanePart(kit, group, wave, door, movers, hide, layout) {
   const colliders = kit.solids.colliders();
   colliders.push({ positions: kit.signs.colliders.wood, terrain: 'wood' });
   return {
@@ -321,6 +321,11 @@ function lanePart(kit, group, wave, door, movers, hide) {
     colliders,
     movers,
     hide,
+    // A car with an id (the dad's) drawn in its own frame into `paint` (a GeoBuilder), telling
+    // mark(zone) each part of the drawing (lane/props.js dadCar: the lane's boss's pieces), and the
+    // classic look's bake (what lights it: the boss lights its robot the same way).
+    ownCar: (id, paint, mark) => dadCar(paint, layout, layout.CARS.find((c) => c.id === id), mark),
+    light: { ...LIGHT, sun: layout.LANE_SUN },
     // Per frame: the flags wave (no allocation).
     update(time) {
       wave(time);

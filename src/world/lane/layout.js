@@ -396,6 +396,13 @@ export const CARS = [
   { kind: 'estate', x: 5245 - CAR_KINDS.estate.l / 2, z: -115, yaw: Math.PI / 2, tint: 0x8e9296 },
 ];
 
+// STOMPWATT, the lane's boss (objects/laneBoss/LaneBoss.js, in the lane's lazy chunk): the dad's
+// car (`car`: its id in CARS) stands up into a robot made of its own panels when Jonas comes near
+// it on the ground (`wake`: within r of its middle on the drive's level (his feet within `level`
+// of its ground) for `dwell` ticks, or touching it), never while he is up on the bins, the carport
+// or a roof; from `notice` its T lights blink at him.
+export const LANE_BOSS = { car: 'dad_ev', wake: { r: 520, dwell: 20, level: 60 }, notice: 900 };
+
 // The basketball hoop on north_5's front wall west of its garage door, a children's one: a black
 // post `out` in front of the wall, a white board (w by h, its foot at `board` up, at the top of
 // the rendered floor) on an arm to the wall, an orange ring of `ring` radius at `rim` up; the

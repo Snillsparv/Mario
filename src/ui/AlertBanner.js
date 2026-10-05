@@ -8,10 +8,13 @@
 // race is stopped ('cancelled', possible until the picture is all white) or at the white-out
 // ('white').
 //
+// A boss's name card ('bossCard' { lines, ms }: Sparrow Lane's STOMPWATT as it stands up) shows
+// the same way as a calm card: gold letters low in the picture, no vignette, no blinking.
+//
 //   const banner = new AlertBanner(uiRoot, { events });  // shows itself on 'darkMode' { on: true }
-//   banner.show(lines?, { ms? })  // lines: [[text, scale, style]], default AI RACE; ms: Infinity
-//                                 // keeps it up until hide()
-//   banner.setViewport(rect | null); banner.hide(); banner.kind  // 'race' | 'warning' | null
+//   banner.show(lines?, { ms?, kind? })  // lines: [[text, scale, style]], default AI RACE; ms:
+//                                 // Infinity keeps it up until hide(); kind 'card': the calm card
+//   banner.setViewport(rect | null); banner.hide(); banner.kind  // 'race' | 'warning' | 'card' | null
 
 import { BIG_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
@@ -32,6 +35,7 @@ export class AlertBanner {
     this.lines = RACE_LINES;
     events?.on('darkMode', ({ on }) => (on ? this.show() : this.hide()));
     events?.on('gameOver', () => this.hide());
+    events?.on('bossCard', ({ lines, ms } = {}) => lines && this.show(lines, { ms: ms ?? SHOW_MS, kind: 'card' }));
     events?.on('meltdown', ({ phase } = {}) => {
       if (phase === 'warning') this.show(MELTDOWN_WARNING, { ms: Infinity, kind: 'warning' });
       else if ((phase === 'cancelled' || phase === 'white') && this.kind === 'warning') this.hide();
@@ -49,14 +53,15 @@ export class AlertBanner {
     this.kind = kind;
     const el = document.createElement('div');
     el.className = 'cg-alert';
+    const card = kind === 'card';
     el.style.cssText =
       'position:absolute;display:flex;align-items:center;justify-content:center;pointer-events:none;' +
-      'background:radial-gradient(ellipse at center, rgba(120,0,0,0) 45%, rgba(150,0,10,0.55) 100%);' +
-      `animation:cg-alert-pulse 0.55s steps(2, jump-none) infinite;transition:opacity ${FADE_MS}ms ease-out`;
+      (card ? '' : 'background:radial-gradient(ellipse at center, rgba(120,0,0,0) 45%, rgba(150,0,10,0.55) 100%);' + 'animation:cg-alert-pulse 0.55s steps(2, jump-none) infinite;') +
+      `transition:opacity ${FADE_MS}ms ease-out`;
     Object.assign(el.style, boxStyle(this.viewport));
     ensureKeyframes();
     this.textBox = document.createElement('div');
-    this.textBox.style.cssText = 'display:flex;flex-direction:column;align-items:center;transform:translateY(-18%)';
+    this.textBox.style.cssText = `display:flex;flex-direction:column;align-items:center;transform:translateY(${card ? '150%' : '-18%'})`;
     el.appendChild(this.textBox);
     this.el = el;
     this.px = 0;

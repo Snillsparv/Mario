@@ -268,6 +268,9 @@ export const GAME_OVER_SCALE = 2;
 export const AI_RACE = 'AI RACE';
 export const AI_RACE_SCALE = 2;
 
+// Sparrow Lane's boss's name card (AlertBanner.js 'bossCard': objects/laneBoss/LaneBoss.js), in gold.
+export const BOSS_CARD = Object.freeze([['STOMPWATT', 2.5, 'gold']]);
+
 // The meltdown's warning (AlertBanner.js, 30 s into AI RACE: fx/Meltdown.js): lines of
 // [text, scale (times the HUD scale), text style]. The call to action is the biggest.
 export const MELTDOWN_WARNING = Object.freeze([
@@ -289,6 +292,7 @@ export const BIG_STRINGS = [
   GAME_OVER,
   AI_RACE,
   ...MELTDOWN_WARNING.map(([text]) => text),
+  ...BOSS_CARD.map(([text]) => text),
   ...PHONE_BIG_STRINGS,
   ...RACE_BIG_STRINGS,
 ];

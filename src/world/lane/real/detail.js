@@ -44,6 +44,7 @@ import { villaHouses, garageDoors, hipTrim } from './villas.js';
 import { trampoline, hoop, motorhome, cabinet, treeLine } from './extras.js';
 import { clutter, streetSign } from './clutter.js';
 import { hardware } from './hardware.js';
+import { pieceOf } from './pieces.js';
 
 // Each material's builder; `cast` false: casts no shadow (the ground's, the glass, the rooms').
 const MATERIALS = {
@@ -125,18 +126,28 @@ export function buildLaneDetail(L, tier = 'high') {
   const ground = lawnMask(L);
   clutter(kit, L, ground);
   streetSign(kit, L);
-  // The dad's car last into every mesh it shares (hideable: its first vertex in each, `hide`).
+  // The dad's car last into every mesh it shares (hideable: its first vertex in each, `hide`);
+  // the lane's boss's car also comes as the robot's pieces (`robot`: robotPieces).
   const hide = {};
+  let robot = null;
+  const counts = () => {
+    const at = new Map();
+    for (const g of Object.values(kit)) if (g instanceof Geo && !at.has(g)) at.set(g, g.count);
+    return at;
+  };
   for (const c of L.CARS) {
     if (!c.id) continue;
-    const at = new Map();
-    for (const [name, g] of Object.entries(kit)) if (g instanceof Geo && !at.has(g)) at.set(g, g.count);
-    carOf(kit, L, c);
+    const at = counts();
+    const zones = [];
+    kit.mark = (zone) => zones.push({ zone, at: counts() });
+    const cuts = carOf(kit, L, c);
+    delete kit.mark;
     hide[c.id] = {};
     for (const [name, g] of Object.entries(kit)) {
       if (!(g instanceof Geo) || g.count === at.get(g) || (low && LOW_MERGE[name])) continue;
       hide[c.id][name] = at.get(g);
     }
+    if (cuts && c.id === L.LANE_BOSS?.car) robot = robotPieces(kit, L, c, cuts, zones, hide[c.id], own);
   }
   // The movers: a bin in its own frame (origin at its foot's middle, +x the handle side), and
   // where each of the dad's two stands (world/lane/real/look.js: an instanced mesh).
@@ -176,7 +187,55 @@ export function buildLaneDetail(L, tier = 'high') {
   const clump = grassClump(tier);
   const grass = clump && { clump: clump.buffers() };
   triangles += (binBuffers.position.length / 9) * L.BINS.length;
-  return { meshes, firs, grass, ground, probes, triangles, movers, hide };
+  return { meshes, firs, grass, ground, probes, triangles, movers, hide, robot };
+}
+
+// The lane's boss's car as STOMPWATT's pieces (objects/laneBoss/model.js skins them): its
+// triangles in each mesh it was drawn into (`from`: its first vertex in each), in its own frame
+// (origin on the ground under its middle; u across, + its left; y up; w along, + its nose: x, y,
+// z), each vertex tagged with the piece it belongs to (pieces.js, by the part of the drawing it
+// came from: `zones`, each { zone, at: every mesh's count as it started }); the contact shadow
+// left out. -> { cuts, meshes: [{ material, probe?, buffers: { position, normal, color, part } }] }
+function robotPieces(kit, L, c, cuts, zones, from, own) {
+  const y0 = L.groundHeight(c.x, c.z);
+  const [cy, sy] = [Math.cos(c.yaw), Math.sin(c.yaw)];
+  const meshes = [];
+  for (const [name, start] of Object.entries(from)) {
+    const g = kit[name];
+    const zoneOf = (v) => {
+      let z = null;
+      for (const { zone, at } of zones) if (at.get(g) <= v) z = zone;
+      return z;
+    };
+    const pos = [];
+    const nrm = [];
+    const col = [];
+    const part = [];
+    for (let v = start; v < g.count; v += 3) {
+      const zone = zoneOf(v);
+      const P = [0, 1, 2].map((k) => g.pos.slice((v + k) * 3, (v + k) * 3 + 3));
+      const N = [0, 1, 2].map((k) => g.nrm.slice((v + k) * 3, (v + k) * 3 + 3));
+      // (Into the car's own frame: u = d . (cos yaw, 0, -sin yaw), w = d . (sin yaw, 0, cos yaw).)
+      const local = P.map(([x, y, z]) => [(x - c.x) * cy - (z - c.z) * sy, y - y0, (x - c.x) * sy + (z - c.z) * cy]);
+      const ln = N.map(([x, y, z]) => [x * cy - z * sy, y, x * sy + z * cy]);
+      const m = [0, 1, 2].map((k) => (local[0][k] + local[1][k] + local[2][k]) / 3);
+      const fn = [0, 1, 2].map((k) => (ln[0][k] + ln[1][k] + ln[2][k]) / 3);
+      const tint = g.col.slice(v * 3, v * 3 + 3);
+      const eye = zone === 'nose' && (name === 'drl' || (name === 'gloss' && tint[0] > 0.9 && tint[1] > 0.9));
+      const id = pieceOf(zone, m, fn, cuts, eye);
+      if (id < 0) continue;
+      for (let k = 0; k < 3; k++) {
+        pos.push(...local[k]);
+        nrm.push(...ln[k]);
+        col.push(...g.col.slice((v + k) * 3, (v + k) * 3 + 3));
+        part.push(id);
+      }
+    }
+    if (!part.length) continue;
+    const o = own.find((e) => e.key === name);
+    meshes.push({ material: o ? o.material : name, probe: o?.probe, buffers: { position: Float32Array.from(pos), normal: Float32Array.from(nrm), color: Float32Array.from(col), part: Uint8Array.from(part) } });
+  }
+  return { cuts, meshes };
 }
 
 // The bounding sphere three.js would compute (the box's middle, the farthest point), made here
@@ -214,5 +273,6 @@ export function detailBuffers(detail) {
   if (detail.grass) add(detail.grass.clump);
   if (detail.ground) out.push(detail.ground.data.buffer);
   for (const m of Object.values(detail.movers ?? {})) for (const mesh of m.meshes) add(mesh.buffers);
+  for (const mesh of detail.robot?.meshes ?? []) add(mesh.buffers);
   return out;
 }

@@ -102,12 +102,15 @@ tick (30 Hz, only in 'play'):
   darkT eases toward state.dark (AI RACE mode: applyDarkness(t), see below)
   meltdown.update(camera.position, cam.getYaw()) === 'over' -> gameOver(), return   (see "Meltdown")
   dialog up -> dialog.update(controller), and a neutral controller from here on
+  areas.objects.cinematic (Sparrow Lane's boss's intro) -> a neutral controller from here on
+            (state.held; input.flush() as it ends)
   controller = areas.step(controller)    (a walk through a door: the transition's scripted stick,
                                           see "Areas and transitions"; the switch itself runs here)
   dropHold > 0 ? dropHold-- : player.update(cam.playerInput(controller), cam.getYaw())
   action changed to 'spawn' -> respawn / game over (above)
   areas.objects.update({ player, frame, camera, warping: areas.busy })   (the current area's
                                           objects; a warp running holds the critters' strikes)
+  cam.overlay = areas.objects.cameraOverlay   (an area's own camera: the lane's boss's intro)
   cam.update(controller, player)
   hud.update({ lives, coins, stars, health, showPower, breath, paused })
   audio.setListener(cam.camera.position, cam.getYaw())
@@ -1556,7 +1559,8 @@ split-level villas behind grey block walls, along his side long low chain houses
 roofs; a turning area at the east end, the junction at the west. Cars stand on the drives (his
 own two by the carport), flags fly over the gardens, a little blue sparrow stands on his
 mailbox, and in a garden up the hill a trampoline throws him up toward a secret 1-up. Nothing
-here hurts: no critters, no water, no death floor. Its environment has **two looks**: the classic
+here hurts: no critters, no water, no death floor (the dad's car stands up into a robot when he
+comes near it, harmless so far: "STOMPWATT" below). Its environment has **two looks**: the classic
 N64 look below, and a realistic one (physically lit, its own sky, real shadows, procedural PBR
 textures, its own detailed geometry: real tile roofs, leaf-card trees, lofted cars, grass blades:
 see "Realistic look (Sparrow Lane)") swapped in once built, with exactly the same colliders;
@@ -1757,7 +1761,17 @@ trees' leaves).
   both looks it is drawn **last** into every mesh it shares (classic: `lane-render`, its
   collider still made in its place among the others'; realistic: each detail mesh), so it can
   be hidden by shortening those meshes' draw range: `part.hide.dad_ev = { [mesh name]: its first
-  vertex }` (nothing hides it yet: STOMPWATT, the lane's boss, will).
+  vertex }` (STOMPWATT hides it while it is up: below). Both looks also hand over the same faces
+  in the car's own frame, each tagged with the robot's piece it becomes (`world/lane/real/
+  pieces.js`): the classic part draws it again on demand (`part.ownCar(id, builder, mark)`:
+  `props.js dadCar`, the body drawn in three lengths, tail, rear doors, front doors, where it
+  parts, and `mark(zone)` told each part of the drawing; `part.light` is the bake it was lit
+  with, `build.js LIGHT` and its sun), the realistic look's worker exports it
+  (`detail.robot`, "Realistic look").
+* **STOMPWATT** (`LANE_BOSS`; `objects/laneBoss/*` in the lane's lazy chunk): stand by the dad's
+  car on the drive for a moment, or bump or punch it, and it wakes and stands up into a robot
+  made of its own panels, watches Jonas a while and folds back into the car on its spot: see
+  "STOMPWATT (Sparrow Lane's boss)".
 * **The bins** (`MOVABLE_BINS`, `BIN_LEASH`; `objects/laneBoss/LaneBins.js` in the lane's lazy
   chunk `laneBoss`): the dad's two move. **Pushed**: walking into one (grounded, walking, facing
   it within 45 degrees, his feet circle touching its box on its level) slides it 6 a tick
@@ -1844,7 +1858,8 @@ trees' leaves).
   them at home and from one under the carport's edge, idle costing nothing);
   `tests/player-bin.test.js` (the grab's conditions, the mittens on the face at full size and at
   0.85); `tests/lane-bins-browser.test.js` (E2E, classic and high: the touch B grabs, the pull
-  and the push, both looks' instances, walked into, home again); `tests/brands.test.js` (the
+  and the push, both looks' instances, walked into, home again); `tests/lane-boss.test.js` and
+  `tests/lane-boss-browser.test.js` (STOMPWATT: see there); `tests/brands.test.js` (the
   repo's text names no car maker, model or marketing term, no robot franchise or toy maker:
   hashed words and pairs, the plain list kept outside the repo);
   `tests/objects.test.js` (the trampoline's spring); `tests/audio-sfx.test.js` (`boing`);
@@ -1852,6 +1867,130 @@ trees' leaves).
   the lane and back with the doors swinging, a stick held through, the door ids, the star exit,
   the leave, GAME OVER); `tests/areas-browser.test.js` (E2E: `?area=lane`, the full walk through
   it).
+
+### STOMPWATT (Sparrow Lane's boss: `src/objects/laneBoss/*`)
+
+The dad asked for his car to "become a transforming robot when you get close to it". The car is
+an original robot of our own, **STOMPWATT**: a chunky, cheeky heavy-mech made of the car's own
+panels, about 700 tall (4.3 times Jonas), friendly at rest. B2 (this) is its model, its
+transformation both ways and a harmless show; the fight (its attacks, the charging window, the
+star) is B3 of the plan. It lives in the lane's lazy chunk (`laneBoss`, beside the movable bins:
+"Objects"), so the main bundle carries only its hooks (and three.js's skinning classes).
+
+* **Design** (`rig.js`, `frame.js`): the car's front clip is its head (the bonnet its brow, the
+  closed panel its face, **the two sideways-T lights its eyes**: they blink), the greenhouse its
+  chest stood upright with the **gloss black roof forward** (a battery on its left side, three
+  green cells in a steel case: its power), the rear clip its backpack (the tall tail lamps up its
+  corners; the tailgate, `hatch`, the battery's hatch for B3), the **front doors its pauldrons**
+  (each with its window and its mirror, turned forward and out), the **rear doors its shin
+  guards** (stood upright, outer face forward, window over the knee), the **front wheels its
+  fists** (rims forward), the **rear wheels its heel rollers**, the floor its belt. Between them
+  a frame in the car's own palette: gloss black limbs (the roof's lacquer), body-colour armour
+  (big gauntlets, thigh plates, the torso round the black roof, toe caps on big boots), steel
+  joints; never a face, an emblem or lettering, no truck-cab chest, no wings, no famous robot's
+  sound. Chibi proportions: a big head (the car's nose, 290 wide), big hands and feet, short
+  stout legs, at most 480 wide.
+* **Pieces** (`world/lane/real/pieces.js`, shared by the worker and the chunk): `PIECES` (core,
+  head, canopy, tail, the four doors, the four wheels, the eyes, the hatch, the classic look's soft
+  shadow) and `pieceOf(zone, middle, normal, cuts, eye)`: each car triangle by the part of the
+  drawing it came from (the builders mark zones: 'body' the shell, 'nose', 'tail', 'sides',
+  'greenhouse', 'wheels', 'caps', 'doors', 'contact') and where it lies against the car's cuts
+  (head, tail, B pillar, axles, mirrors). The car parts cleanly because it is drawn so: the
+  realistic EV's loft has a station at its B pillar (the arches' edges are stations already),
+  its sill cladding splits there, dark caps close the clips' cut ends and the greenhouse's
+  floor inside the shell, and each door's own window and inner panel sit just inside the glass
+  and the shell (`cars.js`, EV only: hidden in car form); the classic car's body is three boxes
+  (tail, rear doors, front doors). The realistic pieces come from the worker (`detail.js
+  robotPieces`: the car's triangles in its own frame, per material, a piece per vertex:
+  `detail.robot = { cuts, meshes }`, transferred; `look.js` hands them on as `part.robot` with
+  the materials the car is drawn in); the classic ones are drawn again in the chunk
+  (`part.ownCar`: lane/props.js dadCar) and tagged the same way (`model.js classicCar`).
+* **Model** (`model.js RobotModel`): one rig per look (`Rig`: a root at the car's middle on the
+  drive turned to its heading; the frame's bones under it, `BONES`; a bone per piece under the
+  root, set each frame), rigid skinning (three.js `SkinnedMesh`, detached bind mode, identity
+  bind matrix; each vertex on one bone with weight 1; frustum culling off). Car form is exactly
+  the parked car: the realistic look draws the pieces in the car's own materials (shared with
+  the parked car's meshes, `carPaint@car0` with its probe, `carGlass@car0`, ...), the classic look
+  in a material of its own that lights them as the world's bake does (`bakeMaterial`: unlit, the
+  bake's ambient, diffuse, clamp and warm tint, `part.light`, computed per vertex from the
+  skinned normal), so
+  the swap between the street's meshes and the robot never shows (`tests/lane-boss.test.js`
+  checks every triangle). Slots (draw calls): classic 2 (the baked faces, the glow) and its
+  feet's two blob shadows (1); high 6 (paint, glass, black, lamp, metal, glow; paint, black, lamp
+  and metal cast the sun's shadow); mid 3 (everything opaque in the lacquer, glass, glow); low 2
+  (paint, glow); the glow (the T eyes, the battery's cells) an unlit vertex-coloured material,
+  bright enough to bloom. Triangles: classic 1,502, high 16,880, mid 8,182, low 5,606. The
+  classic model is built as the chunk attaches (its programs warmed with the area's), the
+  realistic one when its part is first shown (`setLook`), its skinned programs compiled ahead
+  through the look on the next frame (`view.compileLook`).
+* **Transformation** (`rig.js`): the morph `m` 0 (the car) .. 1 (the robot). Each piece leaves
+  the car at `STAGGER[piece]` and takes `SPAN` 0.5 of the morph to arrive (eased), on an arc
+  (`ARC`: up to 260 for the head), turning (slerp) and scaling into its place on its frame bone
+  (`ATTACH`: the bone, an offset, the images of its axes, its scale): the core first, then the
+  tail, the rear wheels, the rear doors, the greenhouse, the front wheels, the front doors, the
+  head last. Meanwhile the frame grows out of the car's floor (`grow`), its pelvis rises from
+  the floor to its hips (`rise`) and it unfolds from `fold` (legs tucked under, arms folded,
+  leaning far forward) into its pose (`unfold`). The car's soft shadow (classic) shrinks away
+  and the contact shadow (realistic) goes as the car parts (`m` 0.25). Back again it is the
+  same backwards (the head leaves first).
+* **Waking** (`LANE_BOSS.wake`): Jonas on the drive's level (his feet within 60 of its ground)
+  and on the ground, within 520 of the car's middle for 20 ticks, or touching it (his feet
+  against its sides, his attack on it); never while he is up on the bins, the carport, a roof or
+  the car itself, away (`Critters.js AWAY`), blinking after a hit, in a dialog or a warp. From
+  900 (`notice`) its T lights blink at him now and then (at most every 150 ticks) with a soft
+  lock chirp (the car form shown for the blink: the same faces). Once it has parked again it
+  wakes no more until he has been 720 away (`REARM`: he may climb the car to the carport).
+* **The first wake of a game** is an intro (`BOSS.INTRO`, 150 ticks): the T lights blink twice
+  with the lock chirp, it rocks up 50 on its wheels with a rising electric hum, the panels fly
+  (clunks and sparks as each locks in), it stands tall in a double flex with a horn chord and
+  its name card (`'bossCard'`: the AlertBanner's calm gold card, `hudLogic.js BOSS_CARD`).
+  Jonas is held meanwhile (`objects.cinematic`: main feeds a neutral controller) and the camera
+  is its own (`camera.js LaneBossCam`, through `cam.overlay`: from the drive's mouth a little to
+  its right, rising up and back as it stands, the view a little wider, handing back over 20
+  ticks). Later wakes are quick (`BOSS.QUICK`, 60 ticks), nobody held, no card.
+* **The show** (state `show`): it turns on the spot to face him (stepping, a footfall each step),
+  its head following him (round, down at him, a curious tilt close by), blinking, now and then
+  a wave, a flex or a look round with its hands on its hips (deterministic: a hash of the tick).
+  He cannot walk through it (his feet pushed out of its feet and body; its footprint while it
+  rises). After 20 s, or once he has been far (1300) or off its level 10 s, or a lost life, it
+  goes home: turns back to the car's heading, folds back (`unmorph`, 60 ticks, a falling whine)
+  and settles onto its wheels (`settle`); with him on its spot it first shoos him off (`shoo`: a
+  horn honk every 1.5 s, an arm out) and after 10 s folds anyway, lifting him onto the car as it
+  settles. An arrival (`objects.enter`) parks it at once; a new game (`objects.reset`) too, and
+  brings its intro back.
+* **The car's collider** (named `dad_ev`) is parked under the world (`moveSurfaces`, y -60000)
+  from the wake's first tick until the car has settled, then put back exactly (the same numbers:
+  tested); the parked car's faces in the street's meshes are hidden by their draw range while
+  the robot shows (both looks' meshes: G swaps only which model draws, both rigs posed every
+  frame between the last two ticks).
+* **States** (`LaneBoss.state`): `parked`, `notice`, `wake` (the intro or a quick wake), `show`,
+  `home`, `shoo`, `unmorph`, `settle` (and `pose`: posed by hand, `boss.pose({ m, pose, yaw,
+  look, blink })`, the previews' and the shot tools'). Events: `'laneBoss' { phase: 'wake' |
+  'show' | 'home' | 'parked', pos }`, `'bossCard'`, `'bossImpact'` (its rise and its stand: the
+  camera shake), its sounds as `'sfx'`; never `'bossDefeated'` (AI RACE never reaches the lane).
+* **Sounds** (`audio.js`, procedural, registered into the game's `SFX` table as the chunk
+  attaches): `ev_chirp` (the lock chirp; `quiet` its notice), `robot_power_up` (a rising
+  electric hum, ratchet clicks winding up), `robot_clunk` (a metal ka-chunk, pitched by the
+  piece), `robot_horn` (a two-note horn chord), `robot_step`, `robot_whirr` (a small servo),
+  `robot_power_down` (a falling whine and a blip). Its own, nothing like any famous robot's.
+* **Numbers** (`tuning.js BOSS`, every one a knob): the intro's and quick wake's phases, the
+  unmorph 60, the settle 12, the lift 50, the notice's period, the show 600, away 300, far 1300,
+  rearm 720, the shoo's honk and patience, the turn rate 0.045, the step 14, the look's reach,
+  the blink and idle periods, the bump's circles.
+* **Cost**: parked, one distance test a tick and no collision query; up, no query but the
+  settle's lift; its tick and frame allocate nothing but event payloads (the source guard). With
+  it up (E2E, 960 x 540, in front of it): classic 40 calls, 28k triangles; high 151 calls,
+  900k triangles, 19 realistic programs (its skinned variants among them); mid 136, 469k, 18;
+  low 97, 202k, 14.
+* **Preview**: `/preview.html?m=laneBoss` (the classic model on a patch of drive: `&morph=0..1`,
+  `&pose=stand|flex|wave|shoo|hips|fold`, `&lift=`, `&blink=`, `&look=`, `&sheet=poses|morph`,
+  `&yaw=`, `&dist=`, `&spin=1`); the realistic look's in the game (`tools/realShots.mjs` B2 views).
+* **Tests**: `tests/lane-boss.test.js` (the pieces in both looks, car form exactly the parked car
+  on every tier, the rig and its proportions, waking and never, the intro, the show, home, a lost
+  life, an arrival, a new game, shooing and lifting, the bump, both looks' models, determinism,
+  the camera, the sounds, the hot paths); `tests/lane-boss-browser.test.js` (E2E: classic, high,
+  mid and low: woken, held through its intro, G mid-morph on high, its draw calls up, folded back
+  and parked with its collider back).
 
 ## Player (`src/player/Player.js`)
 
@@ -2056,6 +2195,12 @@ the beast up it moves far back and up and looks up past him with a wider view (t
 whirling round high over the castle); on `'bossThrown'` it chases the beast along its flight
 (behind and above it, clear of what lies under it) and holds on the wreck until the reward star
 starts to rise, then hands back to the orbit. Nothing changes while `w` is 0.
+
+An area's own camera (`cam.overlay`: main sets it each tick from the current area's objects,
+`objects.cameraOverlay`; Sparrow Lane's boss's intro shot, `objects/laneBoss/camera.js
+LaneBossCam`) is blended over the orbit the same way, right after the boss cam (`overlay.update(cam,
+hero)`, its own weight; `overlay.reset()` on a cut: `cam.reset`). Not in first person or the
+intro.
 
 Keeping the hero in view (`src/camera/CameraCollider.js`, `src/camera/sight.js`):
 * The path: a move into a wall or ceiling stops in front of it and slides along it; a slide that
@@ -2295,7 +2440,11 @@ mesh, `lane-detail-bins`, casting, `part.movers.bins`, moved by the lane's chunk
 car's **hide range** (`detail.hide.dad_ev = { [mesh]: its first vertex }`: drawn after
 everything else, its faces are each shared mesh's tail, on every tier and through the low tier's
 merges; `look.js` names them `part.hide.dad_ev['lane-detail-<mesh>']`); the charger's cable is
-the classic builders' (`lane-cable`, in `paint`).
+the classic builders' (`lane-cable`, in `paint`). Since B2 it also carries the dad's car as the
+lane's boss's pieces (`detail.robot = { cuts, meshes }`: its triangles in its own frame, per
+material, each vertex's piece, `world/lane/real/pieces.js`; `cars.js` marks the parts of its
+drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js` hands on as
+`part.robot` with the materials the car is drawn in (see "STOMPWATT").
 
 * `house.js`: the chain houses in full: a white brick plinth 2 proud of the boards (a sloping
   flashing), real openings, windows sitting in the wall (a black casing proud, a reveal 10
@@ -2449,7 +2598,10 @@ the classic builders' (`lane-cable`, in `paint`).
   realistic programs, 59.6 MB of set textures; mid 126–138, 459–469k, 15, 43.9 MB; low 90–95,
   ~197k, 12, 18.8 MB (R3: high 116–121, ~764k, 12; mid ~435k; low ~179k, 10). B1 (the bins'
   instanced mover and its shadow, the cable, the T lights' `drl`): high 139–149, 888–899k, 16
-  (the instanced paint's program); mid 132–141, 461–471k, 16; low 91–97, ~197k, 13.
+  (the instanced paint's program); mid 132–141, 461–471k, 16; low 91–97, ~197k, 13. B2 (the
+  dad's car's robot parked, its skinned programs compiled ahead with the look's): high 146–152,
+  893–904k, 22; mid 136–140, 468–469k, 18; low 97, 198–203k, 14 (at the cars' view Jonas is in
+  its notice's reach: its car form may be showing for a blink).
   The realistic part hangs under its area's root only while shown (`Area.showReal`): the
   renderer's classic warm-ups compile whatever is under the root, hidden or not.
 
@@ -2771,9 +2923,16 @@ G3's minified shaders -7.7 kB: 1,670,953 bytes, under the 1,700,000-byte budget)
 car and the bins): `main` +11.8 kB (the classic lookalike, the bins' grab and its anims, the
 movers, the named colliders, the chunk's hooks): 1,682,766 bytes (17,234 under the budget); the
 worker +5.5 kB (the lookalike's style, the movers): 121,841; `realLook` 47,797; and a second lazy
-chunk, `laneBoss` (Sparrow Lane's movers: the bins, 6,262 bytes; the lane's boss later), the
+chunk, `laneBoss` (Sparrow Lane's movers: the bins, 6,262 bytes), the
 same rules as `realLook` (imported by
-`main` only dynamically, importing only `main`, no three.js, under 90 kB).
+`main` only dynamically, importing only `main`, no three.js, under 90 kB). B2 (STOMPWATT): `main`
++6.9 kB (three.js's `SkinnedMesh`, `Skeleton` and `Bone`, ~5.3 kB, land in main whoever uses
+them; the boss's hooks: the cinematic hold, the camera overlay, the name card): 1,689,677 bytes
+(10,323 under the budget); `laneBoss` 45,460 (the boss: its state machine, model, rig, frame,
+camera and sounds; `geo.js` and `pieces.js` copied in); the worker +3.6 kB (the car's pieces):
+125,436; `realLook` 47,980. (The chunk must not import `world/lane/props.js` itself: Rolldown
+then splits the game into a common chunk; the classic car comes through the lane part's
+`ownCar`.)
 `tests/net-relay-build.test.js` checks all four.
 
 ## Audio (`src/audio/AudioEngine.js`)
@@ -2859,7 +3018,9 @@ const title = new TitleScreen(uiRootElement, { events, audio }); await title.sho
 title.setViewport(rect | null)
 const face = new FaceScreen(uiRootElement, { events, audio, view }); await face.show()  // "Face screen"
 const card = new GameOverCard(uiRootElement).show()  // dark screen + gold GAME OVER, fades in
-new AlertBanner(uiRootElement, { events })   // AI RACE: 'darkMode' on, the meltdown's warning (30 s)
+new AlertBanner(uiRootElement, { events })   // AI RACE: 'darkMode' on, the meltdown's warning (30 s);
+                                             // 'bossCard' { lines, ms }: a calm gold card (no
+                                             // vignette, no blinking, low in the picture)
 card.setViewport(rect | null); card.remove(); card.shown   // remove() at once; show() again ok
 ```
 
@@ -3602,8 +3763,12 @@ objects.critters                            // a course's critters (Critters.js)
 objects.trampolines                         // a course's trampolines (Trampoline.js), or null
 objects.spawnCoin(x, y, z, minY?)           // a run-time coin (minion and critter drops), at
                                             // least at minY (CoinField.spawnCoin)
-objects.attachLane(chunk, area)             // Sparrow Lane's lazy chunk attached (below)
-objects.lane, objects.bins                  // what it attached: { bins }, the LaneBins (or null)
+objects.attachLane(chunk, area, opts?)      // Sparrow Lane's lazy chunk attached (below; opts
+                                            // { boss: false }: the bins alone)
+objects.lane, objects.bins, objects.laneBoss  // what it attached: { bins, boss }, the LaneBins and
+                                            // the LaneBoss (STOMPWATT), or null
+objects.cinematic                           // the lane's boss's intro holds Jonas (main)
+objects.cameraOverlay                       // the lane's boss's camera (main: cam.overlay), or null
 objects.setLook(part | null)                // the area's realistic part shown (Area.showReal)
 ```
 
@@ -3620,7 +3785,11 @@ it was, parked car and static bins. B1 attaches the movable bins (`LaneBins.js`,
 the player's tick: they follow his grip), publish `player.binGrip` each tick, draw in `_draw`
 (both looks' instances, interpolated between the last two ticks, written only when what is
 drawn changes), go home in `reset()` and `enter()`; `setLook(part)` points them at the realistic
-part's bin mesh as well. The dad's car's boss (STOMPWATT) joins the chunk in later milestones.
+part's bin mesh as well. B2 attaches the dad's car's boss too (`LaneBoss.js`, "STOMPWATT
+(Sparrow Lane's boss)"): it ticks in `_step` after the bins (with `hold` = a dialog or a warp),
+draws in `_draw`, parks at once in `reset()` and `enter()`, and `setLook(part)` gives it the
+realistic part (its model, its hide range); its sounds are registered into the game's `SFX` as
+it attaches.
 
 Critters (`layout.CRITTERS`, see "Critters" under Midsummer Skerries): `objects.critters` is a
 `Critters` manager (`Critters.js`, the shared framework: engagement, the one-attacker token,
@@ -3704,8 +3873,10 @@ Everything animates on the simulation clock, so pausing freezes it.
 | `kaijuRoar` | `{ pos }` | objects (the robot monster roars) |
 | `hallImpact` | `{ pos, strength, kind }` (`kind` `'drop'`: a server hall slammed down, strength 1; `'rise'`: one started grinding up, 0.35) | objects (tech takeover); main's camera shake jolts the view |
 | `bossThrown` | `{ flight, to, water }` (`flight`: `{ x0, y0, z0, vx, vy, vz, T, g }`, `RobotBeast.flightPoint(flight, t)` is its waist t ticks on; `to`: the crash site) | objects (Jonas threw Rustmaw); the boss camera chases it |
-| `bossImpact` | `{ pos, strength, kind }` (`'slam'`: back down on its perch, 0.8-1.3; `'crash'` / `'splash'`: thrown down, 3 / 2) | objects (Rustmaw); main's camera shake jolts the view |
+| `bossImpact` | `{ pos, strength, kind }` (`'slam'`: back down on its perch, 0.8-1.3; `'crash'` / `'splash'`: thrown down, 3 / 2; Sparrow Lane's boss: `'land'` rising on its wheels 0.25, `'stomp'` standing up 0.35) | objects (Rustmaw, the lane's boss); main's camera shake jolts the view |
 | `bossDefeated` | `{ pos, water }` | objects (Rustmaw crashed); main ends AI RACE mode as if STOP was pressed |
+| `laneBoss` | `{ phase: 'wake' \| 'show' \| 'home' \| 'parked', pos }` | objects (Sparrow Lane's boss: woke, stands, folding back, parked again) |
+| `bossCard` | `{ lines, ms }` (`hudLogic.js BOSS_CARD`) | objects (the lane's boss's intro); the AlertBanner shows its name card |
 | `wingHat` | `{ on }` | player (the winged hat was put on / ran out); audio plays the flying theme |
 | `phonePad` | `{ connected, available, room, padUrl }` | RemotePad (a phone joined / left) |
 | `remotePress` / `remoteRelease` | `{ button }` | RemotePad (the phone's button edges; the title and the face screen go on on START/A) |
@@ -3771,7 +3942,8 @@ Unknown names must be ignored silently.
   `&view=overview|arrival|home|roof|west|junction|turn|north|gap|mailbox|drive|trampoline|flags|hoop|high`);
   `/preview.html?m=critters` the course's critters, each pose reached through their own steps
   (`&kind=frog|crab|mosquito|all`, `&pose=idle|tell|strike|stuck|dazed|defeat`, `&t=N`,
-  `&yaw=`, `&dist=`, `&spin=1`).
+  `&yaw=`, `&dist=`, `&spin=1`); `/preview.html?m=laneBoss` STOMPWATT in the classic look
+  (`&morph=0..1`, `&pose=`, `&sheet=poses|morph`, ...: "STOMPWATT").
 * `node tools/shot.mjs --url "/?test=1&mute=1&area=skerries" --actions '[{"step":60},{"shot":"shots/arrival.png"}]'`
   — the game straight in an area (`&entry=` for another of its entries; `__game.enterArea(name,
   entry)` switches at once mid-run). More recipes:
@@ -3791,7 +3963,9 @@ Unknown names must be ignored silently.
   test recordings and PNGs of their frames.
 * `node tools/realShots.mjs --out shots/real [--views arrival,door,west,turn,cars,roof,retro]
   [--sizes 960x540,1280x720] [--looks high,low,classic]` — Sparrow Lane's realistic look from
-  fixed camera poses (the acceptance shots), beside the classic look; `/?test=1&area=lane` needs
+  fixed camera poses (the acceptance shots), beside the classic look (B2's views: STOMPWATT
+  posed a quarter of its transformation apart, from in front, behind, beside Jonas, flexing,
+  waving, its intro through the game's camera, G mid-morph); `/?test=1&area=lane` needs
   `&look=real` (or a `&tier=`) for the realistic look in shot.mjs runs.
 * `/preview.html?m=fx&melt=48` holds AI RACE's meltdown at 48 s (sky, grade, embers, the light).
 * `/preview.html?m=face` shows the face screen alone (Start shows it again); scripted pulls for

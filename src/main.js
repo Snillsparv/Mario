@@ -160,6 +160,7 @@ async function start() {
     gameOverPending: false, // a life was lost at x0: game over once the death plays out
     gameOvers: 0,
     dropHold: 0, // ticks Pip still waits (hidden, frozen) before dropping in
+    held: false, // an area's cinematic holds him (Sparrow Lane's boss's intro)
     dark: false, // AI RACE mode requested (the button was ground-pounded)
     darkT: 0, // its crossfade, 0 = sunny grounds .. 1 = storm (eased over DARK_FADE_SECONDS)
   };
@@ -398,6 +399,15 @@ async function start() {
       dialog.update(controller);
       controller = neutralController(); // Pip and the camera wait while the box is up
     }
+    // Sparrow Lane's boss's intro holds Jonas and the camera (its own shot shows it); keys held
+    // through it are not fresh presses after.
+    if (areas.objects.cinematic) {
+      controller = neutralController();
+      state.held = true;
+    } else if (state.held) {
+      state.held = false;
+      input.flush();
+    }
     // Walking through a door: the transition scripts the stick while the wipe closes and opens.
     controller = areas.step(controller);
     if (state.dropHold > 0) {
@@ -414,6 +424,7 @@ async function start() {
     }
     // The current area's objects; while a warp runs (areas.busy) its critters hold their strikes.
     areas.objects.update({ player, frame: state.frame, camera: cam, warping: areas.busy });
+    cam.overlay = areas.objects.cameraOverlay ?? null; // (the lane's boss's intro shot)
     cam.update(controller, player);
     hud.update({
       lives: state.lives,

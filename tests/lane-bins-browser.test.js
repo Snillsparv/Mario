@@ -42,6 +42,9 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
       if (label !== 'classic') await page.waitForFunction(() => window.__game.view.describeMode().startsWith('real'), null, { timeout: 300000, polling: 250 });
       const attached = await page.evaluate(async () => {
         const lane = await window.__game.laneBoss;
+        // (The dad's car stays a car meanwhile: playing with the bins beside it would wake it, and
+        // its intro would hold him.)
+        if (lane?.boss) lane.boss.armed = false;
         return { bins: lane?.bins?.list.length ?? 0 };
       });
       assert.deepEqual(attached, { bins: 2 });

@@ -57,6 +57,9 @@
 //                            is inside the cannon)
 //   cam.cannonView           the cannon view is active (mode 'cannon')
 //   cam.underwater           the rendered camera position is below the water surface
+// and the game may set cam.overlay: a camera of an area's own (Sparrow Lane's boss's intro:
+// objects/laneBoss/camera.js), blended over the orbit like the boss cam (update(cam, hero) after
+// the orbit's tick, reset() on a cut), or null.
 // and apply() publishes camera.userData.focus: the interpolated point LOOK_HEIGHT above the
 // hero's feet (null while there is no hero to keep in view: first person, title, intro), which
 // the props' foliage fade uses to find the hero.
@@ -128,6 +131,7 @@ export class CameraController {
     this.flight = new FlightCam(collision); // winged-hat flight camera blend (flight.js)
     this.lookUp = new LookUp(events); // AI RACE mode: tilt up at the beast on the roof (lookup.js)
     this.bossCam = new BossCam(collision, events); // holding / whirling / throwing Rustmaw (bossCam.js)
+    this.overlay = null; // an area's own camera, blended over the orbit (main sets it each tick)
     this._probe = null; // collider copy that runs a C-button rotation ahead (_rotationTraps)
     this._probeAnchor = new THREE.Vector3();
     this._probeOut = new THREE.Vector3();
@@ -224,6 +228,7 @@ export class CameraController {
     this.sight.reset();
     this.lookUp.reset();
     this.bossCam.reset();
+    this.overlay?.reset();
     this.titleShot = false;
     this.mode = this.orbitMode;
     this.zoom = 0;
@@ -294,7 +299,10 @@ export class CameraController {
     }
     this._applyBlend(hero);
     // Rustmaw's tail grab (bossCam.js): blended over the orbit's pose while it lasts.
-    if (this.mode !== 'intro' && this.mode !== 'first_person') this.bossCam.update(this, hero);
+    if (this.mode !== 'intro' && this.mode !== 'first_person') {
+      this.bossCam.update(this, hero);
+      this.overlay?.update(this, hero);
+    }
     this._finishTick(this.cut);
   }
 

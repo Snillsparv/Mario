@@ -617,12 +617,13 @@ function sparrow(b, o, fwd) {
 // the cabin, each convex). `what`: 'all', or only its 'solids' or only its drawing ('draw': the
 // dad's car is drawn last, its collider made in its place among the others'). The dad's
 // crossover (style 'ev', id 'dad_ev': its collider named) is a lookalike of his own car: evCar.
-function car(kit, layout, c, what = 'all') {
+// `mark`: draw it in its own frame instead (origin on the ground under its middle, +z its nose),
+// telling mark(zone) each part of the drawing as it starts (dadCar).
+function car(kit, layout, c, what = 'all', mark = null) {
   const { paint } = kit.drawn('cars');
-  const solids = c.id ? kit.solids.named(c.id) : kit.solids;
   const K = layout.CAR_KINDS[c.kind];
-  const f = frame({ cx: c.x, cz: c.z, yaw: c.yaw });
-  const y0 = layout.groundHeight(c.x, c.z);
+  const f = frame(mark ? { cx: 0, cz: 0, yaw: 0 } : { cx: c.x, cz: c.z, yaw: c.yaw });
+  const y0 = mark ? 0 : layout.groundHeight(c.x, c.z);
   const [hl, hw, belt, roof] = [K.l / 2, K.w / 2, y0 + K.belt, y0 + K.roof];
   // Rings of corners in the car's frame (u across, w along: the nose at +hl), and solids between
   // two of them.
@@ -631,14 +632,12 @@ function car(kit, layout, c, what = 'all') {
   const body = (yb) => hexa(ring(-hl, hl, hw, yb), ring(-hl + 18, hl - 45, hw, belt), { bottom: false });
   const cabin = (top) => hexa(ring(-hl + K.tail, hl - K.hood, hw - 10, belt), ring(-hl + K.tailTop, hl - K.hood - K.screen, hw - 32, roof), { bottom: false, top });
   if (what !== 'draw') {
+    const solids = c.id ? kit.solids.named(c.id) : kit.solids;
     solids.solid(body(y0 - 5), 'stone');
     solids.solid(cabin(true), 'stone');
   }
-  if (what === 'solids') return;
-  if (c.style === 'ev') {
-    evCar(paint, f, K, c, y0, { ring, hexa, cabin });
-    return;
-  }
+  if (what === 'solids') return null;
+  if (c.style === 'ev') return evCar(paint, f, K, c, y0, { ring, hexa, cabin, mark: mark ?? NOOP });
   const part = (tint, polys, faceShade) => {
     paint.color(tint);
     paint.solid(polys, { faceShade });
@@ -658,6 +657,16 @@ function car(kit, layout, c, what = 'all') {
     for (const s of [-1, 1]) paint.poly([at(s * (hw - 18), belt - 42), at(s * (hw - 70), belt - 42), at(s * (hw - 70), belt - 20), at(s * (hw - 18), belt - 20)], { facing: f.dir(0, 0.3, e) });
   }
   carWheels(paint, f, K, y0, TINT.hub);
+  return null;
+}
+const NOOP = () => {};
+
+// The dad's car (`c`: its CARS entry, style 'ev') drawn into `paint` (a GeoBuilder) in its own
+// frame, origin on the ground under its middle (x across, + its left; z along, + its nose), as it
+// is drawn on its drive; mark(zone) is told each part of the drawing as it starts. Returns its
+// cuts (world/lane/real/pieces.js: STOMPWATT's pieces, the lane's lazy chunk).
+export function dadCar(paint, layout, c, mark) {
+  return car({ drawn: () => ({ paint }) }, layout, c, 'draw', mark);
 }
 
 // The wheels: a tyre (its face and its tread) round a hub (`hub`'s colour); `face(s, w, at)`
@@ -690,7 +699,7 @@ function carWheels(paint, f, K, y0, hub, face = null) {
 // tall red lamps up the tail's corners and the rear pillars; two-tone wheels (five silver blades
 // over a dark face).
 const EV_DROP = 8; // the bonnet's front edge this much under the belt (drawn only)
-function evCar(paint, f, K, car, y0, { ring, hexa, cabin }) {
+function evCar(paint, f, K, car, y0, { ring, hexa, cabin, mark }) {
   const c = { tint: car.classicTint ?? car.tint }; // (the classic look's: its warm bake greys a blue)
   const [hl, hw, belt, roof] = [K.l / 2, K.w / 2, y0 + K.belt, y0 + K.roof];
   const yb = y0 + CAR_CLEAR;
@@ -702,21 +711,29 @@ function evCar(paint, f, K, car, y0, { ring, hexa, cabin }) {
     paint.solid(polys, { faceShade });
   };
   const bodyShade = (n) => (n[1] > 0.5 ? 1.12 : 0.92);
+  const R = K.wheel;
+  const axles = [hl - K.l * 0.19, -hl + K.l * 0.2];
+  const [r0, r1] = [-hl + K.tailTop, hl - K.hood - K.screen];
+  const wm = (K.tail - K.hood) / 2 - 20; // (the pillar between the side windows)
+  mark('contact');
   paint.color(TINT.shadow);
   paint.poly(ring(-hl - 20, hl + 20, hw + 20, y0 + 1.5), { facing: [0, 1, 0], shade: 0.55 });
-  // The body: behind the cowl as the others', the bonnet sloping down to the nose's top edge.
-  part(c.tint, hexa(ring(-hl, cowl, hw, yb), ring(-hl + 18, cowl, hw, belt), { bottom: false }), bodyShade);
+  // The body: behind the cowl as the others' (in three lengths: the tail, the rear doors, the
+  // front doors, where STOMPWATT parts it), the bonnet sloping down to the nose's top edge.
+  mark('body');
+  const cuts = [-hl, axles[1] + R, wm, cowl];
+  for (let i = 0; i < 3; i++) part(c.tint, hexa(ring(cuts[i], cuts[i + 1], hw, yb), ring(i ? cuts[i] : -hl + 18, cuts[i + 1], hw, belt), { bottom: false }), bodyShade);
   part(c.tint, hexaPolys([at(-hw, yb, cowl), at(hw, yb, cowl), at(hw, yb, hl), at(-hw, yb, hl), at(-hw, belt, cowl), at(hw, belt, cowl), at(hw, top, hl - 45), at(-hw, top, hl - 45)], { bottom: false }), bodyShade);
+  mark('greenhouse');
   part(TINT.glass, cabin(false), (n) => (n[1] > 0.3 ? 1.25 : 1));
   // The black roof and the pillar between the side windows.
-  const [r0, r1] = [-hl + K.tailTop, hl - K.hood - K.screen];
-  const wm = (K.tail - K.hood) / 2 - 20;
   part(TINT.evRoof, hexa(ring(r0 - 4, r1 + 6, hw - 28, roof - 12), ring(r0 - 2, r1 + 4, hw - 30, roof + 3)), (n) => (n[1] > 0.5 ? 1.15 : 0.9));
   part(TINT.evRoof, hexa(ring(wm - 14, wm + 14, hw - 9, belt), ring(wm - 14, wm + 14, hw - 31, roof - 10), { bottom: false, top: false }));
   // A point on the nose's sloping face at (u, y), `o` proud of it; a polygon there.
   const noseW = (y) => hl - (45 * (y - yb)) / (top - yb);
   const nose = (u, y, o) => at(u, y, noseW(y) + o);
   const face = (pts, o = 1.8) => paint.poly(pts.map(([u, y]) => nose(u, y, o)), { facing: f.dir(0, 0.45, 1) });
+  mark('nose');
   // A point on side s at (w, y), `o` out from it.
   const side = (s, w, y, o) => at(s * (hw + o), y, w);
   const sidePoly = (s, pts, o = 1.5) => paint.poly(pts.map(([w, y]) => side(s, w, y, o)), { facing: f.dir(s, 0, 0) });
@@ -761,6 +778,7 @@ function evCar(paint, f, K, car, y0, { ring, hexa, cabin }) {
   // Tall red lamps up the tail's corners (on its sloping face) and up the cabin's back beside
   // its window.
   const tail = (u, y, o) => at(u, y, -(hl - (18 * (y - yb)) / (belt - yb) + o));
+  mark('tail');
   paint.color(TINT.evTail);
   for (const s of [-1, 1]) {
     paint.poly([[s * (hw - 10), belt - 60], [s * (hw - 34), belt - 60], [s * (hw - 34), belt - 2], [s * (hw - 10), belt - 2]].map(([u, y]) => tail(u, y, 1.8)), { facing: f.dir(0, 0.3, -1) });
@@ -769,11 +787,11 @@ function evCar(paint, f, K, car, y0, { ring, hexa, cabin }) {
   }
   // The sides: black cladding over the arches and along the sills, the window line kinked up at
   // the rear pillar (the body's colour over the cabin's side), black mirror caps.
-  const R = K.wheel;
-  const axles = [hl - K.l * 0.19, -hl + K.l * 0.2];
   for (const s of [-1, 1]) {
+    mark('sides');
     paint.color(TINT.evPlastic);
-    sidePoly(s, [[axles[1] + R + 6, yb], [axles[0] - R - 6, yb], [axles[0] - R - 6, yb + 13], [axles[1] + R + 6, yb + 13]]);
+    for (const [wa, wb] of [[axles[1] + R + 6, wm], [wm, axles[0] - R - 6]]) sidePoly(s, [[wa, yb], [wb, yb], [wb, yb + 13], [wa, yb + 13]]);
+    mark('wheels');
     for (const w of axles) {
       for (let k = 0; k < 6; k++) {
         const [a0, a1] = [-Math.PI / 2 + (k / 6) * Math.PI, -Math.PI / 2 + ((k + 1) / 6) * Math.PI];
@@ -789,13 +807,16 @@ function evCar(paint, f, K, car, y0, { ring, hexa, cabin }) {
     };
     const kink = (y) => -hl + K.tail + (K.tailTop - K.tail) * ((y - belt) / (roof - belt));
     const [k0, k1] = [-hl + K.tail + 70, belt + 34];
+    mark('greenhouse');
     paint.color(c.tint);
     paint.poly([cab(k0, belt + 1), cab(kink(belt + 1) + 1, belt + 1), cab(kink(k1) + 1, k1)], { facing: f.dir(s, 0.4, 0) });
+    mark('sides');
     paint.color(TINT.evRoof);
     const m = hl - K.hood - 20;
     paint.box(...boxAt(f, s * (hw + 6), belt + 12, m, 12, 9, 14));
   }
   // Two-tone wheels: five silver blades over the dark face.
+  mark('wheels');
   carWheels(paint, f, K, y0, TINT.evWheel, (s, w, P) => {
     paint.color(TINT.hub);
     for (let k = 0; k < 5; k++) {
@@ -803,6 +824,9 @@ function evCar(paint, f, K, car, y0, { ring, hexa, cabin }) {
       paint.poly([P(R * 0.15, a - 0.5), P(R * 0.15, a + 0.5), P(R * 0.52, a + 0.16), P(R * 0.52, a - 0.16)], { facing: f.dir(s, 0, 0) });
     }
   });
+  mark(null);
+  // (Its cuts in its own frame: world/lane/real/pieces.js.)
+  return { hw, head: cowl - 0.5, tail: cuts[1], pillar: wm, axles, R, yC: R, tread: 34.5, mirror: hl - K.hood - 20, belt: K.belt, hatch: CAR_CLEAR + 30, floor: CAR_CLEAR, roof: K.roof };
 }
 const boxAt = (f, u, y, w, a, b, d) => {
   const p = f.at(u, y, w);

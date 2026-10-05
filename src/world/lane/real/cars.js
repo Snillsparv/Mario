@@ -122,11 +122,14 @@ export function cars(kit, L) {
   L.CARS.forEach((c, i) => c.id || car(kit, L, c, cluster.get(i)));
 }
 
-// One car (in its cluster's paint and glass).
+// One car (in its cluster's paint and glass). The dad's car returns its cuts (pieces.js: where
+// it parts into the robot's pieces, in its own frame); while it is drawn kit.mark(zone), if the
+// kit has one, is told each part of the drawing as it starts (pieces.js zones).
 export function carOf(kit, L, c) {
   const k = carClusters(L).findIndex((g) => g.cars.includes(L.CARS.indexOf(c)));
-  car(kit, L, c, k);
+  return car(kit, L, c, k);
 }
+const NOOP = () => {};
 
 // A rounded rectangle (half sizes a, b, corner radius r) as `per` + 1 points a corner,
 // counter-clockwise from its lower right; each [x, y, corner] (corner: inside a corner's arc).
@@ -155,6 +158,7 @@ function car(kit, L, c, probe) {
   const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;
   const { tyre, rim, trim, lamp, tail, metal, contact } = kit;
   const drl = kit.drl ?? lamp;
+  const mark = kit.mark ?? NOOP;
   const [hl, hw] = [K.l / 2, K.w / 2];
   const deck = y0 + K.belt; // the bonnet's sides and the boot (the collider's top: Jonas stands
   // there; the bonnet's crown 3 over it)
@@ -278,17 +282,41 @@ function car(kit, L, c, probe) {
   };
   // A quad on an end face (e = 1 the nose, -1 the tail), [u, y] corners, `off` proud of it.
   const endFace = (g, e, pts, off = 0.5) => orient(g, pts.map(([u, y]) => W(u, y, e * (hl + off))), dirW(0, 0, e));
-  // Stations: denser toward the ends, and at each arch's edges.
+  // The greenhouse's glass along the car at f (0 its foot .. 1 the roof): its front and rear ends.
+  const screen0 = cowl - (EV ? 16 : 26); // the windscreen's foot (on the window line; the EV's more raked)
+  const glassW = (f) => [screen0 - (K.screen - (EV ? 16 : 26)) * Math.pow(f, EV ? 0.8 : 0.92), -hl + K.tail + (K.tailTop - K.tail) * Math.pow(f, 1.1)];
+  const pillars = van ? [0.5] : c.kind === 'estate' ? [0.6, 0.3] : [0.56];
+  const [gf, gr] = glassW(0.04);
+  const pillarW = gr + (gf - gr) * pillars[0]; // (the B pillar's foot: the doors' joint)
+  // Stations: denser toward the ends, and at each arch's edges (the dad's car's at its B pillar
+  // too: there it parts into the robot's pieces, pieces.js).
   const ws = [];
   for (let k = 0; k <= D.stations; k++) {
     const t = k / D.stations;
     ws.push(-hl + 2 * hl * (0.62 * (0.5 - 0.5 * Math.cos(Math.PI * t)) + 0.38 * t));
   }
   for (const wc of axles) for (const d of [-ra, -ra + 0.5, ra - 0.5, ra]) ws.push(wc + d);
+  if (EV) ws.push(pillarW);
   ws.sort((p, q) => p - q);
   const stations = ws.filter((w, i) => i === 0 || w - ws[i - 1] > 0.2);
   paint.color(c.tint);
+  mark('body');
   paint.loft(stations.map((w) => ringOf(w).map(([u, y]) => W(u, y, w))), { capStart: true, capEnd: true });
+  // A fan over a ring of points, facing along `out`.
+  const fan = (g, ring, out) => {
+    const m = ring.reduce((a, p) => [a[0] + p[0] / ring.length, a[1] + p[1] / ring.length, a[2] + p[2] / ring.length], [0, 0, 0]);
+    for (let i = 0; i < ring.length; i++) orientTri(g, [m, ring[i], ring[(i + 1) % ring.length]], out);
+  };
+  const [headW, tailW] = [axles[0] - ra, axles[1] + ra];
+  if (EV) {
+    // (The robot's: caps inside the shell where its front and rear clips part from the doors, in
+    // the body's colour, shaded: the head and the backpack are closed when they stand apart.)
+    mark('caps');
+    paint.color(c.tint, 0.45);
+    fan(paint, ringOf(headW).map(([u, y]) => W(u, y, headW)), dirW(0, 0, -1));
+    fan(paint, ringOf(tailW).map(([u, y]) => W(u, y, tailW)), dirW(0, 0, 1));
+    paint.color(c.tint);
+  }
   // A wrap's stations round a corner, from w0 to w1: the body's own there (and both ends), so the
   // strip lies on the loft's facets (stations of its own cut inside them where the plan curves
   // and the body has few: a step on mid).
@@ -298,14 +326,17 @@ function car(kit, L, c, probe) {
   };
 
   // ---------------------------------------------------------------- the greenhouse
+  mark('greenhouse');
   const per = D.fine ? 3 : 2;
   const roofTop = roofY - 0.4;
-  const screen0 = cowl - (EV ? 16 : 26); // the windscreen's foot (on the window line; the EV's more raked)
+  const sliceY = (f) => windowLine + 0.4 + (roofTop - windowLine - 0.4) * f;
+  const sliceHalf = (f) => hw - 12 - (van ? 9 : 20) * Math.pow(f, 1.3) - (f > 0.88 ? 32 * (f - 0.88) : 0);
   const slice = (f, out = 0) => {
-    const y = windowLine + 0.4 + (roofTop - windowLine - 0.4) * f;
-    const front = screen0 - (K.screen - (EV ? 16 : 26)) * Math.pow(f, EV ? 0.8 : 0.92) + out;
-    const rear = -hl + K.tail + (K.tailTop - K.tail) * Math.pow(f, 1.1) - out;
-    const half = hw - 12 - (van ? 9 : 20) * Math.pow(f, 1.3) - (f > 0.88 ? 32 * (f - 0.88) : 0) + out;
+    const y = sliceY(f);
+    const [gfront, grear] = glassW(f);
+    const front = gfront + out;
+    const rear = grear - out;
+    const half = sliceHalf(f) + out;
     const mid = (front + rear) / 2;
     const rr = roundRect((front - rear) / 2, half, Math.min(S.tall ? 14 : 20, half * 0.45), per);
     return { ring: rr.map(([w, u]) => W(u, y, mid + w)), corner: rr.map((p) => p[2]), front: rr.map((p) => p[0] > 0), mid, half, y, frontW: front, rearW: rear };
@@ -313,6 +344,11 @@ function car(kit, L, c, probe) {
   const glassTop = 0.8;
   const fs = D.fine ? [0.04, 0.3, 0.56, glassTop] : [0.04, glassTop];
   const gs = fs.map((f) => slice(f));
+  // (The robot's chest: the greenhouse closed underneath, inside the shell.)
+  if (EV) {
+    trim.rgb(...BLACK);
+    fan(trim, gs[0].ring, [0, -1, 0]);
+  }
   const n = gs[0].ring.length;
   const isCorner = (i) => gs[0].corner[i] || gs[0].corner[(i + 1) % n];
   const isFront = (i) => gs[0].front[i] && gs[0].front[(i + 1) % n];
@@ -329,7 +365,6 @@ function car(kit, L, c, probe) {
   trim.loft([slice(0, 0.6).ring, slice(0.045, 0.6).ring]);
   trim.loft([slice(glassTop - 0.04, 0.5).ring, slice(glassTop + 0.005, 0.5).ring], { segs: (i) => !isCorner(i) });
   // Black B pillars (on the estate a C pillar too), flush with the glass.
-  const pillars = van ? [0.5] : c.kind === 'estate' ? [0.6, 0.3] : [0.56];
   for (const s of [-1, 1]) {
     for (const p of pillars) {
       const strip = gs.map((g) => {
@@ -402,6 +437,7 @@ function car(kit, L, c, probe) {
   }
 
   // ---------------------------------------------------------------- the nose
+  mark('nose');
   const noseTop = topAt(hl);
   const noseBottom = bottomAt(hl);
   const edgeU = (w, y) => sideU(w, y) - 0.4; // (inside the face's outline)
@@ -574,6 +610,7 @@ function car(kit, L, c, probe) {
     }
   }
   // ---------------------------------------------------------------- the tail
+  mark('tail');
   const tailTop = topAt(-hl);
   const tailBottom = bottomAt(-hl);
   const tHi = tailTop - 3;
@@ -627,13 +664,17 @@ function car(kit, L, c, probe) {
   for (const s of [-1, 1]) endFace(tail, -1, [[s * (hw * 0.6), bumperHi - 12], [s * (edgeU(-hl, bumperHi) - 6), bumperHi - 12], [s * (edgeU(-hl, bumperHi) - 6), bumperHi - 8], [s * (hw * 0.6), bumperHi - 8]], 0.9);
 
   // ---------------------------------------------------------------- the sides
+  mark('sides');
   const cladHi = floor + (EV ? 16 : S.tall ? 22 : 9);
   const between = (w0, w1, k) => Array.from({ length: k + 1 }, (_, i) => w0 + ((w1 - w0) * i) / k);
   for (const s of [-1, 1]) {
     // Sill cladding between the arches (black on the crossovers, a thin black sill strip on the
     // others).
     trim.rgb(...PLASTIC);
-    sideStrip(trim, s, between(axles[1] + ra, axles[0] - ra, D.fine ? 6 : 2), [floor + 0.5, cladHi], 0.6);
+    // (The dad's car's parts at its B pillar too: pieces.js.)
+    const sill = between(axles[1] + ra, axles[0] - ra, D.fine ? 6 : 2);
+    if (EV) sill.splice(sill.findIndex((w) => w > pillarW), 0, pillarW);
+    sideStrip(trim, s, sill, [floor + 0.5, cladHi], 0.6);
     // Door shut lines, flush handles.
     trim.rgb(...BLACK);
     const doors = van ? [axles[0] - ra - 10] : [axles[0] - ra - 10, (gs[0].rearW + (gs[0].frontW - gs[0].rearW) * pillars[0]), axles[1] + ra + 8];
@@ -661,6 +702,7 @@ function car(kit, L, c, probe) {
   }
 
   // ---------------------------------------------------------------- the wheels
+  mark('wheels');
   const SIDES = D.sides;
   const tw = S.tall ? 34 : 30;
   const RR = R * 0.66; // (the rim: big wheels, low-profile tyres)
@@ -754,7 +796,31 @@ function car(kit, L, c, probe) {
     }
   }
 
+  // ---------------------------------------------------------------- the robot's door extras
+  // (The dad's car: each door's own window and inner panel, just inside the side glass and the
+  // shell, where the car hides them: STOMPWATT's pauldrons and shin guards keep their windows.)
+  if (EV) {
+    mark('doors');
+    const lv = [0.04, 0.3, 0.56, glassTop];
+    const spans = [[(f) => pillarW + 9, (f) => glassW(f)[0] - 16], [() => tailW + 6, () => pillarW - 9]];
+    for (const s of [-1, 1]) {
+      for (const [a, b] of spans) {
+        glass.rgb(0.004, 0.005, 0.006);
+        for (let k = 0; k + 1 < lv.length; k++) {
+          const [f0, f1] = [lv[k], lv[k + 1]];
+          const P = (f, w) => W(s * (sliceHalf(f) - 1.5), sliceY(f), w);
+          orient(glass, [P(f0, a(f0)), P(f0, b(f0)), P(f1, b(f1)), P(f1, a(f1))], dirW(s, 0, 0));
+        }
+      }
+      trim.rgb(0.03, 0.031, 0.034);
+      for (const [w0, w1] of [[pillarW + 2, headW - 4], [tailW + 4, pillarW - 2]]) {
+        orient(trim, [W(s * (hw - 14), floor + 6, w0), W(s * (hw - 14), floor + 6, w1), W(s * (hw - 14), windowLine - 8, w1), W(s * (hw - 14), windowLine - 8, w0)], dirW(-s, 0, 0));
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- the contact shadow
+  mark('contact');
   // Under the body (darkest under its middle, fading out a little past its outline) and round
   // each tyre's patch: a darkening of the drive (colour: what the ground's light is multiplied
   // by; materials.js contactMaterial).
@@ -796,4 +862,8 @@ function car(kit, L, c, probe) {
       }
     }
   }
+  mark(null);
+  // (The dad's car's cuts, in its own frame: pieces.js.)
+  if (!EV) return null;
+  return { hw, head: headW, tail: tailW, pillar: pillarW, axles, R, yC: yC - y0, tread: tw, mirror: screen0 - 14, belt: windowLine - y0, hatch: tailBottom - y0 + 30, floor: floor - y0, roof: roofY - y0 };
 }

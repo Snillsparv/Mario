@@ -31,9 +31,13 @@
 //                                  (minion and critter drops)
 //   critters                       the course's critters (Critters.js), or null without
 //                                  layout.CRITTERS
-//   attachLane(chunk, area)        Sparrow Lane's lazy chunk (objects/laneBoss/index.js) attached
+//   attachLane(chunk, area, opts?) Sparrow Lane's lazy chunk (objects/laneBoss/index.js) attached
 //                                  (core/AreaSwitch.js; tests): .lane, .bins (LaneBins.js: the
-//                                  movable bins), null until then
+//                                  movable bins), .laneBoss (LaneBoss.js: STOMPWATT, the dad's car
+//                                  as a robot), null until then
+//   cinematic                      the lane's boss holds Jonas (its intro: main passes a neutral
+//                                  controller meanwhile)
+//   cameraOverlay                  the lane's boss's camera (main hands it to the camera), or null
 //   setLook(part | null)           the area's realistic part shown (Area.showReal) or not
 //   trampolines                    the course's trampolines (Trampoline.js), or null without
 //                                  layout.TRAMPOLINES
@@ -211,7 +215,9 @@ export class ObjectManager {
     // movable bins.
     this.lane = null;
     this.bins = null;
+    this.laneBoss = null;
     this.look = null; // the area's realistic part while shown (setLook)
+    this.view = view; // (the lane's boss warms its programs ahead)
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -409,6 +415,7 @@ export class ObjectManager {
     this.cannon?.reset();
     this.critters?.reset(); // every critter home, the defeated back
     this.bins?.reset(); // (the lane's bins home)
+    this.laneBoss?.reset(); // (the dad's car parked, its first wake's intro again)
     for (let i = 0; i < this.doors.length; i++) this.doors[i].reset();
     this.hero.valid = false;
     this.dialogOpen = false;
@@ -420,12 +427,23 @@ export class ObjectManager {
   // Sparrow Lane's lazy chunk (objects/laneBoss/index.js: core/AreaSwitch.js loads it as the
   // lane is built; node tests import it and call this themselves): its bins take over their
   // colliders and meshes in `area` (world/area.js's Area these objects belong to). Once only.
-  attachLane(chunk, area) {
+  attachLane(chunk, area, opts) {
     if (this.lane) return this.lane;
-    this.lane = chunk.attach(this, area);
+    this.lane = chunk.attach(this, area, opts);
     this.bins = this.lane.bins ?? null;
+    this.laneBoss = this.lane.boss ?? null;
     this.bins?.setLook(this.look);
+    this.laneBoss?.setLook(this.look);
     return this.lane;
+  }
+
+  // The lane's boss's intro holds Jonas; its camera (main hands it to the CameraController).
+  get cinematic() {
+    return this.laneBoss !== null && this.laneBoss.cinematic;
+  }
+
+  get cameraOverlay() {
+    return this.laneBoss !== null ? this.laneBoss.camera : null;
   }
 
   // The area's realistic part shown (world/area.js Area.showReal), or null: what the lane's
@@ -433,6 +451,7 @@ export class ObjectManager {
   setLook(part) {
     this.look = part;
     this.bins?.setLook(part);
+    this.laneBoss?.setLook(part);
   }
 
   // The hero was just placed in this area (a warp, or back from another one): last tick's
@@ -444,6 +463,7 @@ export class ObjectManager {
     this.dialogOpen = false;
     this.critters?.reset();
     this.bins?.sendHome();
+    this.laneBoss?.enter();
     for (let i = 0; i < this.doors.length; i++) {
       const door = this.doors[i];
       if (door.near(player)) door.disarm();
@@ -497,6 +517,8 @@ export class ObjectManager {
     if (this.trampolines !== null) this.trampolines.update(player, hero);
     // The lane's bins (after his tick: they follow his grip, pushes and pulls).
     if (this.bins !== null && player !== NOBODY) this.bins.update(player, this.tick, this.cameraYaw);
+    // The lane's boss (after his tick and the bins').
+    if (this.laneBoss !== null && player !== NOBODY) this.laneBoss.update(player, this.tick, this.dialogOpen || this.warping);
     if (this.beast !== null) {
       if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
       this.beast.update(player, this.tick);
@@ -640,6 +662,7 @@ export class ObjectManager {
     if (this.cannon !== null) this.cannon.animate(alpha, clock);
     if (this.critters !== null) this.critters.animate(alpha, clock);
     if (this.bins !== null) this.bins.animate(alpha);
+    if (this.laneBoss !== null) this.laneBoss.animate(alpha);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);
