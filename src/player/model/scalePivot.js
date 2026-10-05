@@ -6,7 +6,9 @@
 //     tip under his hands, the same);
 //   * hanging from a ledge (ledge_hang) and pulling up onto it (ledge_climb): the ledge's lip
 //     under his hands (its top, on the wall's face WALL_DIST in front of where he hung): his
-//     mittens stay on the lip, the smaller body hangs from them.
+//     mittens stay on the lip, the smaller body hangs from them;
+//   * holding a wheelie bin (bin_hold): the bin's face (BIN_HOLD ahead of his feet) on the
+//     floor: his mittens stay on it and his boots on the floor.
 // Holding a pole his feet are the right pivot too (measured, tests/hero-scale.test.js): his
 // mittens wrap the trunk at his sides, so as the smaller body draws back from the trunk they
 // close in by as much: on a tree's trunk their distance from its axis stays exactly as at full
@@ -24,10 +26,19 @@
 //       shadow keeps to it. Nothing at scale 1. No allocation.
 
 import { WALL_DIST } from './physicsLink.js';
+import { BIN_HOLD } from '../physics/tuning.js';
 
 export const PIVOT_BLEND = 0.15; // seconds a change of pivot eases over (an anim's blend)
 
 export function heroPivot(action, player, feet, out) {
+  // Holding a wheelie bin: the bin's face on the floor under his mittens (they stay on it, his
+  // boots on the floor).
+  if (action === 'bin_hold') {
+    out.x = feet.x + Math.sin(player.faceYaw) * BIN_HOLD;
+    out.y = feet.y;
+    out.z = feet.z + Math.cos(player.faceYaw) * BIN_HOLD;
+    return out;
+  }
   const ledge = player.ledge;
   if ((action === 'ledge_hang' || action === 'ledge_climb') && ledge) {
     const from = action === 'ledge_climb' && player.climbFrom ? player.climbFrom : feet;

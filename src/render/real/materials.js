@@ -310,8 +310,10 @@ export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1,
   return hazeChunk(material, haze, 'real-haze', null, wear);
 }
 
-export function plainMaterial({ color = 0xffffff, roughness = 0.5, metalness = 0, side = THREE.FrontSide, vertexColors = true, envMapIntensity = 1, clearcoat = null } = {}, haze) {
+export function plainMaterial({ color = 0xffffff, roughness = 0.5, metalness = 0, side = THREE.FrontSide, vertexColors = true, envMapIntensity = 1, clearcoat = null, emissive = 0 } = {}, haze) {
   const material = new THREE.MeshStandardMaterial({ color, roughness, metalness, side, vertexColors, envMapIntensity });
+  // (emissive: a white glow of that strength over the lit colour: lights)
+  if (emissive) material.emissive.setScalar(1).multiplyScalar(emissive);
   if (!clearcoat) return hazeChunk(material, haze);
   material.defines = { USE_CLEARCOAT: '' };
   return hazeChunk(material, haze, 'real-coat', (shader) => {

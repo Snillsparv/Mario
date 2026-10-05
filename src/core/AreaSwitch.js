@@ -6,7 +6,11 @@
 // is updated and animated).
 //
 //   const areas = new AreaSwitch({ scene, view, events, input, player, cam, hud, dialog, defs,
-//                                  grounds: { level, objects }, canWarp, onSwap, real })
+//                                  grounds: { level, objects }, canWarp, onSwap, real, boss })
+//                                      // boss: load an area's lazy chunk (def.boss: Sparrow
+//                                      // Lane's objects/laneBoss) as it is built and attach it
+//                                      // to its objects (main; off in node tests, which attach
+//                                      // it themselves)
 //   areas.get(name) -> Area | null     // built on first use (world/area.js buildArea plus an
 //                                      // ObjectManager of its own), then kept for the session
 //   areas.enter(name, entryId?)        // switch at once, no wipe (GAME OVER, ?area=, tests);
@@ -39,6 +43,7 @@
 //                                      // for his step into a door's opening (below); reused
 //   areas.setClassic(on)               // the "Classic street" choice (G, this session): an
 //                                      // area with a realistic look drawn classic, or back
+//   areas.bossOf(name) -> Promise     // that area's chunk attached (what it attached), or null
 //   areas.busy, .name, .current, .objects (the current area's), .phase, .warp,
 //   .buildMs ({ name: ms of its first build }), .carry (a stick held through a door, below),
 //   .still (one held out of a course, below), .won (the courses whose star he has won)
@@ -161,8 +166,9 @@ const IRIS_COLOR = '#000000';
 const STAR_COLOR = '#fff4d0';
 
 export class AreaSwitch {
-  constructor({ scene, view, events, input, player, cam, hud, dialog, defs, grounds, canWarp = () => true, onSwap = () => {}, real = null }) {
-    Object.assign(this, { scene, view, events, input, player, cam, hud, dialog, defs, canWarp, onSwap, real });
+  constructor({ scene, view, events, input, player, cam, hud, dialog, defs, grounds, canWarp = () => true, onSwap = () => {}, real = null, boss = false }) {
+    Object.assign(this, { scene, view, events, input, player, cam, hud, dialog, defs, canWarp, onSwap, real, boss });
+    this.bosses = new Map(); // area name -> Promise of its lazy chunk attached (def.boss; boss: true)
     this.grounds = groundsArea(grounds.level, grounds.objects);
     this.sky = this.grounds.sky; // the one sky dome (a grounds part), shown where def.sky
     this.built = { grounds: this.grounds };
@@ -234,6 +240,20 @@ export class AreaSwitch {
     this.buildMs[name] = performance.now() - t0;
     this.built[name] = area;
     this._light(area);
+    // Its lazy chunk (def.boss: Sparrow Lane's objects/laneBoss), attached to its objects once
+    // in (main: boss true; node tests attach it themselves). Without it the area is as it was.
+    if (this.boss && def.boss) {
+      this.bosses.set(
+        name,
+        def.boss.load().then(
+          (chunk) => area.objects.attachLane(chunk, area),
+          (e) => {
+            console.warn(`[areas] ${name}: its chunk did not load (${e?.message ?? e}); it stays as it was`);
+            return null;
+          },
+        ),
+      );
+    }
     if (this.real?.wanted && def.real) {
       // Built in the background since boot: usually ready already (then it shows from the
       // first frame, behind the covered screen), else it swaps in once it is.
@@ -242,6 +262,12 @@ export class AreaSwitch {
       else this._buildReal(area);
     }
     return area;
+  }
+
+  // A promise of the area's lazy chunk attached to its objects (resolving to what it attached,
+  // or null: none, not built yet, or it failed to load).
+  bossOf(name) {
+    return this.bosses.get(name) ?? Promise.resolve(null);
   }
 
   setClassic(on) {

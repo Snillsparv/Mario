@@ -99,6 +99,8 @@ async function start() {
   // this thread is free), so they work beside the rest of it.
   const real = new RealAreas({ view, search: location.search, test: TEST });
   await Promise.race([real.prefetch(AREA_DEFS), new Promise((resolve) => setTimeout(resolve, WORKERS_WAIT))]);
+  // The areas' lazy chunks (Sparrow Lane's bins) start loading too, long before a door.
+  for (const def of Object.values(AREA_DEFS)) def.boss?.load().catch(() => {});
 
   const level = buildLevel(scene);
   view.setWaterLevelFn((x, z) => level.collision.waterLevelAt(x, z));
@@ -181,6 +183,7 @@ async function start() {
       lastAction = player.action; // an arrival (even one dropping in) is no respawn
     },
     real,
+    boss: true, // (an area's lazy chunk: Sparrow Lane's bins)
   });
   // The pause legend's look row: in a course with a realistic look, drawn so or classic by choice.
   const lookRow = () => (view.look ? 'real' : areas.current.def.real && real.reason === 'chosen' ? 'classic' : null);
@@ -484,6 +487,11 @@ async function start() {
     },
     get area() {
       return areas.name; // the area Jonas is in: 'grounds' | 'hall' | 'skerries' | 'lane'
+    },
+    // Sparrow Lane's lazy chunk attached to its objects (a promise: { bins }, or null when the
+    // lane is not built yet or the chunk did not load).
+    get laneBoss() {
+      return areas.bossOf('lane');
     },
     // Switch area at once (no wipe), at an entry (default: its respawn entry), then draw.
     enterArea(name, entry) {

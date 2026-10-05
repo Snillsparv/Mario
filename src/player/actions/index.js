@@ -11,6 +11,7 @@ import { AUTOMATIC_ACTIONS } from './automatic.js';
 import { FLYING_ACTIONS } from './flying.js';
 import { CANNON_ACTIONS } from './cannon.js';
 import { TAIL_ACTIONS } from './tail.js';
+import { BIN_ACTIONS } from './bin.js';
 
 export { enterWater } from './submerged.js';
 
@@ -23,4 +24,5 @@ export const ACTIONS = {
   ...FLYING_ACTIONS,
   ...CANNON_ACTIONS,
   ...TAIL_ACTIONS,
+  ...BIN_ACTIONS,
 };

@@ -8,8 +8,9 @@ import glslMinify from './tools/glslMinify.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.68 MB minified (1,678,665 bytes), ~549
-// kB gzipped, plus one lazily loaded chunk and two module workers of its own (new Worker(new
+// first frame, so splitting would only add requests. ~1.68 MB minified (1,682,766 bytes with
+// B1's movable bins and the dad's car), ~550 kB gzipped, plus two lazily loaded chunks and two
+// module workers of its own (new Worker(new
 // URL(...)), not imports): the ~13 kB title-logo worker and the realistic look's
 // (render/real/laneRealWorker.js, ~114 kB, a pool of up to three of them: the pure code the
 // realistic Sparrow Lane needs, its texture generators and its geometry builders, kept out of
@@ -18,7 +19,10 @@ const TARGET = 'es2022';
 // realistic look's main-thread code the boot does not need (its materials, sky, probe, far
 // shadow, post chain and output pass); it imports only from main (three.js and the classic
 // builders are not downloaded twice) and stays under 90 kB; with no modulepreload (below) the
-// game's index.html still loads main alone. The size warning was 1600 (1,584,238 bytes before
+// game's index.html still loads main alone. The second chunk, `laneBoss` (~6 kB: objects/
+// laneBoss/index.js, imported only dynamically by objects/laneBoss/area.js, at boot), is
+// Sparrow Lane's movers (the movable bins; the dad's car's boss later): the same rules, under
+// 90 kB, importing only from main (Rolldown names it after its index.js's folder). The size warning was 1600 (1,584,238 bytes before
 // it); raised to 1700 for the second course, Sparrow Lane (world/lane/*, about 60 kB with its
 // details; its realistic look's renderer side about 47 kB more, until G1 moved most of it into
 // the lazy chunk): the hard budget (1,700,000 bytes) is the limit. Growth goes into the worker

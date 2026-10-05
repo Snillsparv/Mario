@@ -11,6 +11,7 @@ import { UP } from './physics/slopes.js';
 import { ACTIONS, enterWater } from './actions/index.js';
 import { attackZone } from './actions/attacks.js';
 import { tryGrabTail } from './actions/tail.js';
+import { tryGrabBin } from './actions/bin.js';
 
 // Actions during which water entry is not checked (they position the hero themselves).
 const NO_WATER_CHECK = new Set(['death', 'ledge_hang', 'ledge_climb', 'pole', 'pole_top', 'spawn']);
@@ -127,6 +128,11 @@ export class Player {
     this.tailSpeed = 0;
     this.tailDir = 0;
     this.tailRelease = -1;
+    // A wheelie bin's grip (Sparrow Lane's movable bins set it: LaneBins.grip; null = none
+    // here) and how long the stick has been held across his facing while holding one
+    // (actions/bin.js).
+    this.binGrip = null;
+    this.binSide = 0;
     // The cannon (actions/cannon.js): { desc, phase, yaw, pitch, inside, ... } once he climbed in;
     // falls until this tick are safe (a shot that landed on a roof too steep to stand on).
     this.cannon = null;
@@ -168,6 +174,8 @@ export class Player {
 
     // B next to Rustmaw's tail coupling grabs it (actions/tail.js) instead of a punch or dive.
     if (c.B.pressed && this.tailGrip !== null) tryGrabTail(this);
+    // B next to a wheelie bin, facing it, grabs it (actions/bin.js) instead of a punch.
+    if (c.B.pressed && this.binGrip !== null) tryGrabBin(this);
     for (let i = 0; i < MAX_CHAINED_ACTIONS; i++) {
       if (!ACTIONS[this.action].update(this, c)) break;
     }
@@ -361,7 +369,7 @@ export class Player {
   // its respawn point ({ x, y, z, yaw, drop? }) and its readable signs (a sign without `y`
   // stands on groundAt(x, z), by default the grounds layout's ground). Everything tied to the
   // old place is dropped: a sign being read, the cannon, Rustmaw's tail grip (the grounds'
-  // objects set it again on their first tick back), the blink after a hit, held breath, jump
+  // objects set it again on their first tick back), a bin's grip (the lane's objects the same), the blink after a hit, held breath, jump
   // chains, a wall to kick off, grabs, and the winged hat ('wingHat' { on: false }). Health,
   // coins and stars are kept. placeAt() then puts him down there.
   setWorld({ collision, spawn, signs = [], groundAt = groundHeight }) {
@@ -375,6 +383,7 @@ export class Player {
     this.tailGrip = null;
     this.tailSpeed = 0;
     this.tailRelease = -1;
+    this.binGrip = null;
     this.invincibleUntil = 0;
     this.drownTicks = 0;
     this.breath = 1;

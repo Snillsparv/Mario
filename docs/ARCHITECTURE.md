@@ -226,6 +226,22 @@ CCW when viewed from the side they face (three.js default front faces).
   Queries allocate nothing but their result objects (numeric grid keys, precomputed wall
   data).
   `CollisionWorld.planeHeight(surface, x, z)`.
+* **Moving colliders** (Sparrow Lane's bins and, later, the dad's car): `cover(list, x0, x1, z0,
+  z1)` buckets surfaces already added into every grid cell the rect (plus the walls' 200
+  margin) overlaps, never twice; `moveSurfaces(list, rest, dx, dy, dz)` (export) rewrites them in
+  place at their rest corners (`restOf(list)`: 9 numbers a surface) shifted by a translation: a,
+  b, c, `d`, `minY`/`maxY` and a wall's `ys` and `pu` (normals, `hn`, `hscale`, the face axes
+  stay); parking one under the world is the same call (`dy` -60000, as ServerHalls and the
+  mystery box park theirs). A surface moved in x or z must stay inside the rect it was covered
+  for; every query then stays exact (a surface in an extra cell is tested there and found
+  where it really is; a ray stamps it once). `tests/collision.test.js` and
+  `tests/lane-bins.test.js` (a moved bin against a course rebuilt with the bin there).
+* **Named colliders**: `SolidBuilder.named(id)` (`world/castle/geom.js`) is a builder whose faces
+  go into the same per-terrain collider as before, in the same order, their ranges noted on it
+  (`named: [{ id, from, to }]`); `world/area.js` adds such a collider in slices (the collision
+  world's surfaces in the very same order) and notes each id's surfaces: `area.named[id] = {
+  surfaces, rest }` (also `objectsLayout.NAMED`). So the colliders stay byte-identical (the
+  lane's are, to HEAD's), and an object can find and move its own.
 
 ## World parts (`src/world/*.js`)
 
@@ -329,6 +345,9 @@ while he is in it, so hidden areas cost no draw calls, and only the current area
   lamp: 'skerries',                    // the course whose star, once won, lights this area's lamp
                                        // too (the lighthouse in the bottle; a course's own star
                                        // lights its own)
+  real, boss,                          // its realistic look; its lazy chunk ({ load }: Sparrow
+                                       // Lane's objects/laneBoss, attached to its objects as it is
+                                       // built when AreaSwitch's `boss` is on: main's; see "Objects")
 }
 groundsArea(level, objects) -> Area    // the grounds as an Area: entries 'start' (the spawn) and
                                        // 'porch' (174 in front of the door face, facing out, camYaw 0,
@@ -341,7 +360,10 @@ buildArea(scene, def) -> Area          // world/area.js; shiftPositions(position
 `buildArea` runs the builders on the local layout, adds their objects under the root (placed at
 the origin, hidden), and fills a new CollisionWorld with every collider's `positions` and every
 pole shifted by the origin (an `{ object3D }` collider is refused: it would stay where the
-builder left it), with the water from `def.waterLevelAt` shifted likewise. The Area is `{ name,
+builder left it), with the water from `def.waterLevelAt` shifted likewise; a collider's named
+ranges (`SolidBuilder.named`) are added in slices, their surfaces noted (`area.named`,
+`objectsLayout.NAMED`: see "Collision"), and `layout.MOVABLE_BINS` goes to the objects in world
+coordinates (homes, floors, leashes; `objectsLayout.ORIGIN` the area's origin). The Area is `{ name,
 def, root, collision, parts, entries, audio, respawn, signs, groundAt, objectsLayout, waterFn,
 objects, update(time, camera), reset(), setVisible(on), setDoorOpen(t, id), setLit(on) }` (the
 last two hand on to its parts' own, see "World parts"), everything in world coordinates
@@ -1629,8 +1651,10 @@ trees' leaves).
   reds from 330 to 700, about the house's height, drawn in render's white, not in the green leaf
   texture, open over the trunk's top where Jonas stands), the rhododendron (solid), a blue pot by
   the door (`POT`), the mailbox; the two wheelie bins against the east gable (`BINS`, solid to
-  182) under the car charger (`DAD.charger`); his drive runs on under the carport, his two cars on
-  it (see "Props").
+  182: they move, see "The bins" below) under the car charger (`DAD.charger`: a dark box, a round
+  green status light on its face, its cable hanging in a loop from its underside to the plug in
+  a holster below: the cable a mover of its own, `part.movers.charger_cable`, so the boss can
+  hide it later); his drive runs on under the carport, his two cars on it (see "Props").
 * **Props** (`props.js`): lampposts L1 … L7 (grey, an arm and a flat head; prism colliders, but
   for the climbable L1 and L6), white flagpoles F1 … F3 with gold knobs (climbable) flying their
   flags (`FLAGPOLES[].flag`: north_2's blue and yellow cross flag, `FLAG` 300 × 188; long blue and
@@ -1653,7 +1677,7 @@ trees' leaves).
   headlights and red tail lights, a soft shadow under it; solid, the body and the cabin each
   convex: a hop onto a bonnet, a grab of a roof's edge. The dad's dark blue SUV and blue
   crossover side by side before the carport, noses out, the way to the bins clear on their
-  west; the west neighbour's white one at the link; a silver hatchback, a dark grey crossover, a
+  west (the crossover a lookalike of his own car: "The dad's car" below); the west neighbour's white one at the link; a silver hatchback, a dark grey crossover, a
   black hatchback and a black van noses in on north_1's, north_2's, north_3's and north_5's
   drives (not north_4's: its coins); a grey estate at the double garage), north_5's
   **basketball hoop** (`HOOP`, a children's one: a post against the wall, a white board 412 …
@@ -1715,7 +1739,55 @@ trees' leaves).
   its own shade. Butterflies over the dad's lawn and north_3's flower beds
   (`BUTTERFLY_SPOTS`), small brown birds (`BIRD_TINT` 0x5a5048) circling over the forest
   (`BIRD_CIRCLES`).
-* **Meshes** (13): `lane-asphalt`, `-grass` (also the bank), `-blocks` (masonry: the terraces'
+* **The dad's car** (`CARS[0]`, `id: 'dad_ev'`, `style: 'ev'`): a lookalike of his own compact
+  electric crossover (from the photos nearest his gable), **no badge, no plate, no name**:
+  recognisable by its proportions, colour and details, as an open-world game's cars are. The
+  'cross' kind's body and collider, unchanged (its two convex solids, named `dad_ev`: an object
+  can park and unpark them); its tint `0x627d93`, a soft, greyish steel blue in the realistic look,
+  `classicTint` `0x5884a6` in the classic one (whose warm bake greys a blue), both chosen by eye
+  against the photos under the lane's light (only the numbers enter the repo). Classic
+  (`props.js evCar`): the bonnet sloping down to a more raked nose (drawn only, 8 under the belt
+  at its front edge), the roof, pillars and mirror caps gloss black; on the nose slim dark lamps
+  high at the bonnet's corners, swept back round them into the wings, each with a white
+  sideways-T light, a closed panel in the body's colour in a thin dark frame between them, a
+  dark slot under it, black corner inserts, a dark lower intake, a slim silver skid strip; black
+  cladding over the arches and along the sills, the window line kinked up at the rear pillar,
+  tall red lamps up the tail's corners and the rear pillars, two-tone wheels (five silver blades
+  over a dark face). Realistic: `world/lane/real/cars.js STYLE.ev` (see "Realistic look"). In
+  both looks it is drawn **last** into every mesh it shares (classic: `lane-render`, its
+  collider still made in its place among the others'; realistic: each detail mesh), so it can
+  be hidden by shortening those meshes' draw range: `part.hide.dad_ev = { [mesh name]: its first
+  vertex }` (nothing hides it yet: STOMPWATT, the lane's boss, will).
+* **The bins** (`MOVABLE_BINS`, `BIN_LEASH`; `objects/laneBoss/LaneBins.js` in the lane's lazy
+  chunk `laneBoss`): the dad's two move. **Pushed**: walking into one (grounded, walking, facing
+  it within 45 degrees, his feet circle touching its box on its level) slides it 6 a tick
+  (`BINS_TUNING.PUSH`, the Player's own `WALL_PUSH_SPEED`: his `push` anim shows by itself)
+  along the axis of the face he pushes, away from him, where the spot is free (inside its
+  leash, the floor under its corners level with its own, clear of walls and of him); blocked, it
+  stays (no chain pushes). **Grabbed and pulled**: B next to one from any side (see "Player":
+  `bin_hold`), the stick drags it along his facing, the bin following after his tick at the grip
+  distance (its collider parked while held, back where it stands when he lets go; where it may
+  not go he is held back); pulled, the drawn bin tips 15 degrees toward him onto its wheels. At
+  home they are boxed in (the gable 10 behind them, each other, the car 48 in front): only a
+  pull from an end gets one out. **Leashed** to his drive and the room under the carport (never
+  the road, the lawns or a roof); 182 high, they never shut him in (a jump clears them). **Never
+  a softlock** (the star climb's first step is a bin at home): home at once on every arrival
+  (`objects.enter`), lost life (the 'spawn' edge) and new game (`reset`); and by themselves: one
+  left alone 12 s (`HOME_WAIT`) more than 40 from home, with Jonas 700 away, trundles home at 5 a
+  tick (along x then z, or z then x, whichever is free); still not home 300 ticks later (the
+  other bin home before it, say) it is put home where the camera does not look. The climb also
+  works from a bin pushed under the carport's front edge, and never needs the bins (the eave, the
+  tree's flip, the car's bonnet and roof). Their colliders are the static build's boxes, named
+  `bin_0`, `bin_1`, covered over their leash (`CollisionWorld.cover`) and moved in place
+  (`moveSurfaces`); idle, they cost no collision query. Drawn as movers in both looks: one bin in
+  its own frame (origin at its foot's middle, +x the handle side) instanced twice (classic
+  `lane-bins` in render's baked material; realistic `lane-detail-bins` from the worker, casting),
+  bounds over the whole leash; `LaneBins` writes both looks' instances (G shows the right pose at
+  once). Without the chunk (offline, a 404, node tests that do not attach it) the bins stand
+  still, as before. Only the dad's two: no other wheelie bin stands on the street (the photos
+  show none by the other drives); another would be one more `MOVABLE_BINS` entry with its own
+  home, collider and leash.
+* **Meshes** (15): `lane-asphalt`, `-grass` (also the bank), `-blocks` (masonry: the terraces'
   walls, the steps, the kerbs, the round bed's stones), `-brick` (the castle's stone bricks
   tinted: the villas' upper floors, the white brick plinths and gable ends), `-render` (white
   render and every flat-coloured detail by vertex tint: frames, panes, doors, poles, the bins,
@@ -1725,12 +1797,14 @@ trees' leaves).
   gables, the fences, the barrier), `-roof` (pan tiles; the flat roofs' felt), `-cobbles` (the
   flagstone texture: the notches' cobbles, the north-west villa's flagstones, the patio, the
   flower beds' soil), `-leaves`, `-wood` (trunks), `-cloth` (the skerries' sailcloth, both faces:
-  the flags, waving), `-signs` and `-door` (the dad's door's leaf, render's material). The part's
+  the flags, waving), `-signs` and `-door` (the dad's door's leaf, render's material), and the movers:
+  `lane-bins` (the bins, instanced) and `lane-cable` (the charger's cable). The part's
   `update(time)` waves the flags. ~21k triangles, ~1.8k collider triangles (stone, grass, wood;
   the steps `not_slippery`), built in ~200–300 ms in node; the course's objects (coins,
-  sparkles, shadows, the star, the 1-up, butterflies, birds) within 9 meshes; 36 … 38 draw
+  sparkles, shadows, the star, the 1-up, butterflies, birds) within 9 meshes; 36 … 39 draw
   calls from the arrival, the roof, the turning area, the bend and the junction (the E2E budget
-  is 55; ~27k triangles drawn with Jonas and the HUD), built in ~130 ms in the browser.
+  is 55; ~27k triangles drawn with Jonas and the HUD; B1's movers one more where they show),
+  built in ~130 ms in the browser.
 * **Sound** (`def.audio`, see "Audio"): Midsummer Skerries' polska (`skerries`) again; the `'lane'`
   ambience (the grounds' breeze, leaves and distant birds without their waterfall and moat
   laps); no reverb; the trampoline's `boing`. Footsteps: stone on the road, the hard surfaces,
@@ -1763,7 +1837,16 @@ trees' leaves).
   red-leaf tree's flip, and the routes round the street, each collecting exactly its coins; the
   trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
   and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
-  perch from the van's roof, the dad's cars as steps up to the carport);
+  perch from the van's roof, the dad's cars as steps up to the carport); `tests/lane-bins.test.js`
+  (the bins with the chunk attached and the real Player: their moved colliders exact, pushes,
+  grabs from each side and the refusals, dragging, blocked, every way of letting go, home on
+  arrival, lost life, new game and by themselves, both looks' instances, the star climb from
+  them at home and from one under the carport's edge, idle costing nothing);
+  `tests/player-bin.test.js` (the grab's conditions, the mittens on the face at full size and at
+  0.85); `tests/lane-bins-browser.test.js` (E2E, classic and high: the touch B grabs, the pull
+  and the push, both looks' instances, walked into, home again); `tests/brands.test.js` (the
+  repo's text names no car maker, model or marketing term, no robot franchise or toy maker:
+  hashed words and pairs, the plain list kept outside the repo);
   `tests/objects.test.js` (the trampoline's spring); `tests/audio-sfx.test.js` (`boing`);
   `tests/areas.test.js` (through the east door into
   the lane and back with the doors swinging, a stick held through, the door ids, the star exit,
@@ -1786,6 +1869,7 @@ player.takeDamage(wedges, fromPos, { fire }?)  // fire: true -> the 'burn' hot-f
 player.enterCannon(cannon)     // climb into a cannon (objects call it: see "Cannon")
 player.cannon                  // { desc, phase, yaw, pitch, inside, ... } once in a cannon
 player.setWorld({ collision, spawn, signs, groundAt? })  // move into another area (below)
+player.binGrip                 // a movable bin's grip record (Sparrow Lane's bins set it; null)
 player.placeAt({ x, y, z, yaw, drop? })                  // put him down at an area entry
 signEntries(signs, groundAt?)  // (export) signs as the reach test uses them
 ```
@@ -1797,7 +1881,8 @@ room's lower ceiling is never above the start of the fall; the constructor keeps
 takes the area's readable `signs` (a sign without `y` stands on `groundAt(x, z)`, by default the
 grounds layout's `groundHeight`). Everything tied to the old place is dropped: a sign being read
 (and the press guard), the cannon, Rustmaw's tail grip and spin (the grounds' objects set
-`tailGrip` again on their first tick back), the blink after a hit, held breath and drowning,
+`tailGrip` again on their first tick back), a bin's grip (`binGrip`, the lane's objects the
+same), the blink after a hit, held breath and drowning,
 jump chains and combo jumps, a wall to kick off, grab cooldowns, a let-go pole, a walk-off
 drift, a flight's safe fall, a stomp bounce, and the winged hat (`'wingHat' { on: false }`).
 Health, coins and stars carry over. `placeAt(entry)` then teleports him to the entry and stands
@@ -1837,7 +1922,27 @@ belly_slide, butt_slide, ground_pound_spin, ground_pound_fall, ground_pound_land
 wallkick, bonk, hurt, fall_damage, ledge_hang, ledge_climb, pole_hold, pole_climb,
 pole_jump, punch1, punch2, kick, jump_kick, swim_idle, swim_stroke, swim_flutter,
 water_surface, water_jump, star_dance, spawn, death, pole_handstand, burn, fly,
-cannon_shot, tail_hold, tail_spin, tail_throw`.
+cannon_shot, tail_hold, tail_spin, tail_throw, bin_hold, bin_push, bin_pull`.
+
+Wheelie bins (`src/player/actions/bin.js`, Sparrow Lane's movable bins: see "Sparrow Lane"):
+objects set `player.binGrip` (`objects/laneBoss/LaneBins.js`'s grip record: each bin's middle,
+half sizes and whether it can be grabbed, `held`, the held face's normal `nx`/`nz`, `blocked`,
+`release`; `null` elsewhere). B next to a bin (`tryGrabBin`, after the tail's grab: his feet
+within `BIN_GRAB_REACH` 80 of one of its faces and in front of it (`BIN_GRAB_SIDE` past its
+edge at most), on its level, facing it within 60 degrees, grounded, standing or walking: the
+tail's `GRAB_FROM`) grabs it instead of a punch, from any side: he squares up to the face,
+`BIN_HOLD` 54 from it (his feet circle just clear), facing in, where he fits. Action
+`bin_hold` (group 'moving'): the stick moves him along his facing only (within `BIN_ALONG_COS`
+of it), forward pushing (anim `bin_push`: short shoving steps, leaning in), back pulling (anim
+`bin_pull`: walking backwards, leaning back, his mittens following the bin's face as it tips
+toward him), at `BIN_DRAG_SPEED` 6 (the wall push's speed) with his own collision, never
+turning him; still, anim `bin_hold` (both mittens on its face, `BIN_HANDS`: on its body, as high
+as his arms reach: a bin is as tall as he is). The bin follows after his tick; where it cannot
+go, `binGrip.blocked` (+1 ahead, -1 behind) stops him pressing on. Lets go: B or Z (the press
+guarded: no punch, no crouch), A (a plain jump), a stick held across his facing
+`BIN_SIDE_TICKS` 10, a hurt, walking off a ledge, the bin sent home (`release`). Drawn at the
+realistic look's 0.85 he is scaled about the bin's face on the floor (`scalePivot.js`): his
+mittens stay on it, his boots on the floor (`tests/player-bin.test.js`).
 
 Rustmaw's tail (`src/player/actions/tail.js`, see "AI RACE mode"): objects set
 `player.tailGrip` (the beast's grip record, `null` without a beast); B next to the glowing
@@ -2107,7 +2212,8 @@ radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
   blank probe of its size (`warmProbe`) stands in, so the materials that reflect it compile as
   they will draw.
 * `render/real/materials.js`: `pbrMaterial` (a texture set's albedo × vertex tint × colour,
-  normal map, ORM: occlusion and roughness), `plainMaterial` (paint, cloth), `glassMaterial`
+  normal map, ORM: occlusion and roughness), `plainMaterial` (paint, cloth; `emissive`: a white
+  glow of that strength, the dad's car's T lights' `drl`), `glassMaterial`
   (ior 2.2 for double glazing's ~14 %: its F0 set in the standard material's lighting as the
   physical material would compute it, without that class in the bundle; roughness 0.02, its
   reflection added at full strength over the room at 1 − 0.45: a premultiplied output),
@@ -2182,7 +2288,14 @@ geometry with `geo.js` (`Geo`: non-indexed positions, normals, world-unit uvs, l
 and a `sway` weight; quads, boxes, cylinders and arcs of them, ellipsoids, lofts) from
 `layout.js` alone, one buffer set per material, and `look.js` wraps them in meshes (the group
 `lane-detail` in the realistic part) in its detail catalogue (`DETAIL`). Nothing of it runs on
-the main thread but the upload.
+the main thread but the upload. Since B1 the detail also carries its **movers** (`detail.movers.
+bins`: one wheelie bin in its own frame, origin at its foot's middle, `street.js bins`, in one
+vertex-coloured `paint`, and where each of the dad's two stands: `look.js` makes it an instanced
+mesh, `lane-detail-bins`, casting, `part.movers.bins`, moved by the lane's chunk) and the dad's
+car's **hide range** (`detail.hide.dad_ev = { [mesh]: its first vertex }`: drawn after
+everything else, its faces are each shared mesh's tail, on every tier and through the low tier's
+merges; `look.js` names them `part.hide.dad_ev['lane-detail-<mesh>']`); the charger's cable is
+the classic builders' (`lane-cable`, in `paint`).
 
 * `house.js`: the chain houses in full: a white brick plinth 2 proud of the boards (a sloping
   flashing), real openings, windows sitting in the wall (a black casing proud, a reveal 10
@@ -2233,7 +2346,27 @@ the main thread but the upload.
   lower bumper with reflectors; door shut lines, flush handles, mirrors on black stalks; black
   arch flares and sill cladding on the crossovers and the van; black A and B pillars (a floating
   roof), the crossovers' rear quarters black, roof rails on posts, a spoiler lip, a fin antenna,
-  wipers. **No plate, no badge.** The wheels are to the bodies' scale (0.9 of the classic
+  wipers. **No plate, no badge.** The dad's car has a style of its own (`STYLE.ev`, chosen by
+  `c.style ?? c.kind`: the lookalike of his compact electric crossover, "Sparrow Lane"): its
+  bonnet sloping down toward the nose (within 4 of the collider's top where Jonas stands on it,
+  dropping on to its leading edge) and arching (its edges falling away to the nose's corners),
+  its face **raked** back (every point of the last 48 along the car above the bumper's foot
+  leaning back 0.36 per unit up: `W`, the stations never crossing) and its plan's corners round
+  (60); slim smoky lamps high at the bonnet's corners following its edge, swept back round the
+  corners into the wings and tapering, each with a white sideways T of light (the bar along the
+  lamp from its inner end round the corner, the stroke down it where it turns into the wing:
+  the `drl` material, emissive: it glows and blooms; on low merged into `gloss`) over two small
+  projectors; between them a closed panel in the body's colour, a rounded rectangle a shade
+  darker in a thin dark frame (nothing badge-shaped in it), a black slot under it; the bumper in
+  the body's colour with dark slots down its corners, a wide dark lower intake, a slim silver
+  skid strip, a black lip; the roof and the spoiler lip in the lacquer in black (gloss black),
+  black pillars, no rails, the window line kinked up at the rear pillar (the body's colour over
+  the side glass's rear end, a black seal along it) and higher over the bonnet (`rise` 21: a
+  high belt, smaller windows); tall tail lamps up the tail's corners and on up the rear pillars,
+  two light guides each; black arch cladding (7 wide) and sills (16 high); the charge port's flap
+  on its left rear quarter; two-tone aero wheels (a dark face, five pairs of machined blades).
+  `cars(kit, L)` draws every car but those with an id; `carOf(kit, L, c)` draws one: the dad's,
+  last (`detail.js`). The wheels are to the bodies' scale (0.9 of the classic
   ones): tyres with a bulging sidewall whose tread's lowest ring is flattened onto the ground
   (the patch the car stands on: every car level on its four patches), ten-spoke rims (five on
   mid and low) over a dark barrel and a brake disc, in black liners that close each arch. Under
@@ -2314,7 +2447,9 @@ the main thread but the upload.
   bark's normal map deeper.) Measured in headless Chromium at the five views (the shadow
   pass and the post chain included; G2): high 132–141 draw calls, 880–892k triangles, 15
   realistic programs, 59.6 MB of set textures; mid 126–138, 459–469k, 15, 43.9 MB; low 90–95,
-  ~197k, 12, 18.8 MB (R3: high 116–121, ~764k, 12; mid ~435k; low ~179k, 10).
+  ~197k, 12, 18.8 MB (R3: high 116–121, ~764k, 12; mid ~435k; low ~179k, 10). B1 (the bins'
+  instanced mover and its shadow, the cable, the T lights' `drl`): high 139–149, 888–899k, 16
+  (the instanced paint's program); mid 132–141, 461–471k, 16; low 91–97, ~197k, 13.
   The realistic part hangs under its area's root only while shown (`Area.showReal`): the
   renderer's classic warm-ups compile whatever is under the root, hidden or not.
 
@@ -2632,8 +2767,14 @@ the lazy `realLook` chunk (above: ~47 kB with G1's post chain and G2's weatherin
 shaders minified since G3; imported by `main` only dynamically, importing only `main`: under 90
 kB; no modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB,
 R2 +~9 kB, R3 +~8.8 kB, then G1 moved the look's code out: 1,678,476 bytes; G2 +189: 1,678,665;
-G3's minified shaders -7.7 kB: 1,670,953 bytes, under the 1,700,000-byte budget).
-`tests/net-relay-build.test.js` checks all three.
+G3's minified shaders -7.7 kB: 1,670,953 bytes, under the 1,700,000-byte budget). B1 (the dad's
+car and the bins): `main` +11.8 kB (the classic lookalike, the bins' grab and its anims, the
+movers, the named colliders, the chunk's hooks): 1,682,766 bytes (17,234 under the budget); the
+worker +5.5 kB (the lookalike's style, the movers): 121,841; `realLook` 47,797; and a second lazy
+chunk, `laneBoss` (Sparrow Lane's movers: the bins, 6,262 bytes; the lane's boss later), the
+same rules as `realLook` (imported by
+`main` only dynamically, importing only `main`, no three.js, under 90 kB).
+`tests/net-relay-build.test.js` checks all four.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -3461,7 +3602,25 @@ objects.critters                            // a course's critters (Critters.js)
 objects.trampolines                         // a course's trampolines (Trampoline.js), or null
 objects.spawnCoin(x, y, z, minY?)           // a run-time coin (minion and critter drops), at
                                             // least at minY (CoinField.spawnCoin)
+objects.attachLane(chunk, area)             // Sparrow Lane's lazy chunk attached (below)
+objects.lane, objects.bins                  // what it attached: { bins }, the LaneBins (or null)
+objects.setLook(part | null)                // the area's realistic part shown (Area.showReal)
 ```
+
+Sparrow Lane's lazy chunk (`laneBoss`: `objects/laneBoss/index.js`, its only import site
+`objects/laneBoss/area.js`, the lane's `def.boss = LANE_BOSS_AREA = { load }`): main prefetches
+it at boot (beside the realistic look's workers) and `core/AreaSwitch.js` (`boss: true`) attaches
+it as the lane is built (`objects.attachLane(chunk, area)`: `chunk.attach(objects, area)`;
+`areas.bossOf('lane')` and `window.__game.laneBoss` resolve with what it attached). Node tests
+never load it by themselves (an `import()` resolves after a synchronous test: the bins would
+start moving in the middle of unrelated lane tests): those that want it import it and attach it
+(`om.attachLane(chunk, area)`); without it (offline, a 404: logged once) the lane is exactly as
+it was, parked car and static bins. B1 attaches the movable bins (`LaneBins.js`, numbers in
+`tuning.js BINS_TUNING`; see "Sparrow Lane"): they tick in `_step` after the trampolines (after
+the player's tick: they follow his grip), publish `player.binGrip` each tick, draw in `_draw`
+(both looks' instances, interpolated between the last two ticks, written only when what is
+drawn changes), go home in `reset()` and `enter()`; `setLook(part)` points them at the realistic
+part's bin mesh as well. The dad's car's boss (STOMPWATT) joins the chunk in later milestones.
 
 Critters (`layout.CRITTERS`, see "Critters" under Midsummer Skerries): `objects.critters` is a
 `Critters` manager (`Critters.js`, the shared framework: engagement, the one-attacker token,

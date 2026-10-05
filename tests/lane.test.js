@@ -117,8 +117,9 @@ const meshes = [];
 area.root.traverse((o) => o.isMesh && meshes.push(o));
 const mesh = (name) => meshes.find((m) => m.name === name);
 
-test('budgets: at most 13 meshes named lane-* with baked colours, under 42k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
-  assert.ok(meshes.length <= 13, `${meshes.length} meshes`);
+test('budgets: at most 15 meshes named lane-* with baked colours (13 and the movers: the bins, instanced, and the charger\'s cable), under 42k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
+  assert.ok(meshes.length <= 15, `${meshes.length} meshes`);
+  assert.ok(mesh('lane-bins').isInstancedMesh && mesh('lane-bins').count === 2 && mesh('lane-cable'), 'the movers');
   let tris = 0;
   for (const m of meshes) {
     const g = m.geometry;
@@ -636,3 +637,43 @@ test('the look: the sun low in the south-west; the villas\' street faces lit, th
   assert.ok(lo > DAD.eave - 100 && hi < DAD.ridge + 80 && wide < lane.ROUND_BED.r + 60, `the crown from ${lo.toFixed(0)} to ${hi.toFixed(0)}, ${wide.toFixed(0)} wide`);
   assert.ok(tones.size >= 3, `${tones.size} reds: ${[...tones]}`);
 });
+
+test('the dad\'s car and the bins: their colliders the static build\'s, named (dad_ev: its body and cabin; bin_0, bin_1: a box each), the car drawn last into lane-render (part.hide: hiding from its first vertex removes exactly its faces), the bins one instanced mover at home', () => {
+  const c = lane.CARS.find((k) => k.id === 'dad_ev');
+  const K = lane.CAR_KINDS[c.kind];
+  const w = (s) => [s.a, s.b, s.c].map(([x, y, z]) => [x - O.x, y - O.y, z - O.z]);
+  assert.equal(area.named.dad_ev.surfaces.length, 20, 'two convex solids');
+  for (const s of area.named.dad_ev.surfaces) for (const [x, , z] of w(s)) assert.ok(Math.abs(x - c.x) <= K.w / 2 + 0.01 && Math.abs(z - c.z) <= K.l / 2 + 0.01, 'within its footprint');
+  for (const [i, b] of lane.BINS.entries()) {
+    const named = area.named[`bin_${i}`];
+    assert.equal(named.surfaces.length, 10, `bin_${i}: its top and four walls`);
+    for (const s of named.surfaces) for (const [x, y, z] of w(s)) assert.ok(Math.abs(x - b.x) <= lane.BIN.x / 2 && Math.abs(z - b.z) <= lane.BIN.z / 2 && y <= lane.BIN.top, `bin_${i}: its box`);
+    assert.equal(named.rest.length, 90);
+  }
+  const part = area.parts[0];
+  const first = part.hide.dad_ev['lane-render'];
+  const p = mesh('lane-render').geometry.attributes.position.array;
+  const inCar = (i, pad) => Math.abs(p[i] - c.x) < K.w / 2 + pad && Math.abs(p[i + 2] - c.z) < K.l / 2 + pad;
+  assert.ok(first > 0 && first < p.length / 3);
+  for (let i = first * 3; i < p.length; i += 3) assert.ok(inCar(i, 25), 'its range only the car\'s');
+  for (let i = 0; i < first * 3; i += 3) assert.ok(!(inCar(i, 2) && p[i + 1] > GROUND + 3), 'nothing of it before its range');
+  const bins = part.movers.bins;
+  assert.equal(bins.count, 2);
+  const m = new THREE.Matrix4();
+  for (const [i, b] of lane.BINS.entries()) {
+    bins.getMatrixAt(i, m);
+    assert.deepEqual([m.elements[12], m.elements[13], m.elements[14]], [b.x, GROUND, b.z], `bin ${i} at home`);
+  }
+  assert.ok(part.movers.charger_cable.isMesh, 'the charger\'s cable');
+  // Without the chunk (nothing attaches it here) the lane is as it was: the bins stand still.
+  const { p: hero, om } = hero2(lane.BINS[0].x, GROUND, 1480, 0);
+  assert.equal(om.bins, null);
+  assert.equal(hero.binGrip, null, 'no grip: B punches');
+});
+
+function hero2(x, y, z, yaw) {
+  const events = new Events();
+  const p = new Player({ collision: area.collision, events, spawn: { x: x + O.x, y: y + O.y, z: z + O.z, yaw }, signs: area.signs });
+  const om = new ObjectManager({ scene: new THREE.Scene(), collision: area.collision, events, layout: area.objectsLayout, player: p, area: 'lane' });
+  return { p, om };
+}

@@ -20,7 +20,7 @@ import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { forestSpots } from '../src/world/lane/real/spots.js';
 import { lawnMask, GRASS } from '../src/world/lane/real/grass.js';
 import { frameOf } from '../src/world/lane/real/house.js';
-import { cars, carFrame, carClusters } from '../src/world/lane/real/cars.js';
+import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
 import { roadPieces, inside } from '../src/world/lane/real/plan.js';
 
@@ -315,6 +315,7 @@ test('the cars\' bodies and tyres are closed: every edge of each shared by exact
       };
     }
     cars(kit, lane);
+    for (const c of lane.CARS) if (c.id) carOf(kit, lane, c); // (the dad's, drawn last by detail.js)
     assert.equal(pieces.length, lane.CARS.length * 5, `${tier}: a body and four tyres a car`);
     for (const { name, p } of pieces) {
       const key = (i) => `${p[i]},${p[i + 1]},${p[i + 2]}`;
@@ -659,4 +660,73 @@ test('G3\'s details: the double garage\'s downpipes with faint rust under their 
   };
   assert.ok(planted(high) > 300 && planted(mid) > 200, `the tufts (${planted(high)} / ${planted(mid)} vertices)`);
   assert.equal(planted(low), 0, 'none on low');
+});
+
+test('the dad\'s crossover (CARS style ev): drawn last into every mesh it shares, `hide` at its first vertex in each (hiding from there removes exactly its faces), on every tier', () => {
+  const c = lane.CARS.find((k) => k.id === 'dad_ev');
+  assert.ok(c && c.style === 'ev' && c.kind === 'cross', 'CARS[0], the cross kind\'s body');
+  const K = lane.CAR_KINDS[c.kind];
+  const inBox = (p, i, pad) => Math.abs(p[i] - c.x) < K.w / 2 + pad && Math.abs(p[i + 2] - c.z) < K.l / 2 + pad;
+  for (const [tier, d] of [['high', high], ['low', low]]) {
+    const hide = d.hide.dad_ev;
+    assert.ok(hide && Object.keys(hide).length >= 5, `${tier}: its meshes ${Object.keys(hide ?? {})}`);
+    for (const m of d.meshes) {
+      const p = m.buffers.position;
+      const from = hide[m.name];
+      if (from === undefined) {
+        for (let i = 0; i < p.length; i += 3) if (inBox(p, i, 8) && p[i + 1] > c.y0 + 5) assert.fail(`${tier} ${m.name}: a vertex of it outside its hide range`);
+        continue;
+      }
+      assert.ok(from > 0 || m.name === 'drl', `${tier} ${m.name}: others' faces before it`);
+      for (let i = from * 3; i < p.length; i += 3) assert.ok(inBox(p, i, 30), `${tier} ${m.name}: its range only the car's`);
+      for (let i = 0; i < from * 3; i += 3) assert.ok(!(inBox(p, i, 4) && p[i + 1] > lane.GROUND + 5), `${tier} ${m.name}: none of it before its range`);
+    }
+  }
+});
+
+test('the dad\'s crossover looks like his car: a gloss black roof, two sideways-T lights on the nose that glow, tall tail lamps, the closed panel with nothing badge-sized in its middle, the bonnet sloping toward the nose', () => {
+  const c = lane.CARS.find((k) => k.id === 'dad_ev');
+  const K = lane.CAR_KINDS[c.kind];
+  const F = carFrame(lane, c);
+  const hl = K.l / 2;
+  const at = (d, name) => {
+    const b = d.meshes.find((m) => m.name === name).buffers;
+    const from = d.hide.dad_ev[name] * 3;
+    const out = [];
+    for (let i = from; i < b.position.length; i += 3) {
+      const [x, y, z] = b.position.subarray(i, i + 3);
+      out.push({ u: (x - c.x) * Math.cos(c.yaw) - (z - c.z) * Math.sin(c.yaw), y: y - F.y0, w: (x - c.x) * Math.sin(c.yaw) + (z - c.z) * Math.cos(c.yaw), col: b.color.subarray(i, i + 3) });
+    }
+    return out;
+  };
+  const paint = at(high, 'carPaint@0');
+  const roof = paint.filter((v) => v.y > K.roof - 3);
+  assert.ok(roof.length > 20 && roof.every((v) => Math.max(...v.col) < 0.05), 'the roof black (the lacquer in black)');
+  const body = paint.filter((v) => v.y < K.belt - 10 && v.y > 40);
+  assert.ok(body.some((v) => v.col[2] > v.col[0] * 1.3), 'the body blue');
+  // Two T's of light on the nose, one each side: a bar across and a stroke down its outer end.
+  const drl = at(high, 'drl');
+  assert.ok(drl.length >= 24 && drl.every((v) => v.w > hl - 70 && v.y > K.belt * 0.6), 'the T lights high on the nose');
+  for (const s of [-1, 1]) {
+    const side = drl.filter((v) => Math.sign(v.u) === s);
+    const ys = side.map((v) => v.y);
+    const us = side.map((v) => Math.abs(v.u));
+    assert.ok(Math.max(...us) - Math.min(...us) > 30 && Math.max(...ys) - Math.min(...ys) > 8, `side ${s}: a bar across and a stroke down`);
+  }
+  assert.ok(high.meshes.find((m) => m.name === 'drl').material === 'drl');
+  // Tall tail lamps: taller than wide on each corner of the tail.
+  const tail = at(high, 'tail').filter((v) => v.w < -hl + 40);
+  for (const s of [-1, 1]) {
+    const side = tail.filter((v) => Math.sign(v.u) === s);
+    const h = Math.max(...side.map((v) => v.y)) - Math.min(...side.map((v) => v.y));
+    const w = Math.max(...side.map((v) => Math.abs(v.u))) - Math.min(...side.map((v) => Math.abs(v.u)));
+    assert.ok(h > 1.5 * w && h > 60, `tail lamp ${s}: ${h.toFixed(0)} tall, ${w.toFixed(0)} wide`);
+  }
+  // The closed panel: nothing of any other part in its middle (no badge).
+  for (const name of ['trim', 'metal', 'lamp', 'rim', 'drl', 'tail']) {
+    for (const v of at(high, name)) assert.ok(!(v.w > hl - 30 && Math.abs(v.u) < 26 && v.y > 60 && v.y < K.belt), `${name}: a part in the panel's middle at ${v.u.toFixed(0)}, ${v.y.toFixed(0)}`);
+  }
+  // The bonnet sloping down toward the nose (and its leading edge lower still).
+  const crown = (w0) => Math.max(...paint.filter((v) => Math.abs(v.u) < 8 && Math.abs(v.w - w0) < 12).map((v) => v.y));
+  assert.ok(crown(hl - K.hood + 20) - crown(hl - 50) > 4 && crown(hl - 50) - crown(hl - 8) > 4, `the bonnet slopes: ${crown(hl - K.hood + 20).toFixed(1)}, ${crown(hl - 50).toFixed(1)}, ${crown(hl - 8).toFixed(1)}`);
 });

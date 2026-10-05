@@ -161,8 +161,13 @@ export function* laneSteps(layout, { look = 'classic', materials = null, replace
   kit.glass = real ? new GeoBuilder(REAL_REPEAT.glass) : kit.render;
   kit.paint = real ? new GeoBuilder(REAL_REPEAT.paint) : kit.render;
   kit.path = real ? new GeoBuilder(REAL_REPEAT.path) : kit.grass;
+  // The movers (what objects move about: the bins, the charger's cable), each a builder of its
+  // own drawn in its own frame (kit.mover(id); lane/build.js wraps them: part.movers).
+  kit.movers = {};
+  kit.mover = (id) => (kit.movers[id] ??= new GeoBuilder(real ? REAL_REPEAT.paint : REPEAT.render));
   const hidden = { ...kit };
   for (const name of [...Object.keys(REPEAT), ...Object.keys(REAL_REPEAT)]) hidden[name] = NOTHING;
+  hidden.mover = () => NOTHING;
   kit.drawn = (name) => (replaced.includes(name) ? hidden : kit);
   hidden.drawn = kit.drawn;
   const road = roadPieces(layout);
@@ -222,7 +227,34 @@ function assemble(kit, layout, leaf) {
   // The dad's front door's leaf, in render's material, turning on its hinge (setDoorOpen).
   const door = doorLeaf(leaf, materials.render, (geo) => bakeLighting(geo, lit));
   group.add(door.mesh);
-  return lanePart(kit, group, wave, door);
+  // The movers in render's material, baked: the bins (one instanced mesh, each at home), the
+  // charger's cable.
+  const movers = {};
+  if (kit.movers.bins) movers.bins = binsMesh(bakeLighting(kit.movers.bins.toGeometry(), lit), materials.render, layout);
+  if (kit.movers.charger_cable) {
+    movers.charger_cable = new THREE.Mesh(bakeLighting(kit.movers.charger_cable.toGeometry(), lit), materials.render);
+    movers.charger_cable.name = 'lane-cable';
+  }
+  for (const m of Object.values(movers)) group.add(m);
+  // The dad's car's faces are lane-render's last (props.js draws it last): hidden from there.
+  const hide = {};
+  for (const [id, at] of Object.entries(kit.hideAt ?? {})) hide[id] = { 'lane-render': at.paint };
+  return lanePart(kit, group, wave, door, movers, hide);
+}
+
+// The bins' instanced mesh (lane-bins): one bin drawn in its own frame (origin at its foot's
+// middle), an instance for each of layout.BINS at home; its bounds cover the bins' leash (they
+// move: objects/laneBoss/LaneBins.js writes the instances).
+export function binsMesh(geometry, material, layout) {
+  const mesh = new THREE.InstancedMesh(geometry, material, layout.BINS.length);
+  mesh.name = 'lane-bins';
+  const m = new THREE.Matrix4();
+  layout.BINS.forEach((b, i) => mesh.setMatrixAt(i, m.makeTranslation(b.x, layout.GROUND, b.z)));
+  mesh.instanceMatrix.needsUpdate = true;
+  const L = layout.BIN_LEASH;
+  const r = Math.hypot((L.x1 - L.x0) / 2 + layout.BIN.x, (L.z1 - L.z0) / 2 + layout.BIN.x, layout.BIN.h);
+  mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3((L.x0 + L.x1) / 2, layout.GROUND, (L.z0 + L.z1) / 2), r);
+  return mesh;
 }
 
 // The realistic look's meshes: unbaked, in `materials` (by mesh name: the classic ones, glass,
@@ -250,7 +282,17 @@ function assembleReal(kit, layout, leaf, materials) {
   const door = doorLeaf(leaf, materials.paint, (geo) => geo);
   door.mesh.castShadow = door.mesh.receiveShadow = true;
   group.add(door.mesh);
-  return lanePart(kit, group, wave, door);
+  // The charger's cable (a mover; the bins and the dad's car's hide range come with the
+  // worker's detail: world/lane/real/look.js).
+  const movers = {};
+  if (kit.movers.charger_cable) {
+    const cable = new THREE.Mesh(kit.movers.charger_cable.toGeometry(), materials.paint);
+    cable.name = 'lane-cable';
+    cable.castShadow = cable.receiveShadow = true;
+    group.add(cable);
+    movers.charger_cable = cable;
+  }
+  return lanePart(kit, group, wave, door, movers, {});
 }
 
 // The realistic look's meshes that cast no shadow: the ground's (nothing stands under them) and
@@ -270,13 +312,15 @@ function greyLawns(b, lawn) {
   }
 }
 
-function lanePart(kit, group, wave, door) {
+function lanePart(kit, group, wave, door, movers, hide) {
   const colliders = kit.solids.colliders();
   colliders.push({ positions: kit.signs.colliders.wood, terrain: 'wood' });
   return {
     name: 'lane',
     object3D: group,
     colliders,
+    movers,
+    hide,
     // Per frame: the flags wave (no allocation).
     update(time) {
       wave(time);

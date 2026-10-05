@@ -20,8 +20,10 @@
 //                                    // is { part, look }: RealAreas runs it over several frames)
 //       part: the WorldPart 'lane' (its object3D 'lane-real', under the area's root: the classic
 //       builders' faces the realistic look keeps, and the worker's `detail` in its own
-//       materials), look: the RealLook from layout.LANE_REAL (its probe over the road in world
-//       coordinates, its far shadow map over the course's bounds up to FAR_TOP)
+//       materials; part.movers: the bins (the worker's, instanced: lane-detail-bins) and the
+//       charger's cable; part.hide: the dad's car's first vertex in each detail mesh), look: the
+//       RealLook from layout.LANE_REAL (its probe over the road in world coordinates, its far
+//       shadow map over the course's bounds up to FAR_TOP)
 //
 // The catalogue (CATALOGUE): each mesh's set (and its options), the world units one repeat of
 // the set covers, a colour the map and the vertex tint are multiplied by (linear: the tints stay
@@ -52,7 +54,7 @@ import { GRASS } from './grass.js';
 import { CATALOGUE, DETAIL, jobOf } from './jobs.js';
 import { worldMaterial } from '../../../render/materials.js';
 import { woodTexture as signWoodTexture } from '../../props/textures.js';
-import { laneSteps, REPEAT, REAL_REPEAT } from '../build.js';
+import { laneSteps, binsMesh, REPEAT, REAL_REPEAT } from '../build.js';
 
 export { laneJobs, laneDetail, LANE_REAL_AREA } from './jobs.js';
 
@@ -246,6 +248,20 @@ export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRet
   }
   const group = detailGroup(detail, D);
   part.object3D.add(group);
+  // The movers: the bins (one bin in its own frame, instanced, each at home: casting), and the
+  // dad's car's hide range in each detail mesh it shares (it is drawn last into them).
+  const bins = detail.movers?.bins;
+  if (bins) {
+    const mesh = binsMesh(geometryOf(bins.meshes[0].buffers), D[bins.meshes[0].material], layout);
+    mesh.name = 'lane-detail-bins';
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+    part.movers.bins = mesh;
+  }
+  for (const [id, at] of Object.entries(detail.hide ?? {})) {
+    part.hide[id] = {};
+    for (const [name, vertex] of Object.entries(at)) part.hide[id][`lane-detail-${name}`] = vertex;
+  }
   yield;
   const grass = detail.grass ? grassGrid(group, { clump: detail.grass.clump, ground }, GRASS[tier.name], look.haze, wind) : null;
   const follow = grass?.follow;

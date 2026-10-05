@@ -1,7 +1,7 @@
 // The mystery box and the winged hat in node: the floating box and its collider, a bump from
 // below (also when the physics already stopped the hero at the underside), a punch, what does
 // not count, the hat popping out, hovering above the box and gliding down beside it within
-// reach, the pickup (player.giveWingHat(40) once), the 30 s recharge, reset(), the draw calls
+// reach, the pickup (player.giveWingHat(40) once), the 30 s wait before it fills again, reset(), the draw calls
 // and the allocation rules of the hot paths.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -230,7 +230,7 @@ test('the hat hovers above the box, then glides down beside it toward the camera
   assert.equal(player.hats.length, 0);
 });
 
-test('touching the hat calls giveWingHat(40) once; the box recharges for 30 s, then can be hit again', () => {
+test('touching the hat calls giveWingHat(40) once; the box waits 30 s, then can be hit again', () => {
   const { box, player, step, log } = setup();
   under(player, box, 10);
   step();

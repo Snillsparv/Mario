@@ -51,6 +51,13 @@ const STYLE = {
   hatch: { tall: false, clear: 22, noseR: 18, tailR: 16, front: 46, rear: 38, rails: null, blackRear: false, crease: 15, rise: 9 },
   estate: { tall: false, clear: 22, noseR: 18, tailR: 12, front: 44, rear: 30, rails: 'silver', blackRear: false, crease: 15, rise: 9 },
   van: { tall: true, clear: 26, noseR: 12, tailR: 8, front: 30, rear: 20, rails: 'black', blackRear: false, crease: 18, rise: 6 },
+  // The dad's compact electric crossover (CARS[0].style 'ev', the 'cross' kind's collider): a
+  // bonnet sloping down to a rounded, raked nose (`rake`: its face leaning back RAKE over its
+  // height), a gloss black roof and pillars, the window line kinked up at the rear pillar, a
+  // closed body-colour grille panel in a thin frame, slim lamps high at the bonnet's corners
+  // swept back into the wings with a sideways-T light, tall tail lamps up the rear pillars, black
+  // cladding over the arches and sills, two-tone aero wheels, no rails.
+  ev: { tall: true, clear: 26, noseR: 5, tailR: 12, front: 60, rear: 36, rails: null, blackRear: true, crease: 15, rise: 21, ev: true, rake: 0.36, slope: [0.8, -6.5] },
 };
 // Per tier: body stations, wheel sides, spokes, arch segments, the fine details, the lamps and
 // bumpers wrapping round the corners (on the body's own stations there).
@@ -67,6 +74,7 @@ const CLUSTER = 2800; // cars nearer than this to another of a cluster's share i
 const PROBE_OVER = 40; // a cluster's probe this far over its highest roof
 
 const TYRE = [0.026, 0.026, 0.028];
+const TYRE_EV = [0.042, 0.042, 0.045]; // (the dad's car's a touch greyer: its tyres read on the drive)
 const RIM = [0.6, 0.61, 0.64];
 const BARREL = [0.03, 0.03, 0.032];
 const DISC = [0.22, 0.21, 0.2];
@@ -74,6 +82,7 @@ const BLACK = [0.008, 0.008, 0.009]; // gloss black (pillars, grille, seals)
 const PLASTIC = [0.02, 0.02, 0.021]; // grained black plastic (flares, cladding, bumpers)
 const SILVER = [0.42, 0.43, 0.45];
 const LINER = [0.006, 0.006, 0.006];
+const ROOF_BLACK = [0.012, 0.012, 0.014]; // the EV's roof in the lacquer: gloss black
 
 export function carFrame(L, c) {
   const K = L.CAR_KINDS[c.kind];
@@ -106,10 +115,17 @@ export function carClusters(L) {
   });
 }
 
+// Every car but those with an id (the dad's: carOf, drawn last by detail.js, hideable).
 export function cars(kit, L) {
   const cluster = new Map();
   carClusters(L).forEach((g, k) => g.cars.forEach((i) => cluster.set(i, k)));
-  L.CARS.forEach((c, i) => car(kit, L, c, cluster.get(i)));
+  L.CARS.forEach((c, i) => c.id || car(kit, L, c, cluster.get(i)));
+}
+
+// One car (in its cluster's paint and glass).
+export function carOf(kit, L, c) {
+  const k = carClusters(L).findIndex((g) => g.cars.includes(L.CARS.indexOf(c)));
+  car(kit, L, c, k);
 }
 
 // A rounded rectangle (half sizes a, b, corner radius r) as `per` + 1 points a corner,
@@ -131,12 +147,14 @@ const corner = (end, r) => (end < r ? r - Math.sqrt(Math.max(0, r * r - (r - end
 
 function car(kit, L, c, probe) {
   const K = L.CAR_KINDS[c.kind];
-  const S = STYLE[c.kind];
+  const S = STYLE[c.style ?? c.kind];
+  const EV = !!S.ev;
   const D = LOD[kit.tier] ?? LOD.high;
-  const { y0, R, axles, at: W, fw, ac } = carFrame(L, c);
+  const { y0, R, axles, at: W0, fw, ac } = carFrame(L, c);
   const paint = kit[`carPaint@${probe}`] ?? kit.carPaint;
   const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;
   const { tyre, rim, trim, lamp, tail, metal, contact } = kit;
+  const drl = kit.drl ?? lamp;
   const [hl, hw] = [K.l / 2, K.w / 2];
   const deck = y0 + K.belt; // the bonnet's sides and the boot (the collider's top: Jonas stands
   // there; the bonnet's crown 3 over it)
@@ -145,6 +163,19 @@ function car(kit, L, c, probe) {
   const yC = y0 + R - SQUASH; // the wheels' axis
   const ra = R + ARCH; // the arches' radius
   const van = c.kind === 'van';
+  // The raked nose (EV): over its last RAKE_LEN every point above the bumper's foot leans back,
+  // the more the higher (rake per unit up) and the nearer the nose (stations never cross: the
+  // shift stays under RAKE_LEN).
+  const rakeFrom = y0 + S.clear + 17;
+  const RAKE_LEN = 48;
+  const W = S.rake
+    ? (u, y, w) => {
+        const t = (w - (hl - RAKE_LEN)) / RAKE_LEN;
+        if (t <= 0 || y <= rakeFrom) return W0(u, y, w);
+        const g = t >= 1 ? 1 : t * t * (3 - 2 * t);
+        return W0(u, y, w - g * (y - rakeFrom) * S.rake);
+      }
+    : W0;
   // A quad (corners in order round it) wound to face along `out` (world).
   const orient = (g, q, out) => {
     if (dot(cross(sub(q[1], q[0]), sub(q[2], q[0])), out) >= 0) g.quad(q[0], q[1], q[2], q[3]);
@@ -164,13 +195,16 @@ function car(kit, L, c, probe) {
     let top = deck;
     const t = Math.max(0, Math.min(1, (cowl - 4 - w) / 26));
     top += S.rise * t * t * (3 - 2 * t); // (rising behind the cowl to the window line)
+    // (The EV's bonnet sloping down from over the cowl toward the nose: within 4 of the collider's
+    // top along it, as Jonas stands there.)
+    if (S.slope && w > cowl - 30) top += S.slope[0] + (S.slope[1] - S.slope[0]) * Math.min(1, (w - cowl + 30) / (hl - 45 - cowl + 30));
     if (w > hl - S.noseR) top -= S.noseR - Math.sqrt(Math.max(0, S.noseR ** 2 - (w - (hl - S.noseR)) ** 2));
     if (w < -hl + S.tailR) top -= S.tailR - Math.sqrt(Math.max(0, S.tailR ** 2 - (-hl + S.tailR - w) ** 2));
-    return top - (hw - 1 - halfAt(w)) * 0.12;
+    return top - (hw - 1 - halfAt(w)) * (EV ? 0.05 : 0.12);
   };
   const bottomAt = (w) => {
     let b = floor;
-    if (w > hl - 50) b += 9 * ((w - (hl - 50)) / 50) ** 2; // (the approach angle)
+    if (w > hl - 50) b += (EV ? 5 : 9) * ((w - (hl - 50)) / 50) ** 2; // (the approach angle)
     if (w < -hl + 55) b += 11 * ((-hl + 55 - w) / 55) ** 2; // (the departure angle)
     for (const wc of axles) {
       const d = Math.abs(w - wc);
@@ -179,6 +213,12 @@ function car(kit, L, c, probe) {
     return b;
   };
   const swellAt = (w) => 1.2 + 2.6 * Math.exp(-(((w - axles[1]) / (R * 1.5)) ** 2)) + 1.3 * Math.exp(-(((w - axles[0]) / (R * 1.4)) ** 2));
+  // (The EV's bonnet arching: its edges falling away toward the nose's corners, the lamps there.)
+  const arch = (w) => {
+    if (!EV || w < hl - 150) return 0;
+    const t = Math.min(1, (w - hl + 150) / 150);
+    return 7 * t * t * (3 - 2 * t);
+  };
   // The right half of a section, from the floor's edge up to the deck's: [u, y].
   const sideOf = (w) => {
     const a = halfAt(w);
@@ -190,15 +230,17 @@ function car(kit, L, c, probe) {
     // (Every point over the one before: the side under the crease shares out what is left.)
     const hb = Math.max(2, yc - 2 - bottom);
     const rb = Math.min(6, hb * 0.3);
-    const pts = [[a - 7, bottom], [a - 2.6, bottom + rb * 0.3], [a - 0.6, bottom + rb], [a + sw * 0.55, bottom + rb + (hb - rb) * 0.35], [a + sw, bottom + rb + (hb - rb) * 0.7], [a + sw * 0.8, yc - 1.6], [a + sw * 0.6, yc - 0.4], [a - 1.8, yc + 0.8], [a - 4.6, top - 3.6], [a - 7.2, top - 1.1], [a - 10.5, top]];
+    const ar = arch(w);
+    const pts = [[a - 7, bottom], [a - 2.6, bottom + rb * 0.3], [a - 0.6, bottom + rb], [a + sw * 0.55, bottom + rb + (hb - rb) * 0.35], [a + sw, bottom + rb + (hb - rb) * 0.7], [a + sw * 0.8, yc - 1.6], [a + sw * 0.6, yc - 0.4], [a - 1.8, yc + 0.8], [a - 4.6, top - 3.6 - ar * 0.7], [a - 7.2, top - 1.1 - ar * 0.9], [a - 10.5, top - ar]];
     if (!D.fine) return [pts[0], pts[2], pts[4], pts[6], pts[7], pts[9], pts[10]];
     return pts;
   };
   const ringOf = (w) => {
     const right = sideOf(w);
-    const top = right[right.length - 1][1];
+    const top = right[right.length - 1][1] + arch(w);
+    const mid = top + 2.2 - arch(w) * 0.45;
     const left = right.map(([u, y]) => [-u, y]).reverse();
-    return [[0, right[0][1]], ...right, [right[right.length - 1][0] * 0.5, top + 2.2], [0, top + 3], [-right[right.length - 1][0] * 0.5, top + 2.2], ...left];
+    return [[0, right[0][1]], ...right, [right[right.length - 1][0] * 0.5, mid], [0, top + 3], [-right[right.length - 1][0] * 0.5, mid], ...left];
   };
   // The side's u at height y (on its outline from the tucked corner up), and the plan's outward
   // normal there (u, w): decals lie on the body.
@@ -258,10 +300,10 @@ function car(kit, L, c, probe) {
   // ---------------------------------------------------------------- the greenhouse
   const per = D.fine ? 3 : 2;
   const roofTop = roofY - 0.4;
-  const screen0 = cowl - 26; // the windscreen's foot (on the window line)
+  const screen0 = cowl - (EV ? 16 : 26); // the windscreen's foot (on the window line; the EV's more raked)
   const slice = (f, out = 0) => {
     const y = windowLine + 0.4 + (roofTop - windowLine - 0.4) * f;
-    const front = screen0 - (K.screen - 26) * Math.pow(f, 0.92) + out;
+    const front = screen0 - (K.screen - (EV ? 16 : 26)) * Math.pow(f, EV ? 0.8 : 0.92) + out;
     const rear = -hl + K.tail + (K.tailTop - K.tail) * Math.pow(f, 1.1) - out;
     const half = hw - 12 - (van ? 9 : 20) * Math.pow(f, 1.3) - (f > 0.88 ? 32 * (f - 0.88) : 0) + out;
     const mid = (front + rear) / 2;
@@ -279,6 +321,8 @@ function car(kit, L, c, probe) {
   trim.rgb(...BLACK);
   trim.loft(gs.map((g) => g.ring), { segs: (i) => isCorner(i) && (isFront(i) || S.blackRear) }); // (the A pillars; the crossovers' rear quarters)
   paint.loft(gs.map((g) => g.ring), { segs: (i) => isCorner(i) && !isFront(i) && !S.blackRear });
+  // (The EV's roof gloss black: the lacquer in black.)
+  if (EV) paint.rgb(...ROOF_BLACK);
   paint.loft([glassTop, 0.92, 1].map((f) => slice(f).ring), { capEnd: true });
   // The seal round the belt, the drip rails over the side glass.
   trim.rgb(...BLACK);
@@ -296,7 +340,38 @@ function car(kit, L, c, probe) {
     }
   }
   const top = slice(1);
-  // A spoiler lip over the rear window (body colour), roof rails on posts, a fin antenna, wipers.
+  // The dad's crossover: its window line kinks up at the rear pillar (body colour over the side
+  // glass's rear end, rising from behind the rear door to the deck's end), a black seal along it.
+  if (EV) {
+    const kinkW = gs[0].rearW + (gs[0].frontW - gs[0].rearW) * 0.26;
+    const endW = gs[0].rearW + 14;
+    const rise = (w) => {
+      const t = Math.min(1, Math.max(0, (kinkW - w) / (kinkW - endW)));
+      return t * t * (3 - 2 * t);
+    };
+    const yTop = (w) => windowLine + 0.4 + (roofTop - windowLine) * 0.42 * rise(w);
+    const onGlass = (s, w, y) => {
+      const f = Math.max(0, (y - windowLine - 0.4) / (roofTop - windowLine - 0.4));
+      return W(s * (slice(f).half + 0.9), y, w);
+    };
+    const nk = D.fine ? 6 : 3;
+    const kw = Array.from({ length: nk + 1 }, (_, i) => endW + ((kinkW - endW) * i) / nk);
+    for (const s of [-1, 1]) {
+      paint.color(c.tint);
+      for (let j = 0; j + 1 < kw.length; j++) {
+        const [w0, w1] = [kw[j], kw[j + 1]];
+        orient(paint, [onGlass(s, w0, windowLine - 1), onGlass(s, w1, windowLine - 1), onGlass(s, w1, yTop(w1)), onGlass(s, w0, yTop(w0))], dirW(s, 0, 0));
+      }
+      trim.rgb(...BLACK);
+      for (let j = 0; j + 1 < kw.length; j++) {
+        const [w0, w1] = [kw[j], kw[j + 1]];
+        orient(trim, [onGlass(s, w0, yTop(w0)), onGlass(s, w1, yTop(w1)), onGlass(s, w1, yTop(w1) + 1.6), onGlass(s, w0, yTop(w0) + 1.6)], dirW(s, 0, 0));
+      }
+    }
+  }
+  // A spoiler lip over the rear window (body colour; the EV's black), roof rails on posts, a fin
+  // antenna, wipers.
+  if (EV) paint.rgb(...ROOF_BLACK);
   if (D.fine && !van) {
     const g = slice(0.97);
     const lip = (s, back, dy) => W(s * (g.half - 12), g.y + dy, g.rearW - back);
@@ -306,6 +381,7 @@ function car(kit, L, c, probe) {
     orient(paint, [b0, b1, down(b1, 3), down(b0, 3)], dirW(0, 0, -1));
     orient(paint, [down(a0, 5), down(a1, 5), down(b1, 3), down(b0, 3)], [0, -1, 0]);
   }
+  if (EV) paint.color(c.tint);
   if (S.rails) {
     metal.rgb(...(S.rails === 'black' ? [0.03, 0.03, 0.033] : [0.5, 0.5, 0.52]));
     for (const s of [-1, 1]) {
@@ -329,81 +405,198 @@ function car(kit, L, c, probe) {
   const noseTop = topAt(hl);
   const noseBottom = bottomAt(hl);
   const edgeU = (w, y) => sideU(w, y) - 0.4; // (inside the face's outline)
-  const lampHi = noseTop - 3;
-  const lampLo = lampHi - (S.tall ? 14 : 13);
-  const grilleLo = lampLo - (S.tall ? 26 : 14);
-  const lampIn = hw * (S.tall ? 0.43 : 0.4);
-  // The headlamps: a glossy unit, its light guide along the top, a projector; wrapping round
-  // the corner onto the side.
-  for (const s of [-1, 1]) {
-    const wrapW = along(hl - S.front * 0.9, hl);
-    const faceStrip = (g, ya, yb, off) => {
-      const ua = lampIn;
-      const q = [[s * ua, ya + 1.5], [s * edgeU(hl, ya), ya + 2.5], [s * edgeU(hl, yb), yb], [s * ua, yb - 1]];
-      endFace(g, 1, q, off);
-      if (D.wrap) sideStrip(g, s, wrapW, [ya + 2.5, yb], off);
+  // A convex polygon on an end face (as endFace, any number of corners: a fan).
+  const endPoly = (g, e, pts, off = 0.5) => {
+    const P = pts.map(([u, y]) => W(u, y, e * (hl + off)));
+    for (let i = 1; i + 1 < P.length; i++) orientTri(g, [P[0], P[i], P[i + 1]], dirW(0, 0, e));
+  };
+  // A strip on side s over stations ws, from lo(w) to hi(w) up (the EV's lamps' wraps).
+  const sideBand = (g, s, ws, lo, hi, off = 0.5) => {
+    for (let j = 0; j + 1 < ws.length; j++) {
+      const [w0, w1] = [ws[j], ws[j + 1]];
+      const [nu, nw] = planN((w0 + w1) / 2);
+      orient(g, [onSide(s, w0, lo(w0), off), onSide(s, w1, lo(w1), off), onSide(s, w1, hi(w1), off), onSide(s, w0, hi(w0), off)], dirW(s * nu, 0, nw));
+    }
+  };
+  // The dad's crossover's face: slim lamps high at the bonnet's corners (their tops under its
+  // rounded edge, rising a little outward), swept back round the corners into the wings and
+  // tapering, a sideways T of white light in each (a bar along it from its inner end, a stroke
+  // down its outer end on the face) over two small projectors; between them the closed panel in
+  // the body's colour, a rounded rectangle in a thin dark frame, a black slot under it; the bumper
+  // in the body's colour with black inserts at its corners (the fog lamps' surrounds), a wide dark
+  // lower intake, a slim silver skid strip and a black lip along its foot wrapping round the
+  // corners. (No badge, nothing badge-shaped, no plate.)
+  function evNose() {
+    // The face's top edge across it (the cap's outline: the bonnet's crown falling away to its
+    // corners), u >= 0.
+    const cap = ringOf(hl).filter(([u, y]) => u >= 0 && y > noseTop - 20).sort((p, q) => p[0] - q[0]);
+    const capTop = (u) => {
+      u = Math.abs(u);
+      for (let i = 0; i + 1 < cap.length; i++) if (u <= cap[i + 1][0]) return cap[i][1] + ((cap[i + 1][1] - cap[i][1]) * (u - cap[i][0])) / Math.max(1e-6, cap[i + 1][0] - cap[i][0]);
+      return cap[cap.length - 1][1];
     };
-    lamp.rgb(0.1, 0.105, 0.115);
-    faceStrip(lamp, lampLo, lampHi, 0.5);
-    lamp.rgb(0.72, 0.74, 0.78);
-    faceStrip(lamp, lampHi - 3, lampHi - 1.4, 0.8);
-    if (D.fine) {
-      // Two projectors: chrome rings round dark lenses.
-      for (const k of [0, 1]) {
-        const cu = s * (lampIn + 9 + k * 13);
-        const cy = (lampLo + lampHi - 3) / 2;
-        const ringAt = (r, a) => [cu + Math.cos(a) * r, cy + Math.sin(a) * r];
-        for (let i = 0; i < 8; i++) {
-          const [a0, a1] = [(i / 8) * Math.PI * 2, ((i + 1) / 8) * Math.PI * 2];
-          rim.rgb(...RIM);
-          endFace(rim, 1, [ringAt(4.2, a0), ringAt(4.2, a1), ringAt(3, a1), ringAt(3, a0)], 0.9);
-          trim.rgb(0.012, 0.012, 0.014);
-          endFace(trim, 1, [ringAt(3, a0), ringAt(3, a1), ringAt(0.4, a1), ringAt(0.4, a0)], 0.85);
+    const lampIn = hw * 0.37;
+    const lampHi = capTop(lampIn) - 2;
+    const uEdge = edgeU(hl, lampHi - 6);
+    const lTop = (u) => Math.min(capTop(u) - 2, lampHi + 0.5);
+    const lBot = (u) => lTop(u) - 14;
+    // Round the corner and back into the wing (wk 0 at the face's edge .. 1 at the lamp's end):
+    // the lamp rising a little and tapering over its last half.
+    const back = S.front * 1.05;
+    const wrapW = along(hl - back, hl);
+    const wk = (w) => Math.min(1, Math.max(0, (hl - w) / back));
+    const taper = (w) => Math.max(0, (wk(w) - 0.45) / 0.55);
+    const wTop = (w) => lTop(uEdge) + 2.5 * wk(w);
+    const wBot = (w) => lBot(uEdge) + 2.5 * wk(w) + 10.5 * taper(w);
+    for (const s of [-1, 1]) {
+      // The lamp: its face part (inner end to the corner) and its wrap.
+      lamp.rgb(0.035, 0.038, 0.045);
+      endFace(lamp, 1, [[s * lampIn, lBot(lampIn)], [s * uEdge, lBot(uEdge)], [s * uEdge, lTop(uEdge)], [s * lampIn, lTop(lampIn)]], 0.5);
+      sideBand(lamp, s, wrapW, wBot, wTop, 0.5);
+      // The T: its bar along the lamp's middle from its inner end round the corner, its stroke
+      // down the lamp's height where the lamp turns into the wing.
+      const bar = (y0, y1) => (y0 + y1) / 2 + 0.6;
+      const wStroke = hl - back * 0.42;
+      drl.rgb(1, 1, 1);
+      endFace(drl, 1, [[s * (lampIn + 4), bar(lBot(lampIn), lTop(lampIn)) - 1.8], [s * uEdge, bar(lBot(uEdge), lTop(uEdge)) - 1.8], [s * uEdge, bar(lBot(uEdge), lTop(uEdge)) + 1.8], [s * (lampIn + 4), bar(lBot(lampIn), lTop(lampIn)) + 1.8]], 0.9);
+      const barW = wrapW.filter((w) => w >= wStroke);
+      sideBand(drl, s, [wStroke, ...barW.filter((w) => w > wStroke)], (w) => bar(wBot(w), wTop(w)) - 1.8, (w) => bar(wBot(w), wTop(w)) + 1.8, 0.9);
+      sideBand(drl, s, [wStroke - 4.5, wStroke], (w) => wBot(w) + 1, (w) => wTop(w) - 0.8, 0.95);
+      // (Two small projectors under the bar on the face.)
+      lamp.rgb(0.22, 0.23, 0.25);
+      for (const j of [0, 1]) {
+        const cu = s * (lampIn + 6 + j * 9);
+        const yb = lBot(Math.abs(cu));
+        endFace(lamp, 1, [[cu - 3, yb + 1.5], [cu + 3, yb + 1.5], [cu + 3, bar(yb, lTop(Math.abs(cu))) - 2.6], [cu - 3, bar(yb, lTop(Math.abs(cu))) - 2.6]], 0.8);
+      }
+    }
+    // The closed panel between the lamps (a rounded rectangle in the body's colour, a shade
+    // darker: set back a little) in its thin dark frame, the slot under it.
+    const gw = lampIn - 4;
+    const [gLo, gHi] = [lampHi - 30, lampHi + 1];
+    const rounded = (a, y0, y1, r) => roundRect(a, (y1 - y0) / 2, r, D.fine ? 3 : 1).map(([u, v]) => [u, (y0 + y1) / 2 + v]);
+    trim.rgb(0.05, 0.055, 0.06);
+    endPoly(trim, 1, rounded(gw + 2, gLo - 2, gHi + 1.5, 8), 0.5);
+    paint.color(c.tint, 0.86);
+    endPoly(paint, 1, rounded(gw, gLo, gHi, 6.5), 0.85);
+    paint.color(c.tint);
+    trim.rgb(...BLACK);
+    endFace(trim, 1, [[-gw * 0.86, gLo - 6.5], [gw * 0.86, gLo - 6.5], [gw * 0.9, gLo - 3], [-gw * 0.9, gLo - 3]], 0.6);
+    // The bumper's foot: the black lip wrapping round the corners, the wide lower intake over it,
+    // the black inserts at the corners, the skid strip.
+    const lowH = 6;
+    const intakeHi = noseBottom + 21;
+    trim.rgb(...PLASTIC);
+    endFace(trim, 1, [[-edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + lowH), noseBottom + lowH], [-edgeU(hl, noseBottom + lowH), noseBottom + lowH]], 0.5);
+    if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, along(hl - S.front, hl), [noseBottom + 0.5, noseBottom + lowH], 0.5);
+    endFace(trim, 1, [[-hw * 0.6, noseBottom + lowH - 0.5], [hw * 0.6, noseBottom + lowH - 0.5], [hw * 0.54, intakeHi], [-hw * 0.54, intakeHi]], 0.5);
+    for (const s of [-1, 1]) {
+      // (Dark inserts in the bumper's corners, under the panel's foot, slanting out and down
+      // round the corners.)
+      const [ya, yb] = [intakeHi + 1, gLo + 2];
+      const ws = along(hl - 26, hl);
+      const t = (w) => (hl - w) / 26;
+      endFace(trim, 1, [[s * (uEdge - 14), ya], [s * edgeU(hl, ya), ya], [s * edgeU(hl, yb), yb], [s * (edgeU(hl, yb) - 5), yb]], 0.6);
+      if (D.wrap) sideBand(trim, s, ws, (w) => ya + 3 * t(w), (w) => yb - 10 * t(w), 0.6);
+    }
+    metal.rgb(...SILVER);
+    endFace(metal, 1, [[-hw * 0.34, noseBottom + 2], [hw * 0.34, noseBottom + 2], [hw * 0.32, noseBottom + 5.5], [-hw * 0.32, noseBottom + 5.5]], 0.9);
+  }
+  if (EV) evNose();
+  else {
+    const lampHi = noseTop - 3;
+    const lampLo = lampHi - (S.tall ? 14 : 13);
+    const grilleLo = lampLo - (S.tall ? 26 : 14);
+    const lampIn = hw * (S.tall ? 0.43 : 0.4);
+    // The headlamps: a glossy unit, its light guide along the top, a projector; wrapping round
+    // the corner onto the side.
+    for (const s of [-1, 1]) {
+      const wrapW = along(hl - S.front * 0.9, hl);
+      const faceStrip = (g, ya, yb, off) => {
+        const ua = lampIn;
+        const q = [[s * ua, ya + 1.5], [s * edgeU(hl, ya), ya + 2.5], [s * edgeU(hl, yb), yb], [s * ua, yb - 1]];
+        endFace(g, 1, q, off);
+        if (D.wrap) sideStrip(g, s, wrapW, [ya + 2.5, yb], off);
+      };
+      lamp.rgb(0.1, 0.105, 0.115);
+      faceStrip(lamp, lampLo, lampHi, 0.5);
+      lamp.rgb(0.72, 0.74, 0.78);
+      faceStrip(lamp, lampHi - 3, lampHi - 1.4, 0.8);
+      if (D.fine) {
+        // Two projectors: chrome rings round dark lenses.
+        for (const k of [0, 1]) {
+          const cu = s * (lampIn + 9 + k * 13);
+          const cy = (lampLo + lampHi - 3) / 2;
+          const ringAt = (r, a) => [cu + Math.cos(a) * r, cy + Math.sin(a) * r];
+          for (let i = 0; i < 8; i++) {
+            const [a0, a1] = [(i / 8) * Math.PI * 2, ((i + 1) / 8) * Math.PI * 2];
+            rim.rgb(...RIM);
+            endFace(rim, 1, [ringAt(4.2, a0), ringAt(4.2, a1), ringAt(3, a1), ringAt(3, a0)], 0.9);
+            trim.rgb(0.012, 0.012, 0.014);
+            endFace(trim, 1, [ringAt(3, a0), ringAt(3, a1), ringAt(0.4, a1), ringAt(0.4, a0)], 0.85);
+          }
         }
       }
     }
-  }
-  // The grille between them, its slats; the bumper's band (the body), the lower intake, the skid
-  // plate.
-  trim.rgb(...BLACK);
-  const gw = lampIn - 3;
-  endFace(trim, 1, [[-gw * 0.9, grilleLo], [gw * 0.9, grilleLo], [gw, lampHi + 1], [-gw, lampHi + 1]], 0.5);
-  if (D.fine) {
-    // Its surround (silver on the crossovers: a thin frame).
-    metal.rgb(...(S.tall ? SILVER : BLACK));
-    for (const [a, b] of [[[-gw * 0.9 - 2, grilleLo - 2], [gw * 0.9 + 2, grilleLo - 2]], [[-gw - 2, lampHi + 3], [gw + 2, lampHi + 3]]]) endFace(metal, 1, [a, b, [b[0], b[1] + 2], [a[0], a[1] + 2]], 0.7);
-    for (const e of [-1, 1]) endFace(metal, 1, [[e * gw * 0.9, grilleLo - 2], [e * (gw * 0.9 + 2), grilleLo - 2], [e * (gw + 2), lampHi + 3], [e * gw, lampHi + 3]], 0.7);
-  }
-  if (D.fine) {
-    metal.rgb(0.1, 0.1, 0.105);
-    const slats = S.tall ? 4 : 3;
-    for (let k = 1; k <= slats; k++) {
-      const y = grilleLo + ((lampHi - 1 - grilleLo) * k) / (slats + 1);
-      const ww = gw * (0.9 + (0.1 * (y - grilleLo)) / (lampHi - 1 - grilleLo)) - 3;
-      endFace(metal, 1, [[-ww, y - 1], [ww, y - 1], [ww, y + 1], [-ww, y + 1]], 1.0);
+    // The grille between them, its slats; the bumper's band (the body), the lower intake, the skid
+    // plate.
+    trim.rgb(...BLACK);
+    const gw = lampIn - 3;
+    endFace(trim, 1, [[-gw * 0.9, grilleLo], [gw * 0.9, grilleLo], [gw, lampHi + 1], [-gw, lampHi + 1]], 0.5);
+    if (D.fine) {
+      // Its surround (silver on the crossovers: a thin frame).
+      metal.rgb(...(S.tall ? SILVER : BLACK));
+      for (const [a, b] of [[[-gw * 0.9 - 2, grilleLo - 2], [gw * 0.9 + 2, grilleLo - 2]], [[-gw - 2, lampHi + 3], [gw + 2, lampHi + 3]]]) endFace(metal, 1, [a, b, [b[0], b[1] + 2], [a[0], a[1] + 2]], 0.7);
+      for (const e of [-1, 1]) endFace(metal, 1, [[e * gw * 0.9, grilleLo - 2], [e * (gw * 0.9 + 2), grilleLo - 2], [e * (gw + 2), lampHi + 3], [e * gw, lampHi + 3]], 0.7);
+    }
+    if (D.fine) {
+      metal.rgb(0.1, 0.1, 0.105);
+      const slats = S.tall ? 4 : 3;
+      for (let k = 1; k <= slats; k++) {
+        const y = grilleLo + ((lampHi - 1 - grilleLo) * k) / (slats + 1);
+        const ww = gw * (0.9 + (0.1 * (y - grilleLo)) / (lampHi - 1 - grilleLo)) - 3;
+        endFace(metal, 1, [[-ww, y - 1], [ww, y - 1], [ww, y + 1], [-ww, y + 1]], 1.0);
+      }
+    }
+    // The lower bumper: a black band across the face's foot wrapping round the corners onto the
+    // sides (the crossovers' cladding: as tall as the face's band, the edges meet), the intake
+    // over its middle, a silver skid plate in it.
+    const lowH = S.tall ? 13 : 7;
+    const intakeHi = Math.min(grilleLo - 8, noseBottom + (S.tall ? 28 : 18));
+    trim.rgb(...PLASTIC);
+    const iw = (y) => Math.min(edgeU(hl, y) - 6, hw * 0.62);
+    endFace(trim, 1, [[-edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + lowH), noseBottom + lowH], [-edgeU(hl, noseBottom + lowH), noseBottom + lowH]], 0.5);
+    endFace(trim, 1, [[-iw(noseBottom + lowH), noseBottom + lowH - 0.5], [iw(noseBottom + lowH), noseBottom + lowH - 0.5], [iw(intakeHi) - 6, intakeHi], [-iw(intakeHi) + 6, intakeHi]], 0.5);
+    if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, along(hl - S.front, hl), [noseBottom + 0.5, noseBottom + lowH], 0.5);
+    if (S.tall) {
+      metal.rgb(...SILVER);
+      endFace(metal, 1, [[-hw * 0.36, noseBottom + 2], [hw * 0.36, noseBottom + 2], [hw * 0.34, noseBottom + 8], [-hw * 0.34, noseBottom + 8]], 0.9);
     }
   }
-  // The lower bumper: a black band across the face's foot wrapping round the corners onto the
-  // sides (the crossovers' cladding: as tall as the face's band, the edges meet), the intake
-  // over its middle, a silver skid plate in it.
-  const lowH = S.tall ? 13 : 7;
-  const intakeHi = Math.min(grilleLo - 8, noseBottom + (S.tall ? 28 : 18));
-  trim.rgb(...PLASTIC);
-  const iw = (y) => Math.min(edgeU(hl, y) - 6, hw * 0.62);
-  endFace(trim, 1, [[-edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + 1), noseBottom + 0.5], [edgeU(hl, noseBottom + lowH), noseBottom + lowH], [-edgeU(hl, noseBottom + lowH), noseBottom + lowH]], 0.5);
-  endFace(trim, 1, [[-iw(noseBottom + lowH), noseBottom + lowH - 0.5], [iw(noseBottom + lowH), noseBottom + lowH - 0.5], [iw(intakeHi) - 6, intakeHi], [-iw(intakeHi) + 6, intakeHi]], 0.5);
-  if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, along(hl - S.front, hl), [noseBottom + 0.5, noseBottom + lowH], 0.5);
-  if (S.tall) {
-    metal.rgb(...SILVER);
-    endFace(metal, 1, [[-hw * 0.36, noseBottom + 2], [hw * 0.36, noseBottom + 2], [hw * 0.34, noseBottom + 8], [-hw * 0.34, noseBottom + 8]], 0.9);
-  }
-
   // ---------------------------------------------------------------- the tail
   const tailTop = topAt(-hl);
   const tailBottom = bottomAt(-hl);
   const tHi = tailTop - 3;
   const tLo = tHi - (S.tall ? 12 : 13);
   for (const s of [-1, 1]) {
+    if (EV) {
+      // The dad's crossover's tall lamps up the tail's corners from 36 over its foot to the deck
+      // and on up the rear pillars beside the rear window, two light guides down each (no wrap
+      // round the corner).
+      const u1 = (y) => edgeU(-hl, y) - 0.5;
+      const u0 = (y) => u1(y) - 22;
+      const yb = tailBottom + 36;
+      tail.rgb(0.36, 0.012, 0.01);
+      endFace(tail, -1, [[s * u0(yb), yb], [s * u1(yb), yb], [s * u1(tailTop - 1), tailTop - 1], [s * u0(tailTop - 1), tailTop - 1]], 0.5);
+      const ring = [0.02, 0.2, 0.4, 0.55].map((f) => slice(f, 0.8));
+      for (let k = 0; k + 1 < ring.length; k++) {
+        const [a, b] = [ring[k], ring[k + 1]];
+        orient(tail, [W(s * (a.half - 26), a.y, a.rearW - 0.2), W(s * (a.half - 3), a.y, a.rearW + 3), W(s * (b.half - 3), b.y, b.rearW + 3), W(s * (b.half - 26), b.y, b.rearW - 0.2)], dirW(0, 0, -1));
+      }
+      tail.rgb(0.75, 0.04, 0.03);
+      for (const du of [5, 14]) endFace(tail, -1, [[s * (u1(yb) - du - 1.6), yb + 4], [s * (u1(yb) - du), yb + 4], [s * (u1(tailTop - 3) - du), tailTop - 3], [s * (u1(tailTop - 3) - du - 1.6), tailTop - 3]], 0.8);
+      continue;
+    }
     const wrapW = along(-hl, -hl + S.rear * 1.1);
     tail.rgb(0.36, 0.012, 0.01);
     const ua = hw * 0.34;
@@ -434,7 +627,7 @@ function car(kit, L, c, probe) {
   for (const s of [-1, 1]) endFace(tail, -1, [[s * (hw * 0.6), bumperHi - 12], [s * (edgeU(-hl, bumperHi) - 6), bumperHi - 12], [s * (edgeU(-hl, bumperHi) - 6), bumperHi - 8], [s * (hw * 0.6), bumperHi - 8]], 0.9);
 
   // ---------------------------------------------------------------- the sides
-  const cladHi = floor + (S.tall ? 22 : 9);
+  const cladHi = floor + (EV ? 16 : S.tall ? 22 : 9);
   const between = (w0, w1, k) => Array.from({ length: k + 1 }, (_, i) => w0 + ((w1 - w0) * i) / k);
   for (const s of [-1, 1]) {
     // Sill cladding between the arches (black on the crossovers, a thin black sill strip on the
@@ -455,6 +648,16 @@ function car(kit, L, c, probe) {
     trim.tube(base, W(s * (hw + 4), windowLine + 6, m - 4), 2.6, 2.6, D.fine ? 5 : 4, { caps: true });
     const housing = S.tall ? trim : paint;
     housing.ellipsoid(W(s * (hw + 8), windowLine + 10, m - 6), dirW(s, 0, 0), [0, 1, 0], dirW(0, 0, s), 9.5, 7.5, 6, D.fine ? 10 : 6, D.fine ? 6 : 4);
+    // (The EV's charge port's flap on its left rear quarter, over the arch, on the side toward the
+    // bins (u > 0 here, the frame's ac pointing to its left): four shut lines.)
+    if (EV && s > 0) {
+      trim.rgb(...BLACK);
+      const [wc, yc, h] = [axles[1] - 12, windowLine - 22, 7];
+      sideStrip(trim, s, [wc - h - 1, wc - h], [yc - h, yc + h], 0.35);
+      sideStrip(trim, s, [wc + h, wc + h + 1], [yc - h, yc + h], 0.35);
+      sideStrip(trim, s, [wc - h, wc + h], [yc - h - 1, yc - h], 0.35);
+      sideStrip(trim, s, [wc - h, wc + h], [yc + h, yc + h + 1], 0.35);
+    }
   }
 
   // ---------------------------------------------------------------- the wheels
@@ -471,7 +674,7 @@ function car(kit, L, c, probe) {
         const y = yC + Math.cos(a) * r;
         return W(uc + du * s, flat ? Math.max(y0, y) : y, wc + Math.sin(a) * r);
       });
-      tyre.rgb(...TYRE);
+      tyre.rgb(...(EV ? TYRE_EV : TYRE));
       const prof = [[RR + 1, -tw / 2 + 2], [R - 8, -tw / 2 - 0.5], [R - 2, -tw / 2 + 3.5], [R, -tw / 2 + 9], [R, tw / 2 - 9], [R - 2, tw / 2 - 3.5], [R - 8, tw / 2 + 0.5], [RR + 1, tw / 2 - 1], [RR + 1, -tw / 2 + 2]];
       tyre.loft(prof.map(([r, du]) => disc(r, du, r >= R - 2.5)));
       // The barrel (dark, deep), the brake disc, the rim's lip and its spokes, the hub.
@@ -481,13 +684,31 @@ function car(kit, L, c, probe) {
         metal.rgb(...DISC);
         metal.loft([[RR * 0.8, tw / 2 - 10], [RR * 0.2, tw / 2 - 10]].map(([r, du]) => disc(r, du)));
       }
-      rim.rgb(...RIM);
-      rim.loft([[RR + 0.6, tw / 2 + 0.4], [RR - 1.2, tw / 2 + 1.4], [RR - 3.2, tw / 2 - 0.6]].map(([r, du]) => disc(r, du)));
-      rim.loft([[RR * 0.22, tw / 2 + 1.6], [RR * 0.12, tw / 2 + 2.3], [0.1, tw / 2 + 2.4]].map(([r, du]) => disc(r, du)));
-      for (let k = 0; k < D.spokes; k++) {
-        const a = (k / D.spokes) * Math.PI * 2 + 0.2;
-        const p = (r, du) => W(uc + s * du, yC + Math.cos(a) * r, wc + Math.sin(a) * r);
-        rim.tube(p(RR * 0.2, tw / 2 + 1.4), p(RR - 2.4, tw / 2 - 0.8), D.spokes > 5 ? 2.6 : 3.8, D.spokes > 5 ? 1.8 : 2.6, 4);
+      if (EV) {
+        // Two-tone aero wheels: a dark face, five pairs of machined silver blades over it, a
+        // silver rim lip and hub.
+        trim.rgb(0.03, 0.032, 0.036);
+        trim.loft([[RR + 0.6, tw / 2 + 0.4], [RR - 2, tw / 2 + 1.2], [RR * 0.24, tw / 2 + 1.6]].map(([r, du]) => disc(r, du)));
+        // (In the matte metal, not the chrome: machined faces.)
+        metal.rgb(0.55, 0.56, 0.58);
+        metal.loft([[RR + 0.8, tw / 2 + 0.2], [RR + 0.8, tw / 2 + 1.0], [RR - 0.6, tw / 2 + 1.3]].map(([r, du]) => disc(r, du)));
+        metal.loft([[RR * 0.22, tw / 2 + 1.7], [RR * 0.12, tw / 2 + 2.3], [0.1, tw / 2 + 2.4]].map(([r, du]) => disc(r, du)));
+        for (let k = 0; k < 10; k++) {
+          const a = (Math.floor(k / 2) / 5) * Math.PI * 2 + (k % 2 ? 0.17 : -0.17) + 0.3;
+          const half = (r) => (r < RR * 0.5 ? 2.6 : 4.4);
+          const P = (r, da) => W(uc + s * (tw / 2 + 1.9), yC + Math.cos(a + da) * r, wc + Math.sin(a + da) * r);
+          const [r0, r1] = [RR * 0.3, RR - 2.5];
+          orient(metal, [P(r0, -half(r0) / r0), P(r0, half(r0) / r0), P(r1, half(r1) / r1), P(r1, -half(r1) / r1)], dirW(s, 0, 0));
+        }
+      } else {
+        rim.rgb(...RIM);
+        rim.loft([[RR + 0.6, tw / 2 + 0.4], [RR - 1.2, tw / 2 + 1.4], [RR - 3.2, tw / 2 - 0.6]].map(([r, du]) => disc(r, du)));
+        rim.loft([[RR * 0.22, tw / 2 + 1.6], [RR * 0.12, tw / 2 + 2.3], [0.1, tw / 2 + 2.4]].map(([r, du]) => disc(r, du)));
+        for (let k = 0; k < D.spokes; k++) {
+          const a = (k / D.spokes) * Math.PI * 2 + 0.2;
+          const p = (r, du) => W(uc + s * du, yC + Math.cos(a) * r, wc + Math.sin(a) * r);
+          rim.tube(p(RR * 0.2, tw / 2 + 1.4), p(RR - 2.4, tw / 2 - 0.8), D.spokes > 5 ? 2.6 : 3.8, D.spokes > 5 ? 1.8 : 2.6, 4);
+        }
       }
       // The arch's liner: a black half drum round the tyre and its sides down to the floor,
       // closed inboard (the arch reads deep, nothing seen through it).
@@ -510,8 +731,8 @@ function car(kit, L, c, probe) {
       // The arch's flare: a band round it, proud of the body (black on the crossovers).
       const flare = S.tall ? trim : paint;
       if (S.tall) trim.rgb(...PLASTIC);
-      const fw0 = S.tall ? 11 : 4;
-      const proud = S.tall ? 2.6 : 1;
+      const fw0 = EV ? 7 : S.tall ? 11 : 4;
+      const proud = EV ? 2 : S.tall ? 2.6 : 1;
       const fu = (w) => halfAt(w) + swellAt(w) + proud;
       for (let i = 0; i < N; i++) {
         const [a0, a1] = [arc(i), arc(i + 1)];
@@ -541,11 +762,13 @@ function car(kit, L, c, probe) {
     const y = y0 + 0.35;
     const us = [-hw - 16, -hw + 10, -hw * 0.45, 0, hw * 0.45, hw - 10, hw + 16];
     const wsC = [-hl - 18, -hl + 14, -hl * 0.55, 0, hl * 0.55, hl - 14, hl + 18];
+    // (The dad's car's darker, and dark on out under its nose: it sits on the drive.)
+    const [core, dark] = EV ? [22, 0.3] : [36, 0.42];
     const k = (u, w) => {
       const du = Math.max(0, Math.abs(u) - (hw - 26)) / 42;
-      const dw = Math.max(0, Math.abs(w) - (hl - 36)) / 54;
+      const dw = Math.max(0, Math.abs(w) - (hl - core)) / 54;
       const t = Math.min(1, Math.hypot(du, dw));
-      return 0.42 + 0.58 * t * t * (3 - 2 * t);
+      return dark + (1 - dark) * t * t * (3 - 2 * t);
     };
     for (let j = 0; j + 1 < wsC.length; j++) {
       for (let i = 0; i + 1 < us.length; i++) {

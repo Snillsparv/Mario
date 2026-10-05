@@ -125,8 +125,9 @@ house, with the mailbox (a little blue sparrow keeps watch over it: read it) by 
 the hill across the street stand villas behind grey stone walls, with steps, drives and side
 yards up to the forest; along his side long low houses joined by flat-roofed carports; a turning
 area at the far end with a double garage and a footpath, the junction with its big trees and a
-motorhome at the other. Cars stand on the drives (his own two in front of the carport) and flags
-fly over the gardens. Nothing here can hurt him.
+motorhome at the other. Cars stand on the drives (his own two in front of the carport: the blue
+one his dad's own electric car, just as it is in real life, only with no badge and no plate) and
+flags fly over the gardens. Nothing here can hurt him.
 
 The street **looks real**, while Jonas, the coins and the star stay classic: low golden sunlight
 with real shadows, a blue sky with drifting cirrus, painted-in-code brick, boards, roof tiles,
@@ -158,6 +159,10 @@ there shows the real street through the retro TV.
 * 50 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
   the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
   double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof.
+* The dad's two **wheelie bins** by the gable move: walk into one to push it, or stand at it,
+  face it and press **attack** to grab it, then pull it out (stick back) or push it along (stick
+  forward); attack, crouch or jump lets go. They stay on the drive, and roll back home by
+  themselves when left (and whenever Jonas comes back into the street).
 * The lampposts at the junction and the turning area, the three flagpoles and the red-leaf tree
   can be climbed: a handstand on top shows the lane.
 * Up the steps at the turning area there is a **trampoline** in a garden: jump onto it and keep
@@ -184,6 +189,7 @@ there shows the real street through the retro TV.
 | swim | jump to stroke, hold jump to kick along; at the surface pull back and jump to leap out, crouch (or push up and jump) to dive |
 | fly | with the winged cap (from the crystal box), triple jump (or flip off a tree top): Jonas takes off at the top of the jump and climbs. Like an aeroplane: pull back to climb, push forward to dive, left/right to bank. The run-up's forward push counts as "level" until you let go once. Crouch to drop |
 | grab & throw a tail | attack next to Rustmaw's glowing tail coupling grabs it; rotate the stick in circles to spin (faster each circle), attack again to throw; crouch lets go |
+| move a wheelie bin | walk into it to push it; attack facing it grabs it (any side): stick back pulls, stick forward pushes, attack, crouch or jump lets go |
 | cannon | step onto the glowing pad beside the cannon: Jonas hops into the barrel. Aim with the stick (up raises the barrel; the reticle shows where it points), jump fires, attack or crouch climbs back out. Mid-shot, crouch ground-pounds and attack dives; a landing from a shot never hurts. With the winged cap the shot turns into flight at its peak |
 
 ## Controls
@@ -192,7 +198,7 @@ there shows the real street through the retro TV.
 |---|---|---|
 | WASD (Q: walk slowly) | left stick | move |
 | Space / K | A (bottom) / A (right) | jump |
-| J | X or B / B (bottom) | attack (punch, kick, dive) |
+| J | X or B / B (bottom) | attack (punch, kick, dive; grabs a wheelie bin) |
 | Shift / L | triggers, LB / ZL, ZR, L | crouch, ground pound |
 | arrow keys, mouse drag | right stick, d-pad | camera (up from close: first-person look) |
 | C | RB | camera mode |

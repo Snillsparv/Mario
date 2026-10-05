@@ -16,7 +16,9 @@
 // Options: --views (default all: arrival, door, west, turn, cars, roof, retro, tree: the dad's
 // red-leaf tree close up, villa: a villa up the hill close up, kerb and carclose: close-ups,
 // garage: the double garage's corner, balcony: north_3's balcony,
-// f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole), --sizes
+// f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole; B1: ev37, ev36,
+// evfront, evside, evrear, evleft (the dad's car), bins-home, bins-pulled, bins-pushed,
+// bins-return), --sizes
 // (default 960x540,1280x720), --looks (default high,low,classic: a tier, or classic). A frame
 // on SwiftShader takes seconds: each screenshot waits up to three minutes.
 // Files: <out>/<look>-<view>-<width>.png. Prints each view's F1 line and draw calls.
@@ -61,6 +63,20 @@ const VIEWS = {
   // a jump at the junction's lamppost grabs it.
   hang: { grab: { hero: [-500, 22, 1220, 0], jump: true }, pos: [-920, 330, 1070], look: [-500, 360, 1330], fov: 35 },
   pole: { grab: { hero: [-8120, 0, 1360, 0], pole: [-8120, 1590] }, pos: [-8420, 240, 1420], look: [-8120, 200, 1590], fov: 40 },
+  // The dad's car (B1): from the drive's mouth and from the north-east (where the reference photos
+  // were taken, the photos themselves never in the repo), its nose, tail and left side close up.
+  ev37: { pos: [2120, 235, 220], look: [2060, 120, 1500], fov: 50, hero: [-600, 22, 900, Math.PI] },
+  ev36: { pos: [2560, 235, 330], look: [1820, 110, 1500], fov: 50, hero: [-600, 22, 900, Math.PI] },
+  evfront: { pos: [1735, 262, 830], look: [1915, 95, 1230], fov: 42, hero: [-600, 22, 900, Math.PI] },
+  evside: { pos: [2330, 250, 840], look: [1930, 105, 1420], fov: 46, hero: [-600, 22, 900, Math.PI] },
+  evrear: { pos: [1700, 210, 2250], look: [1900, 110, 1600], fov: 42, hero: [-600, 22, 900, Math.PI] },
+  evleft: { pos: [1430, 210, 1120], look: [1900, 140, 1480], fov: 46, hero: [-600, 22, 900, Math.PI] },
+  // The bins (B1): at home; Jonas holding one he has pulled out onto the drive; pushing one.
+  'bins-home': { pos: [1705, 330, 1190], look: [1665, 110, 1660], fov: 50, hero: [1700, 22, 1000, Math.PI] },
+  'bins-pulled': { bins: { hero: [1665, 22, 1480, 0], pull: 45 }, pos: [1420, 240, 960], look: [1690, 110, 1330], fov: 45 },
+  'bins-pushed': { bins: { hero: [1665, 22, 1480, 0], pull: 100, push: [0, 22, 0, -Math.PI / 2], walk: 40 }, pos: [1560, 240, 640], look: [1800, 110, 1000], fov: 45 },
+  // ...and one left alone rolling home (Jonas gone off down the street).
+  'bins-return': { bins: { hero: [1665, 22, 1480, 0], pull: 70, away: 440 }, pos: [1420, 240, 960], look: [1690, 110, 1330], fov: 45 },
 };
 
 const out = opt('out', 'shots/real');
@@ -87,6 +103,7 @@ try {
       await page.goto(`${base}/?test=1&mute=1&area=lane&${query}`, { waitUntil: 'load', timeout: 180000 });
       await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
       if (look !== 'classic') await page.waitForFunction(() => window.__game.view.describeMode().startsWith('real'), null, { timeout: 180000, polling: 250 });
+      await page.evaluate(() => window.__game.laneBoss); // (the lane's lazy chunk: the bins move)
       // Native size for the classic look too (its saved default is the retro filter).
       await page.evaluate((classic) => {
         if (classic) window.__game.view.setN64Mode(false);
@@ -116,11 +133,36 @@ try {
             g.step(f.rest);
             return info();
           }
-          const [hx, hy, hz, yaw] = v.grab?.hero ?? v.hero ?? [0, 22, 1156, Math.PI];
+          const [hx, hy, hz, yaw] = v.bins?.hero ?? v.grab?.hero ?? v.hero ?? [0, 22, 1156, Math.PI];
           g.player.teleport(hx + o.x, hy + o.y, hz + o.z, yaw);
           g.player.setAction('idle');
           g.camera.reset(g.player);
           g.step(v.grab ? 2 : 5);
+          if (v.bins) {
+            // The lane's bins (its lazy chunk, attached once in): grab the first with B, pull it
+            // out `pull` ticks; then (`push`) let go, stand west of it and walk into it.
+            const toward = (y) => {
+              const a = g.camera.getYaw() - y;
+              return { stickX: Math.sin(a), stickY: Math.cos(a) };
+            };
+            // (Batches of ticks: a frame drawn per batch, the realistic look's are slow here.)
+            g.step(1, { B: true });
+            g.step(v.bins.pull, toward(yaw + Math.PI));
+            if (v.bins.push) {
+              g.step(1, { B: true });
+              const b = g.areas.objects.bins.list[0];
+              const [, py, , pyaw] = v.bins.push;
+              g.player.teleport(b.x - 55 - 140, py + o.y, b.z, -pyaw);
+              g.player.setAction('idle');
+              g.step(v.bins.walk, toward(-pyaw));
+            }
+            if (v.bins.away) {
+              g.step(1, { B: true });
+              g.player.teleport(-1500 + o.x, 22 + o.y, 900 + o.z, 0);
+              g.player.setAction('idle');
+              g.step(v.bins.away);
+            }
+          }
           if (v.grab) {
             // (The stick pushes along the camera's view: turn it to where he faces.)
             const push = () => {

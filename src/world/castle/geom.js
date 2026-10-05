@@ -672,8 +672,32 @@ export class SolidBuilder {
     this.solid(boxPolys(x0, x1, y0, y1, z0, z1, opts), terrain);
   }
 
-  // [{ positions, terrain, surface? }], one per kind in the order first used.
+  // A builder (solid, face, box) whose faces go where this one's would, in the same order, but
+  // are also named: their ranges of their kind's positions are noted under `id` (a collider's
+  // `named`: [{ id, from, to }], float offsets), so objects can find the surfaces they became
+  // and move them (world/area.js: area.named). The colliders stay as they would be unnamed.
+  named(id) {
+    const mark = (fn) => (...args) => {
+      const before = new Map([...this.byKind].map(([key, kind]) => [key, kind.positions.length]));
+      fn(...args);
+      for (const [key, kind] of this.byKind) {
+        const from = before.get(key) ?? 0;
+        if (kind.positions.length === from) continue;
+        kind.named ??= [];
+        const last = kind.named[kind.named.length - 1];
+        if (last && last.id === id && last.to === from) last.to = kind.positions.length;
+        else kind.named.push({ id, from, to: kind.positions.length });
+      }
+    };
+    return { solid: mark(this.solid.bind(this)), face: mark(this.face.bind(this)), box: mark(this.box.bind(this)) };
+  }
+
+  // [{ positions, terrain, surface?, named? }], one per kind in the order first used.
   colliders() {
-    return [...this.byKind.values()].map(({ terrain, surface, positions }) => (surface ? { positions, terrain, surface } : { positions, terrain }));
+    return [...this.byKind.values()].map(({ terrain, surface, positions, named }) => {
+      const c = surface ? { positions, terrain, surface } : { positions, terrain };
+      if (named) c.named = named.map((r) => ({ ...r }));
+      return c;
+    });
   }
 }

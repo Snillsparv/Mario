@@ -7,8 +7,10 @@
 //   flagpoles(kit, L)   // white tapered poles in a sleeve, a gilt ball, the halyard down the pole
 //   fences(kit, L)      // the corner house's picket fence (pointed pickets with gaps on two
 //                       // rails, posts) and its rail fence
-//   bins(kit, L)        // the dad's two wheelie bins: a tapering body with rounded corners, the
-//                       // lid over its rim, the hinge bar and handle, two wheels
+//   bins(kit, L)        // a wheelie bin in its own frame (its foot's middle at the origin, +x
+//                       // the handle side: the dad's two are movers, detail.js): a tapering body
+//                       // with rounded corners, the lid over its rim, the hinge bar and handle,
+//                       // two wheels
 //
 // kit: detail.js's Geo per material (steel, paint, boards, enamel, gloss, tyre).
 
@@ -124,9 +126,10 @@ export function fences({ boards }, L) {
 }
 
 export function bins({ paint, tyre, steel }, L) {
-  const { BIN, GROUND: G } = L;
+  const { BIN } = L;
   const [hx, hz] = [BIN.x / 2, BIN.z / 2];
-  for (const { x, z } of L.BINS) {
+  const [x, z, G, top] = [0, 0, 0, BIN.h]; // (in the bin's own frame: its foot's middle)
+  {
     // The body: rounded sections from its foot (narrower) to its rim.
     paint.color(0x2c302c);
     const sec = (y, k, r = 10) => {
@@ -139,20 +142,21 @@ export function bins({ paint, tyre, steel }, L) {
       }
       return pts.reverse();
     };
-    paint.loft([sec(G + 2, 0.86), sec(G + 30, 0.9), sec(BIN.top - 14, 1), sec(BIN.top - 10, 1.03), sec(BIN.top - 9, 0.99)]);
+    paint.loft([sec(G + 2, 0.86), sec(G + 30, 0.9), sec(top - 14, 1), sec(top - 10, 1.03), sec(top - 9, 0.99)]);
     // The lid over the rim, a little wider, its front lip.
     paint.color(0x2c302c, 1.08);
-    paint.loft([sec(BIN.top - 12, 1.06, 12), sec(BIN.top - 1, 1.06, 12), sec(BIN.top, 1.02, 12), sec(BIN.top + 0.5, 0.1, 2)]);
+    paint.loft([sec(top - 12, 1.06, 12), sec(top - 1, 1.06, 12), sec(top, 1.02, 12), sec(top + 0.5, 0.1, 2)]);
     // The hinge bar and the handle along the back, two wheels.
     const back = x + hx + 2;
     paint.color(0x222622);
-    paint.tube([back, BIN.top - 6, z - hz + 8], [back, BIN.top - 6, z + hz - 8], 4, 4, 8, { caps: true });
-    paint.tube([back + 6, BIN.top - 26, z - hz + 14], [back + 6, BIN.top - 26, z + hz - 14], 3.5, 3.5, 8, { caps: true });
-    tyre.rgb(0.03, 0.03, 0.03);
-    steel.color(0x6a6e70);
+    paint.tube([back, top - 6, z - hz + 8], [back, top - 6, z + hz - 8], 4, 4, 8, { caps: true });
+    paint.tube([back + 6, top - 26, z - hz + 14], [back + 6, top - 26, z + hz - 14], 3.5, 3.5, 8, { caps: true });
     for (const s of [-1, 1]) {
       const wz = z + s * (hz - 10);
+      tyre.rgb(0.03, 0.03, 0.03); // (each colour set just before it draws: the movers' kit has
+      // one builder for all three)
       tyre.tube([back - 6, G + 13, wz - s * 4], [back - 6, G + 13, wz + s * 6], 13, 13, 12, { caps: true });
+      steel.color(0x6a6e70);
       steel.tube([back - 6, G + 13, wz - s * 10], [back - 6, G + 13, wz + s * 8], 2.5, 2.5, 6);
     }
   }

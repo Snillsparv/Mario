@@ -206,7 +206,10 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     const { part, look } = buildLaneReal(lane, { store, tier, origin: AREA_DEFS.lane.origin, anisotropy: 2, detail });
     const D = {};
     part.object3D.getObjectByName('lane-detail').traverse((o) => o.isMesh && (D[o.name] = o));
-    assert.equal(Object.keys(D).length, detail.meshes.length + 2 * (tierName === 'high' ? 3 : 2) + (detail.grass ? 1 : 0), `${tierName}: a mesh each, the firs' two parts for the forest, the far tree line (and on high the edge's spruce), the grass`);
+    assert.equal(Object.keys(D).length, detail.meshes.length + 2 * (tierName === 'high' ? 3 : 2) + (detail.grass ? 1 : 0) + 1, `${tierName}: a mesh each, the firs' two parts for the forest, the far tree line (and on high the edge's spruce), the grass, the bins`);
+    // The bins: a mover, one bin instanced at each home, in the detail's paint, casting.
+    const bins = D['lane-detail-bins'];
+    assert.ok(bins.isInstancedMesh && bins.count === lane.BINS.length && bins === part.movers.bins && bins.material === D['lane-detail-paint'].material && bins.castShadow, `${tierName}: the bins' mover`);
     assert.equal(D['lane-detail-fir-leaves-far'].castShadow, false, 'the far tree line casts none');
     for (const [name, m] of Object.entries(D)) {
       if (name === 'lane-detail-shadow') {
@@ -310,6 +313,7 @@ test('privacy and originality: the realistic look\'s sources load no image, read
   };
   walk(new URL('../src/render/real/', import.meta.url));
   walk(new URL('../src/world/lane/real/', import.meta.url));
+  walk(new URL('../src/objects/laneBoss/', import.meta.url)); // (the lane's lazy chunk too)
   assert.ok(files.length >= 13, `${files.length} files`);
   for (const f of files) {
     assert.ok(f.pathname.endsWith('.js'), `${f.pathname}: code only`);
@@ -324,6 +328,7 @@ test('privacy and originality: the realistic look\'s sources load no image, read
   }
   // The new detail's sources are among those scanned.
   assert.ok(files.some((f) => f.pathname.endsWith('/clutter.js')) && files.some((f) => f.pathname.endsWith('/hardware.js')), 'clutter.js and hardware.js scanned');
+  assert.ok(files.some((f) => f.pathname.endsWith('/LaneBins.js')), 'the lane\'s chunk scanned');
 });
 
 test('the pause legend in a course with a realistic look: its retro row names G too (retro TV and classic, or the retro filter and realistic), the same rows at the same places; pads and touch unchanged', () => {

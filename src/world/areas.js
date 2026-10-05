@@ -46,6 +46,10 @@
 //                                // loaded realLook chunk}: render/real/RealAreas.js builds it in
 //                                // the background; the lane's world/lane/real/jobs.js and
 //                                // look.js); absent: classic only
+//   boss,                        // its lazy chunk ({ load() -> Promise<module> }: core/
+//                                // AreaSwitch.js attaches it to the area's objects as it is
+//                                // built; Sparrow Lane's objects/laneBoss/area.js: the bins);
+//                                // absent: none
 // }
 //
 // Entries rule: every entry has at least 1300 of clear floor behind him for the camera's orbit
@@ -60,6 +64,7 @@ import { buildSea } from './skerries/sea.js';
 import * as laneLayout from './lane/layout.js';
 import { buildLane } from './lane/build.js';
 import { LANE_REAL_AREA } from './lane/real/jobs.js';
+import { LANE_BOSS_AREA } from '../objects/laneBoss/area.js';
 
 // The warm hall: a golden haze (its fog, and the clear colour: the hall has no sky) that the far
 // end of the room melts into, not a brown murk, the actors lit by a warm key from the bake's
@@ -175,6 +180,8 @@ export const AREA_DEFS = {
     card: true,
     // Its realistic look (physically lit, its own sky and shadows), swapped in once built.
     real: LANE_REAL_AREA,
+    // Its lazy chunk (objects/laneBoss): the bins move.
+    boss: LANE_BOSS_AREA,
   },
 };
 

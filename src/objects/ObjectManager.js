@@ -31,6 +31,10 @@
 //                                  (minion and critter drops)
 //   critters                       the course's critters (Critters.js), or null without
 //                                  layout.CRITTERS
+//   attachLane(chunk, area)        Sparrow Lane's lazy chunk (objects/laneBoss/index.js) attached
+//                                  (core/AreaSwitch.js; tests): .lane, .bins (LaneBins.js: the
+//                                  movable bins), null until then
+//   setLook(part | null)           the area's realistic part shown (Area.showReal) or not
 //   trampolines                    the course's trampolines (Trampoline.js), or null without
 //                                  layout.TRAMPOLINES
 //   ambient(time) -> alpha         title backdrop: ambient ticks that follow the caller's clock
@@ -203,6 +207,11 @@ export class ObjectManager {
       : null;
     // A course's trampolines (Trampoline.js): the hero's landings on their mats.
     this.trampolines = layout.TRAMPOLINES?.length ? new Trampolines({ spots: layout.TRAMPOLINES }) : null;
+    // Sparrow Lane's lazy chunk (objects/laneBoss/index.js), once attached (attachLane): the
+    // movable bins.
+    this.lane = null;
+    this.bins = null;
+    this.look = null; // the area's realistic part while shown (setLook)
 
     // AI RACE mode: the floor button, the beast and its fireballs (own random stream, so the
     // ambient objects' motion does not depend on the mode).
@@ -399,12 +408,31 @@ export class ObjectManager {
     this.box?.reset();
     this.cannon?.reset();
     this.critters?.reset(); // every critter home, the defeated back
+    this.bins?.reset(); // (the lane's bins home)
     for (let i = 0; i < this.doors.length; i++) this.doors[i].reset();
     this.hero.valid = false;
     this.dialogOpen = false;
     this.setDarkness(0);
     this.started = false;
     this._backdropStart = null;
+  }
+
+  // Sparrow Lane's lazy chunk (objects/laneBoss/index.js: core/AreaSwitch.js loads it as the
+  // lane is built; node tests import it and call this themselves): its bins take over their
+  // colliders and meshes in `area` (world/area.js's Area these objects belong to). Once only.
+  attachLane(chunk, area) {
+    if (this.lane) return this.lane;
+    this.lane = chunk.attach(this, area);
+    this.bins = this.lane.bins ?? null;
+    this.bins?.setLook(this.look);
+    return this.lane;
+  }
+
+  // The area's realistic part shown (world/area.js Area.showReal), or null: what the lane's
+  // chunk moves is drawn into its meshes too.
+  setLook(part) {
+    this.look = part;
+    this.bins?.setLook(part);
   }
 
   // The hero was just placed in this area (a warp, or back from another one): last tick's
@@ -415,6 +443,7 @@ export class ObjectManager {
     this.hero.valid = false;
     this.dialogOpen = false;
     this.critters?.reset();
+    this.bins?.sendHome();
     for (let i = 0; i < this.doors.length; i++) {
       const door = this.doors[i];
       if (door.near(player)) door.disarm();
@@ -466,6 +495,8 @@ export class ObjectManager {
     // flies off the camera's line of sight).
     if (this.critters !== null) this.critters.update(player, hero, this.tick, this.dialogOpen || this.warping, this.cameraYaw);
     if (this.trampolines !== null) this.trampolines.update(player, hero);
+    // The lane's bins (after his tick: they follow his grip, pushes and pulls).
+    if (this.bins !== null && player !== NOBODY) this.bins.update(player, this.tick, this.cameraYaw);
     if (this.beast !== null) {
       if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
       this.beast.update(player, this.tick);
@@ -608,6 +639,7 @@ export class ObjectManager {
     if (this.box !== null) this.box.animate(alpha, clock);
     if (this.cannon !== null) this.cannon.animate(alpha, clock);
     if (this.critters !== null) this.critters.animate(alpha, clock);
+    if (this.bins !== null) this.bins.animate(alpha);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);

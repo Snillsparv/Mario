@@ -22,6 +22,7 @@ export const ANIM_NAMES = new Set(
 );
 // Rustmaw's tail (actions/tail.js): holding the coupling, spinning, the throw.
 for (const name of ['tail_hold', 'tail_spin', 'tail_throw']) ANIM_NAMES.add(name);
+for (const name of ['bin_hold', 'bin_push', 'bin_pull']) ANIM_NAMES.add(name);
 const UP = [0, 1, 0];
 const DOWN = [0, -1, 0];
 

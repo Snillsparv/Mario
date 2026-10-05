@@ -273,6 +273,15 @@ export const LINK_DRIVE = { x0: LINK.x0, x1: LINK.x1, z0: 450, z1: LINK.z0 };
 export const PATIO = { x0: -900, x1: 0, z0: DAD.z1, z1: 3100 };
 export const BIN = { x: 110, z: 90, h: 160, top: GROUND + 160 };
 export const BINS = [{ x: 1665, z: 1600 }, { x: 1665, z: 1710 }];
+// The bins move (objects/laneBoss/LaneBins.js, once the lane's lazy chunk is in): pushed by
+// walking into them, grabbed with the attack button and pulled, kept on the dad's drive and the
+// room under the carport (BIN_LEASH: the box a bin's middle stays in; never the road, a lawn or a
+// roof), and home again on every arrival, lost life and new game, or by themselves when left. Each
+// movable bin: its home (BINS), its floor, its size (the handle and the wheels on +x), its
+// collider's name (lane/props.js: the static build's box, named) and its leash. (Only the dad's
+// two stand on the street: the photos show none by the other drives.)
+export const BIN_LEASH = { x0: DAD_DRIVE.x0 + 4 + BIN.x / 2, x1: DAD_DRIVE.x1 - 4 - BIN.x / 2, z0: DAD_DRIVE.z0 + 10 + BIN.z / 2, z1: CARPORT.z1 - 50 - BIN.z / 2 };
+export const MOVABLE_BINS = BINS.map((b, i) => ({ id: `bin_${i}`, x: b.x, y: GROUND, z: b.z, w: BIN.x, d: BIN.z, h: BIN.h, leash: BIN_LEASH }));
 
 // ---------------------------------------------------------------- the east end
 
@@ -372,7 +381,12 @@ export const CAR_KINDS = {
 };
 const parked = (kind, x, noseZ, yaw, tint) => ({ kind, x, z: noseZ - Math.cos(yaw) * (CAR_KINDS[kind].l / 2), yaw, tint });
 export const CARS = [
-  parked('cross', 1900, 1760 - CAR_KINDS.cross.l, Math.PI, 0x4f7898),
+  // The dad's compact electric crossover (photos: nearest his gable): a lookalike of his own car,
+  // no badge, no plate; the 'cross' kind's body (its collider unchanged), drawn in its own style
+  // (lane/props.js, world/lane/real/cars.js STYLE.ev), and drawn last (hideable: part.hide). Its
+  // tint a soft, greyish steel blue in the realistic look; the classic look's warm bake greys a
+  // blue, so there it is a touch bluer (`classicTint`).
+  { ...parked('cross', 1900, 1760 - CAR_KINDS.cross.l, Math.PI, 0x627d93), id: 'dad_ev', style: 'ev', classicTint: 0x5884a6 },
   parked('suv', 2300, 1760 - CAR_KINDS.suv.l, Math.PI, 0x2c3a52),
   parked('cross', -1360, 1300, 0, 0xeeeee8),
   parked('hatch', -4440, -1560, Math.PI, 0xb6babe),

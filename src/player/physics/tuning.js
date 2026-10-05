@@ -307,3 +307,18 @@ export const CANNON_FLY_MAX_SPEED = 100;
 export const CANNON_EDGE_MARGIN = 120;
 export const CANNON_SLIDE_GRACE = 150;
 export const CANNON_LAND_GRACE = 30; // a stumble off the edge of whatever a shot landed on (a battlement) is part of the landing
+
+// Wheelie bins (actions/bin.js; Sparrow Lane's, objects/laneBoss/LaneBins.js publishes
+// player.binGrip). B with Pip's feet within BIN_GRAB_REACH of a bin's face (BIN_GRAB_REACH_Y of
+// its floor), facing it within acos(BIN_GRAB_COS) and in front of it (BIN_GRAB_SIDE past its
+// edge at most) grabs it: he squares up to the face BIN_HOLD from it (his feet circle just
+// clear of it) and the stick moves him along his facing only, at BIN_DRAG_SPEED (the bin follows:
+// pushing it ahead, pulling it after him); a stick held sideways BIN_SIDE_TICKS lets go.
+export const BIN_GRAB_REACH = 80; // (PLAYER_RADIUS + 30)
+export const BIN_GRAB_REACH_Y = 30;
+export const BIN_GRAB_COS = 0.5;
+export const BIN_GRAB_SIDE = 15;
+export const BIN_HOLD = 54; // (PLAYER_RADIUS + 4)
+export const BIN_DRAG_SPEED = 6; // (WALL_PUSH_SPEED: as fast as a push)
+export const BIN_ALONG_COS = 0.6; // the stick drags along his facing within acos(this)
+export const BIN_SIDE_TICKS = 10;

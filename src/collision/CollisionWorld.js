@@ -194,6 +194,25 @@ export class CollisionWorld {
     }
   }
 
+  // A movable collider's range: buckets surfaces already added into every cell the rect (x0 ..
+  // x1, z0 .. z1, plus the walls' margin) overlaps, so they may be moved anywhere inside it, in x
+  // and z, by rewriting their fields in place (moveSurfaces); every query stays exact (a surface
+  // in an extra cell is tested there and found where it really is; a ray stamps it once).
+  cover(list, x0, x1, z0, z1) {
+    const cs = this.cellSize;
+    for (const s of list) {
+      const m = s.kind === 'wall' ? WALL_MARGIN : 0;
+      for (let cx = Math.floor((x0 - m) / cs); cx <= Math.floor((x1 + m) / cs); cx++) {
+        for (let cz = Math.floor((z0 - m) / cs); cz <= Math.floor((z1 + m) / cs); cz++) {
+          const key = cellKey(cx, cz);
+          let cell = this.cells.get(key);
+          if (!cell) this.cells.set(key, (cell = { floor: [], ceil: [], wall: [] }));
+          if (!cell[s.kind].includes(s)) cell[s.kind].push(s);
+        }
+      }
+    }
+  }
+
   finalize() {
     // Sort floors by max height descending so findFloor can early-out cheaply in future.
     for (const cell of this.cells.values()) {
@@ -381,6 +400,51 @@ export class CollisionWorld {
   static planeHeight(s, x, z) {
     return -(s.normal.x * x + s.normal.z * z + s.d) / s.normal.y;
   }
+}
+
+// Moves surfaces to their rest corners (`rest`: 9 numbers a surface, its a, b, c) shifted by
+// (dx, dy, dz): a translation, so only the fields that depend on where a surface is change (a, b,
+// c, d, minY / maxY and a wall's ys and pu; its normal, hn, hscale and face axes stay). Parking a
+// collider out of the way is the same call (dy -60000). In place, no allocation. A surface moved
+// in x or z must stay inside the rect it was covered for (cover).
+export function moveSurfaces(list, rest, dx, dy, dz) {
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i];
+    const r = i * 9;
+    const a = s.a;
+    const b = s.b;
+    const c = s.c;
+    a[0] = rest[r] + dx;
+    a[1] = rest[r + 1] + dy;
+    a[2] = rest[r + 2] + dz;
+    b[0] = rest[r + 3] + dx;
+    b[1] = rest[r + 4] + dy;
+    b[2] = rest[r + 5] + dz;
+    c[0] = rest[r + 6] + dx;
+    c[1] = rest[r + 7] + dy;
+    c[2] = rest[r + 8] + dz;
+    const n = s.normal;
+    s.d = -(n.x * a[0] + n.y * a[1] + n.z * a[2]);
+    s.minY = a[1] < b[1] ? (a[1] < c[1] ? a[1] : c[1]) : b[1] < c[1] ? b[1] : c[1];
+    s.maxY = a[1] > b[1] ? (a[1] > c[1] ? a[1] : c[1]) : b[1] > c[1] ? b[1] : c[1];
+    if (s.ys) {
+      s.ys[0] = a[1];
+      s.ys[1] = b[1];
+      s.ys[2] = c[1];
+    }
+    if (s.pu) {
+      s.pu[0] = a[0] * s.tx + a[2] * s.tz;
+      s.pu[1] = b[0] * s.tx + b[2] * s.tz;
+      s.pu[2] = c[0] * s.tx + c[2] * s.tz;
+    }
+  }
+}
+
+// The rest corners of `list` (9 numbers a surface: a, b, c), for moveSurfaces.
+export function restOf(list) {
+  const rest = new Float64Array(list.length * 9);
+  list.forEach((s, i) => rest.set([...s.a, ...s.b, ...s.c], i * 9));
+  return rest;
 }
 
 // Point-in-triangle in the XZ projection, winding agnostic.

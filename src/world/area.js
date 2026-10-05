@@ -39,7 +39,11 @@
 //   signs,                 // layout.SIGNS (world), for player.setWorld
 //   groundAt(x, z),        // the floor under (x, z), probed from def.probeY (under the ceiling)
 //   objectsLayout,         // what an ObjectManager reads: COINS, STAR, ONE_UP, DOORS, CRITTERS,
-//                          // TRAMPOLINES, ... (world), BIRD_TINT
+//                          // TRAMPOLINES, MOVABLE_BINS, ... (world), BIRD_TINT, NAMED (= named),
+//                          // ORIGIN
+//   named,                 // { [id]: { surfaces, rest } }: the named colliders' surfaces in the
+//                          // collision world (SolidBuilder.named) and their rest corners (9
+//                          // numbers each: CollisionWorld.moveSurfaces moves them in place)
 //   waterFn(x, z),         // the water surface (collision.waterLevelAt): the renderer's water
 //   objects,               // its ObjectManager, once core/AreaSwitch.js has made it (else null);
 //                          // setVisible() shows and hides its group with the root
@@ -49,11 +53,11 @@
 //                          // drawn through
 //   setReal(part, look),   // ...hands them over (the part not shown yet)
 //   showReal(on),          // the realistic part shown instead of the classic ones (or back):
-//                          // update() and setDoorOpen() follow it
+//                          // update() and setDoorOpen() follow it; objects.setLook(part | null)
 // }
 
 import * as THREE from 'three';
-import { CollisionWorld } from '../collision/CollisionWorld.js';
+import { CollisionWorld, restOf } from '../collision/CollisionWorld.js';
 import { NO_WATER } from '../core/constants.js';
 
 // Layout lists and points the objects read (each item's x, y, z are shifted), and values they
@@ -109,13 +113,30 @@ export function buildArea(scene, def) {
 
   const collision = new CollisionWorld();
   const parts = [];
+  const named = {};
   for (const build of def.builders) {
     const part = build(layout);
     parts.push(part);
     if (part.object3D) root.add(part.object3D);
     for (const c of part.colliders ?? []) {
       if (!c.positions || c.object3D) throw new Error(`area ${def.name}: colliders must be { positions } (got an object3D)`);
-      collision.addCollider({ ...c, positions: shiftPositions(c.positions, o) });
+      const positions = shiftPositions(c.positions, o);
+      if (!c.named) {
+        collision.addCollider({ ...c, positions });
+        continue;
+      }
+      // Its named ranges (SolidBuilder.named): added in slices, in the same order, noting the
+      // surfaces each range became.
+      const opts = { surface: c.surface, terrain: c.terrain };
+      let at = 0;
+      for (const r of [...c.named].sort((p, q) => p.from - q.from)) {
+        collision.addTriangles(positions.slice(at, r.from), opts);
+        const first = collision.surfaces.length;
+        collision.addTriangles(positions.slice(r.from, r.to), opts);
+        (named[r.id] ??= []).push(...collision.surfaces.slice(first));
+        at = r.to;
+      }
+      collision.addTriangles(positions.slice(at), opts);
     }
     for (const p of part.poles ?? []) collision.addPole({ ...p, x: p.x + o.x, z: p.z + o.z, y0: p.y0 + o.y, y1: p.y1 + o.y });
   }
@@ -141,6 +162,22 @@ export function buildArea(scene, def) {
   for (const key of POINT_LISTS) if (layout[key]) objectsLayout[key] = layout[key].map((p) => shifted(p, o));
   for (const key of POINTS) if (layout[key]) objectsLayout[key] = shifted(layout[key], o);
   for (const key of VALUES) if (layout[key] !== undefined) objectsLayout[key] = layout[key];
+  // Named colliders (an object moves them in place: CollisionWorld.moveSurfaces from their rest
+  // corners), and what moves them: the movable bins (their homes and leashes in world
+  // coordinates).
+  const areaNamed = {};
+  for (const [id, surfaces] of Object.entries(named)) areaNamed[id] = { surfaces, rest: restOf(surfaces) };
+  objectsLayout.NAMED = areaNamed;
+  objectsLayout.ORIGIN = { x: o.x, y: o.y, z: o.z };
+  if (layout.MOVABLE_BINS) {
+    objectsLayout.MOVABLE_BINS = layout.MOVABLE_BINS.map((b) => ({
+      ...b,
+      x: b.x + o.x,
+      y: b.y + o.y,
+      z: b.z + o.z,
+      leash: { x0: b.leash.x0 + o.x, x1: b.leash.x1 + o.x, z0: b.leash.z0 + o.z, z1: b.leash.z1 + o.z },
+    }));
+  }
 
   return {
     name: def.name,
@@ -154,6 +191,7 @@ export function buildArea(scene, def) {
     signs: objectsLayout.SIGNS ?? [],
     groundAt,
     objectsLayout,
+    named: areaNamed,
     waterFn: (x, z) => collision.waterLevelAt(x, z),
     objects: null,
     real: null,
@@ -189,6 +227,8 @@ export function buildArea(scene, def) {
       // under it, hidden or not, and its materials are the realistic look's alone.)
       if (this.realShown) root.add(this.real.object3D);
       else this.real?.object3D.removeFromParent();
+      // (The objects that move parts of it: the bins, written into the look shown too.)
+      this.objects?.setLook?.(this.realShown ? this.real : null);
     },
     setLit(on) {
       for (const p of parts) p.setLit?.(on);

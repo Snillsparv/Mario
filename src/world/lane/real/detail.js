@@ -37,7 +37,7 @@ import { Geo } from './geo.js';
 import { mailbox, kerbs, roadDecals, bedStones } from './garden.js';
 import { plants, firGeometry, firInstances, FIR_SHAPES } from './foliage.js';
 import { chainHouse } from './house.js';
-import { cars, carClusters } from './cars.js';
+import { cars, carOf, carClusters } from './cars.js';
 import { grassClump, lawnMask } from './grass.js';
 import { lampposts, flagpoles, fences, bins } from './street.js';
 import { villaHouses, garageDoors, hipTrim } from './villas.js';
@@ -74,6 +74,7 @@ const MATERIALS = {
   trim: true,
   lamp: true,
   tail: true,
+  drl: true, // (the dad's crossover's white T lights: emissive)
   contact: false, // (the cars' contact shadows: a darkening of the ground under them)
 };
 // The villas' windows' probe: over the street in front of them (layout local).
@@ -81,7 +82,7 @@ const NORTH_PROBE = [0, 420, -350];
 
 // The low tier (phones): small plain parts share a few materials (fewer draw calls), and only
 // the houses and the cars cast the sun's shadow.
-const LOW_MERGE = { enamel: 'gloss', lamp: 'gloss', tail: 'gloss', trim: 'tyre', rim: 'metal', steel: 'metal', bird: 'paint' };
+const LOW_MERGE = { enamel: 'gloss', lamp: 'gloss', tail: 'gloss', drl: 'gloss', trim: 'tyre', rim: 'metal', steel: 'metal', bird: 'paint' };
 const LOW_CASTERS = new Set(['boards', 'brick', 'render', 'paint', 'roof', 'shadow', 'carPaint', 'carGlass', 'tyre']);
 
 export function buildLaneDetail(L, tier = 'high') {
@@ -110,7 +111,6 @@ export function buildLaneDetail(L, tier = 'high') {
   lampposts(kit, L);
   flagpoles(kit, L);
   fences(kit, L);
-  bins(kit, L);
   plants(kit, L);
   for (const h of L.HOUSES) if (h.kit === 'chain') chainHouse(kit, L, h, { tiled: L.LANE_REAL.tiles.includes(h.id) });
   villaHouses(kit['glass@north'] ? { ...kit, glass: kit['glass@north'] } : kit, L);
@@ -125,6 +125,26 @@ export function buildLaneDetail(L, tier = 'high') {
   const ground = lawnMask(L);
   clutter(kit, L, ground);
   streetSign(kit, L);
+  // The dad's car last into every mesh it shares (hideable: its first vertex in each, `hide`).
+  const hide = {};
+  for (const c of L.CARS) {
+    if (!c.id) continue;
+    const at = new Map();
+    for (const [name, g] of Object.entries(kit)) if (g instanceof Geo && !at.has(g)) at.set(g, g.count);
+    carOf(kit, L, c);
+    hide[c.id] = {};
+    for (const [name, g] of Object.entries(kit)) {
+      if (!(g instanceof Geo) || g.count === at.get(g) || (low && LOW_MERGE[name])) continue;
+      hide[c.id][name] = at.get(g);
+    }
+  }
+  // The movers: a bin in its own frame (origin at its foot's middle, +x the handle side), and
+  // where each of the dad's two stands (world/lane/real/look.js: an instanced mesh).
+  const binKit = { paint: new Geo(), tyre: null, steel: null };
+  binKit.tyre = binKit.steel = binKit.paint;
+  bins(binKit, L);
+  const binBuffers = binKit.paint.buffers();
+  const movers = { bins: { meshes: [{ material: 'paint', buffers: binBuffers, sphere: sphereOf(binBuffers.position) }], at: L.BINS.map((b) => [b.x, L.GROUND, b.z]) } };
   const meshes = [];
   let triangles = 0;
   for (const [name, cast] of Object.entries(MATERIALS)) {
@@ -155,7 +175,8 @@ export function buildLaneDetail(L, tier = 'high') {
   // The grass's clump (none on low) and the ground's map.
   const clump = grassClump(tier);
   const grass = clump && { clump: clump.buffers() };
-  return { meshes, firs, grass, ground, probes, triangles };
+  triangles += (binBuffers.position.length / 9) * L.BINS.length;
+  return { meshes, firs, grass, ground, probes, triangles, movers, hide };
 }
 
 // The bounding sphere three.js would compute (the box's middle, the farthest point), made here
@@ -192,5 +213,6 @@ export function detailBuffers(detail) {
   }
   if (detail.grass) add(detail.grass.clump);
   if (detail.ground) out.push(detail.ground.data.buffer);
+  for (const m of Object.values(detail.movers ?? {})) for (const mesh of m.meshes) add(mesh.buffers);
   return out;
 }

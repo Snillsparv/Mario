@@ -1,7 +1,8 @@
 // The production build and `vite preview` with the phone controller (vite.config.js,
-// tools/padRelay.js): the game is one bundle (under its 1,700,000-byte budget) and one lazily
-// loaded chunk, realLook (the realistic look's main-thread code: imported by the game only
-// dynamically, importing only the game's bundle, no three.js of its own, under 90 kB), beside
+// tools/padRelay.js): the game is one bundle (under its 1,700,000-byte budget) and two lazily
+// loaded chunks, realLook (the realistic look's main-thread code) and laneBoss (Sparrow Lane's
+// movers: the bins), each imported by the game only dynamically, importing only the game's
+// bundle, no three.js of its own, under 90 kB, beside
 // its two module workers (the title logo's, and the realistic look's with the pure code main
 // does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
 // its own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
@@ -39,12 +40,12 @@ const preloads = (html) => [...html.matchAll(/<link\b[^>]*rel="modulepreload"[^>
 // quotes a dynamic import's path in backticks).
 const chunkImports = (js) => [...js.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'`](\.{0,2}\/[^"'`]+\.js)["'`]/g)].map((m) => m[1]);
 
-test('the game is one bundle, its lazy realLook chunk (and its workers); pad.html has its own', async () => {
+test('the game is one bundle, its lazy realLook and laneBoss chunks (and its workers); pad.html has its own', async () => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();
   const js = assets.filter((f) => f.endsWith('.js'));
   assert.deepEqual(
     js.map((f) => f.replace(/-[\w-]{8}\.js$/, '')).sort(),
-    ['laneRealWorker', 'logoWorker', 'main', 'pad', 'realLook'],
+    ['laneBoss', 'laneRealWorker', 'logoWorker', 'main', 'pad', 'realLook'],
     `built scripts: ${js.join(', ')}`,
   );
 
@@ -61,13 +62,19 @@ test('the game is one bundle, its lazy realLook chunk (and its workers); pad.htm
   // boot, beside the workers), importing nothing but the game's bundle.
   const lookFile = js.find((f) => f.startsWith('realLook-'));
   const look = await read(`assets/${lookFile}`);
-  assert.deepEqual(chunkImports(main), [`./${lookFile}`], 'the game imports one chunk: realLook');
-  assert.equal([...main.matchAll(/\bimport\s*\(\s*["'`]\.\/realLook-/g)].length, 1, 'only dynamically (import())');
-  assert.ok(!new RegExp(`from\\s*["'\`]\\./${lookFile.replace('.', '\\.')}`).test(main), 'never statically');
+  // ...and Sparrow Lane's movers (the bins: objects/laneBoss), the same way (at boot, attached
+  // as the lane is built).
+  const bossFile = js.find((f) => f.startsWith('laneBoss-'));
+  const boss = await read(`assets/${bossFile}`);
+  assert.deepEqual(chunkImports(main).sort(), [`./${bossFile}`, `./${lookFile}`].sort(), 'the game imports two chunks: realLook and laneBoss');
   const mainFile = js.find((f) => f.startsWith('main-'));
-  assert.deepEqual([...new Set(chunkImports(look))], [`./${mainFile}`], 'realLook imports only the game\'s bundle');
-  assert.ok(!look.includes('WebGLRenderer'), 'no three.js in realLook');
-  assert.ok(Buffer.byteLength(look) < 90 * 1024, `realLook stays small (${Buffer.byteLength(look)} bytes)`);
+  for (const [name, file, src] of [['realLook', lookFile, look], ['laneBoss', bossFile, boss]]) {
+    assert.equal([...main.matchAll(new RegExp(`\\bimport\\s*\\(\\s*["'\`]\\./${name}-`, 'g'))].length, 1, `${name}: only dynamically (import())`);
+    assert.ok(!new RegExp(`from\\s*["'\`]\\./${file.replace('.', '\\.')}`).test(main), `${name}: never statically`);
+    assert.deepEqual([...new Set(chunkImports(src))], [`./${mainFile}`], `${name} imports only the game\'s bundle`);
+    assert.ok(!src.includes('WebGLRenderer'), `no three.js in ${name}`);
+    assert.ok(Buffer.byteLength(src) < 90 * 1024, `${name} stays small (${Buffer.byteLength(src)} bytes)`);
+  }
   assert.deepEqual(chunkImports(padJs), [], 'the pad imports no other chunk');
   assert.ok(Buffer.byteLength(main) < 1700000, `the game stays under its budget (${Buffer.byteLength(main)} bytes)`);
   // The realistic look's worker: started by the game (new Worker(new URL(...)), not an import).

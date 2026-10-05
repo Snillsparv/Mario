@@ -54,6 +54,7 @@ export const DETAIL = {
   trim: { roughness: 0.6 },
   lamp: { roughness: 0.08, metalness: 0.2 },
   tail: { roughness: 0.15 },
+  drl: { roughness: 0.2, emissive: 1.6 }, // (the dad's crossover's T lights: they glow and bloom)
   contact: { contact: true },
   core: { roughness: 1, envMapIntensity: 0.6 },
   'fir-core': { roughness: 1, envMapIntensity: 0.6 },

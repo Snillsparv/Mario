@@ -44,8 +44,8 @@ export const TAIL_HANDS = {
   HALF_WIDTH: 20, // each mitten this far to the side of the bar's centre
 };
 
-// Standing (or walking) actions a grab can start from.
-const GRAB_FROM = new Set(['idle', 'sleep', 'crouch', 'punch', 'walking', 'decelerating', 'braking', 'turnaround', 'finish_turnaround', 'land']);
+// Standing (or walking) actions a grab can start from (the bins' grab too: actions/bin.js).
+export const GRAB_FROM = new Set(['idle', 'sleep', 'crouch', 'punch', 'walking', 'decelerating', 'braking', 'turnaround', 'finish_turnaround', 'land']);
 
 function stop(p) {
   setForwardVel(p, 0);
