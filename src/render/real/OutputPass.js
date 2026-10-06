@@ -62,7 +62,13 @@ const fragmentShader = /* glsl */ `
     for (int b = 0; b < 3; b++) v = (v << 2) | (((a >> b) & 1) << 1) | ((y >> b) & 1);
     return (float(v) + 0.5) / 64.0 - 0.5;
   }
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  // (No sin: fract(sin(x) * 43758) at a screen's coordinates is past where a GPU's sin keeps its
+  // precision, and the grain then comes out in stripes.)
+  float hash(vec2 p) {
+    vec3 q = fract(vec3(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+  }
   float linZ(float d) {
     float z = d * 2.0 - 1.0;
     return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));

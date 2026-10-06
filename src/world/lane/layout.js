@@ -4,7 +4,7 @@
 // grass-paver path of his red house; the course's star waits over the ridge of his roof, in view
 // from the first second. The way up: hop onto a wheelie bin by the carport, onto the carport's
 // flat roof and across onto the roof's slope (or jump at the front wall and grab the eave, or
-// climb the red-leaf tree in the round bed and flip off its top onto the roof). Up the hill
+// climb the red-leaf tree in the corner bed and flip off its top onto the roof). Up the hill
 // across the street stand split-level villas behind grey block walls, with drives cut into
 // their gardens, steps and side yards up to the forest; along the dad's side long low chain
 // houses linked by carports; a turning area at the east end with a double garage and a footpath
@@ -48,10 +48,12 @@ export const TERRACE = 150;
 
 // The carriageway: `half` either side of its centreline polyline (the west leg from the
 // junction, a bend of three short segments, the long straight), mitred at its joints; the
-// straight runs on into the turning area.
+// straight runs on into the turning area, its south-east corner inside it (the 16-gon's and the
+// round one's edge cross its south edge at x ~2604: the asphalt runs on into the dad's drive
+// with no lawn left between them, and no stub of kerb across the road).
 export const ROAD = {
   half: 450,
-  line: [[-8640, 2550], [-5600, 425], [-5150, 150], [-4750, 25], [-4400, 0], [2400, 0]],
+  line: [[-8640, 2550], [-5600, 425], [-5150, 150], [-4750, 25], [-4400, 0], [2620, 0]],
   beyond: 2200, // drawn on past the junction into the fog (out of bounds)
 };
 // The turning area at the east end: an asphalt disc of `sides`.
@@ -256,16 +258,35 @@ export const SOUTH_2 = chain('south_2', 2500, 4150, 1450, 2650, { boards: 0xd8b6
 // Its wing behind it (ridge along z: turned a quarter, its front toward +x).
 export const SOUTH_2_WING = { ...chain('south_2_wing', 3400, 4150, 2650, 3350, { boards: 0xd8b65e, roof: 0x3a302c }), w: 700, d: 750, yaw: Math.PI / 2, ridge: pitchRidge(CHAIN.eave, 750, CHAIN.pitch), windows: [0] };
 
-// The dad's front garden: the grass-paver path from the kerb to the door, the round bed (a ring of
-// `stones` round it, red leaves fallen in it, the red-leaf tree in it: a small ornamental tree,
-// its trunk a climbable pole, its crown about as high as the house's eaves), the rhododendron at
-// the house's west corner, a potted plant by the door; his drive (asphalt) east of the house to
-// the carport; the two wheelie bins against the house's east gable (BINS: their middles; BIN:
+// The dad's front garden: the grass-paver path from the kerb to the door, the corner bed (BED:
+// the photos' low bed of red-leaved ground cover where his drive meets the street, edged with
+// round field stones right at the asphalt's edge (no kerb there), red leaves fallen in it, the
+// red-leaf tree in it: a small ornamental tree, its trunk a climbable pole, its crown about as
+// high as the house's eaves; the turning area's sign at its corner: TURN_SIGN), the rhododendron
+// at the house's west corner, a potted plant by the door; his drive (asphalt) east of the house
+// to the carport; the two wheelie bins against the house's east gable (BINS: their middles; BIN:
 // the body's size, its lid's top at `top`) by the car charger (DAD.charger); behind the house a
 // patio of grey slabs. The link's own short drive in front of its garage door.
 export const DAD_PATH = { x0: -90, x1: 90, z0: 450, z1: DAD.z0 };
-export const ROUND_BED = { x: 1050, z: 850, r: 300, stones: 14 };
-export const RED_TREE = { x: ROUND_BED.x, z: ROUND_BED.z, y0: GROUND, y1: 442, radius: 30, trunkTop: 420, canopy: { r: 290, y0: 330, y1: 700 } };
+// The bed: a quarter of an ellipse round the corner (x1, z0) where the street's edge meets the
+// drive's, `rx` along the street and `rz` along the drive, its soil `raise` over the lawn (under
+// the knee: walked onto from the road), `stones` field stones along its edges.
+export const BED = { x1: DAD.x1, z0: ROAD.half, rx: 1000, rz: 750, raise: 6, stones: 30 };
+// Its outline (convex): the corner, then along the drive and round the arc to the street.
+export function bedOutline(n = 12) {
+  const { x1, z0, rx, rz } = BED;
+  return [[x1, z0], ...Array.from({ length: n + 1 }, (_, i) => {
+    const a = (i / n) * (Math.PI / 2);
+    return [x1 - rx * Math.sin(a), z0 + rz * Math.cos(a)];
+  })];
+}
+export const inBed = (x, z) => x <= BED.x1 && z >= BED.z0 && ((BED.x1 - x) / BED.rx) ** 2 + ((z - BED.z0) / BED.rz) ** 2 <= 1;
+export const RED_TREE = { x: 1050, z: 850, y0: GROUND, y1: 442, radius: 30, trunkTop: 420, canopy: { r: 290, y0: 330, y1: 700 } };
+// The turning area's sign at the bed's corner, facing the street's way in (west): a grey post
+// (solid, `collider` round) carrying a yellow plate with a red rim (`plate`: w by h, its foot
+// at y0), "Vänd-" over "plats" on it in black and under them the round no-parking sign (a blue
+// disc in a red ring, one red stripe); world/lane/real/sign.js lays its face out.
+export const TURN_SIGN = { x: BED.x1 - 52, z: BED.z0 + 55, yaw: -Math.PI / 2, top: 376, r: 4.5, collider: 9, plate: { w: 72, h: 112, y0: 258 } };
 export const RHODODENDRON = { x: -960, z: 1180, r: 260, h: 300 };
 export const POT = { x: -165, z: 1290 };
 export const DAD_DRIVE = { x0: DAD.x1, x1: CARPORT.x1, z0: 450, z1: CARPORT.z0 };
@@ -327,16 +348,18 @@ export const TREES = [
 export const FOREST = { count: 34, birches: 10, x0: -7000, x1: 7500, z0: -4300, z1: -5600, seed: 0x5ba77 };
 export const EDGE_FOREST = { count: 70, from: 900, to: 2200, seed: 0x5ba78 };
 
-// Lampposts (grey, an arm and a flat lamp head; their colliders prisms): L1 at the junction and
-// L6 at the turning area's north-west rim are climbable (POLES).
-export const LAMP = { r: 14, top: 1050, arm: 150, collider: 30 };
+// Lampposts (grey, an arm and a flat lamp head), every one a climbable pole (POLES; no collider
+// of its own but the pole's trunk) up to its very top (a handstand on its cap): the arm leaves
+// the post `root` under the top and rises out to the lamp head (clear of him as he climbs past
+// it on his side of the post and stands on the cap), out along its yaw over the street.
+export const LAMP = { r: 14, top: 1050, arm: 150, root: 60, collider: 30 };
 export const LAMPS = [
   { id: 'L1', x: -8120, z: 1590, yaw: 1.97 },
   { id: 'L2', x: -5350, z: -300, yaw: 0 },
   { id: 'L3', x: -2900, z: -590, yaw: 0 },
   { id: 'L4', x: -300, z: -590, yaw: 0 },
   { id: 'L5', x: 2000, z: -590, yaw: 0 },
-  { id: 'L6', x: 2600, z: -1240, yaw: 2.42 },
+  { id: 'L6', x: 2600, z: -1240, yaw: 0.74 },
   { id: 'L7', ...footpathAt(200, 330), yaw: -2.2 },
 ];
 // White flagpoles with a gold knob (climbable), each flying its `flag`: north_2's the blue and
@@ -402,9 +425,10 @@ export const CARS = [
 // of its ground) for `dwell` ticks, or touching it), never while he is up on the bins, the carport
 // or a roof; from `notice` its T lights blink at him. The fight (objects/laneBoss/fight.js): its
 // `arena` (Jonas within r + 200 of its middle is in the fight), the ground it may walk on (`walk`:
-// its middle stays in these boxes, [x0, x1, z0, z1]: the street and the lawns' fronts in front of
-// the cars, and the drive between the dad's gable and the SUV, never behind the cars, under the
-// carport or in a garden), where it kneels to charge (`charge`: at the wall charger, DAD.charger,
+// its middle stays in these boxes, [x0, x1, z0, z1]: the street, the drive between the dad's
+// gable and the SUV (the second: the drive's mouth is its foot) and the drive's mouth and the
+// lawn's front east of it, never behind the cars, under the carport, in a garden or over the dad's
+// corner bed and its sign), where it kneels to charge (`charge`: at the wall charger, DAD.charger,
 // facing it, its back to the open drive), where it folds back into the car once beaten
 // (`prepark`, then reversing into its slot) and where its reward star hovers (`star`, in front
 // of the car: a small jump reaches it).
@@ -413,7 +437,7 @@ export const LANE_BOSS = {
   wake: { r: 520, dwell: 20, level: 60 },
   notice: 900,
   arena: { x: 2050, z: 700, r: 1350 },
-  walk: [[800, 3300, -400, 980], [1720, 2040, 980, 1660]],
+  walk: [[800, 3300, -400, 350], [1720, 2040, 980, 1660], [1690, 3300, 350, 980]],
   charge: { x: 1790, z: 1290, yaw: -0.75 },
   prepark: { x: 1900, z: 1145 },
   star: { x: 1900, y: GROUND + 320, z: 1000 },
@@ -626,7 +650,7 @@ export const LANE_REAL = Object.freeze({
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
   atmosphere: Object.freeze({ fog: 0xbbd6f3, near: 3000, far: 45000, sun: 0xffeace, sunIntensity: 3, sunDir: LANE_SUN, sky: 0xcfe0ff, ground: 0x5a6040, ambientIntensity: 0.9 }),
   post: Object.freeze({
-    ao: Object.freeze({ radius: 110, intensity: 2.6, bias: 0.12, maxPx: 90 }),
+    ao: Object.freeze({ radius: 110, intensity: 2.6, bias: 0.12, maxPx: 90, fade: Object.freeze([4500, 9000]) }),
     bloom: Object.freeze({ threshold: 1.1, knee: 0.6, radius: 1 }),
     shafts: Object.freeze({ density: 0.9, decay: 0.965, threshold: 0.9 }),
   }),
@@ -758,11 +782,14 @@ export const SIGNS = [
 
 // Climbable poles (CollisionWorld.addPole), each with the side the camera swings round to
 // (camYaw) while he holds it: the junction's lamppost (looking along the west leg), the turning
-// area's (at the dad's roof), the three flagpoles and the red-leaf tree (the roof ahead). Falls
-// from a pole count from its foot.
+// area's (at the dad's roof), the three flagpoles and the red-leaf tree (the roof ahead); then
+// (the dad: "I want to climb ALL the lampposts") the other five lampposts, each side across its
+// arm (he climbs past its root on his own side of the post), the camera along the street (the
+// bend's looking west to the junction, the straight's three looking east up the lane) or by the
+// double garage (the footpath's). Falls from a pole count from its foot.
 const lampPole = (id, camYaw) => {
   const l = LAMPS.find((p) => p.id === id);
-  return { x: l.x, z: l.z, y0: GROUND, y1: 1000, radius: 20, camYaw };
+  return { x: l.x, z: l.z, y0: GROUND, y1: LAMP.top, radius: 20, camYaw };
 };
 const flagPole = (id, camYaw) => {
   const f = FLAGPOLES.find((p) => p.id === id);
@@ -775,4 +802,9 @@ export const POLES = [
   flagPole('F2', 1.5),
   flagPole('F3', -1.54),
   { x: RED_TREE.x, z: RED_TREE.z, y0: RED_TREE.y0, y1: RED_TREE.y1, radius: RED_TREE.radius, camYaw: Math.PI },
+  lampPole('L2', Math.PI / 2),
+  lampPole('L3', -Math.PI / 2),
+  lampPole('L4', -Math.PI / 2),
+  lampPole('L5', -Math.PI / 2),
+  lampPole('L7', 2.51),
 ];

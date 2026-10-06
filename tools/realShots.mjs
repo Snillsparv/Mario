@@ -16,7 +16,8 @@
 // Options: --views (default all: arrival, door, west, turn, cars, roof, retro, tree: the dad's
 // red-leaf tree close up, villa: a villa up the hill close up, kerb and carclose: close-ups,
 // garage: the double garage's corner, balcony: north_3's balcony,
-// f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole; B1: ev37, ev36,
+// f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole; R fixes: corner,
+// sign, lamptop (Jonas on a lamppost's cap); B1: ev37, ev36,
 // evfront, evside, evrear, evleft (the dad's car), bins-home, bins-pulled, bins-pushed,
 // bins-return; B2: morph-000 .. morph-100 (STOMPWATT, the lane's boss, posed by hand a quarter of
 // its transformation apart, from the street), robot-front, robot-q34, robot-back, robot-scale
@@ -75,6 +76,12 @@ const VIEWS = {
   // a jump at the junction's lamppost grabs it.
   hang: { grab: { hero: [-500, 22, 1220, 0], jump: true }, pos: [-920, 330, 1070], look: [-500, 360, 1330], fov: 35 },
   pole: { grab: { hero: [-8120, 0, 1360, 0], pole: [-8120, 1590] }, pos: [-8420, 240, 1420], look: [-8120, 200, 1590], fov: 40 },
+  // The R fixes: the dad's corner (the bed's field stones at the asphalt's edge, the red-leaf
+  // tree, the turning area's sign, the drive's mouth with no kerb) from the street, the sign
+  // close up, and Jonas on the cap of a lamppost on the straight (every lamppost climbable).
+  corner: { pos: [2050, 230, 60], look: [1500, 160, 650], fov: 60, hero: [1900, 0, 150, -2.3] },
+  sign: { pos: [1180, 300, 380], look: [1548, 290, 505], fov: 40, hero: [1100, 0, 250, 1.2] },
+  lamptop: { grab: { hero: [-300, 22, -340, Math.PI], pole: [-300, -590], climb: 300 }, pos: [-820, 1040, -300], look: [-300, 1100, -590], fov: 40 },
   // The dad's car (B1): from the drive's mouth and from the north-east (where the reference photos
   // were taken, the photos themselves never in the repo), its nose, tail and left side close up.
   ev37: { pos: [2120, 235, 220], look: [2060, 120, 1500], fov: 50, hero: [-600, 22, 900, Math.PI] },
@@ -353,6 +360,8 @@ try {
               return g.player.grounded && Math.hypot(g.player.pos.x - o.x - px, g.player.pos.z - o.z - pz) < 130;
             };
             for (let t = 0; t < 60 && !holding(); t++) g.step(1, { ...push(), A: jump(t) });
+            // (`climb`: up the pole that many ticks at most, to its top.)
+            for (let t = 0; t < (v.grab.climb ?? 0) && g.player.action !== 'pole_top'; t++) g.step(1, { stickY: 1 });
             g.step(12);
           }
           if (v.retro) (classic ? view.setN64Mode(true) : view.toggleRetro());

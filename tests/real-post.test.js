@@ -144,3 +144,19 @@ test('uniform names unique in every realistic material\'s shaders: the sky\'s GL
   for (const n of ['uFarShadow', 'uFarMatrix', 'uFarShadowParams', 'uHazeDensity', 'uExposure']) assert.ok(!sky.includes(n), n);
   look.dispose();
 });
+
+test('no fixed pattern of the post chain\'s own over the far picture (R fixes: the dad\'s "shadowy raster" over the upper half): the occlusion fades out with distance (none on the far forest and the houses down the street, where its taps span a few pixels of needle cards), and no sin-based hash anywhere in the chain or the output pass (a GPU\'s sin at a screen\'s coordinates comes out in stripes)', () => {
+  const fade = lane.LANE_REAL.post.ao.fade;
+  assert.ok(fade[0] >= 3000 && fade[1] > fade[0] && fade[1] <= 12000, `the fade ${fade}`);
+  const post = new RealPost(lane.LANE_REAL.post);
+  const ao = post.ssao.materials().filter((m) => m.uniforms.uFade);
+  assert.equal(ao.length, 2, 'both tap counts');
+  for (const m of ao) {
+    assert.deepEqual(m.uniforms.uFade.value.toArray(), [...fade]);
+    assert.match(m.fragmentShader, /1\.0 - smoothstep\(uFade\.x, uFade\.y, z\)/);
+  }
+  const look = new RealLook({ preset: lane.LANE_REAL, tier: TIERS.high, farBox: BOX });
+  for (const m of [...post.materials(), look.output.material]) assert.ok(!/sin\s*\(\s*dot\s*\(/.test(m.fragmentShader), `${m.fragmentShader.slice(0, 60)}...: no sin hash`);
+  look.dispose();
+  post.dispose();
+});

@@ -38,9 +38,9 @@ export function lampposts({ steel, paint, gloss }, L) {
     const y0 = L.groundHeight(x, z);
     steel.color(STEEL);
     lathe(steel, x, z, [[LAMP.r + 9, y0 - 10], [LAMP.r + 9, y0 + 55], [LAMP.r + 4, y0 + 70], [LAMP.r + 1, y0 + 80], [LAMP.r - 5, LAMP.top - 30], [LAMP.r - 6, LAMP.top - 6], [0, LAMP.top]], 16);
-    // The arm: out along yaw from the pole's top, curving up a little to the head.
+    // The arm: out along yaw from under the pole's cap (LAMP.root), curving up to the head.
     const [ax, az] = [Math.sin(yaw), Math.cos(yaw)];
-    const at = (t) => [x + ax * LAMP.arm * t, LAMP.top - 14 + 18 * Math.sin(t * Math.PI * 0.5), z + az * LAMP.arm * t];
+    const at = (t) => [x + ax * LAMP.arm * t, LAMP.top - LAMP.root + (LAMP.root + 4) * Math.sin(t * Math.PI * 0.5), z + az * LAMP.arm * t];
     for (let k = 0; k < 4; k++) steel.tube(at(k / 4), at((k + 1) / 4), 6, 5.5, 10);
     // The luminaire: a flat rounded head, its diffuser under it.
     const end = at(1);

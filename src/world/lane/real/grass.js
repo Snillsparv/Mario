@@ -187,10 +187,16 @@ export function lawnMask(L) {
   for (const h of L.HEDGES) rect(h, 12);
   for (const b of L.FLOWER_BEDS) rect(b, 10);
   for (const p of L.PLOTS_N) rect({ x0: p.drive[0], x1: p.drive[1], z0: L.villaOf(p).front, z1: L.wallZAt(p.drive[0]) }, 10);
+  // (The steps up to the terraces: their ramp is no lawn.)
+  for (const p of L.PLOTS_N) {
+    const [w0, w1] = [L.wallZAt(p.steps[0]), L.wallZAt(p.steps[1])];
+    rect({ x0: p.steps[0], x1: p.steps[1], z0: Math.min(w0, w1) - L.STEPS.run, z1: Math.max(w0, w1) }, 10);
+  }
   for (const t of L.THUJAS) disc(t.x, t.z, L.THUJA.r + 20);
   for (const t of L.TREES) disc(t.x, t.z, 90);
   for (const t of L.GARDEN_TREES) disc(t.x, t.z, t.kind === 'shrub' ? t.r + 20 : 60);
-  disc(L.ROUND_BED.x, L.ROUND_BED.z, L.ROUND_BED.r + 10);
+  const bed = L.BED;
+  clear((x, z) => x < bed.x1 + m && z > bed.z0 - m && ((bed.x1 - x) / (bed.rx + 40)) ** 2 + ((z - bed.z0) / (bed.rz + 40)) ** 2 < 1, bed.x1 - bed.rx - 40, bed.x1 + 40, bed.z0 - 40, bed.z0 + bed.rz + 40);
   disc(L.RHODODENDRON.x, L.RHODODENDRON.z, L.RHODODENDRON.r * 0.9);
   disc(L.MAILBOX.x, L.MAILBOX.z, 40);
   disc(L.POT.x, L.POT.z, 40);

@@ -4,12 +4,14 @@
 // depths (the smaller one-sided difference on each axis, so a silhouette makes no halo), and
 // its `samples` taps (8 or 12, a define: two programs) on a golden-angle spiral within `radius`
 // world units (~0.7 m) count what rises above its plane, faded with distance (a dimensionless
-// falloff: max(cos - bias, 0) x (1 - d^2 / r^2)). At half resolution, then blurred depth-aware
+// falloff: max(cos - bias, 0) x (1 - d^2 / r^2)); the whole of it fades out with the pixel's
+// own distance (`fade`: none past 9000, the far forest and the houses down the street: their
+// occlusion there was noise over needle cards, a dark mottle on the forest). At half resolution, then blurred depth-aware
 // (separable, 9 + 9 taps, 5 + 5 on the mid tier's level: `blur` 4 or 2, a define), keeping
 // each texel's distance beside it for the output pass's depth-aware upsample (OutputPass.js).
 // The sky (depth 1) is never occluded.
 //
-//   const ssao = new Ssao({ radius, intensity, bias, maxPx })   // layout.LANE_REAL.post.ao
+//   const ssao = new Ssao({ radius, intensity, bias, maxPx, fade })   // layout.LANE_REAL.post.ao
 //   ssao.render(renderer, screen, depth, camera, { ao, blur }) -> texture (half res: R the
 //       occlusion's light, 1 = none; G the distance); ao: its taps (12 or 8: the level's
 //       post.ao), blur: the blur's half width (4 or 2)
@@ -27,6 +29,7 @@ const AO_FS = /* glsl */ `
   uniform float uIntensity;
   uniform float uBias;
   uniform float uMaxPx;
+  uniform vec2 uFade; // the distances it fades out between
   varying vec2 vUv;
   float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
   void main() {
@@ -56,7 +59,10 @@ const AO_FS = /* glsl */ `
       float vv = dot(v, v);
       sum += max(dot(v, N) / (sqrt(vv) + 1e-3) - uBias, 0.0) * max(1.0 - vv / r2, 0.0);
     }
-    gl_FragColor = vec4(clamp(1.0 - uIntensity * 2.0 * sum / float(SAMPLES), 0.0, 1.0), z, 0.0, 1.0);
+    // (Faded out with distance: far off its taps span a few pixels of alpha-tested needles and
+    // tile rolls, noise rather than occlusion, and the haze softens what is there anyway.)
+    float fade = 1.0 - smoothstep(uFade.x, uFade.y, z);
+    gl_FragColor = vec4(clamp(1.0 - uIntensity * 2.0 * fade * sum / float(SAMPLES), 0.0, 1.0), z, 0.0, 1.0);
   }
 `;
 
@@ -85,11 +91,11 @@ const BLUR_FS = /* glsl */ `
 `;
 
 export class Ssao {
-  constructor({ radius = 110, intensity = 2.6, bias = 0.12, maxPx = 90 } = {}) {
+  constructor({ radius = 110, intensity = 2.6, bias = 0.12, maxPx = 90, fade = [4500, 9000] } = {}) {
     this.ao = {}; // samples -> material
     this.blur = {}; // blur radius -> material
     for (const samples of [12, 8]) {
-      this.ao[samples] = passMaterial(AO_FS, { ...depthUniforms(), uFull: { value: new THREE.Vector2() }, uRadius: { value: radius }, uIntensity: { value: intensity }, uBias: { value: bias }, uMaxPx: { value: maxPx } }, { SAMPLES: samples });
+      this.ao[samples] = passMaterial(AO_FS, { ...depthUniforms(), uFull: { value: new THREE.Vector2() }, uRadius: { value: radius }, uIntensity: { value: intensity }, uBias: { value: bias }, uMaxPx: { value: maxPx }, uFade: { value: new THREE.Vector2(fade[0], fade[1]) } }, { SAMPLES: samples });
     }
     for (const blur of [4, 2]) this.blur[blur] = passMaterial(BLUR_FS, { tAO: { value: null }, uDir: { value: new THREE.Vector2() } }, { BLUR: blur });
     this.a = null; // the half-res ping-pong targets

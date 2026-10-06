@@ -27,7 +27,7 @@
 //                   (core/AreaSwitch.js swings it as Jonas comes out of it and goes back in)
 //
 // The ground: the asphalt road (its west leg from the junction, the bend, the long straight) and
-// the turning area at 0, granite kerbs along their edges (dropped at the drives); everything
+// the turning area at 0, granite kerbs along their edges (none at the drives); everything
 // else a step up at GROUND: the north pavement (asphalt, paler), the drives, the dad's
 // grass-paver path, the footpath, and lawn (the ground drawn as tiles with every road and hard
 // surface cut out of them, so nothing lies over anything). Up the hill the villas' gardens are
@@ -41,7 +41,7 @@
 // Unlit worldMaterial meshes with the lighting baked into vertex colours under the low golden
 // sun (LANE_SUN, a warm tint), one mesh per material, thirteen: lane-asphalt (the road, the
 // turning area, the pavement, the drives and the footpath), -grass (lawns, terraces, verges, the
-// bank), -blocks (the terraces' walls, the steps, the kerbs, the round bed's stones), -brick (the
+// bank), -blocks (the terraces' walls, the steps, the kerbs, the corner bed's stones), -brick (the
 // castle's stone bricks tinted: the villas' upper floors, the chain houses' white brick plinths
 // and gable ends), -render (white render, and every flat-coloured detail by vertex tint: frames,
 // panes, doors, poles, the bins, the mailbox and its sparrow, the cars, the hoop, the trampoline,
@@ -82,7 +82,7 @@ import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
-import { normals, inside, band, roadPieces } from './real/plan.js';
+import { normals, band, roadPieces, kerbRuns } from './real/plan.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -94,7 +94,7 @@ const TINT = {
   drive: 0x7c7a74,
   footpath: 0x84827c,
   kerb: 0xb8b2a8,
-  dropped: 0x6e6c68,
+  bedEdge: 0x4e3c30, // (the dad's corner bed's soil, at the asphalt's edge)
   lawn: 0x6e9a40,
   backLawn: 0x5f8a38,
   bank: 0x3e5a2a,
@@ -112,7 +112,6 @@ const UP = [0, 1, 0];
 // Golden hour, a touch warmer than the skerries'.
 export const LIGHT = { ambient: 0.6, diffuse: 0.55, maxBright: 1.1, tint: [1.07, 1.0, 0.9] };
 const GROUND_RECT = { x0: -16000, x1: 16000, z0: -8000, z1: 10000, tile: 2000 };
-const SAMPLE = 150; // the kerbs' run is tested for the road's edge this often
 const ARC_STEP = 300; // the terraces' fronts along the turning area: straight this long
 const KERB_LIFT = 1.5; // the kerbs' tops over the lawn and the pavement beside them
 // The bank: up to its top over `depth`, on a little higher `beyond`, then rising on `far` more
@@ -483,61 +482,30 @@ function lawnTint(L, piece) {
   return z > L.DAD.z1 ? TINT.backLawn : TINT.lawn;
 }
 
-// The kerbs: along every edge of the road's pieces that is the road's edge (not inside another
-// piece), a granite face from the road up to GROUND and a strip along its top, both dropped
-// (asphalt grey) in front of the drives.
+// The kerbs: along every edge of the road's pieces that is the road's edge (plan.js kerbRuns:
+// clipped exactly where another piece begins, so no stub or gap where two meet), a granite face
+// from the road up to GROUND and a strip along its top; none in front of the drives (the
+// asphalt runs on up into them: a bevel from the road to the drive's edge) or along the dad's
+// corner bed (its field stones edge the asphalt: its soil's face up to the bed's top, lane/
+// props.js dadsGarden lays the stones along it).
 function kerbs(kit, L, road) {
-  const { blocks, asphalt } = kit;
+  const { blocks, asphalt, cobbles } = kit;
   const G = L.GROUND;
-  const drops = [
-    { x0: L.DAD_DRIVE.x0, x1: L.DAD_DRIVE.x1, south: true },
-    { x0: L.LINK_DRIVE.x0, x1: L.LINK_DRIVE.x1, south: true },
-    ...L.PLOTS_N.map((p) => ({ x0: p.drive[0], x1: p.drive[1], south: false })),
-    { x0: L.TURN.x + 800, x1: L.TURN.x + 2000, south: false, z0: -900, z1: 150 },
-  ];
-  const dropped = (x, z) => drops.some((d) => x >= d.x0 && x <= d.x1 && (d.z0 !== undefined ? z >= d.z0 && z <= d.z1 : d.south === z > 0));
-  for (const piece of road) {
-    const ns = normals(piece);
-    for (let i = 0; i < piece.length; i++) {
-      const [ax, az] = piece[i];
-      const [bx, bz] = piece[(i + 1) % piece.length];
-      const [nx, nz] = ns[i];
-      const len = Math.hypot(bx - ax, bz - az);
-      const n = Math.max(1, Math.ceil(len / SAMPLE));
-      // Runs of samples on the road's edge, each of one kind (kerb or dropped).
-      let run = null;
-      const flush = () => {
-        if (!run) return;
-        const [t0, t1, drop] = run;
-        const p = [ax + (bx - ax) * t0, az + (bz - az) * t0];
-        const q = [ax + (bx - ax) * t1, az + (bz - az) * t1];
-        const b = drop ? asphalt : blocks;
-        b.color(drop ? TINT.dropped : TINT.kerb);
-        b.poly([[p[0], -2, p[1]], [q[0], -2, q[1]], [q[0], G + (drop ? 0 : KERB_LIFT), q[1]], [p[0], G + (drop ? 0 : KERB_LIFT), p[1]]], { facing: [-nx, 0, -nz], shade: 0.82 });
-        if (!drop) {
-          const w = L.KERB.w;
-          b.poly([[p[0], G + KERB_LIFT, p[1]], [q[0], G + KERB_LIFT, q[1]], [q[0] + nx * w, G + KERB_LIFT, q[1] + nz * w], [p[0] + nx * w, G + KERB_LIFT, p[1] + nz * w]], { facing: UP, shade: 1.05 });
-        }
-        run = null;
-      };
-      for (let k = 0; k < n; k++) {
-        const t0 = k / n;
-        const t1 = (k + 1) / n;
-        const mx = ax + (bx - ax) * (t0 + t1) / 2;
-        const mz = az + (bz - az) * (t0 + t1) / 2;
-        const edge = !road.some((o) => o !== piece && inside(o, mx + nx * 5, mz + nz * 5));
-        if (!edge) {
-          flush();
-          continue;
-        }
-        const drop = dropped(mx, mz);
-        if (run && run[2] === drop) run[1] = t1;
-        else {
-          flush();
-          run = [t0, t1, drop];
-        }
-      }
-      flush();
+  for (const { p, q, n: [nx, nz], kind } of kerbRuns(L, road)) {
+    if (kind === 'drop') {
+      // (At a drive the asphalt runs on up into it: a bevel from the road to its edge.)
+      const D = 22;
+      asphalt.color(TINT.drive);
+      asphalt.poly([[p[0] - nx * D, 0.4, p[1] - nz * D], [q[0] - nx * D, 0.4, q[1] - nz * D], [q[0], G, q[1]], [p[0], G, p[1]]], { facing: [-nx, 1, -nz], shade: 0.95 });
+      continue;
+    }
+    const b = kind === 'kerb' ? blocks : cobbles;
+    const top = kind === 'kerb' ? G + KERB_LIFT : G + L.BED.raise;
+    b.color(kind === 'kerb' ? TINT.kerb : TINT.bedEdge);
+    b.poly([[p[0], -2, p[1]], [q[0], -2, q[1]], [q[0], top, q[1]], [p[0], top, p[1]]], { facing: [-nx, 0, -nz], shade: 0.82 });
+    if (kind === 'kerb') {
+      const w = L.KERB.w;
+      b.poly([[p[0], top, p[1]], [q[0], top, q[1]], [q[0] + nx * w, top, q[1] + nz * w], [p[0] + nx * w, top, p[1] + nz * w]], { facing: UP, shade: 1.05 });
     }
   }
 }

@@ -141,7 +141,9 @@ kerbs, a darker wheel track down the asphalt and glossy sealed patches, fallen l
 the gutters, weeds in the kerbs' joints, gravel along the walls, dandelions in the lawns; snow
 guards, ladders, vents and TV aerials on the roofs, air bricks, doorbells and a hose reel on the
 walls, rust under the garage's drainpipe clips, geraniums on a balcony, a blank street sign at
-the junction. And it is filmed
+the junction, and at the corner of Jonas's garden, where the asphalt runs straight on into the
+drive, a flower bed edged with round field stones and the yellow "Vändplats" (turning place,
+no parking) sign. And it is filmed
 like a modern open-world game: soft contact shadows where things meet the ground, a glow round
 the low sun and its rays through the trees, the houses' and trees' shadows all the way down the
 street, a soft haze down it, a cinematic colour grade with subtle film grain, and a lower, wider
@@ -155,7 +157,7 @@ there shows the real street through the retro TV.
 * The course's **star** twinkles over the ridge of Jonas's roof. Climb a **wheelie bin** by the
   carport, jump onto the carport's flat roof and hop across onto the roof's slope, then walk up to
   the ridge. Or jump right at the front wall to grab the eaves, or climb the little red-leaf tree
-  in the round bed, stand on your hands on its top and flip onto the roof. The cars on the drive
+  in the flower bed on the corner, stand on your hands on its top and flip onto the roof. The cars on the drive
   make steps too: onto the blue car's bonnet, its roof, then the carport.
 * 50 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
   the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
@@ -194,8 +196,8 @@ there shows the real street through the retro TV.
   rocks and its lid clacks); hold attack for a moment to grab it anyway. They rumble as they
   roll, stay on the drive, and roll back home by themselves when left (and whenever Jonas
   comes back into the street).
-* The lampposts at the junction and the turning area, the three flagpoles and the red-leaf tree
-  can be climbed: a handstand on top shows the lane.
+* Every lamppost in the street, the three flagpoles and the red-leaf tree can be climbed: a
+  handstand on top shows the lane.
 * Up the steps at the turning area there is a **trampoline** in a garden: jump onto it and keep
   the jump button held to bounce sky high, up to the secret **1-up** floating over it. The
   basketball hoop beside it makes a fine perch (hop over from the van's roof).

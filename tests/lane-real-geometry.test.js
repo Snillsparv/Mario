@@ -3,7 +3,7 @@
 // culled away on both slopes), no wall left across a window or a door, the tile courses lying
 // on the classic roof plane the colliders are (within the rolls' height: Jonas walks on that
 // plane) under ridge caps no higher, the firs where the classic forest's cones stood, the
-// grass's mask growing on the lawns only (never on the roads, paths, drives, the round bed, the
+// grass's mask growing on the lawns only (never on the roads, paths, drives, the corner bed, the
 // mailbox, the bushes, the walls' steps), the cars standing on their wheels inside their
 // colliders (their bodies and tyres closed: no hole to see through), every tyre's patch on the
 // drive's drawn surface and each car level on it, the bonnets and roofs on the colliders Jonas
@@ -18,6 +18,7 @@ import * as lane from '../src/world/lane/layout.js';
 import { buildLane } from '../src/world/lane/build.js';
 import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { forestSpots } from '../src/world/lane/real/spots.js';
+import { firGeometry, FIR_SHAPES } from '../src/world/lane/real/foliage.js';
 import { lawnMask, GRASS } from '../src/world/lane/real/grass.js';
 import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
@@ -222,7 +223,45 @@ test('the firs stand where the classic forest\'s cones stood, the classic build 
   for (const s of firs) assert.ok(tips.has([s.x, s.base + s.h, s.z].map((v) => Math.fround(v).toFixed(1)).join()), `a classic cone's tip at ${s.x}, ${s.z}`);
 });
 
-test('the grass\'s mask: blades on the lawns and the gardens (at their height), none on the road, the turning area, the pavement, the paths, the drives, the round bed, the mailbox, the bushes, the houses or the walls\' steps', () => {
+test('the firs read as dense spruces, not a net of cards (R fixes: the dad\'s "shadowy raster" was the forest, a smooth cone in a sparse lattice of feather cards under a bare trunk spike): each whorl an opaque skirt out over half its branches\' reach and down over the whorl below; no bare trunk over the crown, needles to the top', () => {
+  for (const tier of ['high', 'low']) {
+    for (const [name, shape, seed] of [['A', FIR_SHAPES.A, 7], ['B', FIR_SHAPES.B, 11]]) {
+      const { leaves, core } = firGeometry(tier, seed, shape);
+      const pts = (g) => {
+        const out = [];
+        for (let i = 0; i < g.pos.length; i += 3) out.push([Math.hypot(g.pos[i], g.pos[i + 2]), g.pos[i + 1]]);
+        return out;
+      };
+      const [L, C] = [pts(leaves), pts(core)];
+      const reach = (list, y, dy = 0.08) => Math.max(0, ...list.filter(([, v]) => Math.abs(v - y) <= dy).map(([r]) => r));
+      // (The old smooth cone: under a third of the branches' reach halfway up, a seventh near the
+      // top; the skirts about half of it all the way up.)
+      const ratios = [];
+      for (let y = 0.15; y <= 0.78; y += 0.03) ratios.push(reach(C, y) / reach(L, y));
+      assert.ok(Math.min(...ratios) >= 0.25 && ratios.reduce((s, r) => s + r, 0) / ratios.length >= 0.4, `${name} (${tier}): the skirts' reach over the branches' ${ratios.map((r) => r.toFixed(2))}`);
+      // (Down over the next whorl: no band between two skirts where only cards are. The core's
+      // triangles cut at each height: out to some reach there.)
+      const cut = (g, y) => {
+        let r = 0;
+        for (let i = 0; i < g.pos.length; i += 9) {
+          const v = [0, 1, 2].map((k) => [g.pos[i + k * 3], g.pos[i + k * 3 + 1], g.pos[i + k * 3 + 2]]);
+          for (const [a, b] of [[v[0], v[1]], [v[1], v[2]], [v[2], v[0]]]) {
+            if ((a[1] - y) * (b[1] - y) > 0 || a[1] === b[1]) continue;
+            const t = (y - a[1]) / (b[1] - a[1]);
+            r = Math.max(r, Math.hypot(a[0] + (b[0] - a[0]) * t, a[2] + (b[2] - a[2]) * t));
+          }
+        }
+        return r;
+      };
+      for (let y = 0.12; y <= 0.8; y += 0.01) assert.ok(cut(core, y) > (y <= 0.72 ? 0.08 : 0.035), `${name} (${tier}): the crown solid at ${y.toFixed(2)} (${cut(core, y).toFixed(3)})`);
+      const trunkTop = Math.max(...C.filter(([r]) => r < 0.035).map(([, v]) => v));
+      const top = Math.max(...L.map(([, v]) => v));
+      assert.ok(top >= 0.99 && trunkTop <= 0.9, `${name} (${tier}): needles to ${top.toFixed(2)}, the trunk inside to ${trunkTop.toFixed(2)}`);
+    }
+  }
+});
+
+test('the grass\'s mask: blades on the lawns and the gardens (at their height), none on the road, the turning area, the pavement, the paths, the drives, the dad\'s corner bed, the mailbox, the bushes, the houses, the walls or the steps up them', () => {
   const m = lawnMask(lane);
   assert.deepEqual([m.width, m.height], [1024, 512]);
   const at = (x, z) => {
@@ -230,7 +269,7 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     const j = Math.floor(((z - m.z0) / (m.z1 - m.z0)) * m.height);
     return [m.data[(j * m.width + i) * 4], m.data[(j * m.width + i) * 4 + 1] * 4];
   };
-  const lawns = [[-500, 900], [600, 1050], [1400, 1100], [-2500, 1000], [-900, -1500], [2000, -1100], [-2000, 3000]];
+  const lawns = [[-500, 900], [600, 1050], [400, 1150], [-2500, 1000], [-900, -1500], [2000, -1100], [-2000, 3000]];
   for (const [x, z] of lawns) {
     const [grow, y] = at(x, z);
     assert.equal(grow, 255, `a lawn at ${x}, ${z}`);
@@ -242,7 +281,10 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     pavement: [-1000, -560],
     path: [0, 900],
     drive: [2000, 900],
-    'round bed': [lane.ROUND_BED.x, lane.ROUND_BED.z],
+    'corner bed': [lane.RED_TREE.x, lane.RED_TREE.z],
+    "corner bed's corner": [lane.BED.x1 - 60, lane.BED.z0 + 60],
+    "corner bed's lawn side": [lane.BED.x1 - 900, lane.BED.z0 + 250],
+    steps: [(lane.PLOTS_N[3].steps[0] + lane.PLOTS_N[3].steps[1]) / 2, lane.wallZAt(lane.PLOTS_N[3].steps[0]) - 130],
     mailbox: [lane.MAILBOX.x, lane.MAILBOX.z],
     rhododendron: [lane.RHODODENDRON.x, lane.RHODODENDRON.z],
     hedge: [-2500, 640],
@@ -288,15 +330,23 @@ test('the cars stand on their wheels inside their colliders; the bird stands on 
   let lowest = Infinity;
   for (let i = 1; i < bird.length; i += 3) lowest = Math.min(lowest, bird[i]);
   assert.ok(lowest > lane.MAILBOX.ridge - 1 && lowest < lane.MAILBOX.ridge + 12, `the bird on the ridge: ${lowest}`);
-  // The stones: a ring round the bed's middle.
+  // The corner bed's stones (R fixes: the photos' round field stones): close set along its two
+  // asphalt edges (on the road along the street's, on the drive along his drive's), round its
+  // lawn side, no granite kerb along it.
   const granite = mesh(high, 'granite').position;
-  const B = lane.ROUND_BED;
-  const angles = new Set();
+  const B = lane.BED;
+  const bins = { street: new Set(), drive: new Set(), arc: new Set(), kerb: 0 };
   for (let i = 0; i < granite.length; i += 3) {
-    const d = Math.hypot(granite[i] - B.x, granite[i + 2] - B.z);
-    if (d < B.r + 40 && d > B.r - 60) angles.add(Math.round((Math.atan2(granite[i] - B.x, granite[i + 2] - B.z) / (Math.PI * 2)) * B.stones));
+    const [x, y, z] = [granite[i], granite[i + 1], granite[i + 2]];
+    if (z > B.z0 - 2 && z < B.z0 + 70 && x > B.x1 - B.rx + 40 && x < B.x1 - 40) bins.street.add(Math.floor((B.x1 - x) / 100));
+    if (x > B.x1 - 70 && x < B.x1 + 2 && z > B.z0 + 40 && z < B.z0 + B.rz - 40) bins.drive.add(Math.floor((z - B.z0) / 100));
+    const e = Math.hypot((B.x1 - x) / B.rx, (z - B.z0) / B.rz);
+    if (e > 0.9 && e < 1.05 && x < B.x1 - 60 && z > B.z0 + 60) bins.arc.add(Math.round(Math.atan2((B.x1 - x) / B.rx, (z - B.z0) / B.rz) * 10));
+    // (No kerb stone's flat top along the bed's street edge.)
+    if (z > B.z0 - 1 && z < B.z0 + 31 && x > B.x1 - B.rx + 10 && x < B.x1 - 10 && Math.abs(y - lane.GROUND - 1.5) < 0.01) bins.kerb++;
   }
-  assert.ok(angles.size >= B.stones - 1, `stones round the bed (${angles.size})`);
+  assert.ok(bins.street.size >= 9 && bins.drive.size >= 6 && bins.arc.size >= 10, `stones along the street (${bins.street.size}), the drive (${bins.drive.size}), round the lawn (${bins.arc.size})`);
+  assert.equal(bins.kerb, 0, 'no kerb along the bed');
 });
 
 test('the cars\' bodies and tyres are closed: every edge of each shared by exactly two of its faces, once each way', () => {

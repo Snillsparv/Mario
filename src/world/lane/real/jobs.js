@@ -57,7 +57,7 @@ export const DETAIL = {
   drl: { roughness: 0.2, emissive: 1.6 }, // (the dad's crossover's T lights: they glow and bloom)
   contact: { contact: true },
   core: { roughness: 1, envMapIntensity: 0.6 },
-  'fir-core': { roughness: 1, envMapIntensity: 0.6 },
+  'fir-core': { set: 'fir', cover: 1, roughness: 1 },
   foliage: { set: 'leaves', leaf: { roughness: 0.75, translucency: 0.6, envMapIntensity: 0.5 } },
   'fir-leaves': { set: 'fir', leaf: { roughness: 0.85, translucency: 0.2, envMapIntensity: 0.35 } },
 };

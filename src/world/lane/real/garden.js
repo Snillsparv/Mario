@@ -1,13 +1,16 @@
 // The realistic look's street furniture and garden things (world/lane/real/detail.js builds them
 // in the worker; the classic builders keep every collider): the dad's mailbox and its carved
-// bird, the granite kerbs, the road's mended patches and covers, the round bed's stones.
+// bird, the granite kerbs, the road's mended patches and covers, the corner bed's stones, the
+// turning area's sign.
 //
 //   mailbox(kit, L)     // kit: detail.js's Geo per material (boards, paint, metal, enamel, bird,
 //                       // gloss, granite, patch)
 //   kerbs(kit, L)       // granite kerb stones along every edge of the road (the turning area
-//                       // drawn round: plan.js roadPieces), dropped flush at the drives
+//                       // drawn round: plan.js roadPieces, kerbRuns), none at the drives
+//                       // (an asphalt bevel up into them) or along the dad's corner bed
 //   roadDecals(kit, L)  // mended patches, a sealed crack, manhole and drain covers
-//   bedStones(kit, L)   // the round bed's ring of field stones (where the classic ones lie)
+//   bedStones(kit, L)   // the corner bed's field stones (where the classic ones lie)
+//   turnSign(kit, L)    // the turning area's sign at the bed's corner (its face: sign.js)
 //
 // The mailbox (MAILBOX): a black wooden box shaped like a little house, its gable end toward the
 // street: chamfered board walls (the boards' texture, charcoal) on a planed post in a little
@@ -19,7 +22,8 @@
 // up, on a rod at the ridge's street end, side-on to the street.
 
 import { add, mul, norm, cross } from './geo.js';
-import { roadPieces, normals, inside } from './plan.js';
+import { roadPieces, kerbRuns, bedStones as bedStoneSpots } from './plan.js';
+import { signFace } from './sign.js';
 import { makeRng } from '../../../core/math.js';
 
 const CHARCOAL = 0x2c2e31;
@@ -140,21 +144,14 @@ function carvedBird({ bird, gloss, metal }, o) {
 
 // ---------------------------------------------------------------- the ground's things
 
-const KERB = { stone: 150, joint: 0.8, chamfer: 3, lift: 1.5, sample: 150 };
+const KERB = { stone: 150, joint: 0.8, chamfer: 3, lift: 1.5 };
 
-// The kerbs (lane/build.js kerbs: the same edges, runs and drops): along each edge of the road's
-// pieces that is the road's edge, granite stones about KERB.stone long with a joint between
-// them, a chamfered arris and a top KERB.w deep; at the drives the stones lie flush.
-export function kerbs({ granite }, L) {
+// The kerbs (lane/build.js kerbs: the same runs, plan.js kerbRuns): along each run of the
+// road's edge, granite stones about KERB.stone long with a joint between them, a chamfered
+// arris and a top KERB.w deep; at the drives none: the asphalt runs on up into them (a bevel);
+// along the dad's corner bed none (its soil's dark face, the field stones over it: bedStones).
+export function kerbs({ granite, core, patch }, L) {
   const G = L.GROUND;
-  const road = roadPieces(L, { round: true });
-  const drops = [
-    { x0: L.DAD_DRIVE.x0, x1: L.DAD_DRIVE.x1, south: true },
-    { x0: L.LINK_DRIVE.x0, x1: L.LINK_DRIVE.x1, south: true },
-    ...L.PLOTS_N.map((p) => ({ x0: p.drive[0], x1: p.drive[1], south: false })),
-    { x0: L.TURN.x + 800, x1: L.TURN.x + 2000, south: false, z0: -900, z1: 150 },
-  ];
-  const dropped = (x, z) => drops.some((d) => x >= d.x0 && x <= d.x1 && (d.z0 !== undefined ? z >= d.z0 && z <= d.z1 : d.south === z > 0));
   const stone = (p, q, n, drop) => {
     const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     const count = Math.max(1, Math.round(len / KERB.stone));
@@ -176,37 +173,22 @@ export function kerbs({ granite }, L) {
       granite.quad(at(b, w, -2), at(b, 0, -2), at(b, 0, top), at(b, w, top), { shade: 0.6 });
     }
   };
-  for (const piece of road) {
-    const ns = normals(piece);
-    for (let i = 0; i < piece.length; i++) {
-      const [ax, az] = piece[i];
-      const [bx, bz] = piece[(i + 1) % piece.length];
-      const n = ns[i];
-      const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / KERB.sample));
-      let run = null;
-      const flush = () => {
-        if (!run) return;
-        const [t0, t1, drop] = run;
-        stone([ax + (bx - ax) * t0, az + (bz - az) * t0], [ax + (bx - ax) * t1, az + (bz - az) * t1], n, drop);
-        run = null;
-      };
-      for (let k = 0; k < steps; k++) {
-        const [t0, t1] = [k / steps, (k + 1) / steps];
-        const mx = ax + ((bx - ax) * (t0 + t1)) / 2;
-        const mz = az + ((bz - az) * (t0 + t1)) / 2;
-        if (road.some((o) => o !== piece && inside(o, mx + n[0] * 5, mz + n[1] * 5))) {
-          flush();
-          continue;
-        }
-        const drop = dropped(mx, mz);
-        if (run && run[2] === drop) run[1] = t1;
-        else {
-          flush();
-          run = [t0, t1, drop];
-        }
-      }
-      flush();
+  for (const { p, q, n, kind } of kerbRuns(L, roadPieces(L, { round: true }))) {
+    if (kind === 'kerb') {
+      stone(p, q, n, false);
+      continue;
     }
+    if (kind === 'drop') {
+      // (At a drive the asphalt runs on up into it: a bevel from the road to its edge.)
+      patch.color(0x7c7a74, 1.12);
+      const o = (t, d, y) => [t[0] - n[0] * d, y, t[1] - n[1] * d];
+      patch.quad(o(q, 22, 0.4), o(p, 22, 0.4), o(p, 0, G), o(q, 0, G), { uvs: [o(q, 22, 0), o(p, 22, 0), o(p, 0, 0), o(q, 0, 0)].map((v) => [v[0], v[2]]) });
+      continue;
+    }
+    // The bed's soil face at the asphalt's edge (the stones sit along it).
+    core.rgb(0.035, 0.024, 0.017);
+    const top = G + L.BED.raise;
+    core.quad([q[0], -2, q[1]], [p[0], -2, p[1]], [p[0], top, p[1]], [q[0], top, q[1]]);
   }
 }
 
@@ -249,30 +231,80 @@ export function roadDecals({ patch, paint, metal }, L) {
   }
 }
 
-// The round bed's field stones, where the classic ring lies (lane/props.js dadsGarden: its
-// seeded stream after the fallen leaves' flecks): squat, lumpy, sunk into the lawn.
+// The corner bed's field stones (plan.js bedStones: where the classic ones lie): squat, lumpy,
+// round, grey or pinkish granite, along its asphalt edges and round its lawn side.
 export function bedStones({ granite }, L) {
-  const B = L.ROUND_BED;
-  const G = L.GROUND;
-  const rng = makeRng(331);
-  for (let i = 0; i < 26 * 3; i++) rng(); // (the flecks)
-  for (let i = 0; i < B.stones; i++) {
-    const a = ((i + rng() * 0.4) / B.stones) * Math.PI * 2;
-    const s = 22 + rng() * 12;
-    const k = 0.85 + rng() * 0.25;
-    const [x, z] = [B.x + Math.sin(a) * (B.r - 10), B.z + Math.cos(a) * (B.r - 10)];
-    granite.color(0xc8c4bc, k);
+  bedStoneSpots(L).forEach((st, i) => {
+    const { x, y, z, s, e, h, a } = st;
+    granite.color(st.pink ? 0xb89486 : 0xaaa69f, st.k);
     const lump = makeRng(1000 + i);
-    const bumps = Array.from({ length: 10 * 5 }, () => 1 + 0.18 * (lump() - 0.5));
+    const bumps = Array.from({ length: 10 * 5 }, () => 1 + 0.34 * (lump() - 0.5));
+    const [ca, sa] = [Math.cos(a), Math.sin(a)];
     const rings = [];
     for (let j = 0; j < 5; j++) {
       const phi = -0.25 * Math.PI + (j / 4) * 0.7 * Math.PI;
       rings.push(Array.from({ length: 10 }, (_, q) => {
-        const t = -(q / 10) * Math.PI * 2 + a;
+        const t = -(q / 10) * Math.PI * 2;
         const r = s * bumps[j * 10 + q] * Math.cos(phi);
-        return [x + Math.cos(t) * r, G - 4 + Math.sin(phi) * s * 0.75 + 4, z + Math.sin(t) * r];
+        // (Longer along the edge by e, turned along it.)
+        const [u, w] = [Math.cos(t) * r * e, Math.sin(t) * r];
+        return [x + u * ca - w * sa, y + Math.sin(phi) * s * h + 4, z + u * sa + w * ca];
       }));
     }
     granite.loft(rings, { capEnd: true });
+  });
+}
+
+// The turning area's sign (TURN_SIGN; its face: sign.js): a galvanized post in a concrete
+// collar, two clamps, the plate's grey aluminium back and edges, its face in enamel (the
+// reflective sheeting's sheen) a little grimy toward its foot and rim, the no-parking sign and
+// the lettering on it.
+export function turnSign({ steel, enamel, paint }, L) {
+  const S = L.TURN_SIGN;
+  const P = S.plate;
+  const y0 = L.groundHeight(S.x, S.z);
+  steel.color(0xa4a8aa);
+  steel.cyl('y', y0 - 10, S.top, S.x, S.z, S.r, 12, { caps: true });
+  paint.color(0x8c8a84);
+  paint.cyl('y', y0 - 4, L.GROUND + L.BED.raise + 2, S.x, S.z, S.r + 5, 10, { caps: true });
+  const f = [Math.sin(S.yaw), 0, Math.cos(S.yaw)];
+  const right = [Math.cos(S.yaw), 0, -Math.sin(S.yaw)];
+  const out = S.r + 2.5;
+  const at = (u, v, d) => [S.x + f[0] * (out + d) + right[0] * (u - P.w / 2), P.y0 + v, S.z + f[2] * (out + d) + right[2] * (u - P.w / 2)];
+  // The plate's back and edges (1.6 thick), the clamps round the post.
+  steel.color(0xb4b6b8);
+  const [a, b, c, d] = [at(0, 0, -1.6), at(P.w, 0, -1.6), at(P.w, P.h, -1.6), at(0, P.h, -1.6)];
+  steel.quad(b, a, d, c);
+  const [a2, b2, c2, d2] = [at(0, 0, 0), at(P.w, 0, 0), at(P.w, P.h, 0), at(0, P.h, 0)];
+  steel.quad(a, b, b2, a2);
+  steel.quad(d2, c2, c, d);
+  steel.quad(a, a2, d2, d);
+  steel.quad(b2, b, c, c2);
+  steel.color(0x8a8c8e);
+  for (const v of [12, P.h - 12]) steel.cyl('y', P.y0 + v - 3, P.y0 + v + 3, S.x, S.z, S.r + 1.2, 10, { caps: true });
+  // The face: each layer a hair in front of the one under it; the yellow field in a grid of
+  // quads, a little dirtier toward its foot and its rim.
+  const grime = makeRng(4242);
+  for (const { color, layer, poly } of signFace(P)) {
+    enamel.color(color);
+    if (layer !== 1) {
+      const pts = poly.map(([u, v]) => at(u, v, 0.15 + 0.15 * layer));
+      for (let i = 1; i + 1 < pts.length; i++) enamel.tri(pts[0], pts[i], pts[i + 1], { n: [f, f, f] });
+      continue;
+    }
+    const [[u0, v0], , [u1, v1]] = poly;
+    const [nu, nv] = [3, 6];
+    const dirt = Array.from({ length: (nu + 1) * (nv + 1) }, (_, k) => {
+      const [i, j] = [k % (nu + 1), Math.floor(k / (nu + 1))];
+      const edge = i === 0 || i === nu || j === 0 || j === nv ? 0.06 : 0;
+      return 1 - edge - 0.12 * (1 - j / nv) ** 2 - 0.05 * grime();
+    });
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const q = (ii, jj) => at(u0 + ((u1 - u0) * ii) / nu, v0 + ((v1 - v0) * jj) / nv, 0.3);
+        const sh = (ii, jj) => dirt[jj * (nu + 1) + ii];
+        enamel.quad(q(i, j), q(i + 1, j), q(i + 1, j + 1), q(i, j + 1), { n: [f, f, f, f], shade: [sh(i, j), sh(i + 1, j), sh(i + 1, j + 1), sh(i, j + 1)] });
+      }
+    }
   }
 }

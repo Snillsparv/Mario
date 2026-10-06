@@ -4,7 +4,7 @@
 // from it or pulls up onto it); hanging from the dad's eave, the carport's edge and the
 // motorhome's roof his mittens stay on the lip (their height and their reach over it within 2
 // units of his full size's; along the lip they close in with his smaller shoulders); pulling
-// up onto the eave they keep to it; holding each of the six poles his mittens keep their grip
+// up onto the eave they keep to it; holding each of the poles his mittens keep their grip
 // (within 2 of his full size's distance from the trunk) and nothing of him sinks deeper into
 // the trunk, his chest never; standing, walking and running his lowest point on the floor
 // (within 1; a running stride's flight shrinks with him); his blob shadow at his scale; a change of pivot eased (no pop as he lets go);
@@ -144,7 +144,7 @@ test('hanging from the dad\'s eave, the carport\'s edge and the motorhome\'s roo
   }
 });
 
-test('holding each of the six poles at 0.85 his mittens keep their grip (within 2 of his full size\'s gap to the trunk) and nothing sinks deeper into it, his chest never', () => {
+test('holding each of the poles (every lamppost among them) at 0.85 his mittens keep their grip (within 2 of his full size\'s gap to the trunk) and nothing sinks deeper into it, his chest never', () => {
   const held = [];
   for (const P of lane.POLES) {
     for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
@@ -184,7 +184,7 @@ test('holding each of the six poles at 0.85 his mittens keep their grip (within 
       break;
     }
   }
-  assert.equal(held.length, 6, 'every pole held');
+  assert.equal(held.length, lane.POLES.length, 'every pole held');
 });
 
 test('standing, walking and running at 0.85 his lowest point is on the floor; his blob shadow at his scale; a change of pivot eases; nothing moves at full size', () => {

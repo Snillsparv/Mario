@@ -1,5 +1,5 @@
 // Sparrow Lane's props (lane/layout.js LAMPS, FLAGPOLES, BINS, HEDGES, THUJAS, TREES,
-// GARDEN_TREES, RED_TREE, RHODODENDRON, ROUND_BED, POT, MAILBOX, CARS, HOOP, TRAMPOLINE,
+// GARDEN_TREES, RED_TREE, RHODODENDRON, BED, TURN_SIGN, POT, MAILBOX, CARS, HOOP, TRAMPOLINE,
 // MOTORHOME, FENCES, CABINET, PATH_SIGN, FLOWER_BEDS, ANTENNAS, FOREST, EDGE_FOREST,
 // SIDE_BLOCKS, SIGNS), written into the course's kit (lane/build.js): render faces into its
 // material builders (the painted things, from the poles and the bins to the mailbox, the cars and
@@ -14,12 +14,14 @@
 // against the dad's east gable by his car charger; hedges (leafy boxes, a soft crown along their
 // tops) and thuja columns; the big broad-leaved trees at the junction, an apple tree on north_4's
 // terrace, a birch behind the corner house, a red-leaved shrub by the double garage; the dad's
-// garden: the round bed (a ring of stones, red leaves fallen in it) with the small red-leaved
+// garden: the corner bed (field stones, red leaves fallen in it) with the small red-leaved
 // tree (several stems, a round crown of several reds about as high as the eaves), the
 // rhododendron, a potted plant by the door; the dad's mailbox (a black house-shaped box on a
 // post, a brass slot, a door, a blank name plate, the little blue sparrow standing on its ridge;
-// it is the welcome sign); the cars on the drives (generic, plate-less: a body, a glass cabin
-// under a roof, four wheels, lights); north_5's basketball hoop and the trampoline in its front
+// it is the welcome sign); the turning area's sign at the corner bed (a yellow plate, "Vänd-"
+// over "plats", a no-parking sign: world/lane/real/sign.js lays its face out); the cars on the
+// drives (generic, plate-less: a body, a glass cabin under a roof, four wheels, lights);
+// north_5's basketball hoop and the trampoline in its front
 // garden; the motorhome (its cab's windscreen and lights, a door, a stripe, the ladder up its
 // back); flower beds on the terraces; TV antennas on the chain houses' ridges; the corner
 // house's picket and rail fences; by the footpath its grey cabinet, the blue round sign (a white
@@ -33,9 +35,10 @@
 // those builders draw into kit.drawn(name), a kit drawing nothing there, and still make every
 // collider; the forest's spots are world/lane/real/spots.js's, the same for both looks.
 //
-// Colliders: the lampposts' prisms (the climbable two have their pole only, as the flagpoles and
-// the red-leaf tree: layout.POLES), the bins, the hedges (boxes, their tops walkable), the thujas
-// (steep frustums), the trees' trunks and the shrub, the rhododendron, the round bed, the mailbox
+// Colliders: none for the lampposts (each a climbable pole: layout.POLES, as the flagpoles and
+// the red-leaf tree; a lamppost that were not would get a prism), the bins, the hedges (boxes,
+// their tops walkable), the thujas (steep frustums), the trees' trunks and the shrub, the
+// rhododendron, the corner bed, the turning area's sign's post (a thin prism), the mailbox
 // (a box to its eaves, within the sign's box), each car (its body and its cabin), the hoop's post
 // and its board (a block from the wall: a perch), the trampoline (a prism up to its mat), the
 // motorhome, the fences and the barrier (slabs), the cabinet and the sign's post, the signposts,
@@ -47,10 +50,13 @@ import { makeRng } from '../../core/math.js';
 import { fir } from '../skerries/props.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
+import { bedStones } from './real/plan.js';
+import { signFace } from './real/sign.js';
 
 const TINT = {
   lamp: 0x8c9092,
   lampHead: 0x4a4e50,
+  signBack: 0x9a9c9e,
   flag: 0xf2f2f0,
   gold: 0xe8b84a,
   blue: 0x1e5aa8, // the flags' blue and yellow
@@ -66,10 +72,11 @@ const TINT = {
   bark: 0xe8e4da,
   redLeaf: [0xa83a2a, 0x8e2c22, 0x7a2834, 0xb8502e], // the red-leaf tree's tones
   shrub: [0xa83030, 0x8a2a2c],
-  litter: 0x6a3430, // red leaves fallen in the round bed
+  litter: 0x6a3430, // red leaves fallen in the corner bed
   trunk: 0x6a5444,
   redTrunk: 0x4a3428,
   stones: 0xa8a49c,
+  pinkStone: 0xb89a8e, // (the corner bed's pinkish granite field stones)
   pot: 0x3a6a9a,
   potLeaves: 0x4a7a34,
   charger: 0x3a3e42, // (and the trampoline's legs)
@@ -139,6 +146,7 @@ export function* propsSteps(kit, layout) {
   for (const t of layout.GARDEN_TREES) gardenTree(kit, layout, t);
   yield;
   dadsGarden(kit, layout);
+  turnSign(kit, layout);
   mailbox(kit, layout);
   // (A car with an id, the dad's: its collider here, named; drawn last, below.)
   for (const c of layout.CARS) car(kit, layout, c, c.id ? 'solids' : 'all');
@@ -180,11 +188,38 @@ function lamppost(kit, layout, { x, z, yaw }) {
   const ax = Math.sin(yaw);
   const az = Math.cos(yaw);
   const end = [x + ax * LAMP.arm, LAMP.top + 10, z + az * LAMP.arm];
-  paint.solid(orientedBoxPolys([x + (ax * LAMP.arm) / 2, 0, z + (az * LAMP.arm) / 2], [ax, 0, az], LAMP.arm + 10, LAMP.top - 12, LAMP.top + 4, 10));
+  // (The arm out from under the cap, rising to the head: a short level beam, then a sloping one.)
+  const y = LAMP.top - LAMP.root;
+  paint.solid(orientedBoxPolys([x + ax * 22, 0, z + az * 22], [ax, 0, az], 44, y - 8, y + 8, 10));
+  paint.solid(beamPolys([x + ax * 40, y, z + az * 40], [end[0], LAMP.top - 4, end[2]], [az, 0, -ax], 10, 14));
   paint.color(TINT.lampHead);
   paint.solid(orientedBoxPolys([end[0], 0, end[2]], [ax, 0, az], 90, LAMP.top - 24, LAMP.top - 4, 44), { faceShade: (n) => (n[1] < -0.5 ? 1.6 : 1) });
   if (POLES.some((p) => p.x === x && p.z === z)) return;
   solids.solid(prismPolys(x, z, LAMP.collider, 8, y0 - 10, LAMP.top), 'stone');
+}
+
+// The turning area's sign at the corner bed (TURN_SIGN): a grey post, the plate on its street
+// side (a grey back, its face as world/lane/real/sign.js lays it out: the red rim on yellow,
+// "Vänd-" over "plats", the round no-parking sign), solid: a thin prism up the post.
+function turnSign(kit, layout) {
+  const { paint, solids } = kit.drawn('posts');
+  const S = layout.TURN_SIGN;
+  const P = S.plate;
+  const y0 = layout.groundHeight(S.x, S.z);
+  paint.color(TINT.lamp);
+  paint.lathe(S.x, S.z, [[S.r + 1.5, y0 - 10], [S.r, y0 + 20], [S.r, S.top], [0, S.top + 2]], 8, { flat: true });
+  const f = [Math.sin(S.yaw), 0, Math.cos(S.yaw)];
+  const [rx, rz] = [Math.cos(S.yaw), -Math.sin(S.yaw)];
+  const out = S.r + 2.5;
+  const at = (u, v, d) => [S.x + f[0] * (out + d) + rx * (u - P.w / 2), P.y0 + v, S.z + f[2] * (out + d) + rz * (u - P.w / 2)];
+  paint.color(TINT.signBack);
+  paint.solid(orientedBoxPolys([S.x + f[0] * (out - 0.8), 0, S.z + f[2] * (out - 0.8)], f, 1.6, P.y0, P.y0 + P.h, P.w));
+  for (const v of [12, P.h - 12]) paint.solid(orientedBoxPolys([S.x + f[0] * (out / 2), 0, S.z + f[2] * (out / 2)], f, out, P.y0 + v - 3, P.y0 + v + 3, 12));
+  for (const { color, layer, poly } of signFace(P)) {
+    paint.color(color);
+    paint.poly(poly.map(([u, v]) => at(u, v, 0.15 + 0.15 * layer)), { facing: f });
+  }
+  solids.solid(prismPolys(S.x, S.z, S.collider, 8, y0 - 10, S.top), 'stone');
 }
 
 // A white flagpole tapering to a gold knob (a climbable pole: no collider of its own), its flag
@@ -414,35 +449,46 @@ function birch(kit, x, z, base, h, r, seed) {
   canopy(kit, x, z, base + h * 0.36, base + h, r, TINT.birch, seed, 4);
 }
 
-// The dad's front garden: the round bed (red leaves fallen on its soil, a step up, ringed with
-// small grey stones), the red-leaf tree in it (its trunk the climbable pole, six stems branching
-// out of it, its round crown of blobs in several reds drawn in render, open over the trunk's top
-// where Jonas stands on it; no collider), the rhododendron at the house's west corner (a dark
-// green dome, solid), a potted plant by the door and the car charger on the east gable.
+// The dad's front garden: the corner bed (BED: red leaves fallen on its soil, a little step up,
+// round field stones along its asphalt edges and round its lawn side: real/plan.js bedStones),
+// the red-leaf tree in it (its trunk the climbable pole, six stems branching out of it, its round
+// crown of blobs in several reds drawn in render, open over the trunk's top where Jonas stands on
+// it; no collider), the rhododendron at the house's west corner (a dark green dome, solid), a
+// potted plant by the door and the car charger on the east gable.
 function dadsGarden(kit, layout) {
   const { render, paint, solids } = kit;
   const { leaves, wood, render: crown, paint: pot } = kit.drawn('plants');
-  const { ROUND_BED: B, RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND } = layout;
-  const bedTop = GROUND + 14;
+  const { RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND } = layout;
+  const bedTop = GROUND + layout.BED.raise;
+  const outline = layout.bedOutline();
   render.color(TINT.litter);
-  render.lathe(B.x, B.z, [[B.r - 8, bedTop], [0, bedTop + 4]], 12, { vMode: 'plan' });
+  render.poly(outline.map(([x, z]) => [x, bedTop, z]), { facing: [0, 1, 0] });
+  // Its soil's sides over the lawn and the drive (along the street the kerbs' run draws it).
+  render.color(TINT.soil);
+  const [cx, cz] = [layout.BED.x1 - layout.BED.rx / 3, layout.BED.z0 + layout.BED.rz / 3];
+  for (let i = 0; i + 1 < outline.length; i++) {
+    const [[x, z], [x2, z2]] = [outline[i], outline[i + 1]];
+    render.poly([[x, GROUND - 2, z], [x2, GROUND - 2, z2], [x2, bedTop, z2], [x, bedTop, z]], { facing: [(x + x2) / 2 - cx, 0, (z + z2) / 2 - cz] });
+  }
   const rng = makeRng(331);
-  for (let i = 0; i < 26; i++) {
+  const { x1, z0, rx, rz } = layout.BED;
+  for (let i = 0; i < 40; i++) {
     // A fallen leaf or two: small red flecks over the bed.
-    const a = rng() * Math.PI * 2;
-    const d = Math.sqrt(rng()) * (B.r - 40);
-    const [x, z, s] = [B.x + Math.sin(a) * d, B.z + Math.cos(a) * d, 14 + rng() * 10];
+    const [x, z, s] = [x1 - rng() * rx, z0 + rng() * rz, 14 + rng() * 10];
+    if (!layout.inBed(x, z) || !layout.inBed(x - s, z + s)) continue;
     render.color(TINT.redLeaf[i % TINT.redLeaf.length], 1.1);
-    render.poly([[x - s, bedTop + 5, z], [x, bedTop + 5, z - s * 0.6], [x + s, bedTop + 5, z], [x, bedTop + 5, z + s * 0.6]], { facing: [0, 1, 0] });
+    render.poly([[x - s, bedTop + 3, z], [x, bedTop + 3, z - s * 0.6], [x + s, bedTop + 3, z], [x, bedTop + 3, z + s * 0.6]], { facing: [0, 1, 0] });
   }
   const stones = kit.drawn('plants').blocks;
-  for (let i = 0; i < B.stones; i++) {
-    const a = ((i + rng() * 0.4) / B.stones) * Math.PI * 2;
-    const s = 22 + rng() * 12;
-    stones.color(TINT.stones, 0.85 + rng() * 0.25);
-    stones.lathe(B.x + Math.sin(a) * (B.r - 10), B.z + Math.cos(a) * (B.r - 10), [[s, GROUND - 4], [s * 1.05, GROUND + s * 0.5], [s * 0.6, GROUND + s], [0, GROUND + s * 1.1]], 6, { flat: true, a0: a });
+  for (const st of bedStones(layout)) {
+    stones.color(st.pink ? TINT.pinkStone : TINT.stones, st.k);
+    stones.lathe(st.x, st.z, [[st.s, st.y], [st.s * 1.05, st.y + st.s * 0.5], [st.s * 0.6, st.y + st.s], [0, st.y + st.s * 1.1]], 6, { flat: true, a0: st.a });
   }
-  solids.solid(prismPolys(B.x, B.z, B.r, 12, GROUND - 10, bedTop), 'grass');
+  const top = outline.map(([x, z]) => [x, bedTop, z]);
+  solids.solid([top, ...outline.map(([x, z], i) => {
+    const [x2, z2] = outline[(i + 1) % outline.length];
+    return [[x, GROUND - 10, z], [x2, GROUND - 10, z2], [x2, bedTop, z2], [x, bedTop, z]];
+  })], 'grass');
   // The tree: the trunk and six stems branching out of it into the crown.
   const C = T.canopy;
   wood.color(TINT.redTrunk);

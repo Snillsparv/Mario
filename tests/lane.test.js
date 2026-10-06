@@ -10,15 +10,16 @@
 // ridge and the junction lamppost's top), the dad's house as measured (its roof's slopes, the
 // carport's roof and the room under it) and no floor under a ceiling lower than 300, every coin
 // over a floor (exactly 50), the star waiting over the ridge, every sign read from in front only
-// (the mailbox is one, with no signpost), the six climbable poles (grabbed from every open side
-// with the follow camera, which swings round to the pole's own side; jumping off them never
-// hurts), the side yards between the villas walked up and back with the follow camera (never in
-// a solid, seldom trapped) and C-button swings there, under the carport and on the roof, the
-// privacy and originality rules in the course's sources, and the look (the sun from the
-// south-west, the villas' street faces lit, the chain houses' in shade, the dad's walls Falu red
-// under a dark roof, the red-leaf tree a small one, its crown in several reds about the house's
-// height). The camera's tests (the arrival, the poles, the side yards) run twice: with the
-// classic camera and with the realistic look's (its profile, layout.LANE_REAL.camera).
+// (the mailbox is one, with no signpost), the eleven climbable poles (every lamppost among them;
+// grabbed from every open side with the follow camera, which swings round to the pole's own
+// side, climbed to the top; jumping off them never hurts), the side yards between the villas
+// walked up and back with the follow camera (never in a solid, seldom trapped) and C-button
+// swings there, under the carport and on the roof, the privacy and originality rules in the
+// course's sources, and the look (the sun from the south-west, the villas' street faces lit, the
+// chain houses' in shade, the dad's walls Falu red under a dark roof, the red-leaf tree a small
+// one, its crown in several reds about the house's height). The camera's tests (the arrival, the
+// poles, the side yards) run twice: with the classic camera and with the realistic look's (its
+// profile, layout.LANE_REAL.camera).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -460,10 +461,13 @@ test('every sign is read from in front of its face, never from behind; the mailb
 });
 
 for (const [label, prof] of CAMERAS) {
-  test('six climbable poles, each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it; jumping off one never hurts' + label, withCamera(prof, () => {
-    const built = col.poles.map((p) => ({ x: p.x - O.x, z: p.z - O.z, y0: p.y0 - O.y, y1: p.y1 - O.y, camYaw: p.camYaw }));
-    assert.equal(built.length, 6);
-    assert.deepEqual(built, lane.POLES.map(({ x, z, y0, y1, camYaw }) => ({ x, z, y0, y1, camYaw })));
+  test('eleven climbable poles (every lamppost, R fixes: the dad wants to climb them all), each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it, climbed to its top; jumping off one never hurts' + label, withCamera(prof, () => {
+    // (To a thousandth: the footpath's lamppost stands at a computed point, moved by the origin.)
+    const r = (v) => Math.round(v * 1000) / 1000;
+    const built = col.poles.map((p) => ({ x: r(p.x - O.x), z: r(p.z - O.z), y0: r(p.y0 - O.y), y1: r(p.y1 - O.y), camYaw: p.camYaw }));
+    assert.equal(built.length, 11);
+    assert.deepEqual(built, lane.POLES.map(({ x, z, y0, y1, camYaw }) => ({ x: r(x), z: r(z), y0: r(y0), y1: r(y1), camYaw })));
+    for (const l of lane.LAMPS) assert.ok(lane.POLES.some((p) => p.x === l.x && p.z === l.z && p.y1 >= lane.LAMP.top - 60), `lamppost ${l.id} a pole up to its top`);
     const problems = [];
     for (const P of lane.POLES) {
       let sides = 0;
@@ -497,6 +501,7 @@ for (const [label, prof] of CAMERAS) {
         if (ahead < 500) problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: the camera ${Math.round(ahead)} toward its side`);
         // Up to its top, then a jump off it (away from its side, and back over it): unhurt.
         for (let k = 0; k < 400 && p.action !== 'pole_top'; k++) tick({ stickY: 1 });
+        if (p.action !== 'pole_top' || p.pos.y - O.y < P.y1 - 5) problems.push(`(${P.x}, ${P.z}) from ${Math.round((a * 180) / Math.PI)}: not on its top (${p.action}, ${Math.round(p.pos.y - O.y)})`);
         for (let k = 0; k < 10; k++) tick({});
         tick({ ...toward(cam, a), A: true });
         for (let k = 0; k < 150 && !(p.grounded && k > 5); k++) tick({ ...toward(cam, a), A: true });
@@ -620,8 +625,7 @@ test('the look: the sun low in the south-west; the villas\' street faces lit, th
   const dadRoof = mean('lane-roof', [0, 0.94, -0.34], (x, y, z) => x > DAD.x0 - 100 && x < DAD.x1 + 100 && z > DAD.z0 - 100 && z < DAD.ridgeZ + 1);
   assert.ok(dadRoof < 0.12, `the dad's roof ${dadRoof.toFixed(3)} (all roofs' tops ${roof.toFixed(3)})`);
   // The red-leaf tree: a small ornamental tree, its round crown about the house's height (from a
-  // little under its eaves to a little over its ridge, no wider than the round bed) in several
-  // reds.
+  // little under its eaves to a little over its ridge, about 2 m round) in several reds.
   const T = lane.RED_TREE;
   const r = mesh('lane-render').geometry.attributes;
   const tones = new Set();
@@ -630,11 +634,11 @@ test('the look: the sun low in the south-west; the villas\' street faces lit, th
     const [x, y, z] = [r.position.getX(i), r.position.getY(i), r.position.getZ(i)];
     const d = Math.hypot(x - T.x, z - T.z);
     const [cr, cg, cb] = [r.color.getX(i), r.color.getY(i), r.color.getZ(i)];
-    if (d > lane.ROUND_BED.r + 100 || y < 300 || cr < 2 * cg) continue;
+    if (d > T.canopy.r + 110 || y < 300 || cr < 2 * cg) continue;
     [lo, hi, wide] = [Math.min(lo, y), Math.max(hi, y), Math.max(wide, d)];
     tones.add(`${Math.round((10 * cg) / cr)},${Math.round((10 * cb) / cr)}`);
   }
-  assert.ok(lo > DAD.eave - 100 && hi < DAD.ridge + 80 && wide < lane.ROUND_BED.r + 60, `the crown from ${lo.toFixed(0)} to ${hi.toFixed(0)}, ${wide.toFixed(0)} wide`);
+  assert.ok(lo > DAD.eave - 100 && hi < DAD.ridge + 80 && wide < T.canopy.r + 70, `the crown from ${lo.toFixed(0)} to ${hi.toFixed(0)}, ${wide.toFixed(0)} wide`);
   assert.ok(tones.size >= 3, `${tones.size} reds: ${[...tones]}`);
 });
 

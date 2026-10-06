@@ -298,11 +298,11 @@ function birch(kit, R, x, z, base, h, r, seed) {
   canopy(kit, R, blobs, { size: 70, cell: CELL.hedge, tints: yellow, density: 0.85 * (DENSE[kit.tier] ?? 1), below: -0.6, sway: 9, core: null });
 }
 
-// The dad's red-leaf tree in the round bed: its trunk (the climbable pole), six stems branching
+// The dad's red-leaf tree in the corner bed: its trunk (the climbable pole), six stems branching
 // out of it, a crown of red sprays round the trunk's top (open over it, where Jonas stands).
 function redTree(kit, R, L) {
-  const { ROUND_BED: B, RED_TREE: T } = L;
-  const bedTop = L.GROUND + 14;
+  const { BED: B, RED_TREE: T } = L;
+  const bedTop = L.GROUND + B.raise;
   const C = T.canopy;
   kit.bark.color(0x8a6a60);
   kit.bark.tube([T.x, bedTop - 4, T.z], [T.x, T.trunkTop + 20, T.z], T.radius + 2, T.radius - 10, 8);
@@ -324,18 +324,50 @@ function redTree(kit, R, L) {
   ];
   const blobs = crown.map(([a, off, cy, r, ry]) => ({ c: [T.x + Math.sin(a) * off, cy, T.z + Math.cos(a) * off], r: [r, ry, r] }));
   canopy(kit, R, blobs, { size: 62, cell: CELL.red, tints: [[1.05, 1, 1], [0.85, 0.8, 0.85], [1.2, 1.05, 0.95]], density: 1.1, below: -0.5, sway: 5, core: null });
-  // Red leaves fallen on the bed's soil.
-  for (let i = 0; i < 60; i++) {
-    const a = R() * Math.PI * 2;
-    const d = Math.sqrt(R()) * (B.r - 30);
-    const [x, z, s] = [B.x + Math.sin(a) * d, B.z + Math.cos(a) * d, 10 + R() * 7];
-    const t = R();
+  // Red leaves fallen on the bed's soil (thickest under the crown), and its ground cover: their
+  // own stream (the plants' R stepped on as the old round bed's sixty leaves took it, so every
+  // plant after them keeps its place).
+  for (let i = 0; i < 360; i++) R();
+  const F = makeRng(3311);
+  for (let i = 0; i < 150; i++) {
+    const a = F() * Math.PI * 2;
+    const d = Math.sqrt(F()) * (i < 60 ? 330 : 900);
+    const [x, z, s] = [T.x + Math.sin(a) * d, T.z + Math.cos(a) * d, 10 + F() * 7];
+    if (!L.inBed(x + s, z - s) || !L.inBed(x - s, z + s) || !L.inBed(x - s, z - s) || !L.inBed(x + s, z + s)) continue;
+    const t = F();
     kit.foliage.rgb(1.2 - t * 0.4, 0.9, 0.9);
-    const turn = R() * Math.PI;
+    const turn = F() * Math.PI;
     const [ca, sa] = [Math.cos(turn) * s, Math.sin(turn) * s];
-    const y = bedTop + 4.5 + R() * 0.5;
+    const y = bedTop + 4.5 + F() * 0.5;
     const [u0, v0] = CELL.red;
     kit.foliage.quad([x - ca, y, z - sa], [x + sa, y, z - ca], [x + ca, y, z + sa], [x - sa, y, z + ca], { n: [[0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0]], uvs: [[u0 + 0.2, v0 + 0.2], [u0 + 0.3, v0 + 0.2], [u0 + 0.3, v0 + 0.3], [u0 + 0.2, v0 + 0.3]] });
+  }
+  // The bed's ground cover (the photos: low red-leaved plants and a little green): tufts of two
+  // crossed cards, low and leaning out, a share of them per tier.
+  const tufts = Math.round(150 * (CLUSTERS[kit.tier] ?? 1));
+  for (let i = 0; i < tufts; i++) {
+    const [x, z] = [B.x1 - 30 - F() * (B.rx - 40), B.z0 + 30 + F() * (B.rz - 40)];
+    const [s, turn, green, t] = [30 + F() * 26, F() * Math.PI, F() < 0.35, F()];
+    if (!L.inBed(x + s, z + s) || !L.inBed(x - s, z - s) || Math.hypot(x - T.x, z - T.z) < 70) continue;
+    const [u0, v0] = green ? CELL.hedge : CELL.red;
+    kit.foliage.rgb(green ? 0.75 + t * 0.3 : 1.1 - t * 0.3, green ? 0.85 : 0.75 + t * 0.2, 0.8);
+    for (const a of [turn, turn + Math.PI / 2]) {
+      const [dx, dz] = [Math.cos(a) * s, Math.sin(a) * s];
+      const n = [0, 1, 0];
+      const top = bedTop + s * 0.75;
+      kit.foliage.sway = 0;
+      const uv = [[u0 + 0.05, v0 + 0.45], [u0 + 0.45, v0 + 0.45], [u0 + 0.45, v0 + 0.25], [u0 + 0.05, v0 + 0.25]];
+      kit.foliage.vertex([x - dx, bedTop + 1, z - dz], n, uv[0]);
+      kit.foliage.vertex([x + dx, bedTop + 1, z + dz], n, uv[1]);
+      kit.foliage.sway = 2;
+      kit.foliage.vertex([x + dx * 1.2, top, z + dz * 1.2], n, uv[2]);
+      kit.foliage.sway = 0;
+      kit.foliage.vertex([x - dx, bedTop + 1, z - dz], n, uv[0]);
+      kit.foliage.sway = 2;
+      kit.foliage.vertex([x + dx * 1.2, top, z + dz * 1.2], n, uv[2]);
+      kit.foliage.vertex([x - dx * 1.2, top, z - dz * 1.2], n, uv[3]);
+      kit.foliage.sway = 0;
+    }
   }
 }
 
@@ -388,23 +420,54 @@ export function boxPlants(kit, spots, seed) {
 // skirt), a narrower spire, branches more uneven and here and there one missing (a gap the sky
 // shows through), so the edge is not one tree copied.
 export const FIR_SHAPES = Object.freeze({
-  A: Object.freeze({ tiers: 14, low: 10, branches: 7, droop: 0, spread: 0.3, gap: 0, power: 0.85 }),
-  B: Object.freeze({ tiers: 18, low: 12, branches: 7, droop: 0.22, spread: 0.45, gap: 0.14, power: 1.05 }),
+  A: Object.freeze({ tiers: 12, low: 8, branches: 5, droop: 0, spread: 0.3, gap: 0, power: 0.85 }),
+  B: Object.freeze({ tiers: 15, low: 10, branches: 5, droop: 0.22, spread: 0.45, gap: 0.14, power: 1.05 }),
 });
+
+const DOWN = [0, -1, 0];
 
 export function firGeometry(tier = 'high', seed = 7, shape = FIR_SHAPES.A) {
   const R = makeRng(seed);
   const leaves = new Geo();
   const core = new Geo();
   const tiers = tier === 'low' ? shape.low : shape.tiers;
-  core.rgb(0.09, 0.06, 0.045);
-  core.cyl('y', -0.02, 0.95, 0, 0, 0.03, 6);
+  // The trunk, inside the crown (no bare pole over its top).
+  core.rgb(1.5, 0.65, 0.9); // (dark bark brown over the twig texture's greens)
+  core.cyl('y', -0.02, 0.84, 0, 0, 0.03, 6);
+  core.rgb(0.95, 0.95, 0.95);
   for (let k = 0; k < tiers; k++) {
     const t = k / tiers;
     const y = 0.1 + 0.84 * t;
     const r = Math.pow(1 - t, shape.power) + 0.06;
-    const n = Math.max(4, Math.round(shape.branches * (1 - t * 0.4)));
+    const n = Math.max(3, Math.round(shape.branches * (1 - t * 0.4)));
     const a0 = k * 2.399;
+    // The whorl's dense heart: a drooping skirt of needles (opaque: the twig's texture on it, a
+    // twig a branch, its stem out along it; dark under it), its rim a star of branch tips
+    // hanging down over the whorl below, so the crown is one dark mass in tiers (a spruce's
+    // layered outline) and the sky never shows through its middle; the branch cards are its
+    // fringe.
+    const m = 5;
+    const drop = (0.84 / tiers) * (1.3 + 0.4 * (1 - t)); // (down over the whorl below, however many)
+    const rim = [];
+    for (let i = 0; i < m; i++) {
+      const a = a0 + (i / m) * Math.PI * 2 + (R() - 0.5) * 0.3;
+      for (const tip of [true, false]) {
+        const at = a + (tip ? 0 : Math.PI / m);
+        const rr = r * (tip ? 0.66 + 0.14 * R() : 0.42 + 0.1 * R());
+        const dy = drop * (tip ? 0.95 + 0.25 * R() : 0.6);
+        rim.push({ p: [Math.cos(at) * rr, y - dy, Math.sin(at) * rr], n: norm([Math.cos(at), 1.1, Math.sin(at)]), g: (tip ? 0.46 : 0.32) * (0.85 + 0.3 * R()), u: tip ? 1 : 0.62, v: tip ? 0.5 : 0 });
+      }
+    }
+    const top = [0, y + 0.012, 0];
+    const under = [0, y - drop * 0.45, 0];
+    for (let i = 0; i < 2 * m; i++) {
+      const [a, b] = [rim[i], rim[(i + 1) % (2 * m)]];
+      // (Each pair of triangles a twig: its stem from the trunk out to the tip, v 0.5.)
+      const [va, vb] = a.v === 0.5 ? [0.5, 1] : [0, 0.5];
+      core.tri(top, b.p, a.p, { n: [[0, 1, 0], b.n, a.n], uvs: [[0, 0.5], [b.u, vb], [a.u, va]], shade: [0.24, b.g, a.g] });
+      // (Its underside dark: the shade under a spruce's branches.)
+      core.tri(under, a.p, b.p, { n: [DOWN, DOWN, DOWN], uvs: [[0, 0.5], [a.u, va], [b.u, vb]], shade: [0.06, 0.12, 0.12] });
+    }
     for (let b = 0; b < n; b++) {
       const a = a0 + (b / n) * Math.PI * 2 + (R() - 0.5) * 0.4;
       if (shape.gap && R() < shape.gap * (1 - t)) continue;
@@ -414,32 +477,38 @@ export function firGeometry(tier = 'high', seed = 7, shape = FIR_SHAPES.A) {
       const p1 = [dir[0] * len, y - (0.05 + 0.08 * R()) * (0.6 + t) - shape.droop * (1 - t) * len, dir[2] * len];
       const axis = norm(sub(p1, p0));
       const across = norm(cross([0, 1, 0], axis));
-      const w = 0.22 + 0.25 * r;
+      const w = 0.24 + 0.25 * r;
       const nOut = norm([dir[0], 0.55, dir[2]]);
       const g = 0.85 + 0.3 * R();
       leaves.rgb(g, g, g);
-      for (const roll of [0.15, 1.4]) {
-        const up = norm(cross(axis, across));
-        const hw = mul(add(mul(across, Math.cos(roll)), mul(up, Math.sin(roll))), w / 2);
-        // The branch's tip sways (units of the fir's own size: scaled by its instance).
-        const P = [sub(p0, hw), sub(p1, hw), add(p1, hw), add(p0, hw)];
-        const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
-        for (const i of [0, 1, 2, 0, 2, 3]) {
-          leaves.sway = i === 1 || i === 2 ? 0.012 : 0;
-          leaves.vertex(P[i], nOut, uvs[i]);
-        }
-        leaves.sway = 0;
+      // One card a branch, turned most of the way up on edge (its needles out past the skirt's
+      // rim as seen from the side), each its own roll.
+      const roll = 0.9 + 0.5 * R();
+      const up = norm(cross(axis, across));
+      const hw = mul(add(mul(across, Math.cos(roll)), mul(up, Math.sin(roll))), w / 2);
+      // The branch's tip sways (units of the fir's own size: scaled by its instance).
+      const P = [sub(p0, hw), sub(p1, hw), add(p1, hw), add(p0, hw)];
+      const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
+      for (const i of [0, 1, 2, 0, 2, 3]) {
+        leaves.sway = i === 1 || i === 2 ? 0.012 : 0;
+        leaves.vertex(P[i], nOut, uvs[i]);
       }
+      leaves.sway = 0;
     }
   }
-  // The dark inner cone: no daylight through a dense spruce's middle (well inside its branches,
-  // so their tips make its outline).
-  core.rgb(0.02, 0.035, 0.022);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const b = ((i + 1) / 8) * Math.PI * 2;
-    const [ca, sa, cb, sb] = [Math.cos(a), Math.sin(a), Math.cos(b), Math.sin(b)];
-    core.tri([cb * 0.36, 0.12, sb * 0.36], [ca * 0.36, 0.12, sa * 0.36], [0, 0.9, 0], { n: [norm([cb, 0.5, sb]), norm([ca, 0.5, sa]), [0, 1, 0]] });
+  // The leader: a short tuft of two crossed cards straight up from the top whorl, the twig's
+  // stem up, so the crown ends in needles, not a pole.
+  leaves.rgb(1.05, 1.05, 1.05);
+  for (const a of [0.4, 0.4 + Math.PI / 2]) {
+    const hw = [Math.cos(a) * 0.07, 0, Math.sin(a) * 0.07];
+    const [p0, p1] = [[0, 0.86, 0], [0, 1, 0]];
+    const P = [sub(p0, hw), sub(p1, hw), add(p1, hw), add(p0, hw)];
+    const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+      leaves.sway = i === 1 || i === 2 ? 0.006 : 0;
+      leaves.vertex(P[i], norm([Math.cos(a + 1.57), 0.3, Math.sin(a + 1.57)]), uvs[i]);
+    }
+    leaves.sway = 0;
   }
   return { leaves, core };
 }
