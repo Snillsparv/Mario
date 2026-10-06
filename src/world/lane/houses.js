@@ -7,7 +7,8 @@
 //
 //   frame(h) -> { at(u, y, w), dir(du, dy, dw), face(name) }   // a house's own frame
 //   house(kit, h)          // by h.kit: 'villa' | 'chain' | 'garage'
-//   link(kit, l), carport(kit, c)   // the flat-roofed link and carport between the chain houses
+//   link(kit, l), carport(kit, c, g)   // the flat-roofed link, and the carport between the chain
+//                                      // houses with the store room under it (layout.GARAGE)
 //   wallLamp(b, f, u, v)   // a little black lamp on a wall frame (beside the front doors)
 //
 // A house record: { cx, cz, w, d, yaw, y0, eave, ridge | pitch, ... } (layout.js): its footprint
@@ -36,8 +37,8 @@
 //
 // Colliders: each house one convex solid, its walls and its roof (to the eaves, then the hip or
 // gable up to the ridge); the drawn overhangs have none. The link a solid block to its flat roof
-// (stone), the carport its roof slab, its posts and its back wall (wood; the roofs' tops are
-// walkable).
+// (stone), the carport its roof slab, its deep fascia, its store room's door wall (each leaf
+// named), lining filler, back wall and props (wood; the roofs' tops are walkable).
 
 import { archContour, localBoxPolys, wallFrame } from '../castle/geom.js';
 
@@ -270,38 +271,114 @@ export function link(kit, L) {
   solids.box(L.x0, L.x1, y0, L.top, L.z0, L.z1, 'stone');
 }
 
-// The carport between the dad's and south_2: its roof slab on three posts along its open front
-// (toward the drive), against the two houses' gables, a back wall of yellow boards with a red
-// board door; the drive's asphalt runs on under it.
-export function carport(kit, C) {
+// The carport between the dad's and south_2 (C: layout.CARPORT) and the store room under it
+// (G: layout.GARAGE): the roof slab over the drive's end, a deep dark fascia hanging from its
+// front edge (a wall under the whole lip: Jonas grabs the edge anywhere along it), and the door
+// wall under the roof's edge: its fixed boards and the lintels over the openings (their faces
+// toward the drive in their tints, toward the room in the lining's), a frame round each opening,
+// the grey downpipe, the four leaves (five boards each with their ledges and hardware: each board
+// a piece the lane's chunk throws, objects/laneBoss/LaneGarage.js; kit.garage.pieces records each
+// piece's vertex ranges in the builders it went into, by name: 'boards', 'paint'); behind it the
+// room's lining (bare boards, darker low), a filler closing the slit at the dad's back corner,
+// the back wall's outside face, the props' colliders (their drawing: the lane's chunk's in the
+// classic look, the worker's in the realistic one) and a darker soffit over the room. Colliders
+// are walls only wherever a top would be a floor under the low ceiling; each leaf's is named.
+export function carport(kit, C, G) {
   const { boards, paint, solids } = kit;
   const y0 = 22;
-  const under = C.top - C.slab;
+  const { under, door } = G;
+  const z0 = G.wall;
+  const z1 = z0 + G.thick;
+  const walls = { top: false, bottom: false };
+  const ramp = (a, b) => (x, y) => a + b * Math.min(1, (y - y0) / 300);
+  const quad = (b, x0, x1, ya, yb, za, zb, facing) => b.poly([[x0, ya, za], [x1, ya, zb], [x1, yb, zb], [x0, yb, za]], { facing });
   paint.color(TINT.fascia);
-  for (const x of C.posts) paint.box(x - C.post / 2, x + C.post / 2, y0, under, C.z0, C.z0 + C.post, { bottom: false, top: false });
+  paint.box(C.x0 - 4, C.x1 + 4, G.fascia, under, C.z0 - 4, C.z0, { top: false });
+  solids.box(C.x0 - 4, C.x1 + 4, G.fascia, C.top, C.z0 - 4, C.z0, 'wood', walls);
+  // The wall's spans: the fixed boards to the slab, a lintel over each opening.
+  const span = (x0, x1, ya, t) => {
+    const opts = { top: false, bottom: ya > y0 };
+    boards.color(G.inside);
+    boards.shade = ramp(0.35, 0.15);
+    boards.box(x0, x1, ya, under, z0, z1, opts);
+    boards.color(G.tints[t]);
+    boards.shade = ramp(0.8, 0.2);
+    quad(boards, x0, x1, ya, under, z0 - 1, z0 - 1, [0, 0, -1]);
+    solids.box(x0, x1, ya, under, z0, z1, 'wood', opts);
+  };
+  for (const [x0, x1, t] of G.fixed) span(x0, x1, y0, t);
+  const pieces = [];
+  const mark = (b) => b.pos.length / 3;
+  G.leaves.forEach((l, k) => {
+    span(l.x0, l.x1, door, 0);
+    // Its frame: dark strips round the opening, on the wall (the double doors share one).
+    boards.shade = null;
+    boards.color(G.tints[l.tint], 0.6);
+    boards.box(l.x0 - 6, l.x1 + 6, door, door + 6, z0 - 2, z0);
+    for (const [x, edge] of [[l.x0 - 6, l.x0], [l.x1, l.x1]]) if (!G.leaves.some((m) => m !== l && (m.x0 === edge || m.x1 === edge))) boards.box(x, x + 6, y0, door, z0 - 2, z0);
+    // Five boards (a groove between), each with its two ledges behind and its hardware on the
+    // drive side: strap hinges on the hinge side's board, the handle near the other edge, the
+    // sign high on the east double door's east board.
+    const w = (l.x1 - l.x0) / 5;
+    for (let i = 0; i < 5; i++) {
+      const a = l.x0 + i * w + 1;
+      const b = a + w - 2;
+      const s = mark(boards);
+      boards.color(G.tints[l.tint]);
+      boards.box(a, b, y0 + 2, door - 2, z0 + 1, z0 + 5, { faceShade: (n) => (n[2] > 0.5 ? 0.4 : 1) });
+      for (const y of [72, 240]) boards.box(a - 1, b + 1, y, y + 22, z0 + 5, z0 + 9, { shade: 0.45 });
+      const parts = [{ b: 'boards', start: s, count: mark(boards) - s }];
+      const p = mark(paint);
+      const hinge = l.hinge > 0 ? 4 : 0;
+      paint.color(0x1a1a1a);
+      if (i === hinge) for (const y of [80, 248]) paint.box(l.hinge > 0 ? l.x1 - 40 : l.x0 + 1, l.hinge > 0 ? l.x1 - 1 : l.x0 + 40, y, y + 6, z0 - 1, z0 + 1);
+      const hx = l.hinge > 0 ? l.x0 + 12 : l.x1 - 12;
+      if (l.handle && i === 4 - hinge) paint.box(hx - 4, hx + 4, 147, 177, z0 - 6, z0 + 1);
+      if (l.sign && i === 4) {
+        paint.color(0xb03a2a);
+        paint.box(l.x1 - 50, l.x1 - 8, 228, 262, z0 - 2, z0 + 1);
+        paint.color(0xf0dca0);
+        paint.box(l.x1 - 47, l.x1 - 11, 231, 259, z0 - 3, z0 - 2);
+      }
+      if (mark(paint) > p) parts.push({ b: 'paint', start: p, count: mark(paint) - p });
+      pieces.push({ leaf: k, at: [(a + b) / 2, (y0 + door) / 2, z0 + 3], parts });
+    }
+    solids.named(`garage_${k}`).box(l.x0, l.x1, y0, door, z0, z1, 'wood', walls);
+  });
+  kit.garage = { pieces };
+  paint.color(0x8a8c8e);
+  paint.box(G.pipe, G.pipe + 12, y0, under, z0 - 14, z0 - 2);
+  // The room: its lining, the slit at the dad's back corner closed, the back wall's outside.
+  const [xa, xb, zb] = [C.x0 + G.lining, C.x1 - G.lining, C.z1 - 20];
+  boards.color(G.inside);
+  boards.shade = ramp(0.35, 0.15);
+  quad(boards, xa, xa, y0, under, z1, zb, [1, 0, 0]);
+  quad(boards, xb, xb, y0, under, z1, zb, [-1, 0, 0]);
+  quad(boards, xa, xb, y0, under, zb, zb, [0, 0, -1]);
   boards.color(C.back);
-  boards.shade = (x, y) => 0.62 + 0.2 * Math.min(1, (y - y0) / 300);
-  boards.box(C.x0, C.x1, y0, under, C.z1 - 20, C.z1, { bottom: false, top: false });
+  boards.shade = ramp(0.62, 0.2);
+  quad(boards, C.x0 - 10, C.x1, y0, under, C.z1, C.z1, [0, 0, 1]);
+  quad(boards, C.x0 - 10, C.x0 - 10, y0, under, C.z1 - 45, C.z1, [-1, 0, 0]);
   boards.shade = null;
-  boards.color(C.door);
-  const dx = (C.x0 + C.x1) / 2 + 200;
-  boards.poly([[dx - 70, y0, C.z1 - 21], [dx + 70, y0, C.z1 - 21], [dx + 70, y0 + 215, C.z1 - 21], [dx - 70, y0 + 215, C.z1 - 21]], { facing: [0, 0, -1], shade: 0.7 });
-  flatRoof(kit, C.x0, C.x1, C.z0, C.z1, C.top, C.slab);
+  solids.box(C.x0, C.x1, y0, under, zb, C.z1, 'wood');
+  solids.box(C.x0 - 10, C.x0 + 10, y0, under, C.z1 - 50, C.z1, 'wood', walls);
+  for (const [x0, x1, za, zc] of G.props) solids.box(x0, x1, y0, G.propTop, za, zc, 'wood', walls);
+  flatRoof(kit, C.x0, C.x1, C.z0, C.z1, C.top, C.slab, z0);
   solids.box(C.x0, C.x1, under, C.top, C.z0, C.z1, 'wood', { bottom: true });
-  for (const x of C.posts) solids.box(x - C.post / 2, x + C.post / 2, y0, under, C.z0, C.z0 + C.post, 'wood');
-  solids.box(C.x0, C.x1, y0, under, C.z1 - 20, C.z1, 'wood');
 }
 
 // A flat roof slab from y top - slab to top: felt on top, a dark fascia round its edge, its
 // underside in shade.
-function flatRoof(kit, x0, x1, z0, z1, top, slab) {
+// (room: the soffit darker from there on: the store room under the carport.)
+function flatRoof(kit, x0, x1, z0, z1, top, slab, room = z1) {
   const { roof, paint } = kit;
   roof.color(TINT.felt);
   roof.poly([[x0, top, z0], [x1, top, z0], [x1, top, z1], [x0, top, z1]], { facing: [0, 1, 0] });
   paint.color(TINT.fascia);
   paint.box(x0 - 4, x1 + 4, top - slab, top + 4, z0 - 4, z1 + 4, { bottom: false, top: false });
   paint.color(TINT.soffit);
-  paint.poly([[x0, top - slab, z0], [x1, top - slab, z0], [x1, top - slab, z1], [x0, top - slab, z1]], { facing: [0, -1, 0], shade: 0.6 });
+  const y = top - slab;
+  for (const [a, b, k] of [[z0, room, 0.6], [room, z1, 0.3]]) if (b > a) paint.poly([[x0, y, a], [x1, y, a], [x1, y, b], [x0, y, b]], { facing: [0, -1, 0], shade: k });
 }
 
 // ---------------------------------------------------------------- roofs

@@ -253,7 +253,42 @@ DAD.charger = { x: DAD.x1, z: 1500 };
 // (south_2, which faces the turning area with a wing behind it).
 export const SOUTH_1 = chain('south_1', -3500, -1550, 1330, 2580, { boards: 0xd8b65e, roof: 0x2a2a2c, door: uS(-3500, -1550, -2300), windows: [-3250, -2900, -2600, -2000, -1750].map((x) => uS(-3500, -1550, x)), gableEnds: true });
 export const LINK = { id: 'link', x0: -1550, x1: -1100, z0: 1330, z1: 2400, top: 370, slab: 25, boards: 0xd8b65e };
-export const CARPORT = { id: 'carport', x0: 1600, x1: 2500, z0: 1800, z1: 2650, top: 370, slab: 25, posts: [1640, 2050, 2460], post: 40, back: 0xd8b65e, door: 0x983226 };
+export const CARPORT = { id: 'carport', x0: 1600, x1: 2500, z0: 1800, z1: 2650, top: 370, slab: 25, back: 0xd8b65e };
+// The store room under the carport's roof (the garage row in the photos; objects/laneBoss/
+// LaneGarage.js breaks its doors): its door wall under the roof's front edge (`wall`: its face
+// toward the drive, `thick` deep, up to the slab's underside `under`), a deep dark fascia hanging
+// from the roof's edge down to `fascia`, the room behind the wall back to the carport's back wall
+// (lined with bare boards `inside`, `lining` in from the gables). Along the wall, west (the dad's
+// gable) to east (south_2's): `fixed` boards [x0, x1, tint index] and the four leaves (`leaves`:
+// x0..x1, tint index, `hinge` side -1 west / +1 east, `handle`, `sign`; each `door` high, its
+// collider named garage_0 .. garage_3 in this order): a dark brown door, the red door (seen
+// between the two cars from the drive), the dark brown double doors (a small blank sign high on
+// the left leaf seen from the drive), and the grey downpipe (`pipe`: its x) down the red strip.
+// Inside, along the walls, the room's things' boxes (`props`: x0, x1, z0, z1, each solid up to
+// `propTop`, walls only: never a floor under the low ceiling): a workbench under a tool board,
+// steel shelves, winter tyres, moving boxes, a lawn mower, a bike, garden tools (in this order:
+// world/lane/garage.js ROOM draws them, with the fluorescent tube and the 1-up's place); five
+// coins (COINS).
+export const GARAGE = {
+  wall: 1950,
+  thick: 20,
+  door: GROUND + 280,
+  under: CARPORT.top - CARPORT.slab,
+  fascia: GROUND + 258,
+  lining: 10,
+  tints: [0x3e2c24, 0x983226, CARPORT.back], // dark brown, the house's Falu red, yellow
+  inside: 0x5e4e3e, // the lining's bare boards
+  fixed: [[1600, 1720, 0], [1870, 2010, 0], [2155, 2190, 1], [2470, 2500, 2]],
+  leaves: [
+    { x0: 1720, x1: 1870, tint: 0, hinge: -1, handle: 1 },
+    { x0: 2010, x1: 2155, tint: 1, hinge: 1, handle: 1 },
+    { x0: 2190, x1: 2330, tint: 0, hinge: -1 },
+    { x0: 2330, x1: 2470, tint: 0, hinge: 1, handle: 1, sign: 1 },
+  ],
+  pipe: 2166,
+  props: [[1990, 2190, 2560, 2630], [2230, 2480, 2575, 2630], [2400, 2480, 2380, 2460], [2405, 2485, 2470, 2550], [1640, 1770, 2420, 2590], [1612, 1650, 2030, 2290], [1612, 1640, 1985, 2020]],
+  propTop: GROUND + 218,
+};
 export const SOUTH_2 = chain('south_2', 2500, 4150, 1450, 2650, { boards: 0xd8b65e, roof: 0x3a302c, door: uS(2500, 4150, 3500), windows: [2800, 3150, 3850].map((x) => uS(2500, 4150, x)), gableEnds: true });
 // Its wing behind it (ridge along z: turned a quarter, its front toward +x).
 export const SOUTH_2_WING = { ...chain('south_2_wing', 3400, 4150, 2650, 3350, { boards: 0xd8b65e, roof: 0x3a302c }), w: 700, d: 750, yaw: Math.PI / 2, ridge: pitchRidge(CHAIN.eave, 750, CHAIN.pitch), windows: [0] };
@@ -296,12 +331,13 @@ export const BIN = { x: 110, z: 90, h: 160, top: GROUND + 160 };
 export const BINS = [{ x: 1665, z: 1600 }, { x: 1665, z: 1710 }];
 // The bins move (objects/laneBoss/LaneBins.js, once the lane's lazy chunk is in): pushed by
 // walking into them, grabbed with the attack button and pulled, kept on the dad's drive and the
-// room under the carport (BIN_LEASH: the box a bin's middle stays in; never the road, a lawn or a
-// roof), and home again on every arrival, lost life and new game, or by themselves when left. Each
+// strip under the carport's front edge (BIN_LEASH: the box a bin's middle stays in; never the
+// road, a lawn, a roof or the store room: its back stops 110 short of the door wall, so a bin
+// never stands in a doorway), and home again on every arrival, lost life and new game, or by themselves when left. Each
 // movable bin: its home (BINS), its floor, its size (the handle and the wheels on +x), its
 // collider's name (lane/props.js: the static build's box, named) and its leash. (Only the dad's
 // two stand on the street: the photos show none by the other drives.)
-export const BIN_LEASH = { x0: DAD_DRIVE.x0 + 4 + BIN.x / 2, x1: DAD_DRIVE.x1 - 4 - BIN.x / 2, z0: DAD_DRIVE.z0 + 10 + BIN.z / 2, z1: CARPORT.z1 - 50 - BIN.z / 2 };
+export const BIN_LEASH = { x0: DAD_DRIVE.x0 + 4 + BIN.x / 2, x1: DAD_DRIVE.x1 - 4 - BIN.x / 2, z0: DAD_DRIVE.z0 + 10 + BIN.z / 2, z1: GARAGE.wall - 110 - BIN.z / 2 };
 export const MOVABLE_BINS = BINS.map((b, i) => ({ id: `bin_${i}`, x: b.x, y: GROUND, z: b.z, w: BIN.x, d: BIN.z, h: BIN.h, leash: BIN_LEASH }));
 
 // ---------------------------------------------------------------- the east end
@@ -707,11 +743,12 @@ export const STAR = { id: 'lane_star', x: -250, y: DAD.ridge + 180, z: DAD.ridge
 
 // ---------------------------------------------------------------- coins, signs, poles
 
-// 50 coins, each at its floor + 60: down the path to the door, on the mailbox's roof, along the
+// 55 coins, each at its floor + 60: down the path to the door, on the mailbox's roof, along the
 // street both ways, round the turning area, along two wall tops and up north_3's steps, up
 // north_4's drive, up the side yard between north_2 and north_3, on the motorhome's roof, along
 // south_1's hedge, round the junction's lamppost, on the footpath, over the bins, on the
-// carport's roof and up the roof's south-west slope.
+// carport's roof, up the roof's south-west slope, and a row of five across the store room behind
+// the garage doors (GARAGE).
 const above = (y) => y + 60;
 const roofAt = (z) => DAD.ridge - Math.abs(z - DAD.ridgeZ) * Math.tan((CHAIN.pitch * Math.PI) / 180);
 const motorhome = (along) => ({ x: MOTORHOME.cx + Math.cos(MOTORHOME.yaw) * along, y: above(GROUND + MOTORHOME.h), z: MOTORHOME.cz - Math.sin(MOTORHOME.yaw) * along });
@@ -739,6 +776,7 @@ export const COINS = [
   ...[2000, 2200, 2400].map((z) => ({ x: 1750, y: above(CARPORT.top), z })),
   { x: 1300, y: above(roofAt(2400)), z: 2400 },
   { x: 900, y: above(roofAt(2150)), z: 2150 },
+  ...[1800, 1950, 2085, 2250, 2380].map((x) => ({ x, y: above(GROUND), z: 2250 })),
 ];
 
 // Signs: the dad's mailbox (post: false, the mailbox is the sign: no signpost drawn, its own

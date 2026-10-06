@@ -1,8 +1,10 @@
 // The production build and `vite preview` with the phone controller (vite.config.js,
 // tools/padRelay.js): the game is one bundle (under its 1,700,000-byte budget) and two lazily
 // loaded chunks, realLook (the realistic look's main-thread code) and laneBoss (Sparrow Lane's
-// movers: the bins), each imported by the game only dynamically, importing only the game's
-// bundle, no three.js of its own, under 90 kB, beside
+// movers: the bins, STOMPWATT and the garage doors), each imported by the game only dynamically,
+// importing only the game's bundle, no three.js of its own, under 90 KiB (laneBoss: 100 KiB, D1's
+// garage doors: the chunk is "what moves in the dad's drive", prefetched at boot, never in the
+// first frame's way; main is the scarce budget), beside
 // its two module workers (the title logo's, and the realistic look's with the pure code main
 // does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
 // its own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
@@ -68,13 +70,18 @@ test('the game is one bundle, its lazy realLook and laneBoss chunks (and its wor
   const boss = await read(`assets/${bossFile}`);
   assert.deepEqual(chunkImports(main).sort(), [`./${bossFile}`, `./${lookFile}`].sort(), 'the game imports two chunks: realLook and laneBoss');
   const mainFile = js.find((f) => f.startsWith('main-'));
+  // (Each chunk's cap: laneBoss's raised from 90 to 100 KiB for D1, the garage doors; see above.)
+  const CAP = { realLook: 90 * 1024, laneBoss: 100 * 1024 };
   for (const [name, file, src] of [['realLook', lookFile, look], ['laneBoss', bossFile, boss]]) {
     assert.equal([...main.matchAll(new RegExp(`\\bimport\\s*\\(\\s*["'\`]\\./${name}-`, 'g'))].length, 1, `${name}: only dynamically (import())`);
     assert.ok(!new RegExp(`from\\s*["'\`]\\./${file.replace('.', '\\.')}`).test(main), `${name}: never statically`);
     assert.deepEqual([...new Set(chunkImports(src))], [`./${mainFile}`], `${name} imports only the game\'s bundle`);
     assert.ok(!src.includes('WebGLRenderer'), `no three.js in ${name}`);
-    assert.ok(Buffer.byteLength(src) < 90 * 1024, `${name} stays small (${Buffer.byteLength(src)} bytes)`);
+    assert.ok(Buffer.byteLength(src) < CAP[name], `${name} stays small (${Buffer.byteLength(src)} bytes)`);
   }
+  // (The store room's things, world/lane/garage.js ROOM, are the chunk's and the worker's: none
+  // in the game's bundle.)
+  assert.ok(!/\bshelves\b/.test(main) && /\bshelves\b/.test(boss), 'the store room\'s things only in the laneBoss chunk');
   assert.deepEqual(chunkImports(padJs), [], 'the pad imports no other chunk');
   assert.ok(Buffer.byteLength(main) < 1700000, `the game stays under its budget (${Buffer.byteLength(main)} bytes)`);
   // The realistic look's worker: started by the game (new Worker(new URL(...)), not an import).

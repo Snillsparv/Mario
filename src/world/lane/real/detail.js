@@ -3,7 +3,8 @@
 // build draws itself instead of the classic builders' faces (lane/build.js REAL_DRAWN names
 // them; the classic builders still make every collider), and what G2 adds over them: the
 // houses' hardware (hardware.js), the ground's clutter and the blank street sign (clutter.js),
-// the cars' contact shadows (cars.js: `contact`). world/lane/real/look.js wraps the buffers in
+// the cars' contact shadows (cars.js: `contact`), and D1's store room's things behind the garage
+// doors (garage.js). world/lane/real/look.js wraps the buffers in
 // meshes on the main thread.
 //
 //   buildLaneDetail(L, tier) -> { meshes, firs, grass, ground, probes, triangles }
@@ -45,6 +46,7 @@ import { trampoline, hoop, motorhome, cabinet, treeLine } from './extras.js';
 import { clutter, streetSign } from './clutter.js';
 import { hardware } from './hardware.js';
 import { pieceOf } from './pieces.js';
+import { garageRoom } from './garage.js';
 
 // Each material's builder; `cast` false: casts no shadow (the ground's, the glass, the rooms').
 const MATERIALS = {
@@ -119,6 +121,7 @@ export function buildLaneDetail(L, tier = 'high') {
   garageDoors(kit, L);
   hipTrim(kit, L);
   hardware(kit, L);
+  garageRoom(kit, L); // (the store room's things behind the garage doors: before the cars)
   cars(kit, L);
   trampoline(kit, L);
   hoop(kit, L);

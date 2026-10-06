@@ -8,7 +8,9 @@
 // colliders (their bodies and tyres closed: no hole to see through), every tyre's patch on the
 // drive's drawn surface and each car level on it, the bonnets and roofs on the colliders Jonas
 // stands on, no plate or badge, the bird on the mailbox's ridge; the double garage's rust under
-// its downpipes' clips and the balcony's geraniums (not on low); every tier within its triangle
+// its downpipes' clips and the balcony's geraniums (not on low); the store room's things behind
+// the garage doors (D1: in the room, clear of its middle, painted dim, the tube glowing, each
+// tier's share); every tier within its triangle
 // budget (section 7 of the plan: high <= 900k a frame with the grass and the shadow pass, so the
 // detail itself far under), the low tier's halved.
 import { test } from 'node:test';
@@ -779,4 +781,37 @@ test('the dad\'s crossover looks like his car: a gloss black roof, two sideways-
   // The bonnet sloping down toward the nose (and its leading edge lower still).
   const crown = (w0) => Math.max(...paint.filter((v) => Math.abs(v.u) < 8 && Math.abs(v.w - w0) < 12).map((v) => v.y));
   assert.ok(crown(hl - K.hood + 20) - crown(hl - 50) > 4 && crown(hl - 50) - crown(hl - 8) > 4, `the bonnet slopes: ${crown(hl - K.hood + 20).toFixed(1)}, ${crown(hl - 50).toFixed(1)}, ${crown(hl - 8).toFixed(1)}`);
+});
+
+test('D1: the store room\'s things behind the garage doors: inside the room under the slab, clear of its middle (the tube overhead), the tube\'s diffuser glowing (drl; gloss on low), painted dim (darker than their tints), drawn before the dad\'s car; within each tier\'s share', async () => {
+  const { garageRoom } = await import('../src/world/lane/real/garage.js');
+  const { ROOM } = await import('../src/world/lane/garage.js');
+  const G = lane.GARAGE;
+  const C = lane.CARPORT;
+  for (const [tier, most] of [['high', 3200], ['mid', 2200], ['low', 1500]]) {
+    const kit = { tier };
+    for (const n of ['paint', 'boards', 'steel', 'metal', 'tyre', 'drl', 'gloss']) kit[n] = new Geo();
+    if (tier === 'low') Object.assign(kit, { drl: kit.gloss, steel: kit.metal });
+    garageRoom(kit, lane);
+    const geos = [...new Set(Object.values(kit).filter((g) => g instanceof Geo))];
+    const tris = geos.reduce((n, g) => n + g.count / 3, 0);
+    assert.ok(tris > 500 && tris <= most, `${tier}: ${tris} triangles (at most ${most})`);
+    for (const g of geos) {
+      for (let v = 0; v < g.count; v++) {
+        const [x, y, z] = [g.pos[v * 3], g.pos[v * 3 + 1], g.pos[v * 3 + 2]];
+        assert.ok(x >= C.x0 + G.lining && x <= C.x1 - G.lining && z >= G.wall + G.thick && z <= C.z1 - 20 && y >= lane.GROUND - 0.01 && y <= G.under, `${tier}: in the room (${x}, ${y}, ${z})`);
+        if (y < ROOM.tube.y) assert.ok(x < 1700 || x > 2380 || z < 2010 || z > 2370, `${tier}: the room's middle free (${x}, ${y}, ${z})`);
+        // (Every colour under its tint: the room's light, at most 1.)
+        for (let c = 0; c < 3; c++) assert.ok(g.col[v * 3 + c] <= 1.0001, `${tier}: lit no brighter than its tint`);
+      }
+    }
+    // The diffuser: white in drl (gloss on low), under the tube's housing.
+    const d = kit.drl;
+    let glow = 0;
+    for (let v = 0; v < d.count; v++) if (d.col[v * 3] > 0.99 && Math.abs(d.pos[v * 3 + 2] - ROOM.tube.z) < 6) glow++;
+    assert.ok(glow >= 24, `${tier}: the tube's diffuser glows (${glow})`);
+  }
+  // In the detail: drawn before the dad's car in every mesh they share (its hide range intact).
+  const at = high.hide.dad_ev;
+  assert.ok(at && Object.keys(at).length > 3, 'the dad\'s car still hideable');
 });

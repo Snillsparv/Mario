@@ -159,9 +159,21 @@ there shows the real street through the retro TV.
   the ridge. Or jump right at the front wall to grab the eaves, or climb the little red-leaf tree
   in the flower bed on the corner, stand on your hands on its top and flip onto the roof. The cars on the drive
   make steps too: onto the blue car's bonnet, its roof, then the carport.
-* 50 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
+* 55 coins: down the path, on the mailbox's roof, along the street, round the turning area, along
   the villas' walls and up their steps, up a drive and a side yard, on the motorhome's roof (a
-  double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof.
+  double jump), round the junction's lamppost, along a hedge top, on the carport and up the roof,
+  and five in the store room behind the garage doors.
+* **The garage doors** behind the two cars look just like the real ones: dark brown boards, a red
+  door you can see between the cars, a red strip with a grey drainpipe, brown double doors with a
+  little blank sign, a yellow strip, all under the flat roof's deep dark edge. **Kick them to
+  pieces**: punch a door once and it cracks and rattles, punch again (or kick, jump kick, ground
+  pound, dive or slide into it) and it bursts into planks that fly, tumble, land and vanish in a
+  puff. Behind them is the dad's store room, dim under a fluorescent tube: a workbench with tools
+  on the wall, shelves of boxes and paint tins, winter tyres, a lawn mower, a bike and garden
+  tools, five coins and a **1-up** over the workbench. Inside, the camera moves into the room
+  with you. The doors are whole again whenever Jonas comes back to the street, loses a life or
+  starts a new game (never while he is inside). The robot never breaks them, but its stomps
+  rattle them, and it cannot reach you in the store room.
 * The dad's car is not just a car: stand beside it on the drive for a moment, or bump into it,
   and it blinks its lights, rises on its wheels and **stands up into STOMPWATT**, a big cheeky
   robot made of its own panels (its front is its face, its doors its shoulder pads and shin
@@ -181,7 +193,8 @@ there shows the real street through the retro TV.
   each round it gets a little faster. After three hits it fizzles out, folds back into the car,
   reverses into its parking spot and a **star** rises in front of it (a small jump reaches it;
   you stay in the street). It stays a friendly parked car for the rest of the game. A hit from it
-  costs one health wedge; walk away (or climb up on the bins or the carport) and it waits, then
+  costs one health wedge; walk away (or climb up on the bins or the carport, or hide in the store
+  room behind a broken garage door) and it waits, then
   parks itself again, keeping its lost lights for next time. Its eyes (the car's T-shaped lights)
   show how it feels: narrowed and angry when it attacks, droopy when its battery is low,
   spinning when it is dizzy after a hit.
@@ -194,8 +207,8 @@ there shows the real street through the retro TV.
   face it and press **attack** to grab it, then pull it out (stick back) or push it along (stick
   forward); attack, crouch or jump lets go. Running at a bin, a quick attack is a punch (the bin
   rocks and its lid clacks); hold attack for a moment to grab it anyway. They rumble as they
-  roll, stay on the drive, and roll back home by themselves when left (and whenever Jonas
-  comes back into the street).
+  roll, stay on the drive (they never block a garage door), and roll back home by themselves
+  when left (and whenever Jonas comes back into the street).
 * Every lamppost in the street, the three flagpoles and the red-leaf tree can be climbed: a
   handstand on top shows the lane.
 * Up the steps at the turning area there is a **trampoline** in a garden: jump onto it and keep

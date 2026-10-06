@@ -106,6 +106,7 @@ const TINT = {
   flags: 0xd8d4cc,
   railing: 0x2a2a2a,
   patio: 0xa8a6a0,
+  floor: 0x9a9890, // (the store room's concrete)
 };
 
 const UP = [0, 1, 0];
@@ -189,7 +190,7 @@ export function* laneSteps(layout, { look = 'classic', materials = null, replace
     yield;
   }
   link(kit, layout.LINK);
-  carport(kit, layout.CARPORT);
+  carport(kit, layout.CARPORT, layout.GARAGE);
   const leaf = frontDoor(kit, layout);
   yield;
   yield* propsSteps(kit, layout);
@@ -320,6 +321,9 @@ function lanePart(kit, group, wave, door, movers, hide, layout) {
     colliders,
     movers,
     hide,
+    // The store room's leaves as pieces (houses.js carport: each board's vertex ranges in the
+    // meshes its builders became; the lane's chunk throws them: objects/laneBoss/LaneGarage.js).
+    garage: kit.garage,
     // A car with an id (the dad's) drawn in its own frame into `paint` (a GeoBuilder), telling
     // mark(zone) each part of the drawing (lane/props.js dadCar: the lane's boss's pieces), and the
     // classic look's bake (what lights it: the boss lights its robot the same way).
@@ -395,8 +399,9 @@ const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 
 // The hard surfaces a step up at GROUND (each its outline, builder, tint and shade): the
 // pavement, the drives and the notches' cobbles, the dad's grass-paver path, his drive (darker
-// under the carport) and the link's, the drive east of the turning area to the double garage,
-// the north-west villa's flagstones, the footpath, the dad's patio.
+// under the carport's edge, the store room's concrete floor behind its door wall) and the
+// link's, the drive east of the turning area to the double garage, the north-west villa's
+// flagstones, the footpath, the dad's patio.
 function hardSurfaces(L, road) {
   const out = [];
   const add = (outline, mat, tint, shade = 1) => {
@@ -413,7 +418,8 @@ function hardSurfaces(L, road) {
   }
   add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', TINT.path);
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', TINT.drive);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.CARPORT.z1), 'asphalt', TINT.drive, CARPORT_SHADE);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.GARAGE.wall), 'asphalt', TINT.drive, CARPORT_SHADE);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', TINT.floor, 0.4);
   add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', TINT.drive);
   add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', TINT.patio);
   add(rectOf(L.TURN.x + 800, L.EAST_GARAGE.cx - L.EAST_GARAGE.d / 2, L.EAST_GARAGE.cz - L.EAST_GARAGE.w / 2, L.EAST_GARAGE.cz + L.EAST_GARAGE.w / 2), 'asphalt', TINT.drive);

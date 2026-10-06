@@ -1,6 +1,7 @@
 // The lane's lazy chunk's numbers (objects/laneBoss/*): the movable bins (BINS_TUNING; the
 // player's side of the grab is player/physics/tuning.js BIN_*) and STOMPWATT, the dad's car
-// standing up into a robot (BOSS: LaneBoss.js; its rig and poses are rig.js).
+// standing up into a robot (BOSS: LaneBoss.js; its rig and poses are rig.js). (The store room's
+// doors' numbers are LaneGarage.js's own: module constants, inlined by the minifier.)
 //
 //   PUSH        a bin pushed by Jonas walking into it slides this far a tick (the Player's own
 //               WALL_PUSH_SPEED: he keeps pace with it, his `push` anim showing)

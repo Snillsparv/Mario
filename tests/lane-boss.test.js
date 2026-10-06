@@ -288,7 +288,8 @@ test('it wakes when he stays near it on the drive (the dwell) and blinks at him 
   assert.ok(woke + 3 >= LANE_BOSS.wake.dwell - 3 && woke + 3 <= LANE_BOSS.wake.dwell + 1, `woke after ${woke + 3} ticks`);
   assert.equal(boss.cinematic, true, 'the intro holds him');
   assert.equal(h.om.cinematic, true);
-  assert.equal(h.om.cameraOverlay, boss.camera);
+  // (The lane's overlay: the boss's camera, then the store room's: D1's laneOverlay.)
+  assert.ok(h.om.cameraOverlay === h.om.lane.camera && h.om.cameraOverlay.list[0] === boss.camera, 'the lane\'s overlay runs the boss\'s camera first');
   assert.notEqual(colliderNow(), COLLIDER, 'the car\'s collider parked');
   assert.ok(roofAt() < 30, 'no car to stand on');
   let held = 0;

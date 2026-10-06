@@ -55,7 +55,7 @@ import { heroInvincible } from '../Minions.js';
 import { TINT } from '../Sparkles.js';
 import { BlobShadows } from '../BlobShadows.js';
 import { BOSS } from './tuning.js';
-import { BONE, STEP_UP, ATTACH, arrive, unfold, footLift } from './rig.js';
+import { BONE, STEP_UP, ATTACH, arrive, unfold, footLift, smooth, wrap } from './rig.js';
 import { N, INDEX, POSE } from './poses.js';
 import { RobotModel, classicCar } from './model.js';
 import { LaneBossCam } from './camera.js';
@@ -63,8 +63,6 @@ import { FIGHT_METHODS, FIGHTING } from './fight.js';
 import { BOSS_CARD } from '../../ui/hudLogic.js';
 
 const MOVERS = Object.keys(ATTACH);
-const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
-const wrap = (a) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
 // Cheap deterministic noise in 0 .. 1 (as the critters').
 const noise = (n) => {
   const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -135,6 +133,7 @@ export class LaneBoss {
     this.blobs.mesh.name = 'lane-boss-shadows';
     this.group.add(this.blobs.mesh);
     this.camera = new LaneBossCam(area.collision);
+    this.garage = null; // the store room's doors (index.js: its `in`, Jonas in the room: out of reach)
     this.prev = makeState();
     this.cur = makeState();
     this.draw = makeState();

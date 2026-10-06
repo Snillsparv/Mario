@@ -34,10 +34,12 @@
 //   attachLane(chunk, area, opts?) Sparrow Lane's lazy chunk (objects/laneBoss/index.js) attached
 //                                  (core/AreaSwitch.js; tests): .lane, .bins (LaneBins.js: the
 //                                  movable bins), .laneBoss (LaneBoss.js: STOMPWATT, the dad's car
-//                                  as a robot), null until then
+//                                  as a robot), .garage (LaneGarage.js: the store room's doors,
+//                                  kicked to pieces), null until then
 //   cinematic                      the lane's boss holds Jonas (its intro: main passes a neutral
 //                                  controller meanwhile)
-//   cameraOverlay                  the lane's boss's camera (main hands it to the camera), or null
+//   cameraOverlay                  the lane's camera overlay (the boss's, then the store room's:
+//                                  main hands it to the camera), or null
 //   setLook(part | null)           the area's realistic part shown (Area.showReal) or not
 //   trampolines                    the course's trampolines (Trampoline.js), or null without
 //                                  layout.TRAMPOLINES
@@ -216,6 +218,7 @@ export class ObjectManager {
     this.lane = null;
     this.bins = null;
     this.laneBoss = null;
+    this.garage = null; // (the store room's doors: LaneGarage.js)
     this.look = null; // the area's realistic part while shown (setLook)
     this.view = view; // (the lane's boss warms its programs ahead)
 
@@ -416,6 +419,7 @@ export class ObjectManager {
     this.critters?.reset(); // every critter home, the defeated back
     this.bins?.reset(); // (the lane's bins home)
     this.laneBoss?.reset(); // (the dad's car parked, its first wake's intro again)
+    this.garage?.reset(); // (the store room's doors whole, its 1-up back)
     for (let i = 0; i < this.doors.length; i++) this.doors[i].reset();
     this.hero.valid = false;
     this.dialogOpen = false;
@@ -432,8 +436,10 @@ export class ObjectManager {
     this.lane = chunk.attach(this, area, opts);
     this.bins = this.lane.bins ?? null;
     this.laneBoss = this.lane.boss ?? null;
+    this.garage = this.lane.garage ?? null;
     this.bins?.setLook(this.look);
     this.laneBoss?.setLook(this.look);
+    this.garage?.setLook(this.look);
     return this.lane;
   }
 
@@ -443,7 +449,7 @@ export class ObjectManager {
   }
 
   get cameraOverlay() {
-    return this.laneBoss !== null ? this.laneBoss.camera : null;
+    return this.lane?.camera ?? null;
   }
 
   // The area's realistic part shown (world/area.js Area.showReal), or null: what the lane's
@@ -452,6 +458,7 @@ export class ObjectManager {
     this.look = part;
     this.bins?.setLook(part);
     this.laneBoss?.setLook(part);
+    this.garage?.setLook(part);
   }
 
   // The hero was just placed in this area (a warp, or back from another one): last tick's
@@ -464,6 +471,7 @@ export class ObjectManager {
     this.critters?.reset();
     this.bins?.sendHome();
     this.laneBoss?.enter();
+    this.garage?.enter(player);
     for (let i = 0; i < this.doors.length; i++) {
       const door = this.doors[i];
       if (door.near(player)) door.disarm();
@@ -519,6 +527,8 @@ export class ObjectManager {
     if (this.bins !== null && player !== NOBODY) this.bins.update(player, this.tick, this.cameraYaw);
     // The lane's boss (after his tick and the bins').
     if (this.laneBoss !== null && player !== NOBODY) this.laneBoss.update(player, this.tick, this.dialogOpen || this.warping);
+    // The store room's doors (after the boss: its slams rattle them).
+    if (this.garage !== null && player !== NOBODY) this.garage.update(player, this.tick);
     if (this.beast !== null) {
       if (player !== NOBODY && player.tailGrip !== this.beast.grip) player.tailGrip = this.beast.grip;
       this.beast.update(player, this.tick);
@@ -663,6 +673,7 @@ export class ObjectManager {
     if (this.critters !== null) this.critters.animate(alpha, clock);
     if (this.bins !== null) this.bins.animate(alpha);
     if (this.laneBoss !== null) this.laneBoss.animate(alpha, clock, camera);
+    if (this.garage !== null) this.garage.animate(alpha, clock);
     if (this.beast !== null) {
       this.beast.animate(alpha, clock, camera);
       this.fireballs.animate(alpha, clock);

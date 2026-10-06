@@ -8,9 +8,11 @@ import glslMinify from './tools/glslMinify.js';
 const BASE = './';
 const TARGET = 'es2022';
 // The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.69 MB minified (1,691,039 bytes with
+// first frame, so splitting would only add requests. ~1.70 MB minified (1,691,039 bytes with
 // B2's STOMPWATT hooks and three's skinning, B3's fight hooks and B4's robot line on the pause
-// screen), ~550 kB gzipped, plus two
+// screen; 1,696,005 with R fixes' kerbs, bed and sign; ~1,698.6k with D1's garage doors: the
+// door wall, its leaves as pieces, the store room's shell and colliders, the hooks), ~557 kB
+// gzipped, plus two
 // lazily loaded chunks and two
 // module workers of its own (new Worker(new
 // URL(...)), not imports): the ~13 kB title-logo worker and the realistic look's
@@ -21,12 +23,15 @@ const TARGET = 'es2022';
 // realistic look's main-thread code the boot does not need (its materials, sky, probe, far
 // shadow, post chain and output pass); it imports only from main (three.js and the classic
 // builders are not downloaded twice) and stays under 90 kB; with no modulepreload (below) the
-// game's index.html still loads main alone. The second chunk, `laneBoss` (~89 kB: objects/
+// game's index.html still loads main alone. The second chunk, `laneBoss` (~102 kB: objects/
 // laneBoss/index.js, imported only dynamically by objects/laneBoss/area.js, at boot), is
-// Sparrow Lane's movers (the movable bins) and its boss, STOMPWATT, with its fight, sounds and
-// music: the same rules, under
-// 90 kB, importing only from main (Rolldown names it after its index.js's folder; it must not
-// import world/lane/props.js, or Rolldown splits main into a common chunk). The size warning was 1600 (1,584,238 bytes before
+// Sparrow Lane's movers (the movable bins), its boss, STOMPWATT, with its fight, sounds and
+// music, and D1's garage doors (their breaking, the store room's classic things, its camera):
+// the same rules, importing only from main, under 100 KiB (raised from 90 KiB for D1: it is "what
+// moves in the dad's drive", prefetched at boot, never in the first frame's way, and main is the
+// scarce budget; a third chunk would cost main its loader) (Rolldown names it after its
+// index.js's folder; it must not import world/lane/props.js, or Rolldown splits main into a
+// common chunk). The size warning was 1600 (1,584,238 bytes before
 // it); raised to 1700 for the second course, Sparrow Lane (world/lane/*, about 60 kB with its
 // details; its realistic look's renderer side about 47 kB more, until G1 moved most of it into
 // the lazy chunk): the hard budget (1,700,000 bytes) is the limit. Growth goes into the worker

@@ -64,7 +64,7 @@ test('the bins\' colliders are the static build\'s, named, and moved in place st
   assert.equal(area.named.dad_ev.surfaces.length, 20, 'the dad\'s car: its body and cabin');
   const h = hero(-500, 900, S);
   const b = h.bins.list[0];
-  for (const [x, z] of [[1900, 860], [2300, 620], [2350, 2300], [1750, 2400], [BINS[0].x, BINS[0].z]]) {
+  for (const [x, z] of [[1900, 860], [2300, 620], [1700, 1790], [1700, 1400], [BINS[0].x, BINS[0].z]]) {
     h.put(0, x, z);
     const fresh = buildArea(new THREE.Scene(), { ...AREA_DEFS.lane, layout: { ...lane, BINS: [{ x, z }, BINS[1]] } });
     const A = area.collision;

@@ -433,8 +433,9 @@ async function start() {
     if (state.dropHold > 0) {
       state.dropHold--; // Pip waits above the spawn; input is ignored
     } else {
-      // The camera withholds movement input while in first-person look mode.
-      player.update(cam.playerInput(controller), cam.getYaw());
+      // The camera withholds movement input while in first-person look mode. (An area's camera
+      // may hold the stick's frame through its cuts: the lane's store room, cam.overlay.moveYaw.)
+      player.update(cam.playerInput(controller), cam.overlay?.moveYaw ?? cam.getYaw());
     }
     if (player.action !== lastAction) {
       // Damage, death or a respawn can end a read early: take the box down with it.

@@ -171,7 +171,9 @@ export function footLift(hip, knee) {
 // A step while it turns on the spot (the stepping foot's side; `k` 0 .. 1 .. 0 over a step).
 export const STEP_UP = { hip: [-0.55, 0, 0], kn: [0.95, 0, 0], an: [-0.4, 0, 0] };
 
-const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+// (Shared by the chunk's modules: smoothstep 0 .. 1, an angle wrapped into -pi .. pi.)
+export const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+export const wrap = (a) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
 export const unfold = (m) => smooth((m - 0.22) / 0.62);
 export const grow = (m) => 0.02 + 0.98 * smooth(m / 0.32);
 export const rise = (m) => smooth((m - 0.08) / 0.62);

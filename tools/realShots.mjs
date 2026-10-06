@@ -17,7 +17,8 @@
 // red-leaf tree close up, villa: a villa up the hill close up, kerb and carclose: close-ups,
 // garage: the double garage's corner, balcony: north_3's balcony,
 // f-arrival (the walk out of the dad's door), f-west, f-cars, f-turn, hang, pole; R fixes: corner,
-// sign, lamptop (Jonas on a lamppost's cap); B1: ev37, ev36,
+// sign, lamptop (Jonas on a lamppost's cap); D1 (the garage doors): garage-37, garage-36,
+// garage-3, garage-strip, garage-crack, garage-fly, garage-lying, garage-out, garage-in; B1: ev37, ev36,
 // evfront, evside, evrear, evleft (the dad's car), bins-home, bins-pulled, bins-pushed,
 // bins-return; B2: morph-000 .. morph-100 (STOMPWATT, the lane's boss, posed by hand a quarter of
 // its transformation apart, from the street), robot-front, robot-q34, robot-back, robot-scale
@@ -90,6 +91,21 @@ const VIEWS = {
   evside: { pos: [2330, 250, 840], look: [1930, 105, 1420], fov: 46, hero: [-600, 22, 900, Math.PI] },
   evrear: { pos: [1700, 210, 2250], look: [1900, 110, 1600], fov: 42, hero: [-600, 22, 900, Math.PI] },
   evleft: { pos: [1430, 210, 1120], look: [1900, 140, 1480], fov: 46, hero: [-600, 22, 900, Math.PI] },
+  // The garage doors (D1): from the three reference photos' places (the drive's mouth, the
+  // drive's east side, the street corner; the photos themselves never in the repo), along the
+  // strip behind the cars; a leaf cracked (a jab: a board askew), the red door's boards flying 3
+  // ticks after a kick, lying 45 ticks after (every leaf smashed), the room through the broken
+  // doors from the drive, and Jonas walking in through the red door (the room camera, the game's
+  // own).
+  'garage-37': { pos: [2120, 235, 220], look: [2060, 120, 1500], fov: 50, hero: [-600, 22, 900, Math.PI] },
+  'garage-36': { pos: [2560, 235, 330], look: [1820, 110, 1500], fov: 50, hero: [-600, 22, 900, Math.PI] },
+  'garage-3': { pos: [1380, 225, 120], look: [2350, 140, 1800], fov: 55, hero: [-600, 22, 900, Math.PI] },
+  'garage-strip': { pos: [2440, 190, 1830], look: [1800, 140, 1960], fov: 62, hero: [-600, 22, 900, Math.PI] },
+  'garage-crack': { garage: { smash: [1], crack: true, ticks: 2 }, pos: [2160, 190, 1640], look: [2085, 150, 1955], fov: 55, hero: [-600, 22, 900, Math.PI] },
+  'garage-fly': { garage: { smash: [1], ticks: 3 }, pos: [2160, 190, 1640], look: [2085, 150, 1955], fov: 55, hero: [-600, 22, 900, Math.PI] },
+  'garage-lying': { garage: { smash: [0, 1, 2, 3], ticks: 45 }, pos: [2090, 220, 1500], look: [2090, 120, 2400], fov: 55, hero: [-600, 22, 900, Math.PI] },
+  'garage-out': { garage: { smash: [0, 1, 2, 3], ticks: 120 }, pos: [2090, 220, 1500], look: [2090, 120, 2400], fov: 55, hero: [-600, 22, 900, Math.PI] },
+  'garage-in': { garage: { smash: [1], walk: 30, ticks: 12 }, hero: [2085, 22, 1880, 0] },
   // The bins (B1): at home; Jonas holding one he has pulled out onto the drive; pushing one.
   'bins-home': { pos: [1705, 330, 1190], look: [1665, 110, 1660], fov: 50, hero: [1700, 22, 1000, Math.PI] },
   'bins-pulled': { bins: { hero: [1665, 22, 1480, 0], pull: 45 }, pos: [1420, 240, 960], look: [1690, 110, 1330], fov: 45 },
@@ -314,6 +330,25 @@ try {
             g.player.setAction('idle');
             g.camera.reset(g.player);
             g.step(v.grab ? 2 : 5);
+          }
+          if (v.garage) {
+            // (The garage doors, D1: every leaf whole, then `smash` leaves cracked by a jab or
+            // smashed by a kick from the drive's side, `ticks` later; `walk`: Jonas on into the room
+            // through the red door, the game's own camera.)
+            const { garage } = await g.laneBoss;
+            const G = v.garage;
+            garage.enter({ pos: { x: 1e7, y: 0, z: 1e7 } });
+            for (const k of G.smash) {
+              const l = garage.leaves[k];
+              const x = (l.x0 + l.x1) / 2 + 15;
+              garage._hit(l, { x, y: l.y0 + 100, z: l.z0 - 20, radius: 60, kind: G.crack ? 'punch1' : 'kick' }, { x, y: l.y0, z: l.z0 - 80 });
+            }
+            if (G.walk) g.step(G.walk, { stickY: 1 });
+            g.step(G.ticks);
+            if (G.walk) {
+              g.render();
+              return info();
+            }
           }
           if (v.knock) {
             // (Running at the first bin, a quick B: a punch, the bin rocking.)

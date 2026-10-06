@@ -26,9 +26,9 @@
 // its slot (`reverse`), settles and stays a car, tame, until a new game (`tame`); its reward
 // star (BossStar, boss: true) spirals up in front of it.
 // He out of its reach (away: reading, on a pole, a dialog or a warp; perched on the bins, the
-// carport or a roof; out of the arena) it starts nothing and watches him (`watch`); WATCH ticks
-// of that, or a lost life, and it goes home (`home`: walks to its spot, folds back, parks),
-// keeping its hits.
+// carport or a roof; in the store room behind the garage doors; out of the arena) it starts
+// nothing and watches him (`watch`); WATCH ticks of that, or a lost life, and it goes home
+// (`home`: walks to its spot, folds back, parks), keeping its hits.
 //
 // Fairness (R1-R8, docs): only the stomp's foot and wave, the dash's body and the swipe's fist
 // hurt, one wedge an attack at most; every attack told FIGHT.PHASES[..].tell ticks (>= 22),
@@ -48,12 +48,10 @@ import { PLAYER_RADIUS } from '../../core/constants.js';
 import { TINT } from '../Sparkles.js';
 import { BossStar } from '../BossStar.js';
 import { FIGHT as F, BOSS } from './tuning.js';
-import { BONE, KNEEL_DROP, WALK, footLift } from './rig.js';
+import { BONE, KNEEL_DROP, WALK, footLift, smooth, wrap } from './rig.js';
 import { INDEX, POSE } from './poses.js';
 import { Markers, Cable } from './markers.js';
 
-const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
-const wrap = (a) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
 const GRID = 50; // (the ground's height grid over the arena)
 // States in which it stands up as a robot and fights (the fight's camera, his bump on its body).
 export const FIGHTING = { stand: 1, walk: 1, watch: 1, stomp_tell: 1, stomp_hop: 1, stomp_land: 1, dash_tell: 1, dash: 1, dash_skid: 1, dash_bonk: 1, swipe_tell: 1, swipe: 1, gap: 1, low: 1, kneel: 1, plug: 1, open: 1, zapped: 1, dizzy: 1, unplug: 1, shortout: 1 };
@@ -195,7 +193,8 @@ export const FIGHT_METHODS = {
     const az = p.z - this.arena.z;
     const R = this.arena.r + F.OUT;
     this.perched = this.heroFloorY - this._ground(p.x, p.z) > F.PERCH;
-    this.outside = ax * ax + az * az > R * R || this.perched;
+    // (In the store room behind the garage doors he is out of its reach too.)
+    this.outside = ax * ax + az * az > R * R || this.perched || (this.garage !== null && this.garage.in);
     this.gone = hold || this.awayAct;
     this.blinking = this.invincible;
   },

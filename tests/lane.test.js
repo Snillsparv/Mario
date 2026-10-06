@@ -386,7 +386,7 @@ test('the dad\'s house: its footprint, eaves at 412, its 20-degree roof up to th
   const C = lane.CARPORT;
   assert.equal(col.findFloor(2000 + O.x, 600, 2200 + O.z).y - O.y, C.top);
   const ceil = col.findCeil(2000 + O.x, GROUND + 10, 2200 + O.z).y - O.y;
-  assert.ok(ceil - GROUND >= 300 && ceil < C.top, `the room under the carport: ${ceil - GROUND}`);
+  assert.ok(ceil - GROUND >= 300 && ceil < C.top, `the store room under the carport: ${ceil - GROUND}`);
   // Every floor he can stand on (not too steep) has 300 or more over it, all over the course.
   const low = [];
   for (let x = -9000; x <= 8000; x += 100) {
@@ -408,8 +408,8 @@ test('the dad\'s house: its footprint, eaves at 412, its 20-degree roof up to th
   assert.deepEqual(low.slice(0, 10), [], `${low.length} spots`);
 });
 
-test('50 coins, each over a floor within 120; the star waits over the dad\'s ridge from the start, idle', () => {
-  assert.equal(lane.COINS.length, 50);
+test('55 coins (D1: five in the store room behind the garage doors), each over a floor within 120; the star waits over the dad\'s ridge from the start, idle', () => {
+  assert.equal(lane.COINS.length, 55);
   for (const c of lane.COINS) {
     const floor = col.findFloor(c.x + O.x, c.y + O.y, c.z + O.z, 0);
     assert.ok(floor.surface && c.y - (floor.y - O.y) <= 120 && c.y - (floor.y - O.y) >= 30, `coin at (${Math.round(c.x)}, ${Math.round(c.y)}, ${Math.round(c.z)}): floor ${floor.y - O.y}`);
@@ -567,7 +567,7 @@ for (const [label, prof] of CAMERAS) {
 test('privacy and originality: the course\'s sources name no one but Jonas on its signs, carry no house numbers or licence plates on them, and paint every texture in code (no image files)', () => {
   const dir = new URL('../src/world/lane/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'houses.js', 'layout.js', 'props.js', 'textures.js']);
+  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'garage.js', 'houses.js', 'layout.js', 'props.js', 'textures.js']);
   for (const f of files) {
     const src = readFileSync(new URL(f, dir), 'utf8');
     assert.ok(!/\.(png|jpe?g|webp|gif)\b/i.test(src), `${f}: no image files`);

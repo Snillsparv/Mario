@@ -384,3 +384,33 @@ test("the dad's cars: from the drive a hop onto the blue car's bonnet, another o
   h.rest();
   assert.ok(Math.abs(h.at().y - lane.CARPORT.top) < 1 && h.at().z > lane.CARPORT.z0, `on the carport: ${JSON.stringify(h.at())}`);
 });
+
+test('D1, the garage: from the street through the gap between the cars to the red door, B, B smashes it, in to the room\'s five coins and its 1-up, and out between the cars again; the double doors with one ground pound in the strip at their middle', async () => {
+  const chunk = await import('../src/objects/laneBoss/index.js');
+  const h = hero(2099, 0, 300, S);
+  h.om.attachLane(chunk, area);
+  h.om.laneBoss.armed = false;
+  const g = h.om.garage;
+  try {
+    h.walk([[2099, 1500], [2085, 1850]], 0.6);
+    h.rest(5);
+    for (let t = 0; t < 14; t++) h.tick({ B: t === 0 || t === 6 }, S);
+    assert.ok(g.leaves[1].broken, 'the red door smashed');
+    h.walk([[2085, 2250], [1800, 2250], [2380, 2250], [2090, 2470]], 0.6);
+    h.walk([[2090, 2560]], 0.4, 30);
+    assert.equal(h.coins(), 5, 'the room\'s five coins');
+    assert.equal(h.log.filter((e) => e.name === 'oneUp').length, 1, 'its 1-up');
+    h.walk([[2085, 2100], [2085, 1850], [2099, 1500], [2099, 300]], 0.6);
+    assert.ok(h.at().z < 400, `out to the street: ${JSON.stringify(h.at())}`);
+    assert.equal(h.coins(), 5);
+    // The double doors: one pound at their middle, from the strip.
+    g.enter({ pos: { x: 1e7, y: 0, z: 1e7 } });
+    h.p.teleport(2330 + O.x, GROUND + O.y, lane.GARAGE.wall - 90 + O.z, S);
+    h.p.setAction('idle');
+    h.rest(3);
+    for (let t = 0; t < 50; t++) h.tick({ A: t < 9, Z: t === 9 }, S);
+    assert.ok(g.leaves[2].broken && g.leaves[3].broken, 'both leaves');
+  } finally {
+    g.enter({ pos: { x: 1e7, y: 0, z: 1e7 } });
+  }
+});

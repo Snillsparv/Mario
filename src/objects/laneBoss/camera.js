@@ -28,6 +28,7 @@
 // the robot while it is more than NEAR off (the C buttons win).
 
 import * as THREE from 'three';
+import { smooth } from './rig.js';
 
 export const INTRO_CAM = {
   A: { at: [-180, 278, 995], look: [0, 138, 0] },
@@ -39,7 +40,6 @@ export const INTRO_CAM = {
 };
 export const FIGHT_CAM = { W: 0.6, RAISE: 90, BACK: 250, FAR: 1300, EASE: 0.06, TURN: 0.035, NUDGE: 0.012, NEAR: 250, CLEAR: 30 };
 
-const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 
 export class LaneBossCam {
   constructor(collision = null) {

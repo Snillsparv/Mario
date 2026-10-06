@@ -182,7 +182,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
-| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures; `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`, `clutter.js`, `hardware.js`) | WorldPart, built by `area.js` |
+| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures, `garage.js` (the store room's things' data: the lane's chunk and the worker only); `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`, `clutter.js`, `hardware.js`, `garage.js`) | WorldPart, built by `area.js` |
 | Realistic look | `src/render/real/*` (RealLook, OutputPass, sky, materials, probe, tier, RealAreas, textureStore, texCache, the worker `laneRealWorker.js`, `texgen/*`) | RealLook, RealAreas (see "Realistic look (Sparrow Lane)") |
 | Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
 | Trampolines | `src/objects/Trampoline.js` (the spring only: its course draws it) | Trampolines, built by ObjectManager (see "Objects") |
@@ -1648,8 +1648,11 @@ trees' leaves).
   lamp beside it, a low gable roof (20°) along u, 60 overhangs, TV antennas on three ridges
   (`ANTENNAS`, drawn only); south_west a glazed veranda on its west gable, a brown picket fence and a rail
   fence (slabs). The **link** (south_1 … the dad's, a block to its flat roof at 370) and the
-  **carport** (`CARPORT`, the dad's … south_2: its roof slab 345 … 370 on three posts, open toward
-  the drive, a back wall of yellow boards: 323 of room under it; wood underfoot).
+  **carport** (`CARPORT`, the dad's … south_2: its roof slab 345 … 370, its deep dark fascia hanging
+  to 280 along its front edge (a wall under the whole lip: the edge grabbed anywhere along it), and
+  under it, 150 behind the edge, the **store room's door wall** with the four garage doors as in
+  the photos (`GARAGE`, D1: see "The garage doors" below), the room behind it back to the old
+  back wall (880 × 660, 323 high, a concrete floor; wood underfoot), no posts).
   **east_garage** (a double garage
   facing the turning area: white render, a white board gable, two dark panel doors, a white brick
   pier) in front of east_house. Each house is one convex collider (its walls and its hipped or
@@ -1742,15 +1745,18 @@ trees' leaves).
 * **The star climb** (`STAR`: `lane_star` at (−250, 824, 1967.5), 180 over the ridge, placed):
   from the drive onto a bin, onto the carport's roof, a hop west lands on the roof's south-west
   slope anywhere along the carport's back half (walking into the gable gets him nowhere), up to
-  the ridge; or a standing jump within 100 of the front wall grabs the eave; or the red-leaf
+  the ridge (the carport's edge is also grabbed anywhere along its deep fascia, D1: a standing
+  jump from the strip behind the cars hangs from it); or a standing jump within 100 of the front
+  wall grabs the eave; or the red-leaf
   tree's handstand and a flip toward the house with the stick held 4 … 20 ticks. Every fall from
   the dad's roof is harmless.
-* **Coins** (`COINS`, 50, each at its floor + 60): down the path, on the mailbox's roof, along the
+* **Coins** (`COINS`, 55, each at its floor + 60): down the path, on the mailbox's roof, along the
   street both ways, round the turning area (7), along north_2's and north_3's wall tops, up
   north_3's steps, up north_4's drive, up the side yard between north_2 and north_3, on the
   motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
-  the bins, on the carport's roof and up the roof's south-west slope. The 1-up over the
-  trampoline; no red coins.
+  the bins, on the carport's roof and up the roof's south-west slope, and five in a row across the
+  store room behind the garage doors (D1). The 1-ups: over the trampoline, and the store room's
+  over its workbench (the lane's chunk's: "The garage doors"); no red coins.
 * **Signs** (`SIGNS`): `sparrow_mailbox` (`post: false`: the mailbox is the sign, no signpost is
   drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
   the junction facing up the lane, `lane_footpath` beside the blue sign, `trampoline` at the
@@ -1813,8 +1819,10 @@ trees' leaves).
   distance (its collider parked while held, back where it stands when he lets go; where it may
   not go he is held back); pulled, the drawn bin tips 15 degrees toward him onto its wheels. At
   home they are boxed in (the gable 10 behind them, each other, the car 48 in front): only a
-  pull from an end gets one out. **Leashed** to his drive and the room under the carport (never
-  the road, the lawns or a roof); 182 high, they never shut him in (a jump clears them). **Never
+  pull from an end gets one out. **Leashed** to his drive and the strip under the carport's front
+  edge (never the road, the lawns, a roof or the store room: `BIN_LEASH.z1 = GARAGE.wall - 110 -
+  BIN.z / 2`, a bin's back 110 short of the door wall, so it never stands in a doorway); 182 high,
+  they never shut him in (a jump clears them). **Never
   a softlock** (the star climb's first step is a bin at home): home at once on every arrival
   (`objects.enter`), lost life (the 'spawn' edge) and new game (`reset`); and by themselves: one
   left alone 12 s (`HOME_WAIT`) more than 40 from home, with Jonas 700 away, trundles home at 5 a
@@ -1840,6 +1848,73 @@ trees' leaves).
   the chunk's (`audio.js`, registered as it attaches, with or without the boss). (No separate
   lids: the bin is one instanced mesh in both looks; a flapping lid would need a mover of its
   own in main and the worker.)
+* **The garage doors** (D1: the dad's "fix the garage doors like in the real picture, but you
+  should be able to kick them to pieces easily"; `GARAGE` in `layout.js`, drawn and made solid by
+  `houses.js carport` in main, broken by `objects/laneBoss/LaneGarage.js` in the lane's lazy
+  chunk). **The wall** (photos 36, 37 and the street's view: the garage row under the flat roof's
+  deep dark fascia), its face at z 1950 under the roof's edge, 20 thick, up to the slab's
+  underside (345), west (the dad's gable) to east (south_2's): dark brown boards, a dark brown
+  door, dark brown boards, the **red door** (seen between the two cars from the drive's mouth, as
+  in photo 37), a red strip with a grey downpipe, the dark brown **double doors** (a small blank
+  sign high on the left leaf seen from the drive: a red rim round a pale plate, nothing on it), a
+  yellow strip. Each leaf 140 … 150 wide, 280 high under a 43 lintel, five vertical boards with a
+  groove between, two ledges behind, strap hinges on the hinge side, a black handle (not on the
+  passive double door); dark frame strips round each opening. Drawn by the classic builders for
+  **both looks** (boards in `kit.boards`, the hardware in `kit.paint`: classic `lane-boards` /
+  `lane-render`, realistic `lane-boards` / `lane-paint`): no draw call, no program of their own;
+  each board with its ledges and hardware is a **piece** whose vertex ranges `kit.garage.pieces`
+  records (`part.garage`: `{ leaf, at, parts: [{ b: 'boards' | 'paint', start, count }] }`, five a
+  leaf in order; each look's own ranges). The fixed spans and lintels are boxes in the boards
+  (their drive faces in their tints, the room's and the reveals in the lining's), walls only;
+  each leaf's collider a named box (`garage_0` … `garage_3`, `SolidBuilder.named`), walls only;
+  the deep fascia a wall from 280 to the roof's top (at 300 his air probes slipped under it and
+  the carport's hang failed); the props' colliders boxes to `propTop` 240, walls only (nothing to
+  stand on under the low ceiling; his feet reach 185 at most in there). **The store room**: 880 ×
+  660 × 323 under the slab, its walls lined with bare dark boards 10 in from the gables (the
+  realistic look's proud brick stays behind them), a filler closing the slit at the dad's back
+  corner, the old back wall's outside face, a concrete floor (the drive's surface split at the
+  wall: the floor `TINT.floor`, shade 0.4) and the soffit darker over it (0.3). **Breaking**: any
+  attack (`player.getAttack()`: the jab and the cross take 1 of the leaf's 2, anything else 2) on a
+  whole leaf's box, at most once per 8 ticks: the jab **cracks** it (it rattles 10 ticks, its board
+  nearest the hit stays askew 0.06 rad about its foot, leaning out toward him; splinters;
+  `door_crack`); the cross, the combo's kick, a jump kick, a ground pound (both double doors from
+  their middle), a dive through the gap between the cars at full speed or its belly slide, flying
+  or the cannon's shot **smash** it at once: its collider parked under the world (`moveSurfaces`,
+  dy only: no `cover`), its five boards thrown away from him (into the room from the drive, out
+  into the strip from inside), tumbling under gravity, kept in the room's or the strip's box,
+  bouncing once, lying down face up along where they point, sliding to a stop, shrinking away 2.5
+  s later with a puff (all gone ~95 ticks after the smash); `door_smash` (a thump and a crunch,
+  splinters ticking off, three plank tocks), three bursts of splinters in the leaf's wood colour,
+  `'bossImpact' { kind: 'door', strength: 0.15 }` (the camera's small kick); the room opens (the
+  classic room's mesh and the 1-up shown). The boards' vertices are rewritten from their rest
+  copies (`p = R (rest - at) s + at + offset`, normals turned), only the shown look's each frame
+  (one update range per attribute per mesh), the other brought up to date when shown (G mid-break
+  shows the same pose); nothing per tick or frame while nothing moves (no query, no write, no
+  allocation). **Coming back**: every leaf whole on an arrival (`objects.enter`), a lost life (the
+  `'spawn'` edge) and a new game, but one he is in the room for or stands within 120 of waits
+  until he is clear (`pending`): never shut in. Broken doors otherwise stay broken. **Inside**
+  (along the walls, each in its box of `GARAGE.props`, `world/lane/garage.js ROOM` naming them, no
+  brand, label or letter anywhere): a workbench under a tool board (hammer, saw, spanners,
+  pliers, a coiled cable), steel shelving (boxes, paint tins, a red jerry can and toolbox, pots),
+  four winter tyres, moving boxes, a green lawn mower, a blue bike leaning on the wall, a rake, a
+  spade and a broom, a fluorescent tube under the slab; classic: `objects/laneBoss/garageRoom.js`'s
+  one baked mesh `lane-garage-room` in render's material (shown only while a leaf is broken: +1
+  draw call then); realistic: the worker's `real/garage.js` into the detail's existing materials
+  (the tube's diffuser in `drl`: it glows and blooms; `gloss` on low). Its light is painted into
+  the vertex tints in both looks (`roomLight`: 0.12 + a pool under the tube + the doorways'
+  daylight): the sky's light is not occluded indoors, and a light object would change every lit
+  material's program. **The reward**: five coins (`COINS`) and a 1-up over the workbench (the
+  chunk's own `OneUp`, shown while a leaf is broken, not while STOMPWATT fights him outside the
+  room; once a game). **The room camera** (`objects/laneBoss/garageCam.js`): while his feet are in
+  the room it sits in it on a circle of 330 round the room's middle, on the far side from him,
+  300 high (45 under the slab, 60 over the props' colliders), in front of the bench and the
+  shelves, looking at his chest; it blends in over 6 ticks, or cuts in when a wall stands between
+  the follow camera and it; out again it blends out over 8, or cuts back with the follow camera
+  set on the drive's side of him; the C buttons turn its circle; first person untouched; the
+  lane's overlay (`laneOverlay`) runs the boss's camera, then this one. **STOMPWATT** never breaks
+  a door; its slams (`'bossImpact'` stomp or land, 0.3 or more) rattle the whole leaves within 700
+  (`door_rattle`, pitch 0.8); Jonas in the room is out of its reach (`fight.js`: as perched).
+  Without the chunk the doors stand shut and solid. Numbers: `LaneGarage.js`'s module constants.
 * **Meshes** (15): `lane-asphalt`, `-grass` (also the bank), `-blocks` (masonry: the terraces'
   walls, the steps, the kerbs, the corner bed's stones), `-brick` (the castle's stone bricks
   tinted: the villas' upper floors, the white brick plinths and gable ends), `-render` (white
@@ -1851,7 +1926,9 @@ trees' leaves).
   flagstone texture: the notches' cobbles, the north-west villa's flagstones, the patio, the
   flower beds' soil), `-leaves`, `-wood` (trunks), `-cloth` (the skerries' sailcloth, both faces:
   the flags, waving), `-signs` and `-door` (the dad's door's leaf, render's material), and the movers:
-  `lane-bins` (the bins, instanced) and `lane-cable` (the charger's cable). The part's
+  `lane-bins` (the bins, instanced) and `lane-cable` (the charger's cable). The garage doors'
+  boards are in `lane-boards` and their hardware in `lane-render` (`part.garage`: their ranges);
+  the lane's chunk adds `lane-garage-room` (the store room's things) once a door breaks. The part's
   `update(time)` waves the flags. ~22k triangles, ~1.7k collider triangles (stone, grass, wood;
   the steps `not_slippery`), built in ~200–300 ms in node; the course's objects (coins,
   sparkles, shadows, the star, the 1-up, butterflies, birds) within 9 meshes; 36 … 39 draw
@@ -1880,7 +1957,7 @@ trees' leaves).
   after the walk-in, the star in the picture, the respawn drop onto the path unhurt), no water and
   a floor everywhere inside the boundary, spam from 14 spots and long jumps off the ridge and L1's
   top never leaving it, the dad's house as measured (its slopes raycast at 18 points, the eaves,
-  the carport's roof and the room under it), no floor under a ceiling lower than 300 anywhere,
+  the carport's roof and the store room under it), no floor under a ceiling lower than 300 anywhere,
   every coin over a floor, the star, every sign read from in front only (the mailbox with no
   signpost), the eleven poles (every lamppost among them) grabbed from every open side with the
   camera swinging to `camYaw`, climbed to the top and
@@ -1907,13 +1984,31 @@ trees' leaves).
   (the bins with the chunk attached and the real Player: their moved colliders exact, pushes,
   grabs from each side and the refusals, dragging, blocked, every way of letting go, home on
   arrival, lost life, new game and by themselves, both looks' instances, the star climb from
-  them at home and from one under the carport's edge, idle costing nothing; B4 the feel: running
+  them at home and from one under the carport's edge (D1: its deep fascia a wall under the whole
+  lip), idle costing nothing; B4 the feel: running
   at one a quick B punches it, rocking, clacking, staying put; held it grabs, never the press that
   let go; standing or pushing a press grabs at once; rolling it rumbles, stopping it clacks; a
   pound beside it rocks it harder); `tests/player-bin.test.js` (the grab's conditions, the mittens on the face at full size and at
   0.85); `tests/lane-bins-browser.test.js` (E2E, classic and high: the touch B grabs, the pull
   and the push, both looks' instances, walked into, home again); `tests/lane-boss.test.js` and
   `tests/lane-boss-fight.test.js`, `tests/lane-boss-browser.test.js` (STOMPWATT: see there);
+  `tests/lane-garage.test.js` (D1, the chunk attached, the real Player: the wall tiled west to
+  east, the red door between the cars from the drive, the coins and the 1-up inside, the bins and
+  STOMPWATT short of the wall; each leaf's collider named, parked when smashed (its neighbours
+  untouched), back exactly; walls only; the piece table in both looks; every attack on every
+  leaf (the jab cracks, the cross and the rest smash, a pound at the double doors' middle both, a
+  dive through the gap between the cars and its belly slide, flying and the cannon's shot stubbed,
+  one hit per 8 ticks, walking into one nothing); the smash's sound, splinters, kick, the room
+  opened; the boards in their boxes, lying flat, gone; both looks written alike, deterministic;
+  walking in through each doorway, the five coins, the 1-up once; nothing taken through a shut
+  door; coming back (arrival, lost life, new game, pending while he is in); never shut in; STOMPWATT
+  (rattles, out of reach in the room, a lost life mid-fight, the 1-up hidden in its fight); the
+  room camera (in the room, his chest in sight, handing back); the sounds, the light, the hot
+  paths); `tests/lane-garage-browser.test.js` (E2E: classic and high, six attacks, in through the
+  red door with the room camera, coins and 1-up, out, whole after the hall, G mid-flight; every
+  tier's budgets at the drive (whole, one broken), boards flying, inside, and through STOMPWATT's
+  first round with a door broken); `tests/lane-routes.test.js`'s garage route; `tests/lane-real-
+  geometry.test.js`'s store room;
   `tests/brands.test.js` (the
   repo's text names no car maker, model or marketing term, no robot franchise or toy maker:
   hashed words and pairs, the plain list kept outside the repo);
@@ -2139,13 +2234,19 @@ skinning classes).
   or a roof (his floor more than 60 over the drive: it watches him); R8 three hits win, each
   dropping three coins (a wedge each back). A whole fight is about one and a half to three
   minutes (the scripted fight: ~80 s).
-* **Out of its reach** (away, perched, or beyond the arena, `LANE_BOSS.arena` r 1350 + 200, from
-  its middle) it starts nothing and watches him (`watch`: facing him, hands on its hips, a foot
+* **Out of its reach** (away, perched, in the store room behind the garage doors (D1:
+  `garage.in`, so the room is a refuge and a wave never hurts him through a wall), or beyond the
+  arena, `LANE_BOSS.arena` r 1350 + 200, from its middle) it starts nothing and watches him (`watch`: facing him, hands on its hips, a foot
   tapping); 10 s of that (`WATCH`), or a lost life, and it **goes home** (`home`: it walks to its
   spot, turns to the car's heading, shoos him off its spot, folds back and parks; its hits
   kept, `'laneBoss' { phase: 'home' }`): a later (quick) wake goes on at its phase. An arrival
   (`objects.enter`) parks it at once (tame if beaten; nothing left out: markers, wave, cable,
   hatch); a new game (`objects.reset`) too, unbeaten, its lights all on, its intro back.
+* **The garage doors** (D1): it never breaks one (its walking ground ends 290 short of the door
+  wall; none of its attacks is tested against them); its slams (stomps and landings, 0.3 or more)
+  rattle the whole leaves within 700, with one `door_rattle`; a lost life brings the doors back as
+  it sends the bins and the robot home. Going to the doors wakes it as before (they are right
+  behind the dad's car).
 * **He cannot walk through it**: his feet are pushed out of its feet and body (`BUMP`; kneeling,
   its body and its right shin behind it; the car rising or reversing, its footprint), never
   into a wall (`findWalls` after a push).
@@ -2440,8 +2541,13 @@ whirling round high over the castle); on `'bossThrown'` it chases the beast alon
 starts to rise, then hands back to the orbit. Nothing changes while `w` is 0.
 
 An area's own camera (`cam.overlay`: main sets it each tick from the current area's objects,
-`objects.cameraOverlay`; Sparrow Lane's boss's intro shot and its fight's framing, `objects/
-laneBoss/camera.js LaneBossCam`) is blended over the orbit the same way, right after the boss
+`objects.cameraOverlay`; Sparrow Lane's: the lane's chunk's composite, `garageCam.js
+laneOverlay`, running the boss's intro shot and its fight's framing, `objects/laneBoss/camera.js
+LaneBossCam`, then D1's store room camera, `GarageCam`, which wins inside the room and may cut:
+`cam.cut`; and it may hold the stick's frame through its cuts, `overlay.moveYaw`, which main
+moves Jonas by instead of `cam.getYaw()` while it is set: latched as the stick is pushed from rest
+in the room or held through a hand-over, so a held stick walks on in instead of being turned
+round) is blended over the orbit the same way, right after the boss
 cam (`overlay.update(cam, hero)`, its own weights; `overlay.reset()` on a cut: `cam.reset`); the
 fight's also nudges the orbit's yaw a little a tick (`cam.yaw`, as the pole swing does; not while
 a C-button turn runs, `cam.tween`). Not in first person or the intro.
@@ -2802,6 +2908,16 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   handles, the dad's outdoor socket, hose reel and two pot plants on his inner sills; the villas'
   door lamps, garage door seals and a satellite dish on north_2; the terraces' walls' coping
   stones, 4 proud with joints.
+* `garage.js` (D1): the store room's things behind the garage doors (`garageRoom(kit, L)`, before
+  the cars: the dad's car stays last in every mesh it shares), each inside its box of
+  `GARAGE.props` (`world/lane/garage.js ROOM`, shared with the lane's chunk, never main): the
+  workbench (its top and the tool board in `boards`), its vice and tools, the steel shelving and
+  what stands on it, four winter tyres on their rims, moving boxes, the lawn mower, the bike
+  (its wheels rings of short tubes, spokes on high and mid), garden tools, the fluorescent tube
+  (its diffuser in `drl`: emissive, it blooms; `gloss` on low), into the detail's existing
+  materials (no draw call of its own); the room's light painted onto their tints (`roomLight`).
+  Per tier ~2.4k / 2.0k / 1.45k triangles (high 12-sided round things and 8 spokes a wheel, mid 8
+  and 4, low 6, no spokes, no tools on the board, fewer tins).
 * `grass.js`: the **grass**: one clump of blades (`grassClump`: 4 blades of 3 segments on high,
   3 of 2 on mid, none on low) instanced over a 128 × 128 grid of 12-unit cells (80 × 80 on mid)
   that follows the camera (centred ahead of it, snapped to whole cells: `look.js grassGrid`, one
@@ -3213,7 +3329,8 @@ movers, the named colliders, the chunk's hooks): 1,682,766 bytes (17,234 under t
 worker +5.5 kB (the lookalike's style, the movers): 121,841; `realLook` 47,797; and a second lazy
 chunk, `laneBoss` (Sparrow Lane's movers: the bins, 6,262 bytes), the
 same rules as `realLook` (imported by
-`main` only dynamically, importing only `main`, no three.js, under 90 kB). B2 (STOMPWATT): `main`
+`main` only dynamically, importing only `main`, no three.js, under 90 kB; 100 KiB since D1).
+B2 (STOMPWATT): `main`
 +6.9 kB (three.js's `SkinnedMesh`, `Skeleton` and `Bone`, ~5.3 kB, land in main whoever uses
 them; the boss's hooks: the cinematic hold, the camera overlay, the name card): 1,689,677 bytes
 (10,323 under the budget); `laneBoss` 45,460 (the boss: its state machine, model, rig, frame,
@@ -3234,8 +3351,19 @@ sign's face and its stroke font in `real/sign.js`, the classic sign, bed and lam
 `props.js`, the layout's numbers; the old sampled kerbs' code out): 1,696,005 bytes (3,995 under
 the budget); the worker +7,290 (the firs' skirts, the sign, the bed's stones and ground cover,
 the kerbs' runs): 132,892; `realLook` 48,441 (+150: the occlusion's distance fade, the grain's
-hash); `laneBoss` 88,615 (unchanged).
-`tests/net-relay-build.test.js` checks all four.
+hash); `laneBoss` 88,615 (unchanged). D1 (the garage doors): `main` +2,633 (the door wall, its
+leaves drawn as pieces with their table, the deep fascia, the store room's lining, filler, floor
+and soffit split, every collider; `GARAGE` slim: the room's things' data, `world/lane/garage.js`,
+is only the chunk's and the worker's; the objects' hooks, the stick frame through the room camera
+in `main.js`): 1,698,638 bytes (1,362 under the budget); `laneBoss` 101,904 (+13.3 kB: the
+breaking, the boards' physics and vertex rewrite, the classic room's things, the room camera, two
+sounds; its cap raised from 90 to 100 KiB: it is "what moves in the dad's drive", prefetched at
+boot and never in the first frame's way, while main is the scarce budget and a third chunk would
+cost main its loader; to fit, `LaneGarage.js`'s numbers are module constants and the chunk's
+`smooth`/`wrap` are shared from `rig.js`); the worker 138,379 (+5.5 kB: the room's things in the
+detail's materials, the layout's numbers); `realLook` 48,448 (unchanged but for its import names).
+`tests/net-relay-build.test.js` checks all four (each chunk's own cap) and that the room's things
+stay out of `main`.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -4083,10 +4211,12 @@ objects.spawnCoin(x, y, z, minY?)           // a run-time coin (minion and critt
                                             // least at minY (CoinField.spawnCoin)
 objects.attachLane(chunk, area, opts?)      // Sparrow Lane's lazy chunk attached (below; opts
                                             // { boss: false }: the bins alone)
-objects.lane, objects.bins, objects.laneBoss  // what it attached: { bins, boss }, the LaneBins and
-                                            // the LaneBoss (STOMPWATT), or null
+objects.lane, objects.bins, objects.laneBoss, objects.garage  // what it attached: { bins, boss,
+                                            // garage, camera }, the LaneBins, the LaneBoss
+                                            // (STOMPWATT) and the LaneGarage (D1), or null
 objects.cinematic                           // the lane's boss's intro holds Jonas (main)
-objects.cameraOverlay                       // the lane's boss's camera (main: cam.overlay), or null
+objects.cameraOverlay                       // the lane's camera overlay (the boss's, then the store
+                                            // room's: main sets cam.overlay), or null
 objects.setLook(part | null)                // the area's realistic part shown (Area.showReal)
 ```
 
@@ -4107,7 +4237,12 @@ part's bin mesh as well. B2 attaches the dad's car's boss too (`LaneBoss.js`, "S
 (Sparrow Lane's boss)"): it ticks in `_step` after the bins (with `hold` = a dialog or a warp),
 draws in `_draw`, parks at once in `reset()` and `enter()`, and `setLook(part)` gives it the
 realistic part (its model, its hide range); its sounds are registered into the game's `SFX` as
-it attaches.
+it attaches. D1 attaches the garage doors (`LaneGarage.js`, with or without the boss, when the
+lane's parts carry `garage` and the leaves' named colliders exist): they tick in `_step` after the
+boss, draw in `_draw` (the shown look's moving boards, the 1-up), come back whole in `enter(player)`
+(an arrival; one he stands by waits) and `reset()` (a new game: the 1-up back too), and
+`setLook(part)` gives them the realistic part's meshes; `cameraOverlay` is the chunk's composite
+(`lane.camera`).
 
 Critters (`layout.CRITTERS`, see "Critters" under Midsummer Skerries): `objects.critters` is a
 `Critters` manager (`Critters.js`, the shared framework: engagement, the one-attacker token,

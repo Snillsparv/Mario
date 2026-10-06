@@ -33,6 +33,11 @@
 // The bins (B4: LaneBins.js):
 //   bin_roll          rolling: its plastic wheels' rumble on the drive, a seam's click
 //   bin_lid           knocked or stopping: its lid's hollow clack and a bounce (`pitch` lower: a pound)
+// The store room's doors (D1: LaneGarage.js; STOMPWATT's slams rattle them with the game's own
+// door_rattle, `pitch` 0.8):
+//   door_crack        a leaf cracked: a woody crack, a tock, a short low creak (a quiet saw)
+//   door_smash        a leaf smashed: a thump and a crunch, splinters ticking off, the planks
+//                     landing (three tocks)
 //
 // Its fight's music, 'stompwatt' (STOMPWATT_SONG, audio/songs.js format, registered into SONGS
 // with a handclap instrument of its own: registerSong): an original bouncy electro-polka in A
@@ -208,6 +213,21 @@ export const ROBOT_SFX = {
     }
     return 0.2;
   },
+  // The store room's doors (D1: LaneGarage.js).
+  door_crack(ctx, out, t, { p }) {
+    noise(ctx, out, t, { filter: 'bandpass', freq: 2200 * p, q: 2, dur: 0.03, gain: 0.2, attack: 0.001 });
+    tone(ctx, out, t, { wave: 'triangle', freq: 330 * p, to: 180 * p, dur: 0.06, gain: 0.14, attack: 0.002 });
+    tone(ctx, out, t + 0.05, { wave: 'sawtooth', freq: 150 * p, to: 120 * p, dur: 0.12, gain: 0.025, attack: 0.01 });
+    return 0.25;
+  },
+  door_smash(ctx, out, t, { p }) {
+    tone(ctx, out, t, { freq: 120 * p, to: 50 * p, dur: 0.2, gain: 0.3, attack: 0.002 });
+    noise(ctx, out, t, { filter: 'lowpass', freq: 1800 * p, dur: 0.12, gain: 0.22, attack: 0.001 });
+    // Splinters ticking off, falling; then the planks landing (three tocks).
+    for (let i = 0; i < 10; i++) noise(ctx, out, t + 0.03 + i * 0.045, { filter: 'bandpass', freq: (4500 - i * 300) * p, q: 4, dur: 0.018, gain: 0.07 - i * 0.004, attack: 0.001 });
+    for (let i = 0; i < 3; i++) tone(ctx, out, t + 0.28 + i * 0.13, { wave: 'triangle', freq: (240 - i * 35) * p, to: (170 - i * 25) * p, dur: 0.07, gain: 0.1, attack: 0.002 });
+    return 0.7;
+  },
 };
 
 // (Its notice chirp and steps carry less far; nothing piles up.)
@@ -236,6 +256,8 @@ export const ROBOT_SFX_INFO = {
   bin_clatter: { range: 1.2, gap: 0.15, max: 2 },
   bin_roll: { range: 0.8, gap: 0.12, max: 2 },
   bin_lid: { range: 1.2, gap: 0.2, max: 1 },
+  door_crack: { range: 1.2, gap: 0.1, max: 2 },
+  door_smash: { range: 1.5, gap: 0.08, max: 2 },
 };
 
 export function register(sfx, info) {
