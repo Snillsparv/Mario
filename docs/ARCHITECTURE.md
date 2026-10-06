@@ -3103,7 +3103,8 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   dimensionless falloff; faded out with the pixel's distance, from 4500 to none at 9000 (`fade`,
   R fixes: out there its taps span a few pixels of alpha-tested needles and tile rolls, noise
   more than occlusion, a dark mottle over the forest; and a GPU that dithers alpha to coverage
-  dithers the depth it reads there too); blurred depth-aware, 9 + 9 taps (5 + 5), each texel's
+  dithers the depth it reads there too); **every depth it reads a whole texel** (the streaks
+  fix, below); blurred depth-aware, 9 + 9 taps (5 + 5), each texel's
   distance kept for the output pass's depth-weighted 4-tap upsample); **bloom** (a 5-level mip chain from a soft
   threshold, 1.1 with a knee of 0.6, its first downsample Karis-weighted, 13-tap downsamples, tent
   upsamples; 4 levels on mid); **sun shafts** (quarter res: the sky's bright pixels near the sun
@@ -3124,6 +3125,29 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   targets with the HDR targets; the classic look's `GradePass` and `N64Pass` are untouched. The
   depth's resolve is checked once (a GL error after the first frame with it: some drivers
   refuse a multisampled depth blit): then the occlusion and the shafts stay off.
+* **The streaks (fix).** The dad, after the R fixes: "still horizontal streaks across the
+  screen; now most visible at the very bottom" (a narrow portrait window: Jonas on the turning
+  area's asphalt before the double garage, the close follow framing; before that "a shadowy
+  raster along the upper half" in landscape). Dark and light bands across the whole width, fixed
+  to the screen, strongest on the flat road near the camera. The occlusion drew them: it read
+  the full-res depth by uv (`texture2D`, nearest) at its half-res pixels' middles, and wherever
+  the picture's size is even each of those is the corner of four full-res texels, so which texel
+  came back for the middle and for each neighbour one texel off was the GPU's rounding. Where
+  the middle and a neighbour came back the same texel, that one-sided difference was zero, the
+  normal's rule (the smaller one-sided difference) took it, the rebuilt normal faced the camera
+  and the flat ground occluded itself across the whole row; the depth-aware blur spread such
+  rows into bands. In SwiftShader it depends on the size (two dark lines at 543 x 1250, bands at
+  645 x 1398 and on mid at 1440 x 900, none at 560 x 1260 or at an odd height, where the middles
+  drift off the corners); a GPU rounding either way (emulated: a 2e-6 nudge of each lookup's uv)
+  draws his bands at every even size. Now (`Ssao.js`) every depth it reads is a whole texel:
+  the half-res pixel's own full-res texel from `gl_FragCoord` x 2 in whole numbers (one in from
+  the picture's edges, so it has a neighbour on each side), its neighbours and its taps whole
+  texels from it (`texelFetch`), each point rebuilt at its own texel's centre (`texelPos`):
+  nothing is left to rounding, on any GPU and at any size. The flat road's occlusion is 1 in
+  every row; the picture elsewhere as before. The post passes and the output pass also declare
+  highp (`precision: 'highp'`, whatever the renderer's default: their depths near 1 and positions
+  thousands of units off; three's default is highp already, which WebGL 2 guarantees). The low
+  tier (phones: no post chain) never had them.
 * **Shadows near and far.** The sun's own map (re-drawn each frame, PCF) is a tight, sharp box
   (high 2048 over ±1500, texel 1.5 units; mid 1024 over ±1300) centred a little ahead of the
   focus along the view; the **far map** (`farShadow.js`: 4096 on high, 2048 on mid, none on low)
@@ -3262,7 +3286,14 @@ jobs out), `tests/real-post.test.js` (each tier's post chain, the ladder's post 
 grade's constants in range, the output pass's composite order, every pass's uniforms given, the
 uniform names unique across the sky, the haze, the shadow patch and each material's own patch;
 R fixes: the occlusion's distance fade in both its programs, no sin-based hash anywhere in the
-chain or the output pass), `tests/camera-profile.test.js` (without a profile the poses of
+chain or the output pass; the streaks fix: every depth the occlusion reads a `texelFetch` of a
+whole texel from `gl_FragCoord`, each point rebuilt at its texel's centre, none by uv; highp
+declared on every post pass and the output pass, no mediump or lowp in any realistic source),
+`tests/lane-streaks-browser.test.js` (E2E: at the dad's streaks view, 543 x 1250, on high (12 and
+8 taps, 85 %), mid (and 85 %) and low (and 85 %): the banding detector over the near road, the
+rms of each pixel row's mean luminance high-passed along y under 1 level, and where the
+occlusion runs its half-res target read back, every row over the flat road over 0.98; the old
+occlusion fails both on high and mid), `tests/camera-profile.test.js` (without a profile the poses of
 scripted runs on the grounds, in the hall and in the lane pinned as before profiles existed (the
 lane's re-pinned in the R fixes: its run grabs L4, a pole since); a profile set and taken off leaves
 nothing behind; the lane's profile's field of view in `apply()` and the look-up, its look point,
@@ -3363,7 +3394,8 @@ cost main its loader; to fit, `LaneGarage.js`'s numbers are module constants and
 `smooth`/`wrap` are shared from `rig.js`); the worker 138,379 (+5.5 kB: the room's things in the
 detail's materials, the layout's numbers); `realLook` 48,448 (unchanged but for its import names).
 `tests/net-relay-build.test.js` checks all four (each chunk's own cap) and that the room's things
-stay out of `main`.
+stay out of `main`. The streaks fix: `realLook` 48,507 (+59: the occlusion's whole-texel reads, highp
+on the post passes); `main` (1,698,638), `laneBoss` and the worker unchanged.
 
 ## Audio (`src/audio/AudioEngine.js`)
 

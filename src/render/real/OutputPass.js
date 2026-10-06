@@ -197,6 +197,7 @@ export class OutputPass {
       depthTest: false,
       depthWrite: false,
       toneMapped: false,
+      precision: 'highp', // (the depth's distance, the grain's hash: whatever the renderer's default)
     });
     this.quad = new THREE.Mesh(fullscreenTriangle(), this.material);
     this.quad.frustumCulled = false;

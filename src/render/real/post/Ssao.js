@@ -11,6 +11,15 @@
 // each texel's distance beside it for the output pass's depth-aware upsample (OutputPass.js).
 // The sky (depth 1) is never occluded.
 //
+// **Whole texels** (the streaks fix): every depth it reads is a whole texel (`texelFetch`, the
+// half-res pixel's own full-res texel from gl_FragCoord, one in from the edges, its neighbours
+// and taps whole texels from it), each rebuilt at that texel's own centre. A half-res pixel's middle is the corner of
+// four full-res texels wherever the picture's size is even; read there by uv, which texel came
+// back was the GPU's rounding, the middle and a neighbour could be the same texel, its
+// one-sided difference zero, "the smaller" then: the normal faced the camera and flat ground
+// occluded itself across whole rows, the blur spreading them into the dark horizontal bands the
+// dad saw over the road (on his GPU; in SwiftShader two lines).
+//
 //   const ssao = new Ssao({ radius, intensity, bias, maxPx, fade })   // layout.LANE_REAL.post.ao
 //   ssao.render(renderer, screen, depth, camera, { ao, blur }) -> texture (half res: R the
 //       occlusion's light, 1 = none; G the distance); ao: its taps (12 or 8: the level's
@@ -30,22 +39,26 @@ const AO_FS = /* glsl */ `
   uniform float uBias;
   uniform float uMaxPx;
   uniform vec2 uFade; // the distances it fades out between
-  varying vec2 vUv;
   float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+  // The view-space point behind the depth's texel t, at that texel's own centre.
+  vec3 texelPos(ivec2 t) {
+    return viewPos((vec2(t) + 0.5) / uFull, texelFetch(tDepth, t, 0).r);
+  }
   void main() {
-    float d = texture2D(tDepth, vUv).r;
+    ivec2 hi = ivec2(uFull) - 1;
+    // This half-res pixel's texel, in whole numbers (one in from the picture's edges: a
+    // neighbour on each side).
+    ivec2 q = clamp(ivec2(gl_FragCoord.xy) * 2, ivec2(1), hi - 1);
+    float d = texelFetch(tDepth, q, 0).r;
     if (d >= 0.99999) {
       gl_FragColor = vec4(1.0, 6e4, 0.0, 1.0);
       return;
     }
-    vec3 P = viewPos(vUv, d);
-    vec2 px = 1.0 / uFull;
-    vec2 ux = vec2(px.x, 0.0);
-    vec2 uy = vec2(0.0, px.y);
-    vec3 pr = viewPos(vUv + ux, texture2D(tDepth, vUv + ux).r) - P;
-    vec3 pl = P - viewPos(vUv - ux, texture2D(tDepth, vUv - ux).r);
-    vec3 pu = viewPos(vUv + uy, texture2D(tDepth, vUv + uy).r) - P;
-    vec3 pd = P - viewPos(vUv - uy, texture2D(tDepth, vUv - uy).r);
+    vec3 P = viewPos((vec2(q) + 0.5) / uFull, d);
+    vec3 pr = texelPos(q + ivec2(1, 0)) - P;
+    vec3 pl = P - texelPos(q - ivec2(1, 0));
+    vec3 pu = texelPos(q + ivec2(0, 1)) - P;
+    vec3 pd = P - texelPos(q - ivec2(0, 1));
     vec3 N = normalize(cross(abs(pr.z) < abs(pl.z) ? pr : pl, abs(pu.z) < abs(pd.z) ? pu : pd));
     float z = -P.z;
     float rPx = min(uMaxPx, 0.5 * uFull.y * uProj.y * uRadius / z);
@@ -54,8 +67,8 @@ const AO_FS = /* glsl */ `
     float sum = 0.0;
     for (int i = 0; i < SAMPLES; i++) {
       float ang = angle0 + float(i) * 2.3999632;
-      vec2 suv = vUv + vec2(cos(ang), sin(ang)) * sqrt((float(i) + 0.5) / float(SAMPLES)) * rPx * px;
-      vec3 v = viewPos(suv, texture2D(tDepth, suv).r) - P;
+      vec2 o = vec2(cos(ang), sin(ang)) * sqrt((float(i) + 0.5) / float(SAMPLES)) * rPx;
+      vec3 v = texelPos(clamp(q + ivec2(floor(o + 0.5)), ivec2(0), hi)) - P;
       float vv = dot(v, v);
       sum += max(dot(v, N) / (sqrt(vv) + 1e-3) - uBias, 0.0) * max(1.0 - vv / r2, 0.0);
     }

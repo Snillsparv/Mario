@@ -6,7 +6,8 @@
 //   const screen = new Screen()
 //   screen.draw(renderer, material, target)   // one triangle into `target` (null: the canvas)
 //   screen.dispose()
-//   passMaterial(fragmentShader, uniforms, defines) -> ShaderMaterial
+//   passMaterial(fragmentShader, uniforms, defines) -> ShaderMaterial (highp, whatever the
+//       renderer's default: the passes rebuild positions thousands of units off from the depth)
 //   passTarget(width, height) -> WebGLRenderTarget
 //   depthUniforms() -> { tDepth, uNear, uFar, uProj }   // DEPTH_GLSL's; setDepth(uniforms,
 //       depthTexture, camera) fills them in
@@ -41,7 +42,7 @@ export const DEPTH_GLSL = /* glsl */ `
 `;
 
 export function passMaterial(fragmentShader, uniforms, defines = {}) {
-  return new THREE.ShaderMaterial({ vertexShader: VERTEX, fragmentShader, uniforms, defines, depthTest: false, depthWrite: false, toneMapped: false });
+  return new THREE.ShaderMaterial({ vertexShader: VERTEX, fragmentShader, uniforms, defines, depthTest: false, depthWrite: false, toneMapped: false, precision: 'highp' });
 }
 
 export function passTarget(width, height) {

@@ -160,3 +160,46 @@ test('no fixed pattern of the post chain\'s own over the far picture (R fixes: t
   look.dispose();
   post.dispose();
 });
+
+test('the occlusion reads the depth by whole texels (the streaks fix: the dad\'s horizontal bands over the road): every depth it reads is a texelFetch of a whole texel (its half-res pixel\'s own, from gl_FragCoord in whole numbers, its neighbours and taps whole texels from it), each rebuilt at that texel\'s own centre; never by uv (a half-res middle is a corner of four texels: which came back was the GPU\'s rounding, a neighbour the same texel, the normal facing the camera, whole rows of flat ground occluded)', () => {
+  const post = new RealPost(lane.LANE_REAL.post);
+  const ao = post.ssao.materials().filter((m) => m.uniforms.uFade);
+  assert.equal(ao.length, 2, 'both tap counts');
+  for (const m of ao) {
+    const fs = m.fragmentShader;
+    const main = fs.slice(fs.indexOf('void main()'));
+    // No depth read by uv (texture2D / texture on tDepth) anywhere in the program.
+    assert.ok(!/texture(2D)?\s*\(\s*tDepth/.test(fs), 'no tDepth read by uv');
+    assert.ok(!/\bvUv\b/.test(main), 'no uv in its main: the half-res pixel\'s texel from gl_FragCoord');
+    assert.match(main, /ivec2\s+q\s*=\s*clamp\(\s*ivec2\(\s*gl_FragCoord\.xy\s*\)\s*\*\s*2\s*,\s*ivec2\(1\),\s*hi - 1\s*\)/, 'its own texel: gl_FragCoord x 2 in whole numbers, one in from the edges (a neighbour each side: no zero difference there either)');
+    // Every depth read a texelFetch, and every rebuilt point at the texel it read.
+    const fetches = [...fs.matchAll(/texelFetch\s*\(\s*tDepth\s*,\s*(\w+)/g)].map((x) => x[1]);
+    assert.ok(fetches.length >= 2 && fetches.every((t) => t === 't' || t === 'q'), `texelFetch by whole texels: ${fetches}`);
+    assert.match(fs, /vec3 texelPos\(ivec2 t\)\s*\{\s*return viewPos\(\(vec2\(t\) \+ 0\.5\) \/ uFull, texelFetch\(tDepth, t, 0\)\.r\);/, 'a texel rebuilt at its own centre');
+    assert.match(main, /viewPos\(\(vec2\(q\) \+ 0\.5\) \/ uFull, d\)/, 'the pixel\'s own point at its texel\'s centre');
+    for (const n of ['q + ivec2(1, 0)', 'q - ivec2(1, 0)', 'q + ivec2(0, 1)', 'q - ivec2(0, 1)']) assert.ok(main.includes(`texelPos(${n})`), `the neighbour ${n} a whole texel`);
+    assert.match(main, /texelPos\(clamp\(q \+ ivec2\(floor\(o \+ 0\.5\)\), ivec2\(0\), hi\)\)/, 'each tap a whole texel');
+  }
+  post.dispose();
+});
+
+test('highp wherever the look rebuilds positions or depths: the post chain\'s passes and the output pass declare it whatever the renderer\'s default (a mobile GPU honours mediump: depths near 1 and world positions thousands of units off would band), no realistic material or GLSL asks for less, and the renderer keeps three\'s highp default', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const post = new RealPost(lane.LANE_REAL.post);
+  const look = new RealLook({ preset: lane.LANE_REAL, tier: TIERS.high, farBox: BOX });
+  for (const m of [...post.materials(), look.output.material]) assert.equal(m.precision, 'highp', `${m.fragmentShader.slice(0, 50)}...`);
+  const { M, D } = lookAndMaterials();
+  for (const m of [...Object.values(M), ...Object.values(D)]) assert.ok(m.precision === null || m.precision === 'highp', `${m.name}: ${m.precision}`);
+  const dirs = ['src/render/real', 'src/render/real/post', 'src/world/lane/real'];
+  for (const dir of dirs) {
+    for (const f of readdirSync(new URL(`../${dir}/`, import.meta.url)).filter((n) => n.endsWith('.js'))) {
+      const src = readFileSync(new URL(`../${dir}/${f}`, import.meta.url), 'utf8');
+      assert.ok(!/\b(mediump|lowp)\b/.test(src), `${dir}/${f}: no mediump or lowp`);
+      assert.ok(!/precision\s*:\s*'(mediump|lowp)'/.test(src), `${dir}/${f}`);
+    }
+  }
+  const renderer = readFileSync(new URL('../src/render/N64Renderer.js', import.meta.url), 'utf8');
+  assert.ok(!/new THREE\.WebGLRenderer\(\{[^}]*precision/.test(renderer), 'the renderer keeps three\'s highp default');
+  look.dispose();
+  post.dispose();
+});
