@@ -48,6 +48,7 @@ import { FIRE } from './aiRaceTextures.js';
 import { RAMP, TINTS } from './FireSprites.js';
 import { TINT } from './Sparkles.js';
 import { shadowSize } from './BlobShadows.js';
+import { heroInvincible } from './hurt.js';
 
 export const MINION = {
   POOL: 8, // records (wrecks still animating need slots too)
@@ -113,11 +114,8 @@ const noise = (n) => {
   return v - Math.floor(v);
 };
 
-// Is the hero blinking after a hit? (Player: tick < invincibleUntil; a plain boolean also works.)
-export function heroInvincible(p) {
-  if (typeof p.invincible === 'boolean') return p.invincible;
-  return p.invincibleUntil !== undefined && p.tick !== undefined && p.tick < p.invincibleUntil;
-}
+// Is the hero blinking after a hit? (objects/hurt.js.)
+export { heroInvincible };
 
 // Not a target right now: reading a sign, dying or dropping in.
 const heroAway = (a) => a === 'reading' || a === 'death' || a === 'spawn';

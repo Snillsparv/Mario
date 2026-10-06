@@ -7,7 +7,7 @@
 //   ?mute=1        no audio
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
-//   ?area=hall     start in another area (world/areas.js: hall, skerries, lane), at &entry=<id>
+//   ?area=hall     start in another area (world/areaDefs.js: hall, skerries, lane), at &entry=<id>
 //                  (default: its respawn entry); only where play starts at once (?test,
 //                  ?skipTitle)
 //   ?look=classic  Sparrow Lane in its classic look (no realistic look; G toggles it in the game);
@@ -66,7 +66,8 @@ import { Effects } from './fx/Effects.js';
 import { Meltdown } from './fx/Meltdown.js';
 import { AreaSwitch } from './core/AreaSwitch.js';
 import { RealAreas } from './render/real/RealAreas.js';
-import { AREA_DEFS } from './world/areas.js';
+import { AREA_DEFS } from './world/areaDefs.js';
+import { prefetch } from './core/chunks.js';
 import { LANE_BOSS } from './world/lane/layout.js';
 import { ScreenWipe } from './ui/ScreenWipe.js';
 
@@ -100,7 +101,8 @@ async function start() {
   // this thread is free), so they work beside the rest of it.
   const real = new RealAreas({ view, search: location.search, test: TEST });
   await Promise.race([real.prefetch(AREA_DEFS), new Promise((resolve) => setTimeout(resolve, WORKERS_WAIT))]);
-  // The areas' lazy chunks (Sparrow Lane's bins) start loading too, long before a door.
+  // The areas' lazy chunks of movers (Sparrow Lane's bins, through the lane's chunk) start
+  // loading too, long before a door.
   for (const def of Object.values(AREA_DEFS)) def.boss?.load().catch(() => {});
 
   const level = buildLevel(scene);
@@ -582,6 +584,16 @@ async function start() {
     },
     neutralController,
   };
+
+  // The areas' code (each a lazy chunk: src/core/chunks.js; the lane's is on its way since boot):
+  // a test waits for all of it (window.__game.enterArea switches at once), ?area= for its own;
+  // play fetches it in the background from the title's first frames on, one at a time (a door
+  // still waits behind the covered screen for an area not in yet: core/AreaSwitch.js).
+  if (TEST) await Promise.all(Object.keys(AREA_DEFS).map((name) => areas.load(name)));
+  else {
+    if (params.has('area')) await areas.load(params.get('area'));
+    requestAnimationFrame(() => prefetch(['lane', 'hall', 'skerries'], (name) => areas.load(name)));
+  }
 
   cam.reset(player);
   if (!MENUS.title && !MENUS.face) {

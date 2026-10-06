@@ -324,10 +324,37 @@ P does nothing there. You can still open that link on the phone itself and play
 with the on-screen touch controls.
 
 `npm run build` puts the controller page next to the game: `dist/pad.html`, with its own small
-script, so the game itself is still a single script and the phone never loads it.
+script, so the phone never loads the game.
 
 The relay only runs while `npm run dev` or `npm run preview` is running. It accepts only pages
 served by that same server, and anyone on your network who knows the current room code
 could join as the controller.
+
+## How the code is split, and adding to the game
+
+The built game loads in pieces. `index.html` loads one script, `main`, with everything the
+first picture needs: three.js, the engine, Jonas, the camera, the castle grounds, the menus and
+the HUD. Everything else is a **chunk** of its own that loads when it is needed or in the
+background while the title shows:
+
+| chunk | what | loads |
+|---|---|---|
+| `main` | the engine, the grounds, the menus, every area's layout | first |
+| `hall` | the Great Hall | in the background from the title on |
+| `skerries` | Midsummer Skerries and its critters | in the background from the title on |
+| `lane` | Sparrow Lane (classic look) | at boot |
+| `realLook` (under `lane`) | Sparrow Lane's realistic look | at boot |
+| `laneBoss` (under `lane`) | the bins, STOMPWATT, the garage doors | at boot |
+
+A door into an area whose chunk has not arrived yet keeps the screen covered until it has; if it
+cannot load (offline), the picture opens again where Jonas stood. With `?test=1` every chunk
+loads before play starts.
+
+Every chunk has a size cap, checked by `tests/net-relay-build.test.js` (`npm test` builds the
+game): `main` must stay under 1,560,000 bytes, and each chunk under its own cap. Something new
+(an area, a boss, a mode) goes into a chunk of its own, not into `main`: give it an entry module
+behind a loader in `src/core/chunks.js` and a cap in the build test. The steps, the rules and
+the current sizes are in `docs/ARCHITECTURE.md`, section "Chunks". `npm run build` prints a
+`chunk-plan:` line whenever a module had to move into a parent chunk because two chunks use it.
 
 See `docs/ARCHITECTURE.md` for how the code is organised.

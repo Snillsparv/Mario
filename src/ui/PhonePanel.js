@@ -41,10 +41,10 @@ import {
   JOINED_CLOSE_MS,
   QR_QUIET,
   BADGE,
-  qrMatrix,
   qrModulePx,
   panelLayout,
 } from './phoneLogic.js';
+import { qrMatrix } from './qr.js';
 
 const CLOSE_KEYS = new Set(['Escape', 'Enter', 'NumpadEnter', 'KeyJ', 'KeyP', 'Backspace']);
 const QR_DARK = '#0c0c24';

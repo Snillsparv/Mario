@@ -1,12 +1,16 @@
-// Sparrow Lane's lazy chunk (`laneBoss`: objects/laneBoss/index.js), as the lane's def names it
-// (world/areas.js lane: `boss`): the only place the game imports it, and only dynamically.
-// core/AreaSwitch.js loads it when the lane is built (main prefetches it at boot) and attaches it
-// to the lane's objects (ObjectManager.attachLane). Without it (offline, a 404) the lane is as it
-// always was: the dad's car parked, the bins static.
+// Sparrow Lane's lazy chunk of movers (`laneBoss`: objects/laneBoss/index.js), as the lane's def
+// names it (world/areaDefs.js lane: `boss`). It is the lane chunk's child (world/lane/index.js
+// loadBoss: the only place the game imports it, and only dynamically). core/AreaSwitch.js loads
+// it when the lane is built (main prefetches it at boot) and attaches it to the lane's objects
+// (ObjectManager.attachLane). Without it (offline, a 404) the lane is as it always was: the
+// dad's car parked, the bins static.
 //
-//   LANE_BOSS_AREA = { load }   load() -> Promise<module> (loaded once)
+//   LANE_BOSS_AREA = { load }   load() -> Promise<module> (memoised; a failure loads again on
+//                               the next call)
 
-let loading = null;
-const load = () => (loading ??= import('./index.js'));
+import { CHUNKS } from '../../core/chunks.js';
+
+// (The laneBoss chunk is the lane chunk's child: loaded through it, world/lane/index.js.)
+const load = () => CHUNKS.lane().then((lane) => lane.loadBoss());
 
 export const LANE_BOSS_AREA = Object.freeze({ load });

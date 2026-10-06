@@ -1,4 +1,4 @@
-// Moving Jonas between areas (world/areas.js): the castle grounds, the Great Hall inside the
+// Moving Jonas between areas (world/areaDefs.js): the castle grounds, the Great Hall inside the
 // castle, Midsummer Skerries (the first course, through the ship in the bottle) and Sparrow Lane
 // (the second, through the hall's east door with the little house on it), each with a
 // collision world, objects and a look of their own, all in the one scene (each area's root
@@ -11,8 +11,13 @@
 //                                      // Lane's objects/laneBoss) as it is built and attach it
 //                                      // to its objects (main; off in node tests, which attach
 //                                      // it themselves)
+//   areas.load(name) -> Promise<bool>  // the area's code in (def.code: its lazy chunk, src/core/
+//                                      // chunks.js; at once for a def with builders, world/
+//                                      // areas.js): true once get(name) can build it, false if
+//                                      // it failed (logged; the next call tries again)
 //   areas.get(name) -> Area | null     // built on first use (world/area.js buildArea plus an
-//                                      // ObjectManager of its own), then kept for the session
+//                                      // ObjectManager of its own), then kept for the session;
+//                                      // null while its code is not in (load)
 //   areas.enter(name, entryId?)        // switch at once, no wipe (GAME OVER, ?area=, tests);
 //                                      // entryId defaults to the area's respawn entry
 //   areas.request({ to, entry, kind, from }) -> accepted   // walk through a door: the
@@ -76,7 +81,11 @@
 //         keeps pushing toward it (the stick scripted along the door's yaw + pi); a camera
 //         still between him and that door (he backed into it) cuts to the room side behind him
 //   hold  (HOLD ticks): the screen is covered; the first tick switches (building the area if
-//         it is new, so the build hides behind the covered frame); the stick is neutral
+//         it is new, so the build hides behind the covered frame); the stick is neutral. An
+//         area whose code is not in yet (a first visit before main's prefetch got it: load)
+//         holds the covered screen at its first tick until it is; if it fails to load (or is
+//         not in after LOAD_WAIT ticks) the wipe opens again without switching, as for a warp
+//         no longer allowed (the door re-arms once he steps off it; the next try loads again)
 //   open  (OPEN ticks): the wipe opens (an entry with a sound of its own plays it now: entry.sfx,
 //         popping out of the bottle); with entry.walkIn he walks on along entry.yaw for that
 //         many ticks, then the stick is his
@@ -134,7 +143,7 @@ import { neutralController } from './input.js';
 import { ObjectManager } from '../objects/ObjectManager.js';
 import { DOOR } from '../objects/Door.js';
 import { buildArea } from '../world/area.js';
-import { groundsArea } from '../world/areas.js';
+import { groundsArea } from '../world/areaDefs.js';
 
 export const WARP = {
   CLOSE: 14, // ticks the wipe takes to close
@@ -149,6 +158,7 @@ export const WARP = {
   STEP: 120, // walking into a door, he steps this far on into its opening as the wipe closes...
   STEP_AT: 0.4, // ...from this far into the close (its leaves swung aside by then) to its end
   SHUT_FROM: 4, // ticks into the open the door he comes out of stands open, then it shuts
+  LOAD_WAIT: 450, // ticks (15 s) the covered screen waits at most for an area's code (load)
 };
 // The open's tick the leaves of the door he comes out of meet on, as 'door_close' plays (the
 // last but one: the transition is over on the last).
@@ -169,6 +179,8 @@ export class AreaSwitch {
   constructor({ scene, view, events, input, player, cam, hud, dialog, defs, grounds, canWarp = () => true, onSwap = () => {}, real = null, boss = false }) {
     Object.assign(this, { scene, view, events, input, player, cam, hud, dialog, defs, canWarp, onSwap, real, boss });
     this.bosses = new Map(); // area name -> Promise of its lazy chunk attached (def.boss; boss: true)
+    this.codes = new Map(); // area name -> its def with its code's builders merged in (load)
+    this.loading = new Map(); // area name -> Promise of its code loading (load)
     this.grounds = groundsArea(grounds.level, grounds.objects);
     this.sky = this.grounds.sky; // the one sky dome (a grounds part), shown where def.sky
     this.built = { grounds: this.grounds };
@@ -224,12 +236,13 @@ export class AreaSwitch {
     return this.current.objects;
   }
 
-  // The area, built (with its objects) the first time it is asked for; null if unknown.
+  // The area, built (with its objects) the first time it is asked for; null if unknown or its
+  // code is not in yet (load).
   get(name) {
     const have = this.built[name];
     if (have) return have;
-    const def = this.defs[name];
-    if (!def?.builders) return null;
+    const def = this._code(name);
+    if (!def) return null;
     const t0 = performance.now();
     const area = buildArea(this.scene, def);
     area.objects = new ObjectManager({ scene: this.scene, collision: area.collision, events: this.events, layout: area.objectsLayout, player: this.player, fx: null, level: null, area: name });
@@ -262,6 +275,41 @@ export class AreaSwitch {
       else this._buildReal(area);
     }
     return area;
+  }
+
+  // The area's def with its code (def.builders: world/areas.js's, or merged in once its chunk
+  // is in: load), or null while it is not there.
+  _code(name) {
+    const def = this.defs[name];
+    if (!def) return null;
+    if (def.builders) return def;
+    return this.codes.get(name) ?? null;
+  }
+
+  // Load the area's code (def.code: its lazy chunk, memoised in src/core/chunks.js): resolves to
+  // true once get(name) can build it, false for an unknown area or a failed load (logged once;
+  // a later call tries again).
+  load(name) {
+    if (this.built[name] || this._code(name)) return Promise.resolve(true);
+    const def = this.defs[name];
+    if (!def?.code) return Promise.resolve(false);
+    let loading = this.loading.get(name);
+    if (!loading) {
+      loading = def.code().then(
+        (chunk) => {
+          this.codes.set(name, { ...def, builders: chunk.builders });
+          this.loading.delete(name);
+          return true;
+        },
+        (e) => {
+          console.warn(`[areas] ${name}: its code did not load (${e?.message ?? e}); tried again on the next way in`);
+          this.loading.delete(name);
+          return false;
+        },
+      );
+      this.loading.set(name, loading);
+    }
+    return loading;
   }
 
   // A promise of the area's lazy chunk attached to its objects (resolving to what it attached,
@@ -401,6 +449,21 @@ export class AreaSwitch {
         if (this.t >= this.closeTicks) this._next('hold');
         return w.from ? this._toward(w.from.yaw + Math.PI) : this.neutral;
       case 'hold':
+        if (this.t === 1 && !this.built[w.to] && !this._code(w.to)) {
+          // Its code is not in yet: the screen stays covered (t held at its first tick) until it
+          // is; failed, or too slow, the wipe opens again without switching.
+          if (w.wait === undefined) {
+            w.wait = 0;
+            w.failed = false;
+            this.load(w.to).then((ok) => (w.failed = !ok));
+          }
+          if (w.failed || ++w.wait > WARP.LOAD_WAIT) {
+            this._open(0, 0);
+            return this.neutral;
+          }
+          this.t = 0;
+          return this.neutral;
+        }
         if (this.t === 1) {
           // Still allowed now the screen is covered? (AI RACE may have come on during close.)
           if (!this._free()) {
@@ -552,7 +615,8 @@ export class AreaSwitch {
   _hasEntry(name, id) {
     const area = this.built[name];
     if (area) return !!area.entries[id];
-    return !!this.defs[name]?.builders && !!this.defs[name].entries?.[id];
+    const def = this.defs[name];
+    return !!(def?.builders || def?.code) && !!def.entries?.[id];
   }
 
   _close(ticks, kind, color) {

@@ -1,15 +1,13 @@
 // The production build and `vite preview` with the phone controller (vite.config.js,
-// tools/padRelay.js): the game is one bundle (under its 1,700,000-byte budget) and two lazily
-// loaded chunks, realLook (the realistic look's main-thread code) and laneBoss (Sparrow Lane's
-// movers: the bins, STOMPWATT and the garage doors), each imported by the game only dynamically,
-// importing only the game's bundle, no three.js of its own, under 90 KiB (laneBoss: 100 KiB, D1's
-// garage doors: the chunk is "what moves in the dad's drive", prefetched at boot, never in the
-// first frame's way; main is the scarce budget), beside
-// its two module workers (the title logo's, and the realistic look's with the pure code main
-// does not carry: no three.js, no chunk of its own, under 160 kB), and pad.html is built on
-// its own next to it; the preview server carries the relay (marker, pad-info, WebSocket) and
-// offers the pad page only at addresses a phone can reach; with E2E=1 the built bundle's
-// (minified) shaders compile and draw every look in headless Chromium.
+// tools/chunkPlan.js, tools/padRelay.js): the game is a tree of chunks: `main` (index.html's one
+// script, under its byte budget) and its planned lazy chunks (CHUNKS below: each imported only by
+// its parent, only dynamically, statically importing nothing but its ancestors, no three.js of
+// its own, each under its cap), beside its two module workers (the title logo's, and the
+// realistic look's with the pure code main does not carry: no three.js, no chunk of its own,
+// under 160 kB); pad.html is built on its own next to it (no QR library: it never draws one);
+// the preview server carries the relay (marker, pad-info, WebSocket) and offers the pad page only
+// at addresses a phone can reach; with E2E=1 the built bundle's (minified) shaders compile and
+// draw every look in headless Chromium.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -17,6 +15,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { WebSocket } from 'ws';
 import { PAD_WS_PATH, PAD_INFO_PATH, encodeInput } from '../src/net/protocol.js';
 import { hasRelayMarker } from '../src/net/RemotePad.js';
@@ -42,56 +41,73 @@ const preloads = (html) => [...html.matchAll(/<link\b[^>]*rel="modulepreload"[^>
 // quotes a dynamic import's path in backticks).
 const chunkImports = (js) => [...js.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'`](\.{0,2}\/[^"'`]+\.js)["'`]/g)].map((m) => m[1]);
 
-test('the game is one bundle, its lazy realLook and laneBoss chunks (and its workers); pad.html has its own', async () => {
+// The chunk plan: each lazy chunk, its parent (the chunk whose code imports it, only
+// dynamically: src/core/chunks.js for main's; world/lane/index.js for the lane's children), its
+// cap and the least it holds (an area's code in its chunk, not in main). Caps are tripwires with
+// room to grow (about a fifth for the areas); raising one is the last resort, documented here,
+// in vite.config.js and in docs/ARCHITECTURE.md ("Chunks").
+const KiB = 1024;
+const CHUNKS = {
+  hall: { parent: 'main', cap: 60 * KiB, min: 30000 },
+  skerries: { parent: 'main', cap: 88 * KiB, min: 40000 },
+  lane: { parent: 'main', cap: 72 * KiB, min: 40000 },
+  realLook: { parent: 'lane', cap: 90 * KiB, min: 30000 },
+  // (110 KiB, from 100: what moves in the dad's drive, the bins, STOMPWATT and the garage doors,
+  // now loaded through the lane's chunk; it was at 99.6 KiB.)
+  laneBoss: { parent: 'lane', cap: 110 * KiB, min: 60000 },
+};
+// main's budget (vite.config.js MAIN_BUDGET): 1,700,000 while it was the one bundle; 1,560,000
+// with the areas' code lazy (main 1,518,217).
+const MAIN_CAP = 1560000;
+
+test('the game: main, its planned lazy chunks (each importing only its ancestors) and its workers; pad.html has its own', async (t) => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();
   const js = assets.filter((f) => f.endsWith('.js'));
-  assert.deepEqual(
-    js.map((f) => f.replace(/-[\w-]{8}\.js$/, '')).sort(),
-    ['laneBoss', 'laneRealWorker', 'logoWorker', 'main', 'pad', 'realLook'],
-    `built scripts: ${js.join(', ')}`,
-  );
+  const base = (f) => f.replace(/-[\w-]{8}\.js$/, '');
+  assert.deepEqual(js.map(base).sort(), [...Object.keys(CHUNKS), 'laneRealWorker', 'logoWorker', 'main', 'pad'].sort(), `built scripts: ${js.join(', ')}`);
 
   const index = await read('index.html');
-  assert.deepEqual(scripts(index).map((s) => s.replace(/-[\w-]{8}\.js$/, '')), ['./assets/main']);
+  assert.deepEqual(scripts(index).map(base), ['./assets/main']);
   assert.equal(preloads(index).length, 0, 'the game preloads nothing else');
   const pad = await read('pad.html');
-  assert.deepEqual(scripts(pad).map((s) => s.replace(/-[\w-]{8}\.js$/, '')), ['./assets/pad']);
+  assert.deepEqual(scripts(pad).map(base), ['./assets/pad']);
   assert.equal(preloads(pad).length, 0);
 
-  const main = await read(`assets/${js.find((f) => f.startsWith('main-'))}`);
-  const padJs = await read(`assets/${js.find((f) => f.startsWith('pad-'))}`);
-  // The realistic look's main-thread code: one chunk, imported by the game only dynamically (at
-  // boot, beside the workers), importing nothing but the game's bundle.
-  const lookFile = js.find((f) => f.startsWith('realLook-'));
-  const look = await read(`assets/${lookFile}`);
-  // ...and Sparrow Lane's movers (the bins: objects/laneBoss), the same way (at boot, attached
-  // as the lane is built).
-  const bossFile = js.find((f) => f.startsWith('laneBoss-'));
-  const boss = await read(`assets/${bossFile}`);
-  assert.deepEqual(chunkImports(main).sort(), [`./${bossFile}`, `./${lookFile}`].sort(), 'the game imports two chunks: realLook and laneBoss');
-  const mainFile = js.find((f) => f.startsWith('main-'));
-  // (Each chunk's cap: laneBoss's raised from 90 to 100 KiB for D1, the garage doors; see above.)
-  const CAP = { realLook: 90 * 1024, laneBoss: 100 * 1024 };
-  for (const [name, file, src] of [['realLook', lookFile, look], ['laneBoss', bossFile, boss]]) {
-    assert.equal([...main.matchAll(new RegExp(`\\bimport\\s*\\(\\s*["'\`]\\./${name}-`, 'g'))].length, 1, `${name}: only dynamically (import())`);
-    assert.ok(!new RegExp(`from\\s*["'\`]\\./${file.replace('.', '\\.')}`).test(main), `${name}: never statically`);
-    assert.deepEqual([...new Set(chunkImports(src))], [`./${mainFile}`], `${name} imports only the game\'s bundle`);
-    assert.ok(!src.includes('WebGLRenderer'), `no three.js in ${name}`);
-    assert.ok(Buffer.byteLength(src) < CAP[name], `${name} stays small (${Buffer.byteLength(src)} bytes)`);
+  const src = {};
+  for (const f of js) src[base(f)] = await read(`assets/${f}`);
+  const size = (name) => Buffer.byteLength(src[name]);
+  const ancestors = (name) => (name === 'main' ? [] : [CHUNKS[name].parent, ...ancestors(CHUNKS[name].parent)]);
+  const statics = (code) => [...new Set([...code.matchAll(/\bfrom\s*["'`]\.\/([^"'`]+\.js)["'`]/g)].map((m) => base(m[1])))];
+  const dynamics = (code) => [...code.matchAll(/\bimport\s*\(\s*["'`]\.\/([^"'`]+\.js)["'`]/g)].map((m) => base(m[1]));
+  for (const code of Object.values(src)) assert.deepEqual(chunkImports(code).filter((p) => !p.startsWith('./')), [], 'every chunk import is relative');
+  assert.deepEqual(statics(src.main), [], 'the game imports nothing statically');
+  for (const [name, { parent, cap, min }] of Object.entries(CHUNKS)) {
+    const code = src[name];
+    for (const dep of statics(code)) assert.ok(ancestors(name).includes(dep), `${name} imports only its ancestors (${dep})`);
+    assert.ok(dynamics(src[parent]).includes(name), `${name}: imported by ${parent}, dynamically`);
+    for (const other of Object.keys(src)) {
+      if (other !== parent) assert.ok(!dynamics(src[other]).includes(name), `${name} only from ${parent} (not ${other})`);
+      assert.ok(!statics(src[other]).includes(name) || CHUNKS[other] && ancestors(other).includes(name), `${name}: no sibling imports it`);
+    }
+    assert.ok(!code.includes('WebGLRenderer'), `no three.js in ${name}`);
+    assert.ok(size(name) < cap, `${name} stays under its cap (${size(name)} of ${cap} bytes)`);
+    assert.ok(size(name) > min, `${name} holds its code (${size(name)} bytes)`);
   }
-  // (The store room's things, world/lane/garage.js ROOM, are the chunk's and the worker's: none
-  // in the game's bundle.)
-  assert.ok(!/\bshelves\b/.test(main) && /\bshelves\b/.test(boss), 'the store room\'s things only in the laneBoss chunk');
-  assert.deepEqual(chunkImports(padJs), [], 'the pad imports no other chunk');
-  assert.ok(Buffer.byteLength(main) < 1700000, `the game stays under its budget (${Buffer.byteLength(main)} bytes)`);
+  // (The store room's things, world/lane/garage.js ROOM, are the laneBoss chunk's and the
+  // worker's: none in main or the lane's chunk.)
+  assert.ok(!/\bshelves\b/.test(src.main) && !/\bshelves\b/.test(src.lane) && /\bshelves\b/.test(src.laneBoss), "the store room's things only in the laneBoss chunk");
+  assert.ok(size('main') < MAIN_CAP, `the game stays under its budget (${size('main')} of ${MAIN_CAP} bytes)`);
+  // (gzip -9 for the record, not asserted: it varies with the zlib version.)
+  t.diagnostic(Object.keys(src).sort().map((n) => `${n} ${size(n)} (gzip ${gzipSync(src[n], { level: 9 }).length})`).join(', '));
   // The realistic look's worker: started by the game (new Worker(new URL(...)), not an import).
-  const worker = await read(`assets/${js.find((f) => f.startsWith('laneRealWorker-'))}`);
-  assert.match(main, /laneRealWorker-[\w-]{8}\.js/, 'the game starts it');
-  assert.deepEqual(chunkImports(worker), [], 'the worker imports no other chunk');
-  assert.ok(!worker.includes('WebGLRenderer'), 'no three.js in the worker');
-  assert.ok(Buffer.byteLength(worker) < 160 * 1024, `the worker stays small (${Buffer.byteLength(worker)} bytes)`);
-  assert.ok(padJs.length < 200 * 1024, `the pad stays small (${padJs.length} bytes)`);
-  assert.ok(!padJs.includes('WebGLRenderer'), 'no three.js on the phone');
+  assert.match(src.main, /laneRealWorker-[\w-]{8}\.js/, 'the game starts the worker');
+  for (const w of ['laneRealWorker', 'logoWorker', 'pad']) {
+    assert.deepEqual(chunkImports(src[w]), [], `${w} imports no other chunk`);
+    assert.ok(!src[w].includes('WebGLRenderer'), `no three.js in ${w}`);
+  }
+  assert.ok(size('laneRealWorker') < 160 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
+  assert.ok(size('pad') < 100 * KiB, `the pad stays small (${size('pad')} bytes)`);
+  assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');
 });
 
 function get(url, method = 'GET') {

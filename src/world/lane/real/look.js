@@ -51,7 +51,7 @@ import * as THREE from 'three';
 import { RealLook } from '../../../render/real/RealLook.js';
 import { pbrMaterial, plainMaterial, glassMaterial, foliageMaterial, grassMaterial, shadowCaster, contactMaterial, classicLook, setWear } from '../../../render/real/materials.js';
 import { jobKey } from '../../../render/real/texgen/jobs.js';
-import { GRASS } from './grass.js';
+import { GRASS } from './grassTiers.js';
 import { CATALOGUE, DETAIL, jobOf } from './jobs.js';
 import { worldMaterial } from '../../../render/materials.js';
 import { woodTexture as signWoodTexture } from '../../props/textures.js';

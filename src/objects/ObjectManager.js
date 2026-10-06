@@ -29,7 +29,8 @@
 //                                  castle's first, then layout.DOORS
 //   spawnCoin(x, y, z, minY?)      a yellow coin appears over the floor there, at least at minY
 //                                  (minion and critter drops)
-//   critters                       the course's critters (Critters.js), or null without
+//   critters                       the course's critters (Critters.js: objects/kinds.js KINDS,
+//                                  registered by the skerries chunk), or null without
 //                                  layout.CRITTERS
 //   attachLane(chunk, area, opts?) Sparrow Lane's lazy chunk (objects/laneBoss/index.js) attached
 //                                  (core/AreaSwitch.js; tests): .lane, .bins (LaneBins.js: the
@@ -132,7 +133,7 @@ import { Door } from './Door.js';
 import { ServerHalls } from './ServerHalls.js';
 import { BossStar } from './BossStar.js';
 import { Cannon } from './Cannon.js';
-import { Critters } from './Critters.js';
+import { KINDS } from './kinds.js';
 import { Trampolines } from './Trampoline.js';
 
 const STAR_SHADOW = 150;
@@ -207,9 +208,11 @@ export class ObjectManager {
     // The cannon (Cannon.js): its pad puts Pip in the barrel (before the server halls, whose
     // planning keeps clear of it).
     this.cannon = layout.CANNON ? new Cannon({ spot: layout.CANNON, collision, events, groundAt: layout.groundHeight ?? null, fx }) : null;
-    // A course's critters (Critters.js): their coins come out of the drop slots.
+    // A course's critters (Critters.js, in the skerries chunk: KINDS.Critters, registered as it
+    // loads, before the course is built): their coins come out of the drop slots.
+    if (layout.CRITTERS?.length && !KINDS.Critters) throw new Error('ObjectManager: layout.CRITTERS, but Critters.js is not loaded');
     this.critters = layout.CRITTERS?.length
-      ? new Critters({ spots: layout.CRITTERS, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowBase: critterShadow0, onCoin: (x, y, z, minY) => this.spawnCoin(x, y, z, minY) })
+      ? new KINDS.Critters({ spots: layout.CRITTERS, collision, events, sparkles: this.sparkles, shadows: this.shadows, shadowBase: critterShadow0, onCoin: (x, y, z, minY) => this.spawnCoin(x, y, z, minY) })
       : null;
     // A course's trampolines (Trampoline.js): the hero's landings on their mats.
     this.trampolines = layout.TRAMPOLINES?.length ? new Trampolines({ spots: layout.TRAMPOLINES }) : null;

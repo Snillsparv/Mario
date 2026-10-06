@@ -17,10 +17,10 @@ import {
   PHONE_BIG_STRINGS,
   PHONE_ICON,
   QR_QUIET,
-  qrMatrix,
   qrModulePx,
   panelLayout,
 } from '../src/ui/phoneLogic.js';
+import { qrMatrix } from '../src/ui/qr.js';
 import {
   BIG_STRINGS,
   SMALL_STRINGS,

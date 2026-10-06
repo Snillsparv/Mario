@@ -1,10 +1,12 @@
 // Sparrow Lane's realistic look's catalogue and jobs, in the game's main chunk: RealAreas starts
 // the workers on the look's texture sets and geometry at boot (the boot waits until they run),
 // while the look's own main-thread code (look.js, the render/real materials, sky, probe, post
-// chain and output pass) arrives in its lazily loaded chunk (realLook.js), started beside them.
+// chain and output pass) arrives in its lazily loaded chunk (realLook.js, a child of the lane's
+// chunk), started beside them.
 //
-//   LANE_REAL_AREA = { jobs, detail, load }   // world/areas.js lane def.real: RealAreas builds
-//       it (load() -> Promise<laneRealSteps>: the realLook chunk's build, loaded once)
+//   LANE_REAL_AREA = { jobs, detail, load }   // world/areaDefs.js lane def.real: RealAreas
+//       builds it (load() -> Promise<laneRealSteps>: the realLook chunk's build, loaded through
+//       the lane's chunk, world/lane/index.js; memoised, a failure loads again on the next call)
 //   laneJobs(tier) -> [{ kind, size, opts }]   // the texture sets at the tier's sizes
 //   laneDetail(tier) -> { area, tier }   // the worker's geometry job (world/lane/real/detail.js)
 //   CATALOGUE, DETAIL, BLOCKS   // the materials' catalogue (look.js reads it: see there)
@@ -12,6 +14,7 @@
 
 import * as THREE from 'three';
 import { jobKey } from '../../../render/real/texgen/jobs.js';
+import { CHUNKS } from '../../../core/chunks.js';
 import { texSize } from '../../../render/real/tier.js';
 
 // The terraces' split-face blocks and the steps: grey, coarse.
@@ -74,7 +77,7 @@ export function laneJobs(tier) {
 
 export const laneDetail = (tier) => ({ area: 'lane', tier: tier.name });
 
-let loading = null;
-const load = () => (loading ??= import('./realLook.js').then((m) => m.laneRealSteps));
+// (The realLook chunk is the lane chunk's child: loaded through it, world/lane/index.js.)
+const load = () => CHUNKS.lane().then((lane) => lane.loadRealLook()).then((m) => m.laneRealSteps);
 
 export const LANE_REAL_AREA = Object.freeze({ jobs: laneJobs, detail: laneDetail, load });

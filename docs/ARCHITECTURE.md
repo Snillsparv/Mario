@@ -151,7 +151,7 @@ pause legend names a Nintendo-style or raw pad's buttons by the Switch labels.
 ends on mouseup, on window blur, and on the first move with neither drag button held.
 
 Test hooks: `?test=1` disables the real-time loop and the first title (the title still
-follows a game over, as in play) and exposes
+follows a game over, as in play), loads every lazy chunk before play (see "Chunks") and exposes
 `window.__game`: `step(n, controllerOverride)` (n ticks, then one draw; the hero model is
 posed after every tick with dt = 1/30 s, like a 30 fps real-time run, so pose blends, blinks
 and wing flaps have caught up after a big step), `render()` (draw with dt 0),
@@ -179,7 +179,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Area | Files | Contract |
 |---|---|---|
 | Core | `src/core/*` (but `AreaSwitch.js`), `src/main.js`, `src/world/level.js`, `index.html`, `vite.config.js`, `tools/*`, `docs/*` | integration |
-| Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js` | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
+| Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areaDefs.js`, `src/world/areas.js`, `src/world/*/index.js` (each area's chunk entry) | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
 | Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures, `garage.js` (the store room's things' data: the lane's chunk and the worker only); `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`, `clutter.js`, `hardware.js`, `garage.js`) | WorldPart, built by `area.js` |
@@ -312,24 +312,31 @@ coins (`COINS` entries with `y`) and the `'keep_top'` sign wait.
   conical roofs, grey stone bricks, brown wood, blue-green translucent water, bright blue
   sky with white clouds.
 
-## Areas and transitions (`src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areas.js`)
+## Areas and transitions (`src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areaDefs.js`, `src/world/areas.js`)
 
 Jonas is always in one **area**, a place with its own collision world, objects, entries and look:
 `'grounds'` (the castle grounds, `world/level.js`, built at boot), `'hall'` (the Great Hall
 inside the castle, `world/hall/*`), `'skerries'` (Midsummer Skerries, the first course,
 through the ship in the bottle, `world/skerries/*`) or `'lane'` (Sparrow Lane, the second
 course, through the hall's east door with the little house on it, `world/lane/*`); the hall and
-the courses are built the first time he goes in and kept for the session.
+the courses are built the first time he goes in and kept for the session. Each one's code (its
+builders, and what only it uses) is a lazy chunk of its own (`world/<area>/index.js`, see
+"Chunks"), loaded in the background from the title on; its definition (layout, entries, look,
+sound) stays in main, so doors, entries and respawns are known before its code is there.
 All areas share the one scene: each built area has a root group (`'area-<name>'`) shown only
 while he is in it, so hidden areas cost no draw calls, and only the current area is updated
 (`areas.update`) and animated (`areas.objects`).
 
 ```js
-// world/areas.js: AREA_DEFS[name] (data and builder references only)
+// world/areaDefs.js: AREA_DEFS[name] (data and loaders only; the game's)
 {
   name: 'hall',
   origin: { x: 0, y: 0, z: -60000 },   // world = local + origin (areas are authored in local coords)
-  builders: [buildHall],               // WorldParts (level.js); colliders must be { positions }
+  code: CHUNKS.hall,                   // () => Promise<{ builders }>: its lazy chunk (core/chunks.js,
+                                       // world/hall/index.js); builders make its WorldParts
+                                       // (level.js; colliders must be { positions })
+  // world/areas.js (node tests, dev previews): the same defs with `builders: [buildHall]` merged
+  // in statically, so they build at once; main must never import it
   layout,                              // local anchors: ENTRIES, DOORS (and COINS, STAR, SIGNS, ...)
   entries: { front: { x, y, z, yaw, walkIn, door }, bottle: { x, y, z, yaw, drop, camYaw } },
                                        // door: the id of the swinging door he comes out of
@@ -414,9 +421,16 @@ Rules for areas:
 ```js
 const areas = new AreaSwitch({ scene, view, events, input, player, cam, hud, dialog, defs: AREA_DEFS,
                                grounds: { level, objects }, canWarp, onSwap })
+areas.load(name) -> Promise<bool>   // its code in (def.code; at once for a def with builders):
+                                // true once get() can build it; false for an unknown area or a
+                                // failed load (logged; the next call tries again). Main: under
+                                // ?test every area before __ready, ?area= its own, else all in
+                                // the background from the title's first frames (core/chunks.js
+                                // prefetch, one at a time)
 areas.get(name)                 // built on first use (buildArea + an ObjectManager of its own:
                                 // fx and level null, area: name; its group hidden; root and
-                                // group handed to view.prewarm), then kept; null if unknown
+                                // group handed to view.prewarm), then kept; null if unknown or
+                                // its code is not in yet
 areas.enter(name, entryId?)     // switch at once, no wipe (GAME OVER, ?area=, tests)
 areas.request({ to, entry, kind, from }) -> accepted   // 'warpRequest' calls it (objects/Door.js)
 areas.step(controller) -> controller   // 30 Hz, in play after the dialog block (main's tick)
@@ -455,7 +469,7 @@ them, START is ignored while `busy`):
 | Phase | Ticks | Stick | Wipe |
 |---|---|---|---|
 | `close` | 14 (the star exit 18) | through a door, pushing on toward it (world yaw = the door's yaw + π) as its leaves swing open, his model stepping on into the opening once they are aside; into the bottle, shrinking; else neutral. A camera still between him and the door (he backed into it) cuts to the room side behind him as the door opens (`cam.reset(player, { yaw: door.yaw })`), so the wipe closes on him at the door, not on his cap | 0 → 1 |
-| `hold` | 4 | neutral; the **first** tick switches (building a new area there, behind the covered frame): the door he went through shuts, the one he comes out of stands open, he is his own size again | 1 |
+| `hold` | 4 | neutral; the **first** tick switches (building a new area there, behind the covered frame): the door he went through shuts, the one he comes out of stands open, he is his own size again. An area whose code is not in yet (a first visit on a slow network) keeps the screen covered at that first tick (`load`) until it is; if it fails, or is not in after `WARP.LOAD_WAIT` (450) ticks, the wipe opens again without switching, as for a warp no longer allowed (the door re-arms once he steps off it; the next try loads again) | 1 |
 | `open` | 14 | with `entry.walkIn: n`, walking on along `entry.yaw` for n ticks; then his own. The door behind him (after a door) stands open for the first `WARP.SHUT_FROM` (4) ticks, then shuts, its leaves meeting on tick 13 as `sfx door_close` plays (carried or held still, below). An entry with `sfx` plays it as this phase starts (popping out of the bottle: `bottle_pop`; the listener is there by then) | 1 → 0 |
 
 The scripted stick for world yaw W is `a = wrap(cameraYaw − W)`, `(sin a, cos a)` (the inverse of
@@ -3194,7 +3208,8 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
 * **The lazy chunk.** The realistic look's main-thread code that the boot does not need
   (`render/real/{RealLook,OutputPass,materials,sky,probe,farShadow,gpuTimer}.js`,
   `render/real/post/*`, `world/lane/real/look.js`) is one lazily loaded chunk, `realLook`
-  (`world/lane/real/realLook.js`, imported by `LANE_REAL_AREA.load()`), started at boot beside
+  (`world/lane/real/realLook.js`, a child of the lane's chunk: `LANE_REAL_AREA.load()` loads the
+  lane's chunk, then its `loadRealLook()`; see "Chunks"), started at boot beside
   the workers (`RealAreas.prefetch`) and long loaded before the build needs it (it waits for the
   textures anyway); `main` keeps the boot part (`RealAreas.js`, `tier.js`, `textureStore.js`,
   `world/lane/real/jobs.js`). If it fails to load (offline, a 404) the lane stays classic, the F1
@@ -3395,7 +3410,10 @@ cost main its loader; to fit, `LaneGarage.js`'s numbers are module constants and
 detail's materials, the layout's numbers); `realLook` 48,448 (unchanged but for its import names).
 `tests/net-relay-build.test.js` checks all four (each chunk's own cap) and that the room's things
 stay out of `main`. The streaks fix: `realLook` 48,507 (+59: the occlusion's whole-texel reads, highp
-on the post passes); `main` (1,698,638), `laneBoss` and the worker unchanged.
+on the post passes); `main` (1,698,638), `laneBoss` and the worker unchanged. The split (see
+"Chunks"): the classic lane's code is a lazy chunk of its own, `lane`, and `realLook` and
+`laneBoss` are its children (each imports the lane's chunk and main, nothing else), all three
+loaded at boot as before; `main` 1,518,217 with every area's code lazy.
 
 ## Audio (`src/audio/AudioEngine.js`)
 
@@ -4252,9 +4270,9 @@ objects.cameraOverlay                       // the lane's camera overlay (the bo
 objects.setLook(part | null)                // the area's realistic part shown (Area.showReal)
 ```
 
-Sparrow Lane's lazy chunk (`laneBoss`: `objects/laneBoss/index.js`, its only import site
-`objects/laneBoss/area.js`, the lane's `def.boss = LANE_BOSS_AREA = { load }`): main prefetches
-it at boot (beside the realistic look's workers) and `core/AreaSwitch.js` (`boss: true`) attaches
+Sparrow Lane's lazy chunk (`laneBoss`: `objects/laneBoss/index.js`, a child of the lane's chunk,
+its only import site `world/lane/index.js` `loadBoss`, which `objects/laneBoss/area.js` calls: the
+lane's `def.boss = LANE_BOSS_AREA = { load }`): main prefetches it at boot (beside the realistic look's workers) and `core/AreaSwitch.js` (`boss: true`) attaches
 it as the lane is built (`objects.attachLane(chunk, area)`: `chunk.attach(objects, area)`;
 `areas.bossOf('lane')` and `window.__game.laneBoss` resolve with what it attached). Node tests
 never load it by themselves (an `import()` resolves after a synchronous test: the bins would
@@ -4401,17 +4419,95 @@ its idle whine), `mosquito_aim` (a 'ting' and the rising whine of its tell), `mo
 `mosquito_pop` (a defeat; `deflate` when punched: a 'pfrrrt').
 Unknown names must be ignored silently.
 
+## Chunks (`tools/chunkPlan.js`, `src/core/chunks.js`)
+
+The production build is a **tree of chunks**. `main` is `index.html`'s one script and holds what
+the first frame needs; everything else loads lazily, by `import()`, in a chunk of its own:
+
+```
+main (index.html)                 three.js, the engine (core, input, collision, player, camera,
+ │                                renderer, audio engine and the common sounds), the castle
+ │                                grounds and their objects, the menus and HUD, every area's
+ │                                definition and layout (world/areaDefs.js), the realistic
+ │                                look's boot part (render/real: tiers, RealAreas, texture store)
+ ├─ hall      world/hall/index.js       the Great Hall's builders
+ ├─ skerries  world/skerries/index.js   Midsummer Skerries' builders, the sea, its critters
+ └─ lane      world/lane/index.js       Sparrow Lane's classic builders, props, houses, textures
+     ├─ realLook  world/lane/real/realLook.js   the realistic look's main-thread code
+     └─ laneBoss  objects/laneBoss/index.js     the bins, STOMPWATT, the garage doors
+(workers)  laneRealWorker (the realistic look's pure builders), logoWorker (the title logo)
+(pad.html) pad: the phone's controller page, built on its own
+```
+
+Rules:
+
+1. **A lazy chunk is the target of `import()` calls in one parent chunk only** and statically
+   imports nothing but its ancestors: never a sibling, never a shared chunk (there are none),
+   never three.js of its own. `tools/chunkPlan.js` (a build plugin, `vite.config.js`) enforces it:
+   main is the entry's static closure; each lazy root, parents first, gets what it reaches beyond
+   its ancestors; a module two siblings reach is **hoisted** into their parent, one reached on two
+   branches into main, each hoist printed (`chunk-plan: main also carries ...`). The plan is handed
+   to Rolldown as one `codeSplitting` group (`name: plan.chunkOf`), which also names each chunk
+   after its entry file (`index.js`: its folder). Without it Rolldown carves main itself into
+   shared chunks as soon as a third lazy chunk shares game modules with it.
+2. **One loader per chunk**: main's in `src/core/chunks.js` (`CHUNKS.hall()`, ...), a child's in
+   its parent (`world/lane/index.js`: `loadRealLook`, `loadBoss`). `once(load, name)` memoises a
+   loader; a failure is not kept: the next call tries again. (Chromium keeps a failed module fetch
+   failed for the page, so the retry asks for the chunk again under a fresh query at the URL the
+   error named, and finds the entry's namespace in that raw module by its `chunk` export: every
+   chunk's entry module exports `chunk = '<its name>'`; `tests/chunks.test.js`.)
+3. **Code that may arrive late attaches**; nothing needs it at construction: an area's code
+   (`AreaSwitch.load`, the hold wait: "Areas and transitions"), object kinds registered by their
+   own module as it is evaluated (`objects/kinds.js`: the skerries chunk's `Critters`), the lane's
+   movers (`objects.attachLane`).
+4. **`?test=1` is eager**: main awaits every lazy chunk before `window.__ready`, so the browser
+   tests and `window.__game.enterArea()` stay synchronous and deterministic. Play prefetches
+   the areas (`prefetch(['lane', 'hall', 'skerries'])`, one at a time on idle moments) from the
+   title's first frames; the lane's chunk with its children loads at boot beside the realistic
+   look's workers, as their chunks always did.
+5. **A chunk that needs only data imports a data module**, not a builder: the plan works on the
+   module graph, so importing one constant from a builder module reaches all of it and what it
+   imports (`world/lane/real/grassTiers.js` exists so the realLook chunk does not reach the
+   worker's grass builder through `GRASS`).
+6. **Node tests import source modules directly**: nothing is lazy there. `world/areas.js` merges
+   every area's code into the defs statically; tests that build the skerries import it (or
+   `objects/Critters.js`), which registers the critters.
+
+**Caps** (`tests/net-relay-build.test.js` pins the chunk list, each chunk's parent and imports,
+and every cap; the gzip sizes are printed, not asserted):
+
+| chunk | bytes (M1) | gzip -9 | cap |
+|---|---:|---:|---:|
+| main | 1,518,217 | 482 kB | 1,560,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle) |
+| hall | 48,824 | 20 kB | 60 KiB |
+| skerries | 73,041 | 28 kB | 88 KiB |
+| lane | 60,462 | 24 kB | 72 KiB |
+| realLook | 48,607 | 17 kB | 90 KiB |
+| laneBoss | 102,011 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| laneRealWorker | 138,379 | 57 kB | 160 KiB |
+| pad | 65,798 | 22 kB | 100 KiB (from 200: the QR library is no longer in it) |
+
+**Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in
+`world/areaDefs.js` with `code: CHUNKS.<name>`, its builders in `world/<name>/index.js` (exporting
+`chunk = '<name>'` and `builders`), a loader in `src/core/chunks.js`, its code merged in
+`world/areas.js`, its name in main's prefetch list, and a cap in the build test. A new
+feature or mode: an entry module of its own behind a loader in `chunks.js` (or in its parent
+chunk), attached when it arrives. Main grows only for engine-level work; raising a cap is the
+last resort, with its reason in the test, `vite.config.js` and here. Watch the build's
+`chunk-plan:` lines: a hoist moves bytes into main (a chunk importing another area's module),
+fixed by moving what both need into a small module of its own. **Never** (each measured):
+`treeshake.propertyWriteSideEffects: false` (it drops Jonas's pose calls),
+dropping `console` (shader errors go through `console.error`), property mangling (chunks are
+minified apart), pruning three.js.
+
 ## Tooling
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
-  `npm run build` — production build into `dist/`: the game as one bundle by design (1,678,665
-  bytes with Sparrow Lane, its details and its realistic look's boot part, ~549 kB gzip, plus
-  the ~52 kB lazy `realLook` chunk, the ~13 kB title-logo worker and the ~114 kB realistic
-  look's worker; the size warning
-  limit is 1700 kB, `GAME_CHUNK_LIMIT_KB` in `vite.config.js`, raised from 1600 for the second
-  course: the hard budget is 1,700,000 bytes), then the phone's `pad.html` built separately
-  into the same folder (~85 kB, its own copy of the touch controller and protocol).
-  `npm run preview` serves it with the phone relay.
+  `npm run build` — production build into `dist/`: the game as a tree of chunks (see "Chunks":
+  `main` with what the first frame needs, under its 1,560,000-byte budget, and its lazy chunks,
+  each under its cap), the ~13 kB title-logo worker and the ~138 kB realistic look's worker,
+  then the phone's `pad.html` built separately into the same folder (~66 kB, its own copy of the
+  touch controller and protocol). `npm run preview` serves it with the phone relay.
 * `node tools/shot.mjs --url "/preview.html?m=<area>&cam=x,y,z&look=x,y,z" --out shots/x.png`
   — headless screenshot of a preview page (prints browser errors).
 * `node tools/shot.mjs --url "/?test=1" --actions '[{"step":30,"input":{"stickY":1}},{"shot":"shots/a.png"},{"eval":"__game.snapshot()"}]'`

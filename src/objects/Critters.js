@@ -64,7 +64,8 @@ import { CRITTER_RIG, MODEL, makeCritterGeometry, makeCritterMaterial, makeMarke
 import { frog, FROG } from './critters/frog.js';
 import { crab, CRAB } from './critters/crab.js';
 import { mosquito, MOSQUITO } from './critters/mosquito.js';
-import { heroInvincible } from './Minions.js';
+import { AWAY, heroInvincible } from './hurt.js';
+import { KINDS as OBJECT_KINDS } from './kinds.js';
 import { TINT } from './Sparkles.js';
 import { shadowSize } from './BlobShadows.js';
 
@@ -97,29 +98,8 @@ const SHARED = {
 // Each kind's numbers live with its steps (critters/*.js).
 export const CRITTER = { SHARED, FROG, CRAB, MOSQUITO };
 
-// F4: actions in which he is away (exactly where Player.bounce() refuses: the automatic and
-// submerged groups and NO_BOUNCE, plus being shot out of the cannon).
-export const AWAY = {
-  reading: 1,
-  death: 1,
-  spawn: 1,
-  spawn_land: 1,
-  star_dance: 1,
-  star_fall: 1,
-  pole: 1,
-  pole_top: 1,
-  ledge_hang: 1,
-  ledge_climb: 1,
-  cannon: 1,
-  cannon_shot: 1,
-  tail_hold: 1,
-  tail_spin: 1,
-  tail_throw: 1,
-  swim_idle: 1,
-  swim_stroke: 1,
-  swim_flutter: 1,
-  water_surface: 1,
-};
+// F4: actions in which he is away (objects/hurt.js; LaneBoss.js asks it too).
+export { AWAY };
 
 // Every state of every kind: calm (C: at home, not after him), engaged (E) or a defeat (D; 'gone'
 // is the end of one: nothing drawn). HITTABLE = every non-defeat state (F8 holds in all of them).
@@ -1130,3 +1110,7 @@ export class Critters {
     }
   }
 }
+
+// (Registered as its chunk loads, skerries: ObjectManager makes a course's critters from
+// objects/kinds.js.)
+OBJECT_KINDS.Critters = Critters;

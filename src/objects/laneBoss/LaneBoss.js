@@ -30,7 +30,7 @@
 // Waking (layout.LANE_BOSS.wake): Jonas on the drive's level (his feet within `level` of its
 // ground), on the ground, within `r` of the car's middle for `dwell` ticks, or touching it (his
 // feet against its sides, or his attack on it); never while he is up on the bins, the carport or
-// a roof, on the car itself, away (Critters.js AWAY: reading, on a pole or a ledge, ...), blinking
+// a roof, on the car itself, away (hurt.js AWAY: reading, on a pole or a ledge, ...), blinking
 // after a hit, in a dialog or a warp; and once it has parked again, not until he has been REARM
 // away from it (so he may climb the car). From `notice` its T lights blink at him now and then
 // with a soft chirp, its indicators flashing amber (as with its wake's blinks and the tame car's
@@ -50,8 +50,7 @@
 
 import { PLAYER_RADIUS } from '../../core/constants.js';
 import { moveSurfaces } from '../../collision/CollisionWorld.js';
-import { AWAY } from '../Critters.js';
-import { heroInvincible } from '../Minions.js';
+import { AWAY, heroInvincible } from '../hurt.js';
 import { TINT } from '../Sparkles.js';
 import { BlobShadows } from '../BlobShadows.js';
 import { BOSS } from './tuning.js';

@@ -24,11 +24,9 @@
 import { Geo } from './geo.js';
 import { makeRng } from '../../../core/math.js';
 import { frameOf } from './house.js';
+import { GRASS } from './grassTiers.js';
 
-export const GRASS = Object.freeze({
-  high: Object.freeze({ side: 128, cell: 12, radius: 760, blades: 4, segs: 3 }),
-  mid: Object.freeze({ side: 80, cell: 12, radius: 480, blades: 3, segs: 2 }),
-});
+export { GRASS }; // (its data lives in grassTiers.js, which the realLook chunk imports)
 
 export function grassClump(tier) {
   const G = GRASS[tier];

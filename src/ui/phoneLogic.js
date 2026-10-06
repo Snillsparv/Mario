@@ -1,8 +1,7 @@
-// Pure helpers for the phone-controller panel (ui/PhonePanel.js): texts, the QR code matrix,
-// the pixel-art phone icon and the panel layout on the HUD's 320x240 logical grid. No DOM, so
-// node tests cover all of it.
-
-import qrcode from 'qrcode-generator';
+// Pure helpers for the phone-controller panel (ui/PhonePanel.js): texts, the QR code's sizing,
+// the pixel-art phone icon and the panel layout on the HUD's 320x240 logical grid (the QR code
+// matrix itself is ui/qr.js's: the pad page shares this module). No DOM, so node tests cover all
+// of it.
 
 export const PHONE_TITLE = 'PHONE CONTROLLER';
 export const PHONE_SCAN = 'Scan with your phone - same Wi-Fi';
@@ -23,21 +22,6 @@ export const JOINED_CLOSE_MS = 1500;
 
 // Modules of light margin around the code (the QR standard asks for 4).
 export const QR_QUIET = 4;
-
-// The QR code of `text` (automatic version, error correction M): { size, dark(x, y) } with
-// size in modules (no quiet zone). Null when it cannot be encoded.
-export function qrMatrix(text) {
-  if (typeof text !== 'string' || !text) return null;
-  try {
-    const qr = qrcode(0, 'M');
-    qr.addData(text, 'Byte');
-    qr.make();
-    const size = qr.getModuleCount();
-    return { size, dark: (x, y) => qr.isDark(y, x) };
-  } catch {
-    return null; // too long for any version
-  }
-}
 
 // Device pixels per module so the code plus its quiet zone fits `devicePx` (whole pixels, so
 // every module stays a crisp square), at least 1.

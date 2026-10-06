@@ -1,4 +1,5 @@
-// Sparrow Lane's lazy chunk (`laneBoss`, loaded through objects/laneBoss/area.js): what moves
+// Sparrow Lane's lazy chunk (`laneBoss`, a child of the lane's chunk: world/lane/index.js
+// loadBoss, which objects/laneBoss/area.js calls): what moves
 // in the dad's drive. The movable bins (LaneBins.js), STOMPWATT, the dad's car standing up into a
 // robot made of its own panels (LaneBoss.js: its model, rig, poses, camera and sounds), and the
 // store room's doors under the carport, kicked to pieces (LaneGarage.js: the room's classic
@@ -26,6 +27,7 @@ import { SONGS } from '../../audio/songs.js';
 import { INSTRUMENTS, CHANNELS } from '../../audio/instruments.js';
 import * as LANE from '../../world/lane/layout.js';
 
+export const chunk = 'laneBoss'; // (src/core/chunks.js: its name)
 export { LaneBins } from './LaneBins.js';
 export { LaneBoss } from './LaneBoss.js';
 export { BINS_TUNING, BOSS } from './tuning.js';

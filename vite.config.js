@@ -4,47 +4,45 @@ import { fileURLToPath } from 'node:url';
 import { build, defineConfig } from 'vite';
 import padRelay from './tools/padRelay.js';
 import glslMinify from './tools/glslMinify.js';
+import chunkPlan from './tools/chunkPlan.js';
 
 const BASE = './';
+const plan = chunkPlan();
 const TARGET = 'es2022';
-// The game is one bundle by design: it needs all of it (three.js is much of it) before the
-// first frame, so splitting would only add requests. ~1.70 MB minified (1,691,039 bytes with
-// B2's STOMPWATT hooks and three's skinning, B3's fight hooks and B4's robot line on the pause
-// screen; 1,696,005 with R fixes' kerbs, bed and sign; ~1,698.6k with D1's garage doors: the
-// door wall, its leaves as pieces, the store room's shell and colliders, the hooks), ~557 kB
-// gzipped, plus two
-// lazily loaded chunks and two
-// module workers of its own (new Worker(new
-// URL(...)), not imports): the ~13 kB title-logo worker and the realistic look's
-// (render/real/laneRealWorker.js, ~114 kB, a pool of up to three of them: the pure code the
-// realistic Sparrow Lane needs, its texture generators and its geometry builders, kept out of
-// main; it must import no three.js and stay under 160 kB). The chunk, `realLook` (~52 kB:
-// world/lane/real/realLook.js, imported only dynamically, at boot beside the workers), is the
-// realistic look's main-thread code the boot does not need (its materials, sky, probe, far
-// shadow, post chain and output pass); it imports only from main (three.js and the classic
-// builders are not downloaded twice) and stays under 90 kB; with no modulepreload (below) the
-// game's index.html still loads main alone. The second chunk, `laneBoss` (~102 kB: objects/
-// laneBoss/index.js, imported only dynamically by objects/laneBoss/area.js, at boot), is
-// Sparrow Lane's movers (the movable bins), its boss, STOMPWATT, with its fight, sounds and
-// music, and D1's garage doors (their breaking, the store room's classic things, its camera):
-// the same rules, importing only from main, under 100 KiB (raised from 90 KiB for D1: it is "what
-// moves in the dad's drive", prefetched at boot, never in the first frame's way, and main is the
-// scarce budget; a third chunk would cost main its loader) (Rolldown names it after its
-// index.js's folder; it must not import world/lane/props.js, or Rolldown splits main into a
-// common chunk). The size warning was 1600 (1,584,238 bytes before
-// it); raised to 1700 for the second course, Sparrow Lane (world/lane/*, about 60 kB with its
-// details; its realistic look's renderer side about 47 kB more, until G1 moved most of it into
-// the lazy chunk): the hard budget (1,700,000 bytes) is the limit. Growth goes into the worker
-// or the lazy chunk first; raising the cap is the last resort, documented here and in
-// docs/ARCHITECTURE.md.
-const GAME_CHUNK_LIMIT_KB = 1700;
+// The game is a tree of chunks (tools/chunkPlan.js pins every module to exactly one):
+//   * `main`, index.html's one script: everything the first frame needs (three.js, the engine,
+//     the player, camera, renderer and audio engine, the castle grounds and their objects, the
+//     menus and HUD, every area's definition and layout, the realistic look's boot part);
+//   * lazy chunks, each the target of import() calls in one parent chunk only (src/core/
+//     chunks.js lists main's; a child's loader is in its parent): the areas `hall`, `skerries`
+//     and `lane` (its children `realLook`, the realistic look's main-thread code, and `laneBoss`,
+//     what moves in the dad's drive: the bins, STOMPWATT, the garage doors). A lazy chunk
+//     imports only its ancestors (never a sibling, never a shared chunk), and holds no three.js;
+//   * two module workers of their own (new Worker(new URL(...)), not imports): the title logo's
+//     and the realistic look's (render/real/laneRealWorker.js: the pure code the realistic
+//     Sparrow Lane needs, kept out of main; no three.js, under 160 kB).
+// Without the plan Rolldown would carve main itself into shared chunks as soon as a third lazy
+// chunk shares game modules with it. A module two siblings need is hoisted into their parent,
+// one needed on two branches into main; the build prints each hoist ("chunk-plan: main also
+// carries ..."). Every chunk has a hard byte cap, pinned in tests/net-relay-build.test.js; main's
+// is MAIN_BUDGET (its warning limit, in kB, below). New areas and features go into a chunk of
+// their own (an import() in src/core/chunks.js); main grows only for engine-level work. Raising a
+// cap is the last resort, documented here, in the test and in docs/ARCHITECTURE.md ("Chunks").
+// History: 900 kB (one bundle, 09-24), 1400 (the phone pad), 1500, 1600 (the round hall), 1700
+// (Sparrow Lane; a hard budget since its realistic look), 1560 with the lazy areas (main
+// 1,518,217 bytes).
+// Never: treeshake.propertyWriteSideEffects false (it drops calls that only write their
+// arguments' properties: Jonas's pose functions), dropping console (shader compile errors go
+// through console.error), property mangling (chunks are minified apart), pruning three.js.
+const MAIN_BUDGET = 1560000;
+const GAME_CHUNK_LIMIT_KB = MAIN_BUDGET / 1000;
 
 // The phone's controller page (pad.html) is built on its own, right after the game, into the
 // same output folder. Built together, the two pages would share a chunk (the touch controller
-// and the protocol), and the game would no longer be one file. Built apart, each page is a
-// single self-contained script: the game (index.html + assets/main-*.js) exactly as without
-// the pad, and the pad (pad.html + assets/pad-*.js, ~85 kB) with its own copy of the shared
-// code, so a phone never downloads the game.
+// and the protocol). Built apart, the game (index.html + assets/main-*.js and its lazy chunks)
+// is exactly as without the pad, and the pad (pad.html + assets/pad-*.js, ~66 kB) is a single
+// self-contained script with its own copy of the shared code, so a phone never downloads the
+// game. (It never sees the chunk plan: it is built with configFile false.)
 const PAD_PAGE = fileURLToPath(new URL('./pad.html', import.meta.url));
 
 function padPageBuild() {
@@ -95,13 +93,17 @@ export default defineConfig({
   preview: { host: true },
   // (glslMinify: the build's shader text, /* glsl */ literals, without comments and spare
   // whitespace: tools/glslMinify.js.)
-  plugins: [padRelay(), padPageBuild(), glslMinify()],
+  plugins: [padRelay(), padPageBuild(), glslMinify(), plan],
   build: {
     target: TARGET,
-    rolldownOptions: { input: { main: 'index.html' } },
+    rolldownOptions: {
+      input: { main: 'index.html' },
+      // (Each module in the chunk the plan gives it; see the top.)
+      output: { codeSplitting: { groups: [{ name: plan.chunkOf, test: plan.planned, includeDependenciesRecursively: false, debugName: 'chunk-plan' }] } },
+    },
     chunkSizeWarningLimit: GAME_CHUNK_LIMIT_KB,
-    // (The realLook chunk is imported at boot, beside the workers: no preload helper, no
-    // modulepreload link in index.html.)
+    // (Lazy chunks load when the game asks for them: no modulepreload link in index.html, which
+    // loads main alone.)
     modulePreload: false,
   },
 });
