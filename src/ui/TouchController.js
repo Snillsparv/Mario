@@ -288,6 +288,8 @@ export function bodySvg(layout) {
 
 const ARROW_SVG = '<svg viewBox="-10 -10 20 20"><path d="M0,-7 L7,4 L-7,4 Z"/></svg>';
 
+export const chunk = 'TouchController'; // (its lazy chunk's name: src/core/chunks.js)
+
 export class TouchController {
   // input: core/input.js Input; events: the game's bus; view: N64Renderer (its container is
   // the element whose bottom inset makes room in portrait). Options for previews/tests:

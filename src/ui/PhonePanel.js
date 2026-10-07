@@ -3,7 +3,9 @@
 // edge), laid out on the HUD's 320x240 logical grid so it scales with the picture and keeps
 // every font pixel and QR module on whole device pixels.
 //
-//   const phone = new PhonePanel(uiRoot, { remotePad, events, hud, canOpen: () => bool });
+//   const phone = new PhonePanel(uiRoot, { remotePad, events, hud, canOpen: () => bool, keys });
+//                              // keys false: its owner forwards the window's keydowns to it
+//                              // (main's ui/lateUi.js PhoneSlot, listening since boot)
 //   phone.available            // remotePad.available: the entry points are shown only then
 //   phone.open() / phone.close() / phone.isOpen
 //   phone.update(controller)   // 30 Hz while open during play: Start / B close it
@@ -127,8 +129,10 @@ export function renderQr(text, devicePx) {
   return c;
 }
 
+export const chunk = 'PhonePanel'; // (its lazy chunk's name: src/core/chunks.js)
+
 export class PhonePanel {
-  constructor(root, { remotePad = null, events = null, hud = null, canOpen = () => true } = {}) {
+  constructor(root, { remotePad = null, events = null, hud = null, canOpen = () => true, keys = true } = {}) {
     this.remotePad = remotePad;
     this.events = events;
     this.hud = hud;
@@ -150,8 +154,8 @@ export class PhonePanel {
     injectStyles();
     this.root = root;
     this._build();
-    this._onKey = (e) => this._key(e);
-    window.addEventListener('keydown', this._onKey, true);
+    this._onKey = keys ? (e) => this._key(e) : null;
+    if (keys) window.addEventListener('keydown', this._onKey, true);
     this._resizeObserver = new ResizeObserver(() => this._layout());
     this._resizeObserver.observe(this.el);
     this._stopDpr = watchPixelRatio(() => this._layout());
@@ -194,7 +198,7 @@ export class PhonePanel {
     this.close();
     this._unsubs.forEach((off) => off?.());
     if (!this.el) return;
-    window.removeEventListener('keydown', this._onKey, true);
+    if (this._onKey) window.removeEventListener('keydown', this._onKey, true);
     this._resizeObserver.disconnect();
     this._stopDpr();
     this.el.remove();

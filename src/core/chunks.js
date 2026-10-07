@@ -5,7 +5,11 @@
 // (world/lane/index.js: loadRealLook, loadBoss), so it may import what its parent holds.
 //
 //   CHUNKS.<name>() -> Promise<module>     // hall, skerries, lane: an area's code (its builders;
-//                                          // world/areaDefs.js def.code)
+//                                          // world/areaDefs.js def.code); face, phone,
+//                                          // recorder, touch: the opt-in UI (main: the face
+//                                          // screen with ?face=1, the phone panel once a relay
+//                                          // answers, the recorder on the first V or 9, the
+//                                          // touch controller on a touch screen)
 //   once(load, name) -> () => Promise      // a memoised loader that tries again after a failure
 //                                          // (the children's too); the chunk's entry module
 //                                          // exports `chunk = name`
@@ -48,6 +52,10 @@ export const CHUNKS = {
   hall: once(() => import('../world/hall/index.js'), 'hall'),
   skerries: once(() => import('../world/skerries/index.js'), 'skerries'),
   lane: once(() => import('../world/lane/index.js'), 'lane'),
+  face: once(() => import('../ui/FaceScreen.js'), 'FaceScreen'),
+  phone: once(() => import('../ui/PhonePanel.js'), 'PhonePanel'),
+  recorder: once(() => import('../ui/Recorder.js'), 'Recorder'),
+  touch: once(() => import('../ui/TouchController.js'), 'TouchController'),
 };
 
 const idle = () =>

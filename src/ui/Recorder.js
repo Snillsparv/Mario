@@ -407,6 +407,8 @@ function download(blob, name) {
   return url;
 }
 
+export const chunk = 'Recorder'; // (its lazy chunk's name: src/core/chunks.js)
+
 export class Recorder {
   constructor({ view, uiRoot, audio = null, win = globalThis.window } = {}) {
     this.view = view;

@@ -50,14 +50,13 @@ import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { ChoiceScreen } from './ui/ChoiceScreen.js';
-import { FaceScreen } from './ui/FaceScreen.js';
 import { menuPlan } from './ui/face/stretch.js';
 import { GameOverCard } from './ui/GameOverCard.js';
 import { DialogBox } from './ui/DialogBox.js';
 import { AlertBanner } from './ui/AlertBanner.js';
-import { TouchController } from './ui/TouchController.js';
-import { PhonePanel } from './ui/PhonePanel.js';
-import { Recorder } from './ui/Recorder.js';
+import { wantTouchUi } from './ui/touchLogic.js';
+import { shapeForKey } from './ui/recordLogic.js';
+import { PhoneSlot } from './ui/lateUi.js';
 import { fullscreenKey } from './ui/fullscreen.js';
 import { loadRaceChoice, saveRaceChoice } from './ui/raceChoice.js';
 import { RemotePad } from './net/RemotePad.js';
@@ -67,7 +66,7 @@ import { Meltdown } from './fx/Meltdown.js';
 import { AreaSwitch } from './core/AreaSwitch.js';
 import { RealAreas } from './render/real/RealAreas.js';
 import { AREA_DEFS } from './world/areaDefs.js';
-import { prefetch } from './core/chunks.js';
+import { CHUNKS, prefetch } from './core/chunks.js';
 import { LANE_BOSS } from './world/lane/layout.js';
 import { ScreenWipe } from './ui/ScreenWipe.js';
 
@@ -86,9 +85,22 @@ const DARK_FADE_SECONDS = 3;
 // How long the boot waits at most for the realistic look's workers to start (ms).
 const WORKERS_WAIT = 1000;
 
+// A chunk's promise that may be awaited later (or never): its failure is handled there, not
+// reported as unhandled meanwhile.
+const later = (p) => (p.catch(() => {}), p);
+
 async function start() {
   const container = document.getElementById('game');
   const uiRoot = document.getElementById('ui');
+  // The opt-in UI's chunks the boot itself needs start loading at once, beside the workers: the
+  // touch controller on a touch screen (or ?touch=1), the face screen with ?face=1; under ?test
+  // all of them, built where they always were (src/core/chunks.js).
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const touchWanted = wantTouchUi({ search: location.search, coarse });
+  const touchChunk = TEST || touchWanted ? later(CHUNKS.touch()) : null;
+  const faceChunk = MENUS.face ? later(CHUNKS.face()) : null;
+  const uiChunks = TEST ? Promise.all([CHUNKS.phone(), CHUNKS.recorder(), CHUNKS.face()]) : null;
+  if (uiChunks) later(uiChunks);
 
   const events = new Events();
   const input = new Input(window);
@@ -130,22 +142,88 @@ async function start() {
   // until its last page, then Pip is released (the closing press never reaches him).
   const dialog = new DialogBox(uiRoot, { events });
   new AlertBanner(uiRoot, { events }); // flashes 'AI RACE' when the mode switches on (and the meltdown's warning)
-  // On-screen controller on touch screens (?touch=1 forces it): feeds input.setTouchState.
-  const touch = new TouchController({ input, events, view });
+  if (uiChunks) await uiChunks;
+  // On-screen controller on touch screens (?touch=1 forces it): feeds input.setTouchState. Its
+  // chunk is in by now on a touch screen; on another one (a laptop's) it loads with the first
+  // touch of the page, which shows it, as the controller itself would (never with ?touch=0).
+  let touch = null;
+  const makeTouch = ({ TouchController }) => (touch ??= new TouchController({ input, events, view }));
+  if (touchChunk) {
+    try {
+      makeTouch(await touchChunk);
+    } catch (e) {
+      console.warn(`[touch] the controller did not load (${e?.message ?? e}); it loads with the next touch`);
+    }
+  }
+  if (!touch && wantTouchUi({ search: location.search, coarse: true })) {
+    const lateTouch = (show) =>
+      CHUNKS.touch().then(
+        (m) => {
+          const tc = makeTouch(m);
+          if (show) tc.setVisible(true);
+        },
+        (e) => console.warn(`[touch] the controller did not load (${e?.message ?? e})`),
+      );
+    const onTouch = () => {
+      if (!touch) lateTouch(true).then(() => touch && window.removeEventListener('touchstart', onTouch));
+    };
+    window.addEventListener('touchstart', onTouch, { passive: true });
+    // (A screen that turns into a touch screen, a convertible folded over: the controller shows.)
+    if (typeof matchMedia === 'function') matchMedia('(pointer: coarse)').addEventListener?.('change', (e) => e.matches && !touch && lateTouch(false));
+  }
   // A phone on the same network as the controller, through the dev/preview server's relay
-  // (absent on a static host: the panel and its entry points then stay hidden).
+  // (absent on a static host: the panel and its entry points then stay hidden). The panel
+  // (ui/PhonePanel.js) loads once the relay answers; until then main, the title card and the
+  // tests hold its slot (ui/lateUi.js), which also listens for its keys from here on.
   const remotePad = new RemotePad({ input, events });
-  const phone = new PhonePanel(uiRoot, {
-    remotePad,
-    events,
-    hud,
-    canOpen: () => (state.mode === 'title' && !state.choosing) || (state.mode === 'play' && state.paused),
-  });
-  if (!TEST || params.get('pad') === '1') remotePad.start();
+  const phone = new PhoneSlot();
+  const makePhone = ({ PhonePanel }) =>
+    phone.attach(
+      phone.panel ??
+        new PhonePanel(uiRoot, {
+          remotePad,
+          events,
+          hud,
+          canOpen: () => (state.mode === 'title' && !state.choosing) || (state.mode === 'play' && state.paused),
+          keys: false,
+        }),
+    );
+  if (TEST) makePhone(await CHUNKS.phone());
+  if (!TEST || params.get('pad') === '1') {
+    remotePad.start().then((available) => {
+      if (available && !phone.panel) CHUNKS.phone().then(makePhone, (e) => console.warn(`[phone] the panel did not load (${e?.message ?? e})`));
+    });
+  }
   // V records a 1920x1080 video of the picture, the UI and the sound, 9 a 1080x1920 portrait
   // one (ui/Recorder.js): while it records, the renderer frames the picture 16:9 or 9:16 and
-  // calls it after every view.render().
-  const recorder = new Recorder({ view, uiRoot, audio });
+  // calls it after every view.render(). Its chunk loads on the first V or 9, which it then
+  // answers (so in the artifact's frame, too, the first press explains itself).
+  let recorder = null;
+  let recorderLoading = false;
+  const onRecordKey = (e) => {
+    const shape = shapeForKey(e.code);
+    if (!shape || e.ctrlKey || e.metaKey || e.altKey || e.repeat || recorder || recorderLoading) return;
+    recorderLoading = true;
+    CHUNKS.recorder().then(
+      (m) => {
+        recorderLoading = false;
+        if (!recorder) makeRecorder(m).toggle(shape); // (built meanwhile: the press is gone)
+      },
+      (err) => {
+        recorderLoading = false;
+        console.warn(`[recorder] it did not load (${err?.message ?? err})`);
+      },
+    );
+  };
+  // Built once (it listens for V and 9 itself from then on: the stub stops).
+  const makeRecorder = ({ Recorder }) => {
+    if (recorder) return recorder;
+    recorder = new Recorder({ view, uiRoot, audio });
+    window.removeEventListener('keydown', onRecordKey);
+    return recorder;
+  };
+  if (TEST) makeRecorder(await CHUNKS.recorder());
+  else window.addEventListener('keydown', onRecordKey);
   fullscreenKey(); // F: the whole screen (ui/fullscreen.js)
   events.on('dialogClosed', () => {
     player.endReading?.();
@@ -285,8 +363,17 @@ async function start() {
 
   // Pip's big stretchy face after the title card (ui/FaceScreen.js): the renderer draws its
   // own scene instead of the world (nothing here ticks or draws meanwhile); resolves once
-  // Start has been pressed and released. The title track plays on until 'gameStart'.
+  // Start has been pressed and released. The title track plays on until 'gameStart'. Its chunk
+  // has been loading since boot; if it cannot load, the title card shows instead.
   async function runFace() {
+    let FaceScreen;
+    try {
+      ({ FaceScreen } = await (faceChunk ?? CHUNKS.face()));
+    } catch (e) {
+      console.warn(`[face] the face screen did not load (${e?.message ?? e}); the title instead`);
+      if (state.mode !== 'title') await runTitle();
+      return;
+    }
     state.mode = 'face';
     hud.setVisible(false);
     model.object3D.visible = false;
@@ -512,10 +599,18 @@ async function start() {
     areas, // core/AreaSwitch.js: .current, .phase, .buildMs, .get(name)
     wipe,
     shake,
-    touch,
+    get touch() {
+      return touch; // the TouchController once its chunk is in (always under ?test), else null
+    },
     remotePad,
-    phone,
-    recorder,
+    phone, // ui/lateUi.js PhoneSlot: .panel, the PhonePanel once the relay answered (under ?test: at once)
+    get recorder() {
+      return recorder; // the Recorder once V or 9 loaded it (under ?test: at once), else null
+    },
+    // The Recorder, loaded and built now as the first V would (a promise).
+    loadRecorder() {
+      return CHUNKS.recorder().then(makeRecorder);
+    },
     get face() {
       return face; // the FaceScreen while it shows (test hooks: see ui/FaceScreen.js), else null
     },

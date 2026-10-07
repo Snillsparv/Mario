@@ -8,9 +8,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CHUNKS, once, prefetch } from '../src/core/chunks.js';
 
+// Each loader and the name of its chunk (the build's: tests/net-relay-build.test.js).
+const NAMES = { hall: 'hall', skerries: 'skerries', lane: 'lane', face: 'FaceScreen', phone: 'PhonePanel', recorder: 'Recorder', touch: 'TouchController' };
+
 test('every chunk loader gives its entry module, named for it; the lane loads its children', async () => {
-  for (const [name, load] of Object.entries(CHUNKS)) {
+  assert.deepEqual(Object.keys(CHUNKS).sort(), Object.keys(NAMES).sort());
+  for (const [key, load] of Object.entries(CHUNKS)) {
     const m = await load();
+    const name = NAMES[key];
     assert.equal(m.chunk, name);
     assert.equal(await load(), m, `${name}: memoised`);
   }

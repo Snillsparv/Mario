@@ -116,6 +116,8 @@ function connectedPads() {
 
 const smoothstep = (x) => x * x * (3 - 2 * x);
 
+export const chunk = 'FaceScreen'; // (its lazy chunk's name: src/core/chunks.js)
+
 export class FaceScreen {
   constructor(root, { events = null, audio = null, view = null } = {}) {
     this.root = root;

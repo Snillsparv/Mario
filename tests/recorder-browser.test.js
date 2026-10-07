@@ -1,5 +1,6 @@
 // The video recorder in the real game (Vite dev server, headless Chromium), opt-in: E2E=1.
-// V in play (real time, sound on) records ~2 s: the picture is framed 16:9 (from the 4:3
+// V in play (real time, sound on; its first press loads the recorder's chunk, then records)
+// records ~2 s: the picture is framed 16:9 (from the 4:3
 // setting) with a drawing buffer at least 1080 px tall, the HUD canvas is composited every
 // frame, V again downloads castle-grounds-YYYY-MM-DD-HHMM.mp4|webm: a non-empty file whose
 // video is exactly 1920x1080, with a sound track, and whose frames show the HUD (the lives
@@ -163,7 +164,10 @@ test('V records a 1920x1080 video with the HUD and sound, V saves it, the framin
     assert.ok(Math.abs(before43.viewport.width / before43.viewport.height - 4 / 3) < 0.01);
     await hudShown(page);
 
+    // (The first V loads the recorder's chunk, then starts: core/chunks.js.)
+    assert.equal(await page.evaluate(() => window.__game.recorder), null, 'no recorder before the first V');
     await page.keyboard.press('KeyV');
+    await page.waitForFunction(() => window.__game.recorder?.recording, null, { timeout: 30000, polling: 20 });
     const rec = await page.evaluate(() => {
       const { recorder, view } = window.__game;
       return { recording: recorder.recording, format: recorder.format, capture: view.capture, audio: !!window.__game.audio.ctx };
@@ -240,6 +244,7 @@ test('V records a 1920x1080 video with the HUD and sound, V saves it, the framin
 test('9 records a 1080x1920 portrait video with the HUD, V saves it, framing and camera come back', { skip, timeout: 300000 }, async () => {
   const { page, errors } = await open('/?skipTitle=1&pad=0');
   try {
+    await page.evaluate(() => window.__game.loadRecorder()); // (its chunk in, as after a first V)
     const look = () =>
       page.evaluate(() => {
         const { view, recorder } = window.__game;

@@ -16,7 +16,8 @@ const TARGET = 'es2022';
 //   * lazy chunks, each the target of import() calls in one parent chunk only (src/core/
 //     chunks.js lists main's; a child's loader is in its parent): the areas `hall`, `skerries`
 //     and `lane` (its children `realLook`, the realistic look's main-thread code, and `laneBoss`,
-//     what moves in the dad's drive: the bins, STOMPWATT, the garage doors). A lazy chunk
+//     what moves in the dad's drive: the bins, STOMPWATT, the garage doors), and the opt-in UI:
+//     `FaceScreen`, `PhonePanel` (with the QR library), `Recorder`, `TouchController`. A lazy chunk
 //     imports only its ancestors (never a sibling, never a shared chunk), and holds no three.js;
 //   * two module workers of their own (new Worker(new URL(...)), not imports): the title logo's
 //     and the realistic look's (render/real/laneRealWorker.js: the pure code the realistic
@@ -30,11 +31,12 @@ const TARGET = 'es2022';
 // cap is the last resort, documented here, in the test and in docs/ARCHITECTURE.md ("Chunks").
 // History: 900 kB (one bundle, 09-24), 1400 (the phone pad), 1500, 1600 (the round hall), 1700
 // (Sparrow Lane; a hard budget since its realistic look), 1560 with the lazy areas (main
-// 1,518,217 bytes).
+// 1,518,217 bytes), 1465 with the opt-in UI lazy (the face screen, the phone panel, the recorder,
+// the touch controller: 1,424,826).
 // Never: treeshake.propertyWriteSideEffects false (it drops calls that only write their
 // arguments' properties: Jonas's pose functions), dropping console (shader compile errors go
 // through console.error), property mangling (chunks are minified apart), pruning three.js.
-const MAIN_BUDGET = 1560000;
+const MAIN_BUDGET = 1465000;
 const GAME_CHUNK_LIMIT_KB = MAIN_BUDGET / 1000;
 
 // The phone's controller page (pad.html) is built on its own, right after the game, into the

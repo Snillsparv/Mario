@@ -33,8 +33,13 @@ copied from anywhere (in particular, never copy or transliterate decompiled game
 
 Setup: `view.alignOverlay(uiRoot)` (the HUD/title follow the 4:3 pillarbox and the recorder's
 16:9 or 9:16 frame), `view.setWaterLevelFn(collision.waterLevelAt)`, `cam.reset(player)`,
-`new Recorder({ view, uiRoot, audio })` (V and 9: see "Recorder"; it composites each frame from the
-renderer's frame hook, right after `view.render()`, only while recording), `new ScreenWipe(uiRoot)`
+the opt-in UI, each a lazy chunk (see "Chunks"): the touch controller (built here on a touch
+screen, its chunk fetched from the start of the boot; elsewhere with the first touch of the
+page, never with `?touch=0`), the phone panel's slot (`ui/lateUi.js PhoneSlot`: the panel once
+the relay answers), the recorder's key stub (`new Recorder({ view, uiRoot, audio })` on the first
+V or 9, which it then answers: see "Recorder"; it composites each frame from the renderer's frame
+hook, right after `view.render()`, only while recording); under `?test=1` all three are built
+here at once, as before; `new ScreenWipe(uiRoot)`
 (before the HUD, so it lies under it) and `new AreaSwitch({ ... })` (see "Areas and
 transitions": the grounds are the area play starts in).
 
@@ -3588,7 +3593,10 @@ V and 9 record the game as a video file that plays on a phone in Full HD: always
 up to 60 fps, with the game's sound, whatever the window's size and shape.
 
 ```js
-const recorder = new Recorder({ view, uiRoot, audio })   // main; listens for V and 9 itself
+const recorder = new Recorder({ view, uiRoot, audio })   // main, on the first V or 9 (its lazy
+                                                          // chunk; under ?test at boot, and
+                                                          // __game.loadRecorder()); it listens
+                                                          // for V and 9 itself from then on
 recorder.toggle(shape?); recorder.start(shape = 'landscape' | 'portrait') -> boolean
 recorder.stop(reason?) -> Promise<saved | null>
 recorder.recording, .shape ('landscape' | 'portrait' while recording, else null), .format
@@ -3671,6 +3679,10 @@ REC_SHAPES.landscape / .portrait   // { key, width, height, aspect, zoom, label,
   `REC_OUT=<dir>` keeps the files and PNGs of their first frame and of one at ~0.8 s).
 
 ## Face screen (`src/ui/FaceScreen.js`, `src/ui/face/*`)
+
+(A lazy chunk, `FaceScreen`, fetched from the start of the boot with `?face=1` only; `runFace`
+awaits it, and shows the title card instead if it cannot load. `face/stretch.js` stays in main:
+`menuPlan`.)
 
 Between the title card and play, like a classic N64 start screen's toy but with our own hero:
 Jonas's big 3D head fills the picture, bobbing, swaying, blinking and watching the pointer, and
@@ -4111,7 +4123,9 @@ All original designs (no existing characters, blocks, caps or monsters are copie
   view (56 from the spawn, 54 before), the passage one more while it stands open. The hall's
   unbuilt doors stay one with the wall (`door()` without a passage).
 * **Touch controller** (ui + input): on touch screens (`pointer: coarse`, or `?touch=1`) a
-  retro game-controller UI appears (`src/ui/TouchController.js`, its own root appended to
+  retro game-controller UI appears (`src/ui/TouchController.js`, a lazy chunk: main fetches it
+  at the start of the boot on such a screen and builds it before the game choice, elsewhere on
+  the page's first touch, which shows it; `ui/touchLogic.js` stays in main; its own root appended to
   `document.body`, outside `#game`/`#ui`). Portrait: the game picture takes the top of the
   screen and the controller body fills the bottom (it sets `#game`'s bottom inset so the
   renderer resizes); landscape: translucent controls over the picture's lower corners. An
@@ -4234,7 +4248,10 @@ build has no relay, so every phone feature stays hidden there.
   silent for 1.5 s, and sends `rumble` when Jonas is hurt; events `'phonePad' { connected,
   available, room, padUrl }` and `'remotePress' / 'remoteRelease' { button }` (the title
   starts from the phone's START/A). `?pad=0` turns it off, `?pad=1` forces it (`?test=1`
-  skips it). `PhonePanel` (`src/ui/PhonePanel.js`, `phoneLogic.js`): the pairing panel with a
+  skips it). `PhonePanel` (`src/ui/PhonePanel.js`, `phoneLogic.js`; a lazy chunk with the QR
+  library, `ui/qr.js`, loaded once `remotePad.start()` finds the relay: a static host never
+  loads it; main, the title card and `window.__game.phone` hold its slot, `ui/lateUi.js
+  PhoneSlot`, which listens for its keys from boot on): the pairing panel with a
   QR code of the pad URL (`qrcode-generator`), the URL, the room code and the connection
   status, opened with P on the title or the pause screen (the pause legend's P row is also a
   click target; the title card has no phone button); a small badge
@@ -4432,9 +4449,14 @@ main (index.html)                 three.js, the engine (core, input, collision, 
  │                                look's boot part (render/real: tiers, RealAreas, texture store)
  ├─ hall      world/hall/index.js       the Great Hall's builders
  ├─ skerries  world/skerries/index.js   Midsummer Skerries' builders, the sea, its critters
- └─ lane      world/lane/index.js       Sparrow Lane's classic builders, props, houses, textures
-     ├─ realLook  world/lane/real/realLook.js   the realistic look's main-thread code
-     └─ laneBoss  objects/laneBoss/index.js     the bins, STOMPWATT, the garage doors
+ ├─ lane      world/lane/index.js       Sparrow Lane's classic builders, props, houses, textures
+ │   ├─ realLook  world/lane/real/realLook.js   the realistic look's main-thread code
+ │   └─ laneBoss  objects/laneBoss/index.js     the bins, STOMPWATT, the garage doors
+ ├─ FaceScreen       ui/FaceScreen.js       ?face=1's stretchy head (fetched at boot with it)
+ ├─ PhonePanel       ui/PhonePanel.js       the phone panel and the QR library (once a relay answers)
+ ├─ Recorder         ui/Recorder.js         the video recorder (on the first V or 9)
+ └─ TouchController  ui/TouchController.js  the touch controller (at boot on a touch screen,
+                                            else on the first touch)
 (workers)  laneRealWorker (the realistic look's pure builders), logoWorker (the title logo)
 (pad.html) pad: the phone's controller page, built on its own
 ```
@@ -4459,8 +4481,11 @@ Rules:
 3. **Code that may arrive late attaches**; nothing needs it at construction: an area's code
    (`AreaSwitch.load`, the hold wait: "Areas and transitions"), object kinds registered by their
    own module as it is evaluated (`objects/kinds.js`: the skerries chunk's `Critters`), the lane's
-   movers (`objects.attachLane`).
-4. **`?test=1` is eager**: main awaits every lazy chunk before `window.__ready`, so the browser
+   movers (`objects.attachLane`), the opt-in UI behind what main holds meanwhile (the phone
+   panel's slot, the recorder's key stub, the touch controller's first-touch listener; the
+   `window.__game` hooks `touch` and `recorder` are getters, null until built).
+4. **`?test=1` is eager**: main awaits every lazy chunk before `window.__ready` (and builds the
+   touch controller, the phone panel and the recorder where they always were), so the browser
    tests and `window.__game.enterArea()` stay synchronous and deterministic. Play prefetches
    the areas (`prefetch(['lane', 'hall', 'skerries'])`, one at a time on idle moments) from the
    title's first frames; the lane's chunk with its children loads at boot beside the realistic
@@ -4476,14 +4501,18 @@ Rules:
 **Caps** (`tests/net-relay-build.test.js` pins the chunk list, each chunk's parent and imports,
 and every cap; the gzip sizes are printed, not asserted):
 
-| chunk | bytes (M1) | gzip -9 | cap |
+| chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,518,217 | 482 kB | 1,560,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle) |
-| hall | 48,824 | 20 kB | 60 KiB |
-| skerries | 73,041 | 28 kB | 88 KiB |
-| lane | 60,462 | 24 kB | 72 KiB |
-| realLook | 48,607 | 17 kB | 90 KiB |
-| laneBoss | 102,011 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| main | 1,424,826 | 451 kB | 1,465,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy) |
+| hall | 48,840 | 20 kB | 60 KiB |
+| skerries | 73,055 | 28 kB | 88 KiB |
+| lane | 60,476 | 24 kB | 72 KiB |
+| realLook | 48,610 | 17 kB | 90 KiB |
+| laneBoss | 102,030 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| FaceScreen | 27,872 | 11 kB | 35 KiB |
+| PhonePanel | 32,353 | 11 kB | 40 KiB |
+| Recorder | 11,727 | 5 kB | 15 KiB |
+| TouchController | 25,484 | 8 kB | 32 KiB |
 | laneRealWorker | 138,379 | 57 kB | 160 KiB |
 | pad | 65,798 | 22 kB | 100 KiB (from 200: the QR library is no longer in it) |
 
@@ -4504,7 +4533,7 @@ minified apart), pruning three.js.
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
   `npm run build` — production build into `dist/`: the game as a tree of chunks (see "Chunks":
-  `main` with what the first frame needs, under its 1,560,000-byte budget, and its lazy chunks,
+  `main` with what the first frame needs, under its 1,465,000-byte budget, and its lazy chunks,
   each under its cap), the ~13 kB title-logo worker and the ~138 kB realistic look's worker,
   then the phone's `pad.html` built separately into the same folder (~66 kB, its own copy of the
   touch controller and protocol). `npm run preview` serves it with the phone relay.

@@ -55,10 +55,17 @@ const CHUNKS = {
   // (110 KiB, from 100: what moves in the dad's drive, the bins, STOMPWATT and the garage doors,
   // now loaded through the lane's chunk; it was at 99.6 KiB.)
   laneBoss: { parent: 'lane', cap: 110 * KiB, min: 60000 },
+  // The opt-in UI (about a quarter to grow): the face screen (?face=1), the phone panel with its
+  // QR library (once a relay answers), the recorder (the first V or 9), the touch controller (a
+  // touch screen).
+  FaceScreen: { parent: 'main', cap: 35 * KiB, min: 15000 },
+  PhonePanel: { parent: 'main', cap: 40 * KiB, min: 20000 },
+  Recorder: { parent: 'main', cap: 15 * KiB, min: 8000 },
+  TouchController: { parent: 'main', cap: 32 * KiB, min: 15000 },
 };
 // main's budget (vite.config.js MAIN_BUDGET): 1,700,000 while it was the one bundle; 1,560,000
-// with the areas' code lazy (main 1,518,217).
-const MAIN_CAP = 1560000;
+// with the areas' code lazy (main 1,518,217); 1,465,000 with the opt-in UI lazy (1,424,826).
+const MAIN_CAP = 1465000;
 
 test('the game: main, its planned lazy chunks (each importing only its ancestors) and its workers; pad.html has its own', async (t) => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();
@@ -108,6 +115,7 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   assert.ok(size('laneRealWorker') < 160 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 100 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');
+  assert.ok(!/addData/.test(src.main) && /addData/.test(src.PhonePanel), "the QR code library only in the phone panel's chunk");
 });
 
 function get(url, method = 'GET') {
