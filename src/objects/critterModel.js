@@ -39,7 +39,7 @@
 //   makeMarkerMesh(n)       the orange danger markers ('critterMarkers', n instances)
 
 import * as THREE from 'three';
-import { scaledFog } from './robotBeastModel.js';
+import { scaledFog } from '../render/fog.js';
 import { makeMarkerTexture } from './aiRaceTextures.js';
 
 const TAU = Math.PI * 2;

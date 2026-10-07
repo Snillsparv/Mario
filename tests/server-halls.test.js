@@ -22,6 +22,7 @@ import { SFX, SFX_INFO } from '../src/audio/sfx.js';
 import { Effects } from '../src/fx/Effects.js';
 import { KIND } from '../src/fx/kinds.js';
 import { CameraShake } from '../src/camera/shake.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const scene = new THREE.Scene();
 const level = buildLevel(scene);

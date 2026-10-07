@@ -123,14 +123,9 @@ import { Butterflies } from './Butterflies.js';
 import { Birds } from './Birds.js';
 import { makeStarEnvMap } from './textures.js';
 import { AiButton } from './AiButton.js';
-import { RobotBeast } from './RobotBeast.js';
-import { Fireballs } from './Fireballs.js';
-import { FireSprites } from './FireSprites.js';
 import { MysteryBox } from './MysteryBox.js';
-import { Minions } from './Minions.js';
 import { CastleDoor } from './CastleDoor.js';
 import { Door } from './Door.js';
-import { ServerHalls } from './ServerHalls.js';
 import { BossStar } from './BossStar.js';
 import { Cannon } from './Cannon.js';
 import { KINDS } from './kinds.js';
@@ -165,6 +160,8 @@ export class ObjectManager {
     this.fx = fx; // (the retiring button's dust)
     this.player = player;
     this.collision = collision;
+    this.layout = layout;
+    this.level = level;
     this.tick = 0;
     this.started = false; // update() seen since construction / reset(); until then animate() runs the backdrop
     this._backdropStart = null; // caller time that matches tick 0 while the backdrop runs
@@ -183,6 +180,7 @@ export class ObjectManager {
     // (With the beast: the minions' slots, then one for its reward star, BossStar.js; then one
     // for each critter.)
     const critterShadow0 = minionShadow0 + (layout.KAIJU ? MINION_SLOTS + 1 : 0);
+    this._minionShadow0 = minionShadow0; // (AI RACE's objects: _makeAiRace, maybe later)
     this.shadows = new BlobShadows(critterShadow0 + (layout.CRITTERS?.length ?? 0));
     this.coins = new CoinField({ layout, collision, groundAt, shadows: this.shadows, drops: COIN_DROPS, dropShadow0 });
     this.sparkles = new Sparkles(this.rng);
@@ -230,55 +228,11 @@ export class ObjectManager {
     this.modeOn = false; // AI RACE mode as last switched ('darkMode' events, or our own button)
     this.darkT = 0;
     this.button = layout.AI_BUTTON ? new AiButton({ spot: layout.AI_BUTTON, collision, groundAt }) : null;
-    if (layout.KAIJU) {
-      const rng = makeRng(0xa1ace);
-      this.fire = new FireSprites(rng);
-      this.fireballs = new Fireballs({ collision, events, fx, level, layout, fire: this.fire, rng });
-      const balls = this.fireballs;
-      this.beast = new RobotBeast({
-        anchor: layout.KAIJU,
-        collision,
-        events,
-        fire: this.fire,
-        rng,
-        launch: (x, y, z, vx, vy, vz) => balls.launch(x, y, z, vx, vy, vz),
-        fx, // (the tail grab: the crash's blast and dust, its scorch, where a throw may land)
-        level,
-        layout,
-        // A thrown beast does not come down on a server hall that is out or on its way.
-        blocked: (x, z, margin) => this.halls !== null && this.halls.units.some((u) => u.state !== 0 && this.halls.near(u, x, z, margin)),
-      });
-      this.minions = new Minions({
-        collision,
-        events,
-        fx,
-        fire: this.fire,
-        sparkles: this.sparkles,
-        shadows: this.shadows,
-        shadowBase: minionShadow0,
-        rng: makeRng(0x3a11ce),
-        layout,
-        groundAt: layout.groundHeight ?? null,
-        onCoin: (x, y, z) => this.spawnCoin(x, y, z),
-      });
-      // The tech takeover (after the button and the box, whose colliders its planning avoids).
-      this.halls = new ServerHalls({ collision, events, fx, level, layout, sparkles: this.sparkles, rng: makeRng(0x5e7e7), view });
-      // A unit taking its ground wrecks the minions standing there and moves dropped coins out
-      // of its way (they would be shut inside it).
-      this.halls.onClaim = (u) => {
-        const covers = (x, z) => this.halls.near(u, x, z, CLAIM_MARGIN);
-        this.minions.crush(covers, u.x, u.z);
-        this.coins.moveDropsOut(covers, u.x, u.z, Math.hypot(u.hw, u.hd) + CLAIM_MARGIN + 100);
-      };
-    } else {
-      this.fire = this.fireballs = this.beast = this.minions = this.halls = null;
-    }
-    // Grabbing the beast's tail (actions/tail.js reads player.tailGrip), and the reward star
-    // for throwing it off the roof (BossStar.js: once per game, at the crash site).
-    if (this.beast && player) player.tailGrip = this.beast.grip;
-    this.bossStar = this.beast
-      ? new BossStar({ events, collision, sparkles: this.sparkles, shadows: this.shadows, shadowSlot: minionShadow0 + MINION_SLOTS, envMap: this.star.mesh.material.envMap })
-      : null;
+    // AI RACE's objects (objects/aiRace.js, its lazy chunk: objects/kinds.js KINDS.aiRace) for a
+    // layout with KAIJU: made here when they are in already (node tests, ?test), else when main
+    // attaches them (attachAiRace). Their shadow slots are kept either way.
+    this.fire = this.fireballs = this.beast = this.minions = this.halls = this.bossStar = null;
+    if (layout.KAIJU && KINDS.aiRace) this._makeAiRace();
     events.on?.('darkMode', (e) => this._setMode(!!e?.on));
     // A dialog box is up (a sign, a locked or sealed door): Pip is frozen, so the minions and the beast
     // hold off until it closes, and fireballs already in flight (their blasts, fire zones) spare
@@ -300,14 +254,87 @@ export class ObjectManager {
 
     this.group = new THREE.Group();
     this.group.name = 'objects';
-    for (const part of [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.box, this.beast, this.fireballs, this.minions, this.halls, this.fire]) {
-      if (part) this.group.add(part.mesh);
-    }
-    if (this.cannon) this.group.add(this.cannon.mesh);
-    if (this.bossStar) this.group.add(this.bossStar.mesh);
-    if (this.critters) this.group.add(this.critters.mesh, this.critters.markers);
+    this._fillGroup();
     scene.add(this.group);
     this._draw(0, 1, null);
+  }
+
+  // The group's children in this order (the draw order of equals): AI RACE's objects attached
+  // later go where they always were, anything else added since stays after them.
+  _fillGroup() {
+    const g = this.group;
+    const parts = [this.shadows, this.coins, this.star, this.oneUp, this.butterflies, this.birds, this.sparkles, this.button, this.box, this.beast, this.fireballs, this.minions, this.halls, this.fire, this.cannon, this.bossStar]
+      .filter((p) => p)
+      .map((p) => p.mesh);
+    if (this.critters) parts.push(this.critters.mesh, this.critters.markers);
+    for (const mesh of parts) if (mesh.parent !== g) g.add(mesh);
+    const rank = new Map(parts.map((mesh, i) => [mesh, i]));
+    g.children.sort((a, b) => (rank.get(a) ?? parts.length) - (rank.get(b) ?? parts.length));
+  }
+
+  // AI RACE mode: the beast and its fireballs (own random stream, so the ambient objects' motion
+  // does not depend on the mode), the minions, the server halls, and the boss's reward star.
+  // Each has its own random stream and the shadow slots kept for it, and nothing else adds
+  // colliders on the grounds, so made later (attachAiRace) they are what they would have been.
+  _makeAiRace() {
+    const { RobotBeast, Fireballs, FireSprites, Minions, ServerHalls } = KINDS.aiRace;
+    const { collision, events, fx, level, layout, player, view } = this;
+    const minionShadow0 = this._minionShadow0;
+    const rng = makeRng(0xa1ace);
+    this.fire = new FireSprites(rng);
+    this.fireballs = new Fireballs({ collision, events, fx, level, layout, fire: this.fire, rng });
+    const balls = this.fireballs;
+    this.beast = new RobotBeast({
+      anchor: layout.KAIJU,
+      collision,
+      events,
+      fire: this.fire,
+      rng,
+      launch: (x, y, z, vx, vy, vz) => balls.launch(x, y, z, vx, vy, vz),
+      fx, // (the tail grab: the crash's blast and dust, its scorch, where a throw may land)
+      level,
+      layout,
+      // A thrown beast does not come down on a server hall that is out or on its way.
+      blocked: (x, z, margin) => this.halls !== null && this.halls.units.some((u) => u.state !== 0 && this.halls.near(u, x, z, margin)),
+    });
+    this.minions = new Minions({
+      collision,
+      events,
+      fx,
+      fire: this.fire,
+      sparkles: this.sparkles,
+      shadows: this.shadows,
+      shadowBase: minionShadow0,
+      rng: makeRng(0x3a11ce),
+      layout,
+      groundAt: layout.groundHeight ?? null,
+      onCoin: (x, y, z) => this.spawnCoin(x, y, z),
+    });
+    // The tech takeover (after the button and the box, whose colliders its planning avoids).
+    this.halls = new ServerHalls({ collision, events, fx, level, layout, sparkles: this.sparkles, rng: makeRng(0x5e7e7), view });
+    // A unit taking its ground wrecks the minions standing there and moves dropped coins out
+    // of its way (they would be shut inside it).
+    this.halls.onClaim = (u) => {
+      const covers = (x, z) => this.halls.near(u, x, z, CLAIM_MARGIN);
+      this.minions.crush(covers, u.x, u.z);
+      this.coins.moveDropsOut(covers, u.x, u.z, Math.hypot(u.hw, u.hd) + CLAIM_MARGIN + 100);
+    };
+    // Grabbing the beast's tail (actions/tail.js reads player.tailGrip), and the reward star
+    // for throwing it off the roof (BossStar.js: once per game, at the crash site).
+    if (player) player.tailGrip = this.beast.grip;
+    this.bossStar = new BossStar({ events, collision, sparkles: this.sparkles, shadows: this.shadows, shadowSlot: minionShadow0 + MINION_SLOTS, envMap: this.star.mesh.material.envMap });
+  }
+
+  // AI RACE's objects attached once main has loaded their chunk (src/core/chunks.js aiRace):
+  // true once they are here (at once if they were made with the manager), false for a layout
+  // without KAIJU or while the chunk is not in. Made, they join the group where they always were.
+  attachAiRace() {
+    if (this.beast) return true;
+    if (!this.layout.KAIJU || !KINDS.aiRace) return false;
+    this._makeAiRace();
+    this._fillGroup();
+    if (this.darkT) this.setDarkness(this.darkT);
+    return true;
   }
 
   // AI RACE mode switched (main's 'darkMode' event): the beast rises or sinks, and the button's

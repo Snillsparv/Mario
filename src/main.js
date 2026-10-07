@@ -66,7 +66,7 @@ import { Meltdown } from './fx/Meltdown.js';
 import { AreaSwitch } from './core/AreaSwitch.js';
 import { RealAreas } from './render/real/RealAreas.js';
 import { AREA_DEFS } from './world/areaDefs.js';
-import { CHUNKS, prefetch } from './core/chunks.js';
+import { CHUNKS, prefetch, idleMoment } from './core/chunks.js';
 import { LANE_BOSS } from './world/lane/layout.js';
 import { ScreenWipe } from './ui/ScreenWipe.js';
 
@@ -131,6 +131,11 @@ async function start() {
   if (params.has('mute')) audio.muted = true;
   // Rain, lightning, fire and explosions (AI RACE mode); objects use it for fireball impacts.
   const fx = new Effects({ scene, events, collision: level.collision, layout: level.layout });
+  // AI RACE's objects (the beast, its fire, the minions, the server halls) are a lazy chunk
+  // (objects/aiRace.js): under ?test it is in before the objects are built, so they are made
+  // with them as always; in play it loads behind the title when the game is played with AI RACE
+  // (and as soon as that is picked) and is attached then (aiRaceKit below).
+  if (TEST) await CHUNKS.aiRace();
   const objects = new ObjectManager({ scene, collision: level.collision, events, layout: level.layout, player, fx, level });
   // AI RACE's 40-second clock: not stopped in time, the sky catches fire and the world burns
   // white (it listens to 'darkMode'; ticked below while playing; its 'over' ends the game).
@@ -295,17 +300,36 @@ async function start() {
     state.lives++;
   });
 
+  // AI RACE's objects attached to the grounds' objects once their chunk is in (resolves true
+  // when they are there). Making them takes a moment (their geometry, the halls' planning,
+  // about 0.1 s on a desktop): in the background it waits for an idle moment after the chunk's
+  // own evaluation, so the two never land in one frame; a switch waiting for them (now)
+  // attaches at once.
+  const aiRaceKit = (now = false) =>
+    CHUNKS.aiRace().then(
+      async () => {
+        if (!now && !objects.beast) await idleMoment();
+        return objects.attachAiRace();
+      },
+      (e) => (console.warn(`[aiRace] its objects did not load (${e?.message ?? e})`), false),
+    );
   // AI RACE mode: the objects' floor button toggles it; every system fades with darkT. Past
   // the meltdown's point of no return (the picture all white) nothing switches it off (the
-  // button is dead by then); until then STOP rescues the world.
-  events.on('aiRaceButton', ({ on }) => {
+  // button is dead by then); until then STOP rescues the world. Pounded before AI RACE's
+  // objects are in (a very slow first visit), the switch waits for them.
+  const switchAiRace = (on) => {
     if (!on && meltdown.doomed) return;
     // AI RACE stays on the grounds: not in another area (a test's setDark in the hall), nor while
     // a warp is under way (it could carry the storm through the door).
     if (on && (areas.name !== 'grounds' || areas.busy)) return;
+    if (on && !objects.beast) {
+      aiRaceKit(true).then((ok) => ok && !state.dark && state.mode === 'play' && switchAiRace(true));
+      return;
+    }
     state.dark = on;
     events.emit('darkMode', { on });
-  });
+  };
+  events.on('aiRaceButton', ({ on }) => switchAiRace(on));
   // Rustmaw thrown off the roof and wrecked: the mode ends as if STOP was pressed (the storm
   // clears over the usual fade, the button pops back up; objects put the reward star out).
   // Too late once the picture is all white: the meltdown goes on.
@@ -323,6 +347,7 @@ async function start() {
     aiRace = on;
     objects.setAiRaceButton(on);
     saveRaceChoice(on);
+    if (on && !TEST) aiRaceKit(); // (its objects on their way at once)
   });
   function applyDarkness(t) {
     level.setDarkness(t);
@@ -687,7 +712,9 @@ async function start() {
   if (TEST) await Promise.all(Object.keys(AREA_DEFS).map((name) => areas.load(name)));
   else {
     if (params.has('area')) await areas.load(params.get('area'));
-    requestAnimationFrame(() => prefetch(['lane', 'hall', 'skerries'], (name) => areas.load(name)));
+    // (AI RACE's objects first when it is played: its button is on the lawn play starts on.)
+    const kit = (name) => (name === 'aiRace' ? (aiRace ? aiRaceKit() : null) : areas.load(name));
+    requestAnimationFrame(() => prefetch(['lane', 'aiRace', 'hall', 'skerries'], kit));
   }
 
   cam.reset(player);

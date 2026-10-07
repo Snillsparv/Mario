@@ -15,6 +15,7 @@ import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { MINION } from '../src/objects/Minions.js';
 import { BOX } from '../src/objects/MysteryBox.js';
 import { PLAYER_HEIGHT } from '../src/core/constants.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const level = buildLevel(new THREE.Scene());
 const col = level.collision;

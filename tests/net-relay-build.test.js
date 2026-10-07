@@ -55,6 +55,8 @@ const CHUNKS = {
   // (110 KiB, from 100: what moves in the dad's drive, the bins, STOMPWATT and the garage doors,
   // now loaded through the lane's chunk; it was at 99.6 KiB.)
   laneBoss: { parent: 'lane', cap: 110 * KiB, min: 60000 },
+  // AI RACE's objects: the beast, its fire, the minions, the server halls.
+  aiRace: { parent: 'main', cap: 140 * KiB, min: 80000 },
   // The opt-in UI (about a quarter to grow): the face screen (?face=1), the phone panel with its
   // QR library (once a relay answers), the recorder (the first V or 9), the touch controller (a
   // touch screen).
@@ -64,8 +66,9 @@ const CHUNKS = {
   TouchController: { parent: 'main', cap: 32 * KiB, min: 15000 },
 };
 // main's budget (vite.config.js MAIN_BUDGET): 1,700,000 while it was the one bundle; 1,560,000
-// with the areas' code lazy (main 1,518,217); 1,465,000 with the opt-in UI lazy (1,424,826).
-const MAIN_CAP = 1465000;
+// with the areas' code lazy (main 1,518,217); 1,465,000 with the opt-in UI lazy (1,424,826);
+// 1,350,000 with AI RACE's objects lazy (1,311,083).
+const MAIN_CAP = 1350000;
 
 test('the game: main, its planned lazy chunks (each importing only its ancestors) and its workers; pad.html has its own', async (t) => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();

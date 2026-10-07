@@ -3789,6 +3789,13 @@ like the classic games:
 A floor button labelled **AI RACE** (`layout.AI_BUTTON`) switches the grounds into a dark
 version and back. Everything is original: no existing monster, character or brand designs.
 
+(AI RACE's objects, the beast with its fireballs and fire, the minions and the server halls,
+are the lazy chunk `aiRace`, `objects/aiRace.js`, which registers them in `objects/kinds.js`
+(see "Chunks" and "Objects": `attachAiRace`). Main loads it behind the title when the game is
+played with AI RACE, and as soon as that is picked; a pound before it is in (a very slow first
+visit) waits for it before `'darkMode'`. The button, the boss's reward star, the storm's effects
+and the meltdown stay in main.)
+
 * **Toggle**: objects own the button (static collider, visual cap sinks when pressed). A
   ground pound landing on it (`player.action === 'ground_pound_land'` within its radius)
   flips it and emits `'aiRaceButton' { on }`. The cap reads "AI RACE" while the mode is
@@ -4272,6 +4279,18 @@ objects.setAiRaceButton(on)                 // the title's game choice: false = 
                                             // (AiButton.setPresent: 'gone', colliders parked; kept by reset())
 objects.enter(player)                       // the hero was just placed in this area (see below)
 objects.door, objects.doors                 // the castle door (or null); every door (Door.js)
+objects.attachAiRace() -> bool              // AI RACE's objects (objects/aiRace.js, the aiRace
+                                            // chunk: KINDS.aiRace) made for a layout with KAIJU,
+                                            // when main has loaded them; true once they are here
+                                            // (at once when the kit was in at construction: node
+                                            // tests import objects/aiRace.js, ?test loads it
+                                            // first). Their shadow slots are kept from the start,
+                                            // each has its own random stream, and nothing else
+                                            // adds colliders on the grounds, so made late they
+                                            // are what they would have been; they join the group
+                                            // where they always were (_fillGroup)
+objects.beast, .fire, .fireballs, .minions, .halls, .bossStar   // AI RACE's, or null (another
+                                            // area, or the kit not attached yet)
 objects.critters                            // a course's critters (Critters.js), or null
 objects.trampolines                         // a course's trampolines (Trampoline.js), or null
 objects.spawnCoin(x, y, z, minY?)           // a run-time coin (minion and critter drops), at
@@ -4452,6 +4471,8 @@ main (index.html)                 three.js, the engine (core, input, collision, 
  ├─ lane      world/lane/index.js       Sparrow Lane's classic builders, props, houses, textures
  │   ├─ realLook  world/lane/real/realLook.js   the realistic look's main-thread code
  │   └─ laneBoss  objects/laneBoss/index.js     the bins, STOMPWATT, the garage doors
+ ├─ aiRace           objects/aiRace.js      AI RACE's objects: the beast, its fire, the minions,
+ │                                          the server halls (behind the title, if played with)
  ├─ FaceScreen       ui/FaceScreen.js       ?face=1's stretchy head (fetched at boot with it)
  ├─ PhonePanel       ui/PhonePanel.js       the phone panel and the QR library (once a relay answers)
  ├─ Recorder         ui/Recorder.js         the video recorder (on the first V or 9)
@@ -4480,14 +4501,16 @@ Rules:
    chunk's entry module exports `chunk = '<its name>'`; `tests/chunks.test.js`.)
 3. **Code that may arrive late attaches**; nothing needs it at construction: an area's code
    (`AreaSwitch.load`, the hold wait: "Areas and transitions"), object kinds registered by their
-   own module as it is evaluated (`objects/kinds.js`: the skerries chunk's `Critters`), the lane's
+   own module as it is evaluated (`objects/kinds.js`: the skerries chunk's `Critters`, the aiRace
+   chunk's kit, made late by `objects.attachAiRace()`), the lane's
    movers (`objects.attachLane`), the opt-in UI behind what main holds meanwhile (the phone
    panel's slot, the recorder's key stub, the touch controller's first-touch listener; the
    `window.__game` hooks `touch` and `recorder` are getters, null until built).
 4. **`?test=1` is eager**: main awaits every lazy chunk before `window.__ready` (and builds the
    touch controller, the phone panel and the recorder where they always were), so the browser
    tests and `window.__game.enterArea()` stay synchronous and deterministic. Play prefetches
-   the areas (`prefetch(['lane', 'hall', 'skerries'])`, one at a time on idle moments) from the
+   the areas and AI RACE's objects (`prefetch(['lane', 'aiRace', 'hall', 'skerries'])`, one at a
+   time on idle moments; `aiRace` only when the game is played with it) from the
    title's first frames; the lane's chunk with its children loads at boot beside the realistic
    look's workers, as their chunks always did.
 5. **A chunk that needs only data imports a data module**, not a builder: the plan works on the
@@ -4503,15 +4526,16 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,424,826 | 451 kB | 1,465,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy) |
-| hall | 48,840 | 20 kB | 60 KiB |
-| skerries | 73,055 | 28 kB | 88 KiB |
+| main | 1,311,083 | 408 kB | 1,350,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy) |
+| hall | 48,841 | 20 kB | 60 KiB |
+| skerries | 73,062 | 28 kB | 88 KiB |
 | lane | 60,476 | 24 kB | 72 KiB |
-| realLook | 48,610 | 17 kB | 90 KiB |
-| laneBoss | 102,030 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
-| FaceScreen | 27,872 | 11 kB | 35 KiB |
-| PhonePanel | 32,353 | 11 kB | 40 KiB |
-| Recorder | 11,727 | 5 kB | 15 KiB |
+| realLook | 48,611 | 17 kB | 90 KiB |
+| laneBoss | 102,023 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| aiRace | 114,474 | 44 kB | 140 KiB |
+| FaceScreen | 27,873 | 11 kB | 35 KiB |
+| PhonePanel | 32,358 | 11 kB | 40 KiB |
+| Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,484 | 8 kB | 32 KiB |
 | laneRealWorker | 138,379 | 57 kB | 160 KiB |
 | pad | 65,798 | 22 kB | 100 KiB (from 200: the QR library is no longer in it) |
@@ -4533,7 +4557,7 @@ minified apart), pruning three.js.
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
   `npm run build` — production build into `dist/`: the game as a tree of chunks (see "Chunks":
-  `main` with what the first frame needs, under its 1,465,000-byte budget, and its lazy chunks,
+  `main` with what the first frame needs, under its 1,350,000-byte budget, and its lazy chunks,
   each under its cap), the ~13 kB title-logo worker and the ~138 kB realistic look's worker,
   then the phone's `pad.html` built separately into the same folder (~66 kB, its own copy of the
   touch controller and protocol). `npm run preview` serves it with the phone relay.

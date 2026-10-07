@@ -345,17 +345,19 @@ background while the title shows:
 | `lane` | Sparrow Lane (classic look) | at boot |
 | `realLook` (under `lane`) | Sparrow Lane's realistic look | at boot |
 | `laneBoss` (under `lane`) | the bins, STOMPWATT, the garage doors | at boot |
+| `aiRace` | AI RACE: Rustmaw, the fireballs, the minions, the server halls | in the background from the title on, when playing with AI RACE |
 | `FaceScreen` | Jonas's stretchy face (`?face=1`) | at boot, with `?face=1` only |
 | `PhonePanel` | the phone controller's panel and its QR code | when the local server's relay answers |
 | `Recorder` | the video recorder | on the first V or 9 |
 | `TouchController` | the on-screen controller | at boot on a touch screen, else on the first touch |
 
 A door into an area whose chunk has not arrived yet keeps the screen covered until it has; if it
-cannot load (offline), the picture opens again where Jonas stood. With `?test=1` every chunk
-loads before play starts.
+cannot load (offline), the picture opens again where Jonas stood. A pound on the AI RACE button
+before its chunk has arrived starts the storm as soon as it has. With `?test=1` every chunk loads
+before play starts.
 
 Every chunk has a size cap, checked by `tests/net-relay-build.test.js` (`npm test` builds the
-game): `main` must stay under 1,465,000 bytes, and each chunk under its own cap. Something new
+game): `main` must stay under 1,350,000 bytes, and each chunk under its own cap. Something new
 (an area, a boss, a mode) goes into a chunk of its own, not into `main`: give it an entry module
 behind a loader in `src/core/chunks.js` and a cap in the build test. The steps, the rules and
 the current sizes are in `docs/ARCHITECTURE.md`, section "Chunks". `npm run build` prints a

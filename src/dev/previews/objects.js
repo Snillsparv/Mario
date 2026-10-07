@@ -32,6 +32,7 @@ import { CollisionWorld } from '../../collision/CollisionWorld.js';
 import { Events } from '../../core/events.js';
 import { FRAME_DT } from '../../core/constants.js';
 import { ObjectManager } from '../../objects/ObjectManager.js';
+import '../../objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily)
 import { canvasTexture, tileableFbm, paintPixels } from '../../render/texgen.js';
 import { SUN_DIR } from '../../world/layout.js';
 import { buildLevel } from '../../world/level.js';

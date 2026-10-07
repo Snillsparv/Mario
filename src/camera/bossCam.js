@@ -18,7 +18,7 @@
 
 import * as THREE from 'three';
 import { FOV } from './cameraConfig.js';
-import { GRAB, flightPoint } from '../objects/RobotBeast.js';
+import { GRAB, flightPoint } from '../objects/beastGrab.js';
 import { TAIL_RAISE_TICKS } from '../player/physics/tuning.js';
 
 export const BOSS_CAM = {

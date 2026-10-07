@@ -17,6 +17,7 @@ import { CAP_LABELS, hasGlyphs, lineCells } from '../src/objects/aiRaceTextures.
 import { RobotBeast, BEAST, SHOT, aimVelocity, flightTicks } from '../src/objects/RobotBeast.js';
 import { Fireballs, FIREBALL } from '../src/objects/Fireballs.js';
 import { FireSprites } from '../src/objects/FireSprites.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const SIZE = 30000;
 

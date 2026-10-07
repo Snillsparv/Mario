@@ -5,11 +5,13 @@
 // (world/lane/index.js: loadRealLook, loadBoss), so it may import what its parent holds.
 //
 //   CHUNKS.<name>() -> Promise<module>     // hall, skerries, lane: an area's code (its builders;
-//                                          // world/areaDefs.js def.code); face, phone,
+//                                          // world/areaDefs.js def.code); aiRace: AI RACE's
+//                                          // objects (objects/aiRace.js); face, phone,
 //                                          // recorder, touch: the opt-in UI (main: the face
 //                                          // screen with ?face=1, the phone panel once a relay
 //                                          // answers, the recorder on the first V or 9, the
 //                                          // touch controller on a touch screen)
+//   idleMoment() -> Promise                // the page's next idle moment (at most a second away)
 //   once(load, name) -> () => Promise      // a memoised loader that tries again after a failure
 //                                          // (the children's too); the chunk's entry module
 //                                          // exports `chunk = name`
@@ -52,13 +54,15 @@ export const CHUNKS = {
   hall: once(() => import('../world/hall/index.js'), 'hall'),
   skerries: once(() => import('../world/skerries/index.js'), 'skerries'),
   lane: once(() => import('../world/lane/index.js'), 'lane'),
+  aiRace: once(() => import('../objects/aiRace.js'), 'aiRace'),
   face: once(() => import('../ui/FaceScreen.js'), 'FaceScreen'),
   phone: once(() => import('../ui/PhonePanel.js'), 'PhonePanel'),
   recorder: once(() => import('../ui/Recorder.js'), 'Recorder'),
   touch: once(() => import('../ui/TouchController.js'), 'TouchController'),
 };
 
-const idle = () =>
+// An idle moment of the page's (requestIdleCallback, at most a second away; else 50 ms on).
+export const idleMoment = () =>
   new Promise((resolve) => {
     if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 1000 });
     else setTimeout(resolve, 50);
@@ -66,7 +70,7 @@ const idle = () =>
 
 export async function prefetch(names, load = (name) => CHUNKS[name]()) {
   for (const name of names) {
-    await idle();
+    await idleMoment();
     try {
       await load(name);
     } catch (e) {

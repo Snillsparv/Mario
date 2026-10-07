@@ -16,6 +16,7 @@ import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { Minions, MINION, heroInvincible } from '../src/objects/Minions.js';
 import { MINION_RIG } from '../src/objects/minionModel.js';
 import { BEAST } from '../src/objects/RobotBeast.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const SIZE = 30000;
 

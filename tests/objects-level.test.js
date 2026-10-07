@@ -11,6 +11,7 @@ import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { BEAST } from '../src/objects/RobotBeast.js';
 import { RIG } from '../src/objects/robotBeastModel.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const scene = new THREE.Scene();
 const level = buildLevel(scene);

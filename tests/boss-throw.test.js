@@ -21,6 +21,7 @@ import { BossStar } from '../src/objects/BossStar.js';
 import { BossCam } from '../src/camera/bossCam.js';
 import { TAIL_HANDS } from '../src/player/actions/tail.js';
 import * as T from '../src/player/physics/tuning.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const level = buildLevel(new THREE.Scene());
 const collision = level.collision;

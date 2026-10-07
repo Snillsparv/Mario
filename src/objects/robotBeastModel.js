@@ -29,6 +29,7 @@
 // its coupling a hand's height over the walkway (RIG.GRIP; RobotBeast's tail grab).
 
 import * as THREE from 'three';
+import { scaledFog } from '../render/fog.js';
 import { makeRng } from '../core/math.js';
 
 // ---------------------------------------------------------------- palette
@@ -963,21 +964,8 @@ export function makeBeastMaterial() {
   return material;
 }
 
-// three.js's fog chunk with the fog factor scaled by uniform `scale`; `toBlack` fades to black
-// instead of the fog colour (for additive sprites, which would otherwise add the fog colour).
-export function scaledFog(scale, toBlack) {
-  return [
-    '#ifdef USE_FOG',
-    '\t#ifdef FOG_EXP2',
-    '\t\tfloat fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );',
-    '\t#else',
-    '\t\tfloat fogFactor = smoothstep( fogNear, fogFar, vFogDepth );',
-    '\t#endif',
-    `\tfogFactor *= ${scale};`,
-    toBlack ? '\tgl_FragColor.rgb *= 1.0 - fogFactor;' : '\tgl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
-    '#endif',
-  ].join('\n');
-}
+// (The fog chunk scaled: render/fog.js, shared with the critters.)
+export { scaledFog };
 
 // Builds every part's geometry, each around its own pivot:
 // { hips, torso, neck, head, jaw, armL, armR, tailA, tailB }.

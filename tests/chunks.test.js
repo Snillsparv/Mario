@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { CHUNKS, once, prefetch } from '../src/core/chunks.js';
 
 // Each loader and the name of its chunk (the build's: tests/net-relay-build.test.js).
-const NAMES = { hall: 'hall', skerries: 'skerries', lane: 'lane', face: 'FaceScreen', phone: 'PhonePanel', recorder: 'Recorder', touch: 'TouchController' };
+const NAMES = { hall: 'hall', skerries: 'skerries', lane: 'lane', aiRace: 'aiRace', face: 'FaceScreen', phone: 'PhonePanel', recorder: 'Recorder', touch: 'TouchController' };
 
 test('every chunk loader gives its entry module, named for it; the lane loads its children', async () => {
   assert.deepEqual(Object.keys(CHUNKS).sort(), Object.keys(NAMES).sort());

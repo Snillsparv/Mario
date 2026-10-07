@@ -23,6 +23,7 @@ import { AreaSwitch } from '../src/core/AreaSwitch.js';
 import { doorLeaves } from '../src/world/castle/building.js';
 import { buildArea } from '../src/world/area.js';
 import { NO_WATER } from '../src/core/constants.js';
+import '../src/objects/aiRace.js'; // (AI RACE's objects: the game loads them lazily, its chunk)
 
 const CASTLE = { x: 0, frontZ: -700, baseY: 160, doorWidth: 420, doorHeight: 620 };
 const PORCH = 300;

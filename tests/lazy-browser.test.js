@@ -3,10 +3,12 @@
 // held back on the network: walking into the castle door the wipe closes and stays covered (no
 // switch, Jonas still) until it arrives, then he is in the Great Hall. The hall's chunk failing
 // to load: the wipe opens again on the porch (no switch, Jonas free to walk), with one warning
-// for the failed load and no page error; once the network is back the next try takes him in. A normal boot (the game choice and the title, muted)
-// asks for nothing but main before the menus show, but the lane's chunk and its children and the
-// workers (which the boot fetches beside the workers, as before), then fetches the hall's and
-// the skerries' chunks in the background.
+// for the failed load and no page error; once the network is back the next try takes him in.
+// AI RACE switched on before its objects' chunk is in (held back on the network): the storm
+// waits for them, then starts with the beast there. A normal boot (the game choice and the
+// title, muted) asks for nothing but main before the menus show, but the lane's chunk and its
+// children and the workers (which the boot fetches beside the workers, as before), then fetches
+// the hall's and the skerries' chunks in the background.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -129,6 +131,37 @@ test("the hall's chunk failing to load: the wipe opens again on the porch, no sw
     block = false;
     await walkIn(page);
     await page.waitForFunction(() => window.__game.area === 'hall' && window.__game.areas.phase === null, null, { timeout: 30000, polling: 50 });
+  } finally {
+    await page.close();
+  }
+});
+
+test("AI RACE switched on before its objects' chunk is in: the storm waits for them, then starts with the beast there", { skip, timeout: 240000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route(/\/assets\/aiRace-[\w-]{8}\.js(\?.*)?$/, async (r) => {
+    await held;
+    await r.continue();
+  });
+  try {
+    await page.goto(`${base}/?skipTitle=1&mute=1&look=classic`, { waitUntil: 'load', timeout: 180000 });
+    await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
+    // (As the button's pound does: 'aiRaceButton' { on: true }.)
+    await page.evaluate(() => window.__game.setDark(true));
+    await page.waitForTimeout(1500);
+    const waiting = await page.evaluate(() => ({ dark: window.__game.state.dark, beast: !!window.__game.objects.beast, mode: window.__game.state.mode }));
+    assert.deepEqual(waiting, { dark: false, beast: false, mode: 'play' }, 'no storm without its objects');
+    release();
+    await page.waitForFunction(() => window.__game.state.dark && window.__game.state.darkT > 0.2, null, { timeout: 60000, polling: 100 });
+    const on = await page.evaluate(() => ({ beast: window.__game.objects.beast?.state, halls: !!window.__game.objects.halls, grip: window.__game.player.tailGrip === window.__game.objects.beast?.grip }));
+    assert.ok(on.beast && on.beast !== 'hidden', `the beast rises (${on.beast})`);
+    assert.equal(on.halls, true);
+    assert.equal(on.grip, true, 'its tail grip handed to Jonas');
+    assert.deepEqual(errors, []);
   } finally {
     await page.close();
   }
