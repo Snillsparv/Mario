@@ -129,7 +129,6 @@ export function makeButtonCapTexture(label = CAP_LABELS.off) {
 
 // 128 x 64: the upper half is a band of diagonal yellow/black hazard stripes (wrapped round the
 // base's side), the lower half a riveted dark steel plate (the base's top ring).
-export const BASE_STRIPES_V = [0.5, 1];
 export const BASE_METAL_UV = [0.5, 0.25];
 
 export function makeButtonBaseTexture() {

@@ -82,14 +82,14 @@ export function applyGrade(shader, uniforms, { glow = false, ragged = false, oil
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 attribute float darkGlow;
 varying float vDarkGlow;
 varying vec3 vDarkWorld;`,
       )
       .replace(
         '#include <begin_vertex>',
-        `#include <begin_vertex>
+        /* glsl */ `#include <begin_vertex>
 vDarkGlow = darkGlow;
 vDarkWorld = (modelMatrix * vec4(position, 1.0)).xyz;`,
       );
@@ -152,7 +152,7 @@ uniform vec3 darkGlowColor;${glow ? '\nvarying float vDarkGlow;\nvarying vec3 vD
     // Lit windows shine through the fog, like lights in a storm.
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <fog_fragment>',
-      `#ifdef USE_FOG
+      /* glsl */ `#ifdef USE_FOG
   #ifdef FOG_EXP2
     float fogFactor = 1.0 - exp(- fogDensity * fogDensity * vFogDepth * vFogDepth);
   #else

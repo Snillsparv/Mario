@@ -8,7 +8,7 @@ import chunkPlan from '../tools/chunkPlan.js';
 
 // graph: { id: { imports: [...], dynamic: [...] } }, the entry first. Returns the plan's chunk of
 // every module and the hoists it logged.
-function plan(graph) {
+function plan(graph, opts = {}) {
   const ids = Object.keys(graph);
   const info = (id) => {
     const m = graph[id];
@@ -22,7 +22,7 @@ function plan(graph) {
     };
   };
   const logs = [];
-  const p = chunkPlan({ log: (s) => logs.push(s) });
+  const p = chunkPlan({ log: (s) => logs.push(s), ...opts });
   p.buildStart();
   p.buildEnd.call({ getModuleIds: () => ids.values(), getModuleInfo: info });
   const chunks = {};
@@ -30,6 +30,7 @@ function plan(graph) {
     assert.ok(p.planned(id), `${id} is planned`);
     chunks[id] = p.chunkOf(id);
   }
+  assert.deepEqual(p.hoists, logs, 'plan.hoists: what it logged');
   return { chunks, logs };
 }
 
@@ -106,6 +107,22 @@ test('a module needed on two branches (a chunk holds it, another branch reaches 
   assert.equal(chunks['/src/a/model.js'], 'main', 'with what it imports');
   assert.equal(chunks['/src/f/index.js'], 'f');
   assert.deepEqual(logs, ["chunk-plan: main also carries a/kit.js (a's, needed under e too)"]);
+});
+
+test("`main` pins modules two chunks share by design into main, with what they import: no hoist; an unknown one stops the build", () => {
+  const graph = {
+    '/src/main.js': { dynamic: ['/src/x/index.js', '/src/y/index.js'] },
+    '/src/x/index.js': { imports: ['/src/world/courseKit.js'] },
+    '/src/y/index.js': { imports: ['/src/world/courseKit.js'] },
+    '/src/world/courseKit.js': { imports: ['/src/texgen.js'] },
+    '/src/texgen.js': {},
+  };
+  const { chunks, logs } = plan(graph, { main: ['world/courseKit.js'] });
+  assert.equal(chunks['/src/world/courseKit.js'], 'main');
+  assert.equal(chunks['/src/texgen.js'], 'main');
+  assert.equal(chunks['/src/x/index.js'], 'x');
+  assert.deepEqual(logs, []);
+  assert.throws(() => plan(graph, { main: ['world/nowhere.js'] }), /no module world\/nowhere\.js to pin/);
 });
 
 test('a root no chunk imports (its importer never placed) cannot be placed: the build stops', () => {

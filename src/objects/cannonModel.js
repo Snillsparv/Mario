@@ -447,7 +447,7 @@ export function makeCannonMaterial() {
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 attribute float glow;
 attribute float wave;
 uniform float cannonTime;
@@ -456,7 +456,7 @@ varying float vCannonGlow;`,
       )
       .replace(
         '#include <begin_vertex>',
-        `#include <begin_vertex>
+        /* glsl */ `#include <begin_vertex>
 vCannonGlow = glow;
 if (wave > 0.0) {
   float f = sin(cannonTime * 6.0 - wave * 5.0) * 13.0 + sin(cannonTime * 10.7 - wave * 8.0) * 4.0;
@@ -467,7 +467,7 @@ if (wave > 0.0) {
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 uniform vec3 cannonGlow;
 varying float vCannonGlow;`,
       )

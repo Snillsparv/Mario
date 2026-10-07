@@ -22,7 +22,7 @@
 // Without a DOM (node tests) the logic and events work the same, nothing is drawn.
 
 import { DIALOG_FONT, DialogLogic, paginate, dialogMetrics, boxHeight, boxLines, boxTop, TYPING } from './dialogLogic.js';
-import { SpriteCache, drawText, drawIcon } from './raster.js';
+import { SpriteCache, drawText, drawIcon, roundRect } from './raster.js';
 import { boxStyle } from './hudLogic.js';
 import { pixelRatio } from './pixelRatio.js';
 
@@ -50,17 +50,6 @@ const PANEL_BOTTOM = 'rgba(6,8,26,0.84)';
 const PANEL_EDGE = 'rgba(0,0,8,0.55)';
 const PANEL_RIM = 'rgba(255,236,176,0.5)';
 const PANEL_SHADOW = 'rgba(0,0,12,0.28)';
-
-function roundRect(ctx, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
 
 const easeOutBack = (t) => {
   const c = 1.4;

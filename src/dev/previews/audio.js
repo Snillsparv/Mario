@@ -45,6 +45,9 @@ import { compileSong } from '../../audio/compile.js';
 import { createMixer } from '../../audio/mixer.js';
 import { Sequencer } from '../../audio/Sequencer.js';
 import { SFX, footstepLevel } from '../../audio/sfx.js';
+import { registerAll } from '../../audio/packs/index.js';
+
+registerAll(); // (every chunk's sounds and tracks: this preview plays them all)
 import { WATERFALL, SPAWN, POND, LAWN_BASE, BRIDGE, ISLAND_TOP, EAST_HILL } from '../../world/layout.js';
 import { AREA_DEFS } from '../../world/areas.js';
 import { buildArea } from '../../world/area.js';

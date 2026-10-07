@@ -726,13 +726,13 @@ varying vec2 vCircuitXZ;`,
     )
     .replace(
       '#include <begin_vertex>',
-      `#include <begin_vertex>
+      /* glsl */ `#include <begin_vertex>
 vCircuitXZ = (modelMatrix * vec4(transformed, 1.0)).xz;`,
     );
   shader.fragmentShader = shader.fragmentShader
     .replace(
       '#include <common>',
-      `#include <common>
+      /* glsl */ `#include <common>
 uniform vec4 uCircuits[${MAX_CIRCUITS}];
 uniform int uCircuitCount;
 uniform float uCircuitTime;
@@ -762,7 +762,7 @@ vec3 ciLayer(vec2 p, float len, float pitch, float aa, float salt) {
     )
     .replace(
       '#include <opaque_fragment>',
-      `if (uCircuitCount > 0) {
+      /* glsl */ `if (uCircuitCount > 0) {
   vec2 cp = vCircuitXZ;
   float cover = 0.0;
   float rim = 0.0;

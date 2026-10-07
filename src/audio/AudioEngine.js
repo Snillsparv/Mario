@@ -441,12 +441,13 @@ export class AudioEngine {
   // Thunder for a lightning flash of `strength` (0..1): a close, strong strike is heard
   // after ~0.3 s with a crack, a weak (far) one up to 2.5 s later as a low roll only.
   thunder(strength = 0.7) {
-    if (!this.ctx) return;
+    const recipe = own(SFX, 'thunder'); // (AI RACE's sound pack: registered with its objects)
+    if (!this.ctx || !recipe) return;
     const s = clamp(Number.isFinite(strength) ? strength : 0.7, 0, 1);
     if (this.countActive('thunder') >= SFX_INFO.thunder.max) return;
     const delay = clamp(0.3 + (1 - s) * 1.7 + Math.random() * 0.5, 0.3, 2.5);
     const pan = (Math.random() * 2 - 1) * 0.4;
-    this.voice(SFX.thunder, { strength: s, delay, pan, volume: 0.55 + 0.45 * s }, this.mix.amb, 'thunder');
+    this.voice(recipe, { strength: s, delay, pan, volume: 0.55 + 0.45 * s }, this.mix.amb, 'thunder');
   }
 
   // One-shots of this name still sounding.

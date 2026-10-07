@@ -7,7 +7,9 @@ import glslMinify from './tools/glslMinify.js';
 import chunkPlan from './tools/chunkPlan.js';
 
 const BASE = './';
-const plan = chunkPlan();
+// (Modules two chunks share by design, pinned into main: the courses' firs and painted
+// textures, what hurts Jonas, the scaled fog: tools/chunkPlan.js `main`.)
+const plan = chunkPlan({ main: ['world/courseKit.js', 'objects/hurt.js', 'render/fog.js'] });
 const TARGET = 'es2022';
 // The game is a tree of chunks (tools/chunkPlan.js pins every module to exactly one):
 //   * `main`, index.html's one script: everything the first frame needs (three.js, the engine,
@@ -26,18 +28,21 @@ const TARGET = 'es2022';
 // Without the plan Rolldown would carve main itself into shared chunks as soon as a third lazy
 // chunk shares game modules with it. A module two siblings need is hoisted into their parent,
 // one needed on two branches into main; the build prints each hoist ("chunk-plan: main also
-// carries ..."). Every chunk has a hard byte cap, pinned in tests/net-relay-build.test.js; main's
+// carries ...") and the build test allows none: what two chunks share by design is pinned into
+// main (`main` below). Every chunk has a hard byte cap, pinned in tests/net-relay-build.test.js; main's
 // is MAIN_BUDGET (its warning limit, in kB, below). New areas and features go into a chunk of
 // their own (an import() in src/core/chunks.js); main grows only for engine-level work. Raising a
 // cap is the last resort, documented here, in the test and in docs/ARCHITECTURE.md ("Chunks").
 // History: 900 kB (one bundle, 09-24), 1400 (the phone pad), 1500, 1600 (the round hall), 1700
 // (Sparrow Lane; a hard budget since its realistic look), 1560 with the lazy areas (main
 // 1,518,217 bytes), 1465 with the opt-in UI lazy (the face screen, the phone panel, the recorder,
-// the touch controller: 1,424,826), 1350 with AI RACE's objects lazy (1,311,083).
+// the touch controller: 1,424,826), 1350 with AI RACE's objects lazy (1,311,083), 1320 with each
+// chunk's sounds and music in it, the courses' shared kit and the shader text minified
+// (1,277,986).
 // Never: treeshake.propertyWriteSideEffects false (it drops calls that only write their
 // arguments' properties: Jonas's pose functions), dropping console (shader compile errors go
 // through console.error), property mangling (chunks are minified apart), pruning three.js.
-const MAIN_BUDGET = 1350000;
+const MAIN_BUDGET = 1320000;
 const GAME_CHUNK_LIMIT_KB = MAIN_BUDGET / 1000;
 
 // The phone's controller page (pad.html) is built on its own, right after the game, into the

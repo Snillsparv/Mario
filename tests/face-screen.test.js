@@ -13,7 +13,10 @@ import {
 import { FACE_STRINGS, hintKind, hintLines } from '../src/ui/face/faceText.js';
 import { SMALL_FONT, missingGlyphs } from '../src/ui/bitmapFont.js';
 import { SFX, SFX_INFO } from '../src/audio/sfx.js';
+import { register as registerFaceSounds } from '../src/audio/packs/face.js';
 import { LEVELS } from '../src/audio/mixer.js';
+
+registerFaceSounds(SFX, SFX_INFO); // (the face screen's chunk registers them as it loads)
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
 const len = (h) => Math.hypot(h.ox, h.oy, h.oz);

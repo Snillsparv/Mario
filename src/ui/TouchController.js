@@ -47,6 +47,7 @@
 // `onLayout(layout)` runs after every layout. Without touch events (a pen or touch screen that
 // only sends pointer events) each pointer works as one finger. touchUi.active stays untouched.
 
+import { injectStyles } from './dom.js';
 import {
   touchLayout,
   touchRole,
@@ -185,14 +186,6 @@ html.cg-touch-on #game { touch-action:none; }
 .cg-touch.cg-land.cg-paused.cg-leave > .cg-tc-B { opacity:0.7; }
 `;
 
-function injectStyles() {
-  if (document.getElementById('cg-touch-css')) return;
-  const style = document.createElement('style');
-  style.id = 'cg-touch-css';
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
-
 const px = (v) => `${Math.round(v * 10) / 10}px`;
 
 function place(el, x, y, w, h) {
@@ -329,7 +322,7 @@ export class TouchController {
       this.wanted = () => wantTouchUi({ search: query, coarse: coarse ?? !!this.mq?.matches });
     }
 
-    injectStyles();
+    injectStyles('cg-touch-css', CSS);
     this._build();
     this._listen();
     if (events) {

@@ -10,6 +10,9 @@ import { compileSong, chordTimeline } from '../src/audio/compile.js';
 import { INSTRUMENTS, CHANNELS } from '../src/audio/instruments.js';
 import { SFX } from '../src/audio/sfx.js';
 import { noteToMidi, parseBar, parseChord, parseChordBar, majorScale, modeScale, pitchClass } from '../src/audio/theory.js';
+import { registerAll } from '../src/audio/packs/index.js';
+
+registerAll(); // (every chunk's sounds and tracks: the game registers each pack as its chunk loads)
 
 const RANGES = {
   flute: [60, 96],

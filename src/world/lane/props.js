@@ -47,7 +47,7 @@
 import { beamPolys, centroid, hexaPolys, localBoxPolys, orientedBoxPolys, prismPolys, wallFrame } from '../castle/geom.js';
 import { addSignpost } from '../props/decor.js';
 import { makeRng } from '../../core/math.js';
-import { fir } from '../skerries/props.js';
+import { fir } from '../courseKit.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
 import { bedStones } from './real/plan.js';

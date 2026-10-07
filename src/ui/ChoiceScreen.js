@@ -15,6 +15,7 @@
 // Touch screens: the touch controller covers the screen, so its 'touchPress' { x, y } is
 // hit-tested against the options.
 
+import { injectStyles, hasBeenActive } from './dom.js';
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
 import { hudMetrics } from './hudLogic.js';
@@ -57,20 +58,6 @@ const CSS = `
 .cg-c-about[hidden] { display:none; }
 `;
 
-function injectStyles() {
-  if (document.getElementById('cg-choose-css')) return;
-  const style = document.createElement('style');
-  style.id = 'cg-choose-css';
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
-
-// Whether the page has had a key/click/tap (browsers then let audio start); null: unknown.
-function hasBeenActive() {
-  const ua = typeof navigator !== 'undefined' ? navigator.userActivation : undefined;
-  return ua ? !!ua.hasBeenActive : null;
-}
-
 function pads() {
   return typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()].filter((p) => p?.connected) : [];
 }
@@ -86,7 +73,7 @@ export class ChoiceScreen {
 
   show() {
     return new Promise((resolve) => {
-      injectStyles();
+      injectStyles('cg-choose-css', CSS);
       this.el = document.createElement('div');
       this.el.className = 'cg-choose';
       this.root.appendChild(this.el);

@@ -9,6 +9,8 @@
 //   saveRaceChoice(on, storage) -> bool   // true when it was written
 //   choiceForKey(code, current) -> bool | null   // the choice a key picks, null: not a choice key
 
+import { browserStorage } from '../core/storage.js';
+
 export const RACE_CHOICES = Object.freeze([
   Object.freeze({ on: true, label: 'WITH AI RACE', about: 'The AI RACE button waits on the lawn' }),
   Object.freeze({ on: false, label: 'WITHOUT AI RACE', about: 'No AI RACE button: the grounds stay peaceful' }),
@@ -26,17 +28,9 @@ export const RACE_SMALL_STRINGS = [RACE_TEXTS.prompt, RACE_TEXTS.touchPrompt, ..
 
 const STORAGE_KEY = 'castleGrounds.aiRace.v1';
 
-// localStorage, or null where it is missing or throws (private browsing, sandboxed frames,
-// node). (Its own copy, not render/post/settings.js: the phone pad page imports this file
-// through hudLogic.js and loads nothing of the game's renderer.)
-function browserStorage() {
-  try {
-    return globalThis.localStorage ?? null;
-  } catch {
-    return null;
-  }
-}
-
+// The choice in localStorage (core/storage.js: null where it is missing or throws; a module of
+// its own, as the phone pad page imports this file through hudLogic.js and loads nothing of the
+// game's renderer).
 export function loadRaceChoice(storage = browserStorage()) {
   try {
     return storage?.getItem(STORAGE_KEY) !== 'off';

@@ -193,3 +193,16 @@ export function textCanvas(font, text, px, style) {
   drawText(c.getContext('2d'), cache, font, text, pad, pad, { style, px });
   return c;
 }
+
+// A rounded rectangle's path (the pause screen's and the dialog box's panels): radius r, at most
+// half the width and the height.
+export function roundRect(ctx, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}

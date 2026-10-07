@@ -187,7 +187,7 @@ function patchStorm(shader, storm) {
   shader.fragmentShader = shader.fragmentShader
     .replace(
       '#include <common>',
-      `#include <common>
+      /* glsl */ `#include <common>
 uniform float stormT;
 uniform vec4 stormScroll;
 uniform float stormTime;
@@ -204,7 +204,7 @@ ${MELT_SKY_GLSL}`,
     )
     .replace(
       '#include <map_fragment>',
-      `#include <map_fragment>
+      /* glsl */ `#include <map_fragment>
 if (stormT > 0.0) {
   vec3 dir = normalize(vSkyDir);
   float up = max(dir.y, 0.0);

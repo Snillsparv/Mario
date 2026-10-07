@@ -2,17 +2,11 @@
 // throw (private browsing, sandboxed iframes, node), so every access is guarded and the
 // defaults are used on any failure.
 
+import { browserStorage } from '../../core/storage.js';
+
 const STORAGE_KEY = 'castleGrounds.render.v1';
 
 export const DEFAULT_SETTINGS = Object.freeze({ n64: true, pillarbox: false });
-
-export function browserStorage() {
-  try {
-    return globalThis.localStorage ?? null;
-  } catch {
-    return null;
-  }
-}
 
 export function loadSettings(storage = browserStorage()) {
   const settings = { ...DEFAULT_SETTINGS };

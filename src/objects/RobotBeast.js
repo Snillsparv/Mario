@@ -232,10 +232,8 @@ const TAIL_B_STRAIGHT = new THREE.Quaternion().setFromUnitVectors(
   GRIP_B.clone().normalize(),
   BACK.clone().applyQuaternion(TAIL_A_STRAIGHT.clone().invert()),
 );
-// The body point the throw's flight follows (the waist) and the whole tail's length pulled
-// straight (grip to tail root).
+// The body point the throw's flight follows (the waist).
 const WAIST = vec(RIG.WAIST);
-export const TAIL_REACH = B0_A.length() + GRIP_B.length();
 
 export class RobotBeast {
   constructor({ anchor, collision, events, fire, rng, launch, fx = null, level = null, layout = null, blocked = null }) {

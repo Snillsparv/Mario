@@ -115,7 +115,7 @@ export function buildCircuits(towers, centre) {
       .replace('#include <common>', '#include <common>\nuniform float circuitT;\nuniform float circuitTime;\nvarying vec2 vCircuit;')
       .replace(
         '#include <color_fragment>',
-        `#include <color_fragment>
+        /* glsl */ `#include <color_fragment>
 {
   // Pulses of light running up the cable, over a steady glow.
   float p = fract(vCircuit.x / 900.0 - circuitTime * ${(CIRCUIT_PULSE_SPEED / 900).toFixed(4)});

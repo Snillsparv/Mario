@@ -3432,6 +3432,15 @@ audio.setArea({ music, ambience, reverb, fires?, gulls?, seaLevel?, isWater? }) 
 ```
 
 All sound effects are synthesized with WebAudio. Music is an **original** composition.
+**Sound packs**: `audio/sfx.js` (`SFX`, `SFX_INFO`) and `audio/songs.js` (`SONGS`) hold what the
+game needs from the start; a chunk's own sounds and tracks are a pack its entry registers into
+those tables as it loads (`audio/packs/*`: `aiRace.js` and `aiRaceSongs.js` (AI RACE's sounds,
+`'dark'` and `'fly_dark'`) by `objects/aiRace.js`, `critters.js` by `objects/Critters.js`,
+`face.js` by `ui/FaceScreen.js`, `hallSong.js` (`'castle_hall'`) by `world/hall/index.js`;
+Sparrow Lane's boss's by `objects/laneBoss/audio.js`). The engine looks every name up when it
+plays it (`own(SFX, name)`), so a name before its chunk is simply silent; none can be asked for
+then (AI RACE waits for its chunk, the hall's track plays in the hall). `audio/packs/index.js`
+`registerAll()` registers every pack at once (node tests and the dev previews only).
 Songs: `'title'` (a loop; a menu track stops on `gameStart`), `'castle_grounds'`, which
 in game is a one-shot arrival cue (`finalBar: 8` in `songs.js`), not a loop, and
 `'game_over'` ("Lanterns Out"), a jingle the engine plays **itself** on the `gameOver` event
@@ -4513,11 +4522,17 @@ Rules:
    time on idle moments; `aiRace` only when the game is played with it) from the
    title's first frames; the lane's chunk with its children loads at boot beside the realistic
    look's workers, as their chunks always did.
-5. **A chunk that needs only data imports a data module**, not a builder: the plan works on the
+5. **Shared by design is pinned into main**: a module two chunks both need goes into a small
+   module of its own, named in `vite.config.js` (`chunkPlan({ main: [...] })`): the courses'
+   firs and painted textures (`world/courseKit.js`), what hurts Jonas (`objects/hurt.js`), the
+   scaled fog (`render/fog.js`). The build test requires that the plan hoists nothing else.
+6. **A chunk's sounds and music travel with it** (see "Audio": `audio/packs/*`, registered by
+   the chunk's entry module as it loads).
+7. **A chunk that needs only data imports a data module**, not a builder: the plan works on the
    module graph, so importing one constant from a builder module reaches all of it and what it
    imports (`world/lane/real/grassTiers.js` exists so the realLook chunk does not reach the
    worker's grass builder through `GRASS`).
-6. **Node tests import source modules directly**: nothing is lazy there. `world/areas.js` merges
+8. **Node tests import source modules directly**: nothing is lazy there. `world/areas.js` merges
    every area's code into the defs statically; tests that build the skerries import it (or
    `objects/Critters.js`), which registers the critters.
 
@@ -4526,29 +4541,34 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,311,083 | 408 kB | 1,350,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy) |
-| hall | 48,841 | 20 kB | 60 KiB |
-| skerries | 73,062 | 28 kB | 88 KiB |
-| lane | 60,476 | 24 kB | 72 KiB |
-| realLook | 48,611 | 17 kB | 90 KiB |
-| laneBoss | 102,023 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
-| aiRace | 114,474 | 44 kB | 140 KiB |
-| FaceScreen | 27,873 | 11 kB | 35 KiB |
-| PhonePanel | 32,358 | 11 kB | 40 KiB |
+| main | 1,277,986 | 398 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| hall | 49,870 | 20 kB | 60 KiB |
+| skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
+| lane | 60,474 | 24 kB | 72 KiB |
+| realLook | 48,611 | 17 kB | 60 KiB (from 90) |
+| laneBoss | 101,976 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
+| FaceScreen | 29,342 | 11 kB | 35 KiB |
+| PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
-| TouchController | 25,484 | 8 kB | 32 KiB |
+| TouchController | 25,337 | 8 kB | 32 KiB |
 | laneRealWorker | 138,379 | 57 kB | 160 KiB |
-| pad | 65,798 | 22 kB | 100 KiB (from 200: the QR library is no longer in it) |
+| pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in
 `world/areaDefs.js` with `code: CHUNKS.<name>`, its builders in `world/<name>/index.js` (exporting
-`chunk = '<name>'` and `builders`), a loader in `src/core/chunks.js`, its code merged in
-`world/areas.js`, its name in main's prefetch list, and a cap in the build test. A new
-feature or mode: an entry module of its own behind a loader in `chunks.js` (or in its parent
-chunk), attached when it arrives. Main grows only for engine-level work; raising a cap is the
-last resort, with its reason in the test, `vite.config.js` and here. Watch the build's
-`chunk-plan:` lines: a hoist moves bytes into main (a chunk importing another area's module),
-fixed by moving what both need into a small module of its own. **Never** (each measured):
+`chunk = '<name>'` and `builders`, and registering its sounds and music, if any, from a pack in
+`audio/packs/`), a loader in `src/core/chunks.js` (and its name in `tests/chunks.test.js`), its
+code merged in `world/areas.js`, its name in main's prefetch list, and a cap in the build test
+(its size plus about a fifth). A new feature or mode: an entry module of its own behind a loader
+in `chunks.js` (or in its parent chunk), attached when it arrives (an object kind registered in
+`objects/kinds.js`, as AI RACE's and the critters' are). Main grows only for engine-level work;
+raising a cap is the last resort, with its reason in the test, `vite.config.js` and here. A
+`chunk-plan:` line from the build (and a failing build test) means a chunk reached another's
+code: move what both need into a small module of its own and pin it into main in
+`vite.config.js`. The next lever if main gets tight again: AI RACE's storm and meltdown (rain,
+lightning, the doom light, the meltdown's clock and passes, the storm's audio: about 25-30 kB)
+into the aiRace chunk behind a small facade in main. **Never** (each measured):
 `treeshake.propertyWriteSideEffects: false` (it drops Jonas's pose calls),
 dropping `console` (shader errors go through `console.error`), property mangling (chunks are
 minified apart), pruning three.js.
@@ -4557,7 +4577,7 @@ minified apart), pruning three.js.
 
 * `npm run dev` — dev server. `npm test` — node unit tests (`tests/**/*.test.js`).
   `npm run build` — production build into `dist/`: the game as a tree of chunks (see "Chunks":
-  `main` with what the first frame needs, under its 1,350,000-byte budget, and its lazy chunks,
+  `main` with what the first frame needs, under its 1,320,000-byte budget, and its lazy chunks,
   each under its cap), the ~13 kB title-logo worker and the ~138 kB realistic look's worker,
   then the phone's `pad.html` built separately into the same folder (~66 kB, its own copy of the
   touch controller and protocol). `npm run preview` serves it with the phone relay.

@@ -139,7 +139,7 @@ function patchShader(shader, time) {
   shader.vertexShader = shader.vertexShader
     .replace(
       '#include <common>',
-      `#include <common>
+      /* glsl */ `#include <common>
 attribute vec3 scorch;
 varying vec2 vScorchUv;
 varying vec3 vScorch;`,
@@ -153,7 +153,7 @@ vScorch = scorch;`,
   shader.fragmentShader = shader.fragmentShader
     .replace(
       '#include <common>',
-      `#include <common>
+      /* glsl */ `#include <common>
 uniform float scorchTime;
 varying vec2 vScorchUv;
 varying vec3 vScorch;
@@ -167,7 +167,7 @@ float scNoise(vec2 p) {
     )
     .replace(
       '#include <map_fragment>',
-      `{
+      /* glsl */ `{
   vec2 q = vScorchUv;
   float seed = vScorch.y * 37.0;
   float r = length(q);

@@ -77,7 +77,7 @@ import { stoneTexture, woodTexture } from '../castle/textures.js';
 import { flagstoneTexture, grassTexture, masonryTexture } from '../terrainTextures.js';
 import { MeshBuilder, bakedMesh } from '../props/geom.js';
 import { leafTexture, woodTexture as signWoodTexture } from '../props/textures.js';
-import { faluPlankTexture, sailTexture } from '../skerries/textures.js';
+import { faluPlankTexture, sailTexture } from '../courseKit.js';
 import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';

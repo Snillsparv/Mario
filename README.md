@@ -357,10 +357,12 @@ before its chunk has arrived starts the storm as soon as it has. With `?test=1` 
 before play starts.
 
 Every chunk has a size cap, checked by `tests/net-relay-build.test.js` (`npm test` builds the
-game): `main` must stay under 1,350,000 bytes, and each chunk under its own cap. Something new
+game): `main` must stay under 1,320,000 bytes, and each chunk under its own cap. Something new
 (an area, a boss, a mode) goes into a chunk of its own, not into `main`: give it an entry module
-behind a loader in `src/core/chunks.js` and a cap in the build test. The steps, the rules and
-the current sizes are in `docs/ARCHITECTURE.md`, section "Chunks". `npm run build` prints a
-`chunk-plan:` line whenever a module had to move into a parent chunk because two chunks use it.
+behind a loader in `src/core/chunks.js` and a cap in the build test; its sounds and music go in
+a pack (`src/audio/packs/`) that its chunk registers as it loads. The steps, the rules and
+the current sizes are in `docs/ARCHITECTURE.md`, section "Chunks". If `npm run build` prints a
+`chunk-plan:` line, two chunks use the same module (and the build test fails): move what both
+need into a small module of its own and pin it into `main` in `vite.config.js`.
 
 See `docs/ARCHITECTURE.md` for how the code is organised.

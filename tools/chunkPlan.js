@@ -9,13 +9,21 @@
 //     may import what it holds), and what its parent's ancestors hold is there already;
 //   * a module two sibling chunks reach is hoisted into their parent, and one needed on two
 //     branches into main (logged), so no chunk is shared and every chunk imports only its
-//     ancestors (tests/net-relay-build.test.js).
+//     ancestors (tests/net-relay-build.test.js);
+//   * `main` names modules that belong to main though only lazy chunks import them (code two
+//     chunks share by design: world/courseKit.js, ...; paths under src/): pinned there with what
+//     they import, so they are no hoist. The build test requires no hoist at all: a new one is a
+//     chunk reaching another's code, to be moved into a module of its own (and pinned, if two
+//     chunks share it).
 //
-//   const plan = chunkPlan();   // the plugin
+//   const plan = chunkPlan({ main: ['world/courseKit.js'] });   // the plugin
+//   plan.hoists                 // the last build's hoists (the lines it logged)
 //   output.codeSplitting.groups: [{ name: plan.chunkOf, test: plan.planned,
 //                                   includeDependenciesRecursively: false, debugName: 'chunk-plan' }]
-export default function chunkPlan({ log = console.log } = {}) {
+export default function chunkPlan({ log = console.log, main: pinned = [] } = {}) {
   let chunkOf = new Map(); // module id -> chunk name
+  const hoists = [];
+  const say = (line) => (hoists.push(line), log(line));
   const short = (s) => s.replace(/^.*?[\\/](src|node_modules)[\\/]/, '');
   const nameOf = (id) => {
     const parts = id.split(/[\\/]/);
@@ -27,6 +35,7 @@ export default function chunkPlan({ log = console.log } = {}) {
     apply: 'build',
     buildStart() {
       chunkOf = new Map();
+      hoists.length = 0;
     },
     buildEnd(error) {
       if (error) return; // (the build failed: Rolldown reports why)
@@ -45,7 +54,10 @@ export default function chunkPlan({ log = console.log } = {}) {
       };
       chunkOf = new Map();
       const chunks = new Map(); // name -> { name, parent, mods: Set }
-      const main = { name: 'main', parent: null, mods: closure(ids.filter((id) => info(id)?.isEntry), () => false) };
+      const isPinned = (id) => pinned.includes(short(id).replace(/\\/g, '/'));
+      const unknown = pinned.filter((p) => !ids.some((id) => short(id) === p));
+      if (unknown.length) throw new Error(`chunk-plan: no module ${unknown.join(', ')} to pin into main`);
+      const main = { name: 'main', parent: null, mods: closure(ids.filter((id) => info(id)?.isEntry || isPinned(id)), () => false) };
       chunks.set('main', main);
       for (const id of main.mods) chunkOf.set(id, 'main');
       const holds = (chunk, id) => {
@@ -73,7 +85,7 @@ export default function chunkPlan({ log = console.log } = {}) {
             const foreign = [...reach.keys()].filter((id) => chunkOf.has(id));
             for (const id of foreign) {
               if (chunkOf.get(id) === 'main') continue; // (moved with another)
-              log(`chunk-plan: main also carries ${short(id)} (${chunkOf.get(id)}'s, needed under ${parent.name} too)`);
+              say(`chunk-plan: main also carries ${short(id)} (${chunkOf.get(id)}'s, needed under ${parent.name} too)`);
               for (const m of closure([id], (x) => main.mods.has(x))) {
                 chunks.get(chunkOf.get(m))?.mods.delete(m);
                 main.mods.add(m);
@@ -93,7 +105,7 @@ export default function chunkPlan({ log = console.log } = {}) {
               break;
             }
             for (const [id, r] of shared) {
-              log(`chunk-plan: ${parent.name} also carries ${short(id)} (shared by ${r.map(short).join(', ')})`);
+              say(`chunk-plan: ${parent.name} also carries ${short(id)} (shared by ${r.map(short).join(', ')})`);
               for (const m of closure([id], (x) => holds(parent, x))) {
                 parent.mods.add(m);
                 chunkOf.set(m, parent.name);
@@ -105,6 +117,7 @@ export default function chunkPlan({ log = console.log } = {}) {
         pending = new Set([...pending, ...ids.flatMap((id) => info(id)?.dynamicallyImportedIds ?? []).filter((id) => !chunkOf.has(id))]);
       }
     },
+    hoists,
     planned: (id) => chunkOf.has(id),
     chunkOf: (id) => chunkOf.get(id) ?? null,
   };

@@ -44,6 +44,9 @@ import { AREA_DEFS } from '../src/world/areas.js';
 import { worldAudio } from '../src/world/area.js';
 import { registerSong } from '../src/objects/laneBoss/audio.js';
 import { CHANNELS } from '../src/audio/instruments.js';
+import { registerAll } from '../src/audio/packs/index.js';
+
+registerAll(); // (every chunk's sounds and tracks: the game registers each pack as its chunk loads)
 
 // AudioParam-like function: callable (so node.connect(x) returns x for chaining) and
 // records its automation calls.

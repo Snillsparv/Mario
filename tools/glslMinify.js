@@ -1,6 +1,6 @@
 // The build's GLSL minifier (vite.config.js, build only): every template literal marked
 // /* glsl */ in the game's own code (the shaders and shader patches: render/real/*, the post
-// passes, the sky, the effects) loses its comments and the whitespace the GLSL compiler does not
+// passes, the sky, the terrain's and the objects' patches, the effects) loses its comments and the whitespace the GLSL compiler does not
 // need, so the shipped bundle carries less text (the minifier leaves template literals as they
 // are: it cannot know they are GLSL). Its tokens stay exactly the same (tests/glsl-minify.test.js
 // checks it for every literal in src/), so the programs compile to the same code:
@@ -14,6 +14,10 @@
 //     shader's lines: three.js's chunks replaced by a patch).
 // A literal with a backslash, or an interpolation it cannot read, is left as it is. Three.js's
 // own shader chunks are not touched (the realistic materials patch them by their exact text).
+// Mark a literal only if each interpolation in it is a number or stands alone on its line: an
+// inline one whose value carries lines of its own (a nested template, a string with \n or a
+// directive) gets the next line joined onto its last one ("#endif vec3 ..."). The unit test
+// cannot see that (the value is only known at run time); the E2E build test compiles every look.
 //
 //   minifyGlsl(text) -> text         // a literal's text (its interpolations stood in by
 //                                    // \u0000n\u0000 placeholders)

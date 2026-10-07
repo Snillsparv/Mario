@@ -380,7 +380,7 @@ export function makeHallMaterial(uniforms) {
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 attribute vec4 aLed;
 attribute vec2 aHall;
 varying vec4 vLed;
@@ -395,7 +395,7 @@ vHall = aHall;`,
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 uniform float uHallTime;
 uniform float uHallDark;
 varying vec4 vLed;
@@ -409,7 +409,7 @@ const vec3 HALL_AMBER = vec3(1.0, 0.55, 0.08);`,
       )
       .replace(
         '#include <color_fragment>',
-        `#include <color_fragment>
+        /* glsl */ `#include <color_fragment>
 vec3 hallGlow = vec3(0.0);
 {
   float kind = floor(vLed.z + 0.5);
@@ -490,7 +490,7 @@ vec3 hallGlow = vec3(0.0);
       )
       .replace(
         '#include <fog_fragment>',
-        `#ifdef USE_FOG
+        /* glsl */ `#ifdef USE_FOG
   #ifdef FOG_EXP2
     float fogFactor = 1.0 - exp(- fogDensity * fogDensity * vFogDepth * vFogDepth);
   #else
@@ -557,7 +557,7 @@ export function makeMarkerMaterial(uniforms) {
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 attribute vec4 aMark;
 attribute float aPart;
 varying vec4 vMark;
@@ -566,7 +566,7 @@ varying float vPart;`,
       )
       .replace(
         '#include <begin_vertex>',
-        `#include <begin_vertex>
+        /* glsl */ `#include <begin_vertex>
 vMark = aMark;
 vMarkUv = uv;
 vPart = aPart;
@@ -576,7 +576,7 @@ if (aPart > 0.5) transformed.xz = sign(position.xz) * aMark.yz / (2.0 * (aMark.y
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        `#include <common>
+        /* glsl */ `#include <common>
 uniform float uHallTime;
 varying vec4 vMark;
 varying vec2 vMarkUv;
@@ -584,7 +584,7 @@ varying float vPart;`,
       )
       .replace(
         '#include <map_fragment>',
-        `{
+        /* glsl */ `{
   float prog = vMark.x;
   vec2 halfSize = vMark.yz + ${MARKER.MARGIN.toFixed(1)};
   float fade = vMark.w;

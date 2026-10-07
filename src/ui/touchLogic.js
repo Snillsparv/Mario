@@ -442,7 +442,6 @@ export function hitSlack(b, k = 1) {
 // System buttons (pause, camera mode): pressed only by a touch that starts on them, never by
 // a thumb sliding onto them (the rolling thumb is for Z -> A and the like), and they lose a
 // near tie against a play button.
-export const SYSTEM_BUTTONS = ['START', 'R'];
 const SYSTEM_BIAS = 6; // px (x k) added to a system button's edge distance when ranking
 export const isSystemButton = (name) => name === 'START' || name === 'R';
 

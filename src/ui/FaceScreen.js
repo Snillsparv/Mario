@@ -31,6 +31,7 @@
 // project(x, y, z), projectShare(x, y, z), displacementAt(x, y, z), pointer(type, fx, fy,
 // opts), timeScale and advance(seconds).
 
+import { injectStyles, hasBeenActive } from './dom.js';
 import * as THREE from 'three';
 import { SMALL_FONT } from './bitmapFont.js';
 import { SpriteCache, textCanvas } from './raster.js';
@@ -43,6 +44,8 @@ import { MITTEN_OPEN, MITTEN_FIST, HOTSPOTS } from './face/mitten.js';
 import { Stretch, HeadTurn, Zoom, FaceMood, FACE_EXPRESSIONS, STRETCH, clamp } from './face/stretch.js';
 import { hintKind, hintLines } from './face/faceText.js';
 import { SUN_COLOR, SUN_INTENSITY, AMBIENT_SKY_COLOR, AMBIENT_GROUND_COLOR, AMBIENT_INTENSITY } from '../render/N64Renderer.js';
+import { SFX, SFX_INFO } from '../audio/sfx.js';
+import { register as registerSounds } from '../audio/packs/face.js';
 
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Space', 'Escape']);
 const TURN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
@@ -95,20 +98,6 @@ const CSS = `
 .cg-face-curtain.cg-off { opacity:0; transition: opacity ${CURTAIN_OUT_MS}ms ease-out; }
 `;
 
-function injectStyles() {
-  if (document.getElementById('cg-face-css')) return;
-  const style = document.createElement('style');
-  style.id = 'cg-face-css';
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
-
-// The page's sticky user activation (see TitleScreen): true/false, or null if unknown.
-function hasBeenActive() {
-  const ua = typeof navigator !== 'undefined' ? navigator.userActivation : undefined;
-  return ua ? !!ua.hasBeenActive : null;
-}
-
 function connectedPads() {
   const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
   return [...pads].filter((p) => p && p.connected);
@@ -117,6 +106,8 @@ function connectedPads() {
 const smoothstep = (x) => x * x * (3 - 2 * x);
 
 export const chunk = 'FaceScreen'; // (its lazy chunk's name: src/core/chunks.js)
+
+registerSounds(SFX, SFX_INFO); // (its sounds: audio/packs/face.js)
 
 export class FaceScreen {
   constructor(root, { events = null, audio = null, view = null } = {}) {
@@ -145,7 +136,7 @@ export class FaceScreen {
   // ---- setup / teardown -------------------------------------------------------------
 
   _open(resolve) {
-    injectStyles();
+    injectStyles('cg-face-css', CSS);
     this.resolve = resolve;
     this.cleanups = [];
     this.pointers = new Map(); // pointerId -> { kind: 'grab' | 'turn', ... }

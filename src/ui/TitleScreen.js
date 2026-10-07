@@ -29,6 +29,7 @@
 // A connected phone's START or A ('remotePress' / 'remoteRelease' from net/RemotePad.js) starts
 // the game like a gamepad (no user gesture: audio stays as it is).
 
+import { injectStyles, hasBeenActive } from './dom.js';
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { textCanvas } from './raster.js';
 import { renderLogoWord } from './logo.js';
@@ -104,22 +105,7 @@ const CSS = `
 @keyframes cg-pulse { 0%, 100% { opacity:1; } 50% { opacity:0.45; } }
 `;
 
-function injectStyles() {
-  if (document.getElementById('cg-title-css')) return;
-  const style = document.createElement('style');
-  style.id = 'cg-title-css';
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
-
 const drift = (a, b) => Math.abs(a / b - 1);
-
-// The page's sticky user activation (a key/click/tap happened, so browsers let audio
-// start): true/false, or null where the browser does not report it.
-function hasBeenActive() {
-  const ua = typeof navigator !== 'undefined' ? navigator.userActivation : undefined;
-  return ua ? !!ua.hasBeenActive : null;
-}
 
 // One canvas-drawn part of the card. render(px) draws it at px device pixels per logical
 // pixel; fit() shows it at the wanted scale and redraws only when that drifts more than
@@ -239,7 +225,7 @@ export class TitleScreen {
 
   show() {
     return new Promise((resolve) => {
-      injectStyles();
+      injectStyles('cg-title-css', CSS);
       this.el = document.createElement('div');
       this.el.className = 'cg-title';
       this.setViewport(this.viewport);

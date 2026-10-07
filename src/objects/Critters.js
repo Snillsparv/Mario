@@ -68,6 +68,8 @@ import { AWAY, heroInvincible } from './hurt.js';
 import { KINDS as OBJECT_KINDS } from './kinds.js';
 import { TINT } from './Sparkles.js';
 import { shadowSize } from './BlobShadows.js';
+import { SFX, SFX_INFO } from '../audio/sfx.js';
+import { register as registerSounds } from '../audio/packs/critters.js';
 
 const SHARED = {
   GAP: 40, // ticks after a strike before the next windup (any critter)
@@ -1114,3 +1116,4 @@ export class Critters {
 // (Registered as its chunk loads, skerries: ObjectManager makes a course's critters from
 // objects/kinds.js.)
 OBJECT_KINDS.Critters = Critters;
+registerSounds(SFX, SFX_INFO); // (their sounds: audio/packs/critters.js)

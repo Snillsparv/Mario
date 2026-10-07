@@ -24,6 +24,7 @@
 //
 // While a phone is connected a small phone badge sits in the bottom-left corner.
 
+import { injectStyles } from './dom.js';
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
 import { SpriteCache, drawIcon, drawText, textCanvas, textWidth, makeCanvas } from './raster.js';
 import { hudMetrics, phoneEntry, PHONE_CONTROL } from './hudLogic.js';
@@ -84,14 +85,6 @@ const CSS = `
 @keyframes pp-pop { from { transform:scale(1.6); opacity:0; } to { transform:none; opacity:0.85; } }
 `;
 
-function injectStyles() {
-  if (document.getElementById('pp-css')) return;
-  const style = document.createElement('style');
-  style.id = 'pp-css';
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
-
 // The phone icon at `px` device px per icon pixel (the panel's corner badge), optionally with a
 // label to its right.
 export function renderPhoneBadge(px, label = '', style = 'white') {
@@ -151,7 +144,7 @@ export class PhonePanel {
     this._syncEntry();
 
     if (typeof document === 'undefined' || !root) return; // logic-only use (node tests)
-    injectStyles();
+    injectStyles('pp-css', CSS);
     this.root = root;
     this._build();
     this._onKey = keys ? (e) => this._key(e) : null;

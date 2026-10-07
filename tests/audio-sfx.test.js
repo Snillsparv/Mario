@@ -19,6 +19,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SFX, SFX_INFO, footstepLevel, landLevel } from '../src/audio/sfx.js';
 import { LEVELS } from '../src/audio/mixer.js';
+import { registerAll } from '../src/audio/packs/index.js';
+
+registerAll(); // (every chunk's sounds and tracks: the game registers each pack as its chunk loads)
 
 class Param {
   constructor(value = 0) {

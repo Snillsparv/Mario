@@ -218,7 +218,7 @@ if (vWither > 0.0 && 0.65 * witherNoise(vLeafPos * ${(triplanar / 55).toFixed(3)
         // Side projections keep v up the world's y (the leaf clumps are lit from above).
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <map_fragment>',
-          `#ifdef USE_MAP
+          /* glsl */ `#ifdef USE_MAP
 {
   vec3 w = abs(normalize(vLeafNormal));
   w *= w;

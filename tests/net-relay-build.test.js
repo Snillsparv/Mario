@@ -23,11 +23,18 @@ import { isLoopbackHost } from '../tools/padRelay.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let outDir;
+const planLog = []; // the chunk plan's lines (tools/chunkPlan.js: each hoist)
 
 before(async () => {
   const { build } = await import('vite');
   outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'castle-build-'));
-  await build({ root, logLevel: 'silent', build: { outDir, emptyOutDir: true } });
+  const log = console.log;
+  console.log = (...a) => (String(a[0]).startsWith('chunk-plan:') ? planLog.push(a.join(' ')) : log(...a));
+  try {
+    await build({ root, logLevel: 'silent', build: { outDir, emptyOutDir: true } });
+  } finally {
+    console.log = log;
+  }
 }, { timeout: 120000 });
 
 after(async () => {
@@ -49,14 +56,18 @@ const chunkImports = (js) => [...js.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'`](
 const KiB = 1024;
 const CHUNKS = {
   hall: { parent: 'main', cap: 60 * KiB, min: 30000 },
-  skerries: { parent: 'main', cap: 88 * KiB, min: 40000 },
+  // (100 KiB, from 88: its critters' sounds and the props, houses and textures only it uses
+  // came in from main.)
+  skerries: { parent: 'main', cap: 100 * KiB, min: 40000 },
   lane: { parent: 'main', cap: 72 * KiB, min: 40000 },
-  realLook: { parent: 'lane', cap: 90 * KiB, min: 30000 },
+  // (60 KiB, from 90 when it was the one lazy chunk.)
+  realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
   // (110 KiB, from 100: what moves in the dad's drive, the bins, STOMPWATT and the garage doors,
   // now loaded through the lane's chunk; it was at 99.6 KiB.)
   laneBoss: { parent: 'lane', cap: 110 * KiB, min: 60000 },
-  // AI RACE's objects: the beast, its fire, the minions, the server halls.
-  aiRace: { parent: 'main', cap: 140 * KiB, min: 80000 },
+  // AI RACE's objects: the beast, its fire, the minions, the server halls; with its sounds and
+  // its two tracks (160 KiB, from 140, as they came in from main).
+  aiRace: { parent: 'main', cap: 160 * KiB, min: 80000 },
   // The opt-in UI (about a quarter to grow): the face screen (?face=1), the phone panel with its
   // QR library (once a relay answers), the recorder (the first V or 9), the touch controller (a
   // touch screen).
@@ -67,8 +78,9 @@ const CHUNKS = {
 };
 // main's budget (vite.config.js MAIN_BUDGET): 1,700,000 while it was the one bundle; 1,560,000
 // with the areas' code lazy (main 1,518,217); 1,465,000 with the opt-in UI lazy (1,424,826);
-// 1,350,000 with AI RACE's objects lazy (1,311,083).
-const MAIN_CAP = 1350000;
+// 1,350,000 with AI RACE's objects lazy (1,311,083); 1,320,000 with each chunk's sounds and
+// music in it, the courses' shared kit and the shader text minified (1,277,986).
+const MAIN_CAP = 1320000;
 
 test('the game: main, its planned lazy chunks (each importing only its ancestors) and its workers; pad.html has its own', async (t) => {
   const assets = (await fs.readdir(path.join(outDir, 'assets'))).sort();
@@ -116,7 +128,7 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
     assert.ok(!src[w].includes('WebGLRenderer'), `no three.js in ${w}`);
   }
   assert.ok(size('laneRealWorker') < 160 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
-  assert.ok(size('pad') < 100 * KiB, `the pad stays small (${size('pad')} bytes)`);
+  assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');
   assert.ok(!/addData/.test(src.main) && /addData/.test(src.PhonePanel), "the QR code library only in the phone panel's chunk");
 });
@@ -143,6 +155,12 @@ async function startPreview(host) {
   });
   return { server, port: server.httpServer.address().port };
 }
+
+// The plan hoisted nothing: no chunk reaches another chunk's code (what two chunks share by design
+// is pinned into main: vite.config.js chunkPlan's `main`).
+test('the chunk plan moved no module into a parent chunk', () => {
+  assert.deepEqual(planLog, []);
+});
 
 test('vite preview on 127.0.0.1: relay marker, pad page, relay, no unreachable QR target', async (t) => {
   const { server, port } = await startPreview('127.0.0.1');

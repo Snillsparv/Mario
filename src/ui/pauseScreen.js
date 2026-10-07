@@ -7,19 +7,9 @@
 
 import { BIG_FONT, SMALL_FONT, measureText } from './bitmapFont.js';
 import { ICONS } from './icons.js';
-import { drawText, drawIcon, textWidth } from './raster.js';
+import { drawText, drawIcon, textWidth, roundRect } from './raster.js';
 import { COURSE_NAME, KEY_CONTROLS, PAD_CONTROLS, SWITCH_PAD_CONTROLS, TOUCH_CONTROLS, PHONE_CONTROL, REAL_LOOK_ROW, CLASSIC_LOOK_ROW, phoneEntry, pauseLayout, pauseLeaveRect, leaveLine, robotLine } from './hudLogic.js';
 import { padLayout } from '../core/input.js';
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
 
 // True when the browser reports a connected gamepad (it only does after a button press).
 export function gamepadConnected() {

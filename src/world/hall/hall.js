@@ -249,7 +249,7 @@ function flickerMaterial(map) {
       .replace('#include <common>', '#include <common>\nattribute float flame;\nuniform float flameTime;')
       .replace(
         '#include <color_vertex>',
-        `#include <color_vertex>
+        /* glsl */ `#include <color_vertex>
 if (flame > 0.0) vColor.rgb *= 0.86 + 0.09 * sin(flameTime * ${FLICKER.fast.toFixed(1)} + flame * 41.0) + 0.05 * sin(flameTime * ${FLICKER.slow.toFixed(1)} + flame * 17.0);`,
       );
   };
@@ -268,7 +268,7 @@ function sheenMaterial(map) {
       .replace('#include <common>', '#include <common>\nattribute float sheen;\nvarying float vSheen;')
       .replace(
         '#include <project_vertex>',
-        `#include <project_vertex>
+        /* glsl */ `#include <project_vertex>
 vec3 sheenN = normalize(normalMatrix * normal);
 vec3 sheenV = normalize(-mvPosition.xyz);
 float sheenRim = pow(max(1.0 - abs(dot(sheenN, sheenV)), 0.0), 3.0);
@@ -279,7 +279,7 @@ vSheen = sheen * (${SHEEN.rim.toFixed(2)} * sheenRim + ${SHEEN.spot.toFixed(2)} 
       .replace('#include <common>', '#include <common>\nvarying float vSheen;')
       .replace(
         '#include <color_fragment>',
-        `#include <color_fragment>
+        /* glsl */ `#include <color_fragment>
 diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(SHEEN.white)}, min(vSheen, 1.0) * ${SHEEN.mix.toFixed(2)});`,
       );
   };
@@ -352,14 +352,14 @@ function glassMaterial() {
       .replace('#include <common>', '#include <common>\nvarying float vGlassRim;')
       .replace(
         '#include <project_vertex>',
-        `#include <project_vertex>
+        /* glsl */ `#include <project_vertex>
 vGlassRim = 1.0 - abs(dot(normalize(normalMatrix * normal), normalize(-mvPosition.xyz)));`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vGlassRim;')
       .replace(
         '#include <color_fragment>',
-        `#include <color_fragment>
+        /* glsl */ `#include <color_fragment>
 float glassRim = vGlassRim * vGlassRim;
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), glassRim * ${GLASS.rimWhite.toFixed(2)});
 diffuseColor.a = mix(diffuseColor.a, ${GLASS.rimOpacity.toFixed(2)}, glassRim);`,

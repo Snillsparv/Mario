@@ -105,7 +105,7 @@ function bakeMaterial({ sun, ambient, diffuse, maxBright, tint }, map) {
     shader.uniforms.uBakeTint = { value: new THREE.Vector3(tint[0], tint[1], tint[2]) };
     shader.vertexShader = 'uniform vec3 uBakeSun, uBake, uBakeTint;\nvarying vec3 vBake;\n' + shader.vertexShader.replace(
       '#include <project_vertex>',
-      `#include <project_vertex>
+      /* glsl */ `#include <project_vertex>
       #ifdef USE_SKINNING
         vec3 bakeN = normalize(mat3(modelMatrix) * objectNormal);
       #else

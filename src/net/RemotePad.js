@@ -38,6 +38,7 @@
 // changes, and 'remotePress' / 'remoteRelease' { button } on the phone's button edges (the title
 // screen starts the game from them; in play the buttons reach Pip through input.poll()).
 
+import { browserStorage } from '../core/storage.js';
 import { PAD_WS_PATH, PAD_INFO_PATH, PAD_BUTTONS, makeRoomCode, isRoomCode, decodeInput } from './protocol.js';
 
 export const INFO_TIMEOUT_MS = 2000;
@@ -116,14 +117,6 @@ export function reconnectDelay(failures, rng = Math.random) {
   return Math.round(base * (0.85 + 0.3 * rng()));
 }
 
-function browserStorage() {
-  try {
-    return globalThis.sessionStorage ?? null;
-  } catch {
-    return null; // blocked storage throws on access
-  }
-}
-
 export class RemotePad {
   // Injectable for tests: fetch, createSocket(url), location, performance ({ getEntriesByType }),
   // dev (served by the Vite dev server), timers { setTimeout, clearTimeout }, rng(), storage
@@ -139,7 +132,7 @@ export class RemotePad {
     this.dev = dev ?? !!import.meta.env?.DEV;
     this.timers = timers ?? { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (id) => clearTimeout(id) };
     this.rng = rng ?? Math.random;
-    this.storage = storage === undefined ? browserStorage() : storage;
+    this.storage = storage === undefined ? browserStorage('sessionStorage') : storage;
     this.infoTimeoutMs = infoTimeoutMs;
 
     this.available = false;
