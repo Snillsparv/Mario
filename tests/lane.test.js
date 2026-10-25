@@ -375,17 +375,41 @@ test('the farthest leaps, long jumps at full speed in 16 directions off the dad\
   assert.deepEqual(out, []);
 });
 
-test('the dad\'s house: its footprint, eaves at 412, its 20-degree roof up to the ridge at 644 over z 1967.5 (raycast down at 9 points on each slope); the carport\'s roof at 370 with 300 or more over its floor; no floor anywhere under a ceiling lower than 300', () => {
-  assert.deepEqual([DAD.x0, DAD.x1, DAD.z0, DAD.z1, DAD.eave, Math.round(DAD.ridge), DAD.ridgeZ], [-860, 1600, 1330, 2605, 412, 644, 1967.5]);
-  const tan = Math.tan((20 * Math.PI) / 180);
+test('the dad\'s house (W3): its shallow main body, eaves at 412, its 32-degree roof up to the ridge at 703 over z 1795 (raycast down at 7 points on each slope), the two wings behind it, their ridges along z running into its back slope at the valleys; the carport\'s roof at 370 with 300 or more over its floor; no floor anywhere under a ceiling lower than 300', () => {
+  assert.deepEqual([DAD.x0, DAD.x1, DAD.z0, DAD.z1, DAD.eave, Math.round(DAD.ridge), DAD.ridgeZ, DAD.pitch], [-860, 1600, 1330, 2260, 412, 703, 1795, 32]);
+  const tan = (DAD.ridge - DAD.eave) / (DAD.d / 2);
+  assert.ok(Math.abs(Math.atan(tan) * (180 / Math.PI) - 32) < 0.2, 'its pitch');
+  assert.ok(DAD.eave - (DAD.overhang ?? 60) * tan <= 395, 'its rim within a standing jump\'s reach');
   for (const x of [-760, 250, 1500]) {
-    for (const z of [1400, 1650, 1900, 2035, 2300, 2550]) {
+    for (const z of [1400, 1650, 1900, 2035, 2200]) {
       const hit = col.raycast(world(x, 2000, z), { x: 0, y: -1, z: 0 }, 3000);
       const want = DAD.ridge - Math.abs(z - DAD.ridgeZ) * tan;
-      assert.ok(hit && Math.abs(hit.point.y - O.y - want) < 4, `the roof at (${x}, ${z}): ${hit && hit.point.y - O.y} for ${want.toFixed(0)}`);
+      // (Over the main roof's back slope near a wing's valley, the wing's roof is the higher.)
+      const wing = lane.DAD_WINGS.find((w) => Math.abs(x - w.cx) < w.d / 2 && z > DAD.z1 - (w.join.apex - w.w / 2) + Math.abs(x - w.cx));
+      const top = wing ? Math.max(want, wing.ridge - (Math.abs(x - wing.cx) * (wing.ridge - wing.eave)) / (wing.d / 2)) : want;
+      assert.ok(hit && Math.abs(hit.point.y - O.y - top) < 4, `the roof at (${x}, ${z}): ${hit && hit.point.y - O.y} for ${top.toFixed(0)}`);
     }
     // The eaves: at the walls' tops.
     assert.ok(Math.abs(col.findFloor(x + O.x, 600, DAD.z0 + 2 + O.z).y - O.y - DAD.eave) < 2, `the front eave at ${x}`);
+  }
+  // The wings: their slopes across them, their ridges along z out to the valleys' apex.
+  for (const w of lane.DAD_WINGS) {
+    const wt = (w.ridge - w.eave) / (w.d / 2);
+    for (const dx of [-0.4, 0, 0.4]) {
+      for (const z of [DAD.z1 + 120, w.cz, w.cz + w.w / 2 - 80]) {
+        const x = w.cx + dx * w.d;
+        const hit = col.raycast(world(x, 2000, z), { x: 0, y: -1, z: 0 }, 3000);
+        const want = w.ridge - Math.abs(x - w.cx) * wt;
+        assert.ok(hit && Math.abs(hit.point.y - O.y - want) < 4, `${w.id}'s roof at (${x}, ${z}): ${hit && hit.point.y - O.y} for ${want.toFixed(0)}`);
+      }
+    }
+    // Along its ridge onto the main roof: no step at the valleys' apex.
+    const apexZ = DAD.z1 - (w.join.apex - w.w / 2);
+    for (const z of [apexZ + 40, apexZ - 40]) {
+      const f = col.findFloor(w.cx + O.x, 2000 + O.y, z + O.z);
+      const want = z > apexZ ? w.ridge : DAD.ridge - Math.abs(z - DAD.ridgeZ) * tan;
+      assert.ok(Math.abs(f.y - O.y - want) < 4, `${w.id}'s ridge at z ${z}: ${f.y - O.y} for ${want.toFixed(0)}`);
+    }
   }
   // The walls stand where the footprint says (a ray along the front at 200 up hits them there).
   const front = col.raycast(world(250, 200, 900), { x: 0, y: 0, z: 1 }, 1000, { floors: false, ceilings: false });
@@ -423,8 +447,8 @@ test('55 coins (D1: five in the store room behind the garage doors), each over a
     assert.ok(lane.inBounds(c.x, c.z), `coin at (${c.x}, ${c.z}) inside`);
   }
   const S = lane.STAR;
-  assert.deepEqual([S.id, S.x, S.y, S.z, S.placed], ['lane_star', -250, 824, 1967.5, true]);
-  assert.ok(Math.abs(col.findFloor(S.x + O.x, S.y + O.y, S.z + O.z, 0).y - O.y - 644) < 1, 'over the ridge');
+  assert.deepEqual([S.id, S.x, S.y, S.z, S.placed], ['lane_star', 300, 883, 1795, true]);
+  assert.ok(Math.abs(col.findFloor(S.x + O.x, S.y + O.y, S.z + O.z, 0).y - O.y - 703) < 1, 'over the ridge');
   const { om } = hero(0, GROUND, 900, 0, { objects: true });
   assert.equal(om.star.state, 'idle');
   assert.equal(om.star.mesh.visible, true);
@@ -591,7 +615,7 @@ test('privacy and originality: the course\'s sources name no one but Jonas on it
     }
   }
   // Houses go by neutral ids.
-  for (const h of [...lane.HOUSES, ...lane.PLOTS_N]) assert.match(h.id, /^(north|south|east)_(\d|west|dad|garage|house)(_wing|_west)?$/, h.id);
+  for (const h of [...lane.HOUSES, ...lane.PLOTS_N]) assert.match(h.id, /^(north|south|east)_(\d|west|dad|garage|house)(_wing|_west|_east)?$/, h.id);
 });
 
 test('the look: the sun low in the west-south-west; the villas\' street faces lit, the chain houses\' in shade; the dad\'s walls Falu red under a dark roof', () => {
@@ -635,8 +659,8 @@ test('the look: the sun low in the west-south-west; the villas\' street faces li
   const roof = mean('lane-roof', [0, 1, 0], () => true);
   const dadRoof = mean('lane-roof', [0, 0.94, -0.34], (x, y, z) => x > DAD.x0 - 100 && x < DAD.x1 + 100 && z > DAD.z0 - 100 && z < DAD.ridgeZ + 1);
   assert.ok(dadRoof < 0.12, `the dad's roof ${dadRoof.toFixed(3)} (all roofs' tops ${roof.toFixed(3)})`);
-  // The red-leaf tree: a small ornamental tree, its round crown about the house's height (from a
-  // little under its eaves to a little over its ridge, about 2 m round) in several reds.
+  // The red-leaf tree (W3: an old purple-leaved crab apple): its wide open crown from under the
+  // eaves to well over the ridge (the canopy's y0..y1, out to about its r) in several reds.
   const T = lane.RED_TREE;
   const r = mesh('lane-render').geometry.attributes;
   const tones = new Set();
@@ -649,7 +673,7 @@ test('the look: the sun low in the west-south-west; the villas\' street faces li
     [lo, hi, wide] = [Math.min(lo, y), Math.max(hi, y), Math.max(wide, d)];
     tones.add(`${Math.round((10 * cg) / cr)},${Math.round((10 * cb) / cr)}`);
   }
-  assert.ok(lo > DAD.eave - 100 && hi < DAD.ridge + 80 && wide < T.canopy.r + 70, `the crown from ${lo.toFixed(0)} to ${hi.toFixed(0)}, ${wide.toFixed(0)} wide`);
+  assert.ok(lo > T.canopy.y0 - 60 && lo < DAD.eave && hi > DAD.ridge && hi < T.canopy.y1 + 40 && wide < T.canopy.r + 130, `the crown from ${lo.toFixed(0)} to ${hi.toFixed(0)}, ${wide.toFixed(0)} wide`);
   assert.ok(tones.size >= 3, `${tones.size} reds: ${[...tones]}`);
 });
 

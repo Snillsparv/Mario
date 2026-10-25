@@ -119,7 +119,8 @@ test('the walls are open at every window and door of the chain houses and the vi
       } else for (const name of ['left', 'right']) openings.push([frameOf(h).face(name).f, 0, h.eave - y0 - 220, h.eave - y0 - 40]);
       if (h.door !== undefined) openings.push([front, h.door, lane.TERRACE - y0 + 5, lane.TERRACE - y0 + 150]);
     }
-    for (const u of h.kit === 'chain' ? (h.windows ?? []) : []) openings.push([front, u, 170, 300], [back, -u, 170, 300]);
+    for (const u of h.kit === 'chain' ? (h.windows ?? []) : []) openings.push([front, u, 170, 300]);
+    for (const u of h.kit === 'chain' ? (h.backWindows ?? (h.windows ?? []).map((w) => -w)) : []) openings.push([back, u, 170, 300]);
     if (typeof h.door === 'object') openings.push([front, h.door.u, 1, h.door.h - 1]);
     else if (typeof h.door === 'number' && h.kit === 'chain') openings.push([front, h.door, 1, 214]);
     for (const [f, u, v0, v1] of openings) {
@@ -178,7 +179,9 @@ test('the tile courses lie in the classic roof planes (the colliders Jonas walks
       if (u > A + o - 20 || w > B + o + 4 || w < 30) continue; // (the eave's nose stands a little out)
       overs.push((p[i + 1] - (h.ridge - w * tan)) * Math.cos(Math.atan(tan)));
     }
-    if (!overs.length || cap) continue;
+    // (W3: the dad's wings' ridge caps run on over his back slope to the valleys' apex: theirs.)
+    const wing = lane.DAD_WINGS.some((wg) => Math.abs(p[i] - wg.cx) < wg.d / 2 + 30 && p[i + 2] > lane.DAD.z1 - (wg.join.apex - wg.w / 2) - 30);
+    if (!overs.length || cap || wing) continue;
     assert.ok(overs.some((over) => over > -10.5 && over <= 1.55), `a tile vertex ${overs.map((v) => v.toFixed(2))} off its roof's plane`);
     crown = Math.max(crown, Math.min(...overs.map((v) => (v > -10.5 ? v : Infinity))));
     checked++;
@@ -282,7 +285,7 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     return [m.data[(j * m.width + i) * 4], m.data[(j * m.width + i) * 4 + 1] * 4];
   };
   const { DAD, SOUTH_EDGE, HEDGES, PLOTS_N, APRON, wallZAt } = lane;
-  const lawns = [[DAD.x0 + 360, (SOUTH_EDGE + DAD.z0) / 2], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [3500, 1600]];
+  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [3500, 1600]];
   for (const [x, z] of lawns) {
     const [grow, y] = at(x, z);
     assert.equal(grow, 255, `a lawn at ${x}, ${z}`);
@@ -292,14 +295,17 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     road: [0, lane.ROAD.line.at(-1)[1]],
     'turning area': [APRON.ring.x, APRON.ring.z + 800],
     pavement: [-1000, (lane.ROAD.line.at(-1)[1] - lane.ROAD.half + wallZAt(-1000)) / 2],
-    path: [0, (SOUTH_EDGE + DAD.z0) / 2],
+    path: [DAD.door.x, (SOUTH_EDGE + lane.DAD_PATH.z1) / 2],
+    landing: [(lane.LANDING.x0 + lane.LANDING.x1) / 2, (lane.LANDING.z0 + lane.LANDING.z1) / 2],
     drive: [2000, 900],
-    'corner bed': [lane.RED_TREE.x, lane.RED_TREE.z],
-    "corner bed's corner": [lane.BED.x1 - 60, lane.BED.z0 + 60],
-    "corner bed's lawn side": [lane.BED.x1 - 900, lane.BED.z0 + 250],
+    'red-leaf bed': [lane.RED_TREE.x, lane.RED_TREE.z],
+    "red-leaf bed's corner": [lane.BED.x1 - 60, lane.BED.z0 + 60],
+    "red-leaf bed's back corner": [lane.BED.x0 + 50, lane.BED.z1 - 50],
     steps: [(lane.PLOTS_N[3].steps[0] + lane.PLOTS_N[3].steps[1]) / 2, lane.wallZAt(lane.PLOTS_N[3].steps[0]) - 130],
     mailbox: [lane.MAILBOX.x, lane.MAILBOX.z],
     rhododendron: [lane.RHODODENDRON.x, lane.RHODODENDRON.z],
+    ivy: [lane.IVY.x, lane.IVY.z],
+    rose: [lane.ROSE.x, lane.ROSE.z],
     hedge: [-2500, (HEDGES[0].z0 + HEDGES[0].z1) / 2],
     house: [0, 2000],
     'drive notch': [(PLOTS_N[2].drive[0] + PLOTS_N[2].drive[1]) / 2, wallZAt(PLOTS_N[2].drive[0]) - 240],
@@ -345,22 +351,22 @@ test('the cars stand on their wheels inside their colliders; the bird stands on 
   let lowest = Infinity;
   for (let i = 1; i < bird.length; i += 3) lowest = Math.min(lowest, bird[i]);
   assert.ok(lowest > lane.MAILBOX.ridge - 1 && lowest < lane.MAILBOX.ridge + 12, `the bird on the ridge: ${lowest}`);
-  // The corner bed's stones (R fixes: the photos' round field stones): close set along its two
-  // asphalt edges (on the road along the street's, on the drive along his drive's), round its
-  // lawn side, no granite kerb along it.
+  // The red-leaf bed's stones (R fixes: the photos' round field stones; W3: its rectangle):
+  // close set along all four edges (on the road along the street's, on the drive along his
+  // drive's, along the back and the path's side), no granite kerb along it.
   const granite = mesh(high, 'granite').position;
   const B = lane.BED;
-  const bins = { street: new Set(), drive: new Set(), arc: new Set(), kerb: 0 };
+  const bins = { street: new Set(), drive: new Set(), back: new Set(), path: new Set(), kerb: 0 };
   for (let i = 0; i < granite.length; i += 3) {
     const [x, y, z] = [granite[i], granite[i + 1], granite[i + 2]];
-    if (z > B.z0 - 2 && z < B.z0 + 70 && x > B.x1 - B.rx + 40 && x < B.x1 - 40) bins.street.add(Math.floor((B.x1 - x) / 100));
-    if (x > B.x1 - 70 && x < B.x1 + 2 && z > B.z0 + 40 && z < B.z0 + B.rz - 40) bins.drive.add(Math.floor((z - B.z0) / 100));
-    const e = Math.hypot((B.x1 - x) / B.rx, (z - B.z0) / B.rz);
-    if (e > 0.9 && e < 1.05 && x < B.x1 - 60 && z > B.z0 + 60) bins.arc.add(Math.round(Math.atan2((B.x1 - x) / B.rx, (z - B.z0) / B.rz) * 10));
+    if (z > B.z0 - 2 && z < B.z0 + 70 && x > B.x0 + 40 && x < B.x1 - 40) bins.street.add(Math.floor((B.x1 - x) / 100));
+    if (x > B.x1 - 70 && x < B.x1 + 2 && z > B.z0 + 40 && z < B.z1 - 40) bins.drive.add(Math.floor((z - B.z0) / 100));
+    if (z > B.z1 - 70 && z < B.z1 + 2 && x > B.x0 + 40 && x < B.x1 - 40) bins.back.add(Math.floor((x - B.x0) / 100));
+    if (x > B.x0 - 2 && x < B.x0 + 70 && z > B.z0 + 40 && z < B.z1 - 40) bins.path.add(Math.floor((z - B.z0) / 100));
     // (No kerb stone's flat top along the bed's street edge.)
-    if (z > B.z0 - 1 && z < B.z0 + 31 && x > B.x1 - B.rx + 10 && x < B.x1 - 10 && Math.abs(y - lane.GROUND - 1.5) < 0.01) bins.kerb++;
+    if (z > B.z0 - 1 && z < B.z0 + 31 && x > B.x0 + 10 && x < B.x1 - 10 && Math.abs(y - lane.GROUND - 1.5) < 0.01) bins.kerb++;
   }
-  assert.ok(bins.street.size >= 9 && bins.drive.size >= 6 && bins.arc.size >= 10, `stones along the street (${bins.street.size}), the drive (${bins.drive.size}), round the lawn (${bins.arc.size})`);
+  assert.ok(bins.street.size >= 3 && bins.drive.size >= 5 && bins.back.size >= 3 && bins.path.size >= 5, `stones along the street (${bins.street.size}), the drive (${bins.drive.size}), the back (${bins.back.size}), the path (${bins.path.size})`);
   assert.equal(bins.kerb, 0, 'no kerb along the bed');
 });
 

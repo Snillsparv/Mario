@@ -36,6 +36,7 @@
 // them casts the roof's.
 
 import { add, mul, sub, dot, cross, norm } from './geo.js';
+import { brickSpans, chainFaces } from './plan.js';
 
 export function wallFrame(origin, out) {
   const l = Math.hypot(out[0], out[2]);
@@ -136,35 +137,43 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
   const plinth = h.plinth ?? PLINTH;
   const dad = typeof h.door === 'object';
   const holes = { front: [], back: [], left: [], right: [] };
-  const win = (u) => ({ u0: u - WIN.w / 2, u1: u + WIN.w / 2, v0: WIN.sill, v1: WIN.sill + WIN.h });
-  for (const u of h.windows ?? []) {
-    holes.front.push(win(u));
-    holes.back.push(win(-u));
-  }
+  const W = h.win ?? WIN; // (the dad's openings bigger: two casements of three lights)
+  const win = (u) => ({ u0: u - W.w / 2, u1: u + W.w / 2, v0: W.sill, v1: W.sill + W.h });
+  const back = h.backWindows ?? (h.windows ?? []).map((u) => -u);
+  for (const u of h.windows ?? []) holes.front.push(win(u));
+  for (const u of back) holes.back.push(win(u));
   let side = null;
   if (dad) {
+    // The door's opening from its sill (the landing's top) and the side light west of it in the
+    // same dark frame.
     const D = h.door;
-    holes.front.push({ u0: D.u - D.w / 2, u1: D.u + D.w / 2, v0: 0, v1: D.h });
-    side = { u0: D.u + D.w / 2 + 14, u1: D.u + D.w / 2 + 78, v0: 40, v1: D.h };
+    holes.front.push({ u0: D.u - D.w / 2, u1: D.u + D.w / 2, v0: D.sill ?? 0, v1: D.h });
+    side = { u0: D.u + D.w / 2 + 16 + WIN.casing, u1: D.u + D.w / 2 + 88, v0: (D.sill ?? 0) + 34, v1: D.h - WIN.casing };
     holes.front.push(side);
   } else if (typeof h.door === 'number') holes.front.push({ u0: h.door - DOOR.w / 2, u1: h.door + DOOR.w / 2, v0: 0, v1: DOOR.h });
-  // The walls: the plinth (or the gable end) in white brick, 2 proud, the boards over it, the
-  // gables' triangles; the flashing on the plinth's top.
+  // The walls: the plinth (or the gable end, or a face's brick ranges: h.brick) in white brick, 2
+  // proud, the boards over it, the gables' triangles; the flashing on the plinth's top. (A wing's
+  // end inside the main body is not drawn: lane/houses.js chainFaces.)
   // (The walls stop TOP_GAP under the roof's plane: the tile courses sink into it, and a wall's
   // edge would show between their rolls.)
   const top = wallH - TOP_GAP;
-  for (const name of ['front', 'back', 'left', 'right']) {
+  for (const name of chainFaces(h)) {
     const { f, half } = F.face(name);
     const gable = name === 'left' || name === 'right';
-    const brickTop = gable && h.gableEnds ? top : plinth;
     const wear = { L, eave: top };
-    kit.brick.color(TINT.brick);
-    band(kit.brick, f, -half - 2, half + 2, -4, brickTop, 2, holes[name], wear);
-    if (brickTop < top) {
-      kit.boards.color(h.boards);
-      band(kit.boards, f, -half, half, brickTop, top, 0, holes[name], wear);
-      kit.metal.color(TINT.black);
-      kit.metal.quad(f.at(-half - 2, plinth - 3, 5), f.at(half + 2, plinth - 3, 5), f.at(half + 2, plinth + 3, 0), f.at(-half - 2, plinth + 3, 0));
+    for (const [a, b, full] of brickSpans(h, name, half)) {
+      const brickTop = full || (gable && h.gableEnds) ? top : plinth;
+      const [ea, eb] = [a === -half ? -2 : 0, b === half ? 2 : 0];
+      kit.brick.color(TINT.brick);
+      band(kit.brick, f, a + ea, b + eb, -4, brickTop, 2, holes[name], wear);
+      // (A pier's side, where it stands 2 proud of the boards beside it.)
+      for (const [u, s] of [[a, -1], [b, 1]]) if (full && Math.abs(u) < half) kit.brick.quad(f.at(u, plinth, s > 0 ? 2 : 0), f.at(u, plinth, s > 0 ? 0 : 2), f.at(u, top, s > 0 ? 0 : 2), f.at(u, top, s > 0 ? 2 : 0));
+      if (brickTop < top) {
+        kit.boards.color(h.boards);
+        band(kit.boards, f, a, b, brickTop, top, 0, holes[name], wear);
+        kit.metal.color(TINT.black);
+        kit.metal.quad(f.at(a + ea, plinth - 3, 5), f.at(b + eb, plinth - 3, 5), f.at(b + eb, plinth + 3, 0), f.at(a + ea, plinth + 3, 0));
+      }
     }
     if (gable) {
       // The gable's triangle in two halves (each one's distance under the verge over it is then
@@ -184,19 +193,17 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
     }
   }
   const front = F.face('front').f;
-  const back = F.face('back').f;
+  const backF = F.face('back').f;
   const bars = kit.tier === 'low' ? 0 : 2;
-  for (const u of h.windows ?? []) {
-    windowAt(kit, front, win(u), { bars });
-    windowAt(kit, back, win(-u), { bars });
-  }
-  if (dad) windowAt(kit, front, side, { bars, mullion: false, curtains: false });
+  for (const u of h.windows ?? []) windowAt(kit, front, win(u), { bars });
+  for (const u of back) windowAt(kit, backF, win(u), { bars });
+  if (dad) windowAt(kit, front, side, { bars, mullion: false, curtains: false, net: true });
   else if (typeof h.door === 'number') doorAt(kit, front, h.door);
   gableRoof(kit, F, h, tiled, seg);
 }
 
 // A window in the opening o of wall frame f (its glass 10 in, the casing proud).
-function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true } = {}) {
+function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = false } = {}) {
   const { paint, glass, cloth, core, metal } = kit;
   const { u0, u1, v0, v1 } = o;
   const cs = WIN.casing;
@@ -242,6 +249,11 @@ function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true } = {})
         cloth.quad(f.at(a, v0 + 2, da), f.at(b, v0 + 2, db), f.at(b, v1 - 2, db), f.at(a, v1 - 2, da));
       }
     }
+  }
+  // (A side light's net curtain: one pale sheet a little behind the glass.)
+  if (net) {
+    cloth.color(TINT.curtain, 0.5);
+    cloth.quad(f.at(u0 + 2, v0 + 2, R - 5), f.at(u1 - 2, v0 + 2, R - 5), f.at(u1 - 2, v1 - 2, R - 5), f.at(u0 + 2, v1 - 2, R - 5));
   }
   // The room behind: a dim box.
   const RB = R - 140;
@@ -346,16 +358,20 @@ function gableRoof(kit, F, h, tiled, seg) {
   const lo = h.eave - o * tan;
   const y0 = h.y0 ?? 22;
   const T = ROOF.thick;
+  // (A wing's slopes run on at its +u end to the valleys with the main roof: the rim to
+  // join.rim, the ridge to join.apex; no verge there, no tile courses on it.)
+  const J = h.join;
+  const [rimEnd, ridgeEnd] = J ? [J.rim, J.apex] : [A + o, A + o];
   for (const s of [-1, 1]) {
     const edge = s * (B + o);
     const out = F.dir(0, 0, s);
-    const [e0, e1] = [F.at(-A - o, lo, edge), F.at(A + o, lo, edge)];
-    const [r0, r1] = [F.at(-A - o, h.ridge, 0), F.at(A + o, h.ridge, 0)];
+    const [e0, e1] = [F.at(-A - o, lo, edge), F.at(rimEnd, lo, edge)];
+    const [r0, r1] = [F.at(-A - o, h.ridge, 0), F.at(ridgeEnd, h.ridge, 0)];
     const up = norm(sub(r0, e0));
     const len = Math.hypot(...sub(r0, e0));
     // (Wound to face out: the side's order flips with s.)
     const slope = s > 0 ? [e0, e1, r1, r0] : [e1, e0, r0, r1];
-    if (tiled && seg) {
+    if (tiled && seg && !J) {
       kit.tiles.color(h.roof);
       tileCourses(kit.tiles, e0, e1, up, len, seg);
       kit.shadow.quad(...slope.map((p) => sub(p, mul(F.dir(0, 1, s * tan), 3 + TILE.SINK))));
@@ -379,10 +395,12 @@ function gableRoof(kit, F, h, tiled, seg) {
     const g = kit.metal;
     g.color(TINT.gutter);
     const gc = (p) => add([p[0], lo - 12, p[2]], mul(out, 10));
-    const [ga, gb] = [gc(F.at(-A - o + 4, 0, edge)), gc(F.at(A + o - 4, 0, edge))];
+    const [ga, gb] = [gc(F.at(-A - o + 4, 0, edge)), gc(F.at(rimEnd - 4, 0, edge))];
     g.tube(ga, gb, 9, 9, 6, { a0: 0, arc: Math.PI });
     g.tube(ga, gb, 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true });
-    for (const e of [-1, 1]) {
+    // (The downpipes at the eave's ends; h.pipes: only those listed, by side: e.g. none on an
+    // eave that runs into a wing, a wing's at its far end.)
+    for (const e of h.pipes?.[s > 0 ? 'front' : 'back'] ?? [-1, 1]) {
       const u = e * (A - 25);
       const top = gc(F.at(u, 0, edge));
       const wall = add(F.at(u, lo - 60, s * B), mul(out, 8));
@@ -391,8 +409,9 @@ function gableRoof(kit, F, h, tiled, seg) {
       g.tube([wall[0], y0 + 14, wall[2]], add([wall[0], y0 + 4, wall[2]], mul(out, 10)), 5, 5, 6, { caps: true });
     }
   }
-  // Barge boards up both gables, a roll of verge tiles over each, the ridge cap.
-  for (const e of [-1, 1]) {
+  // Barge boards up both gables (a wing's far one), a roll of verge tiles over each, the ridge
+  // cap.
+  for (const e of J ? [-1] : [-1, 1]) {
     const a = e * (A + o);
     const vout = F.dir(e, 0, 0);
     for (const s of [-1, 1]) {
@@ -408,9 +427,11 @@ function gableRoof(kit, F, h, tiled, seg) {
   // (Low on the ridge, its top 2 over the collider's ridge line Jonas stands on: his feet sink
   // no deeper there than on the rolls' crowns.)
   kit.tiles.color(h.roof, 0.9);
-  const [ra, rb] = [F.at(-A - o - 4, h.ridge - 10, 0), F.at(A + o + 4, h.ridge - 10, 0)];
+  const [ra, rb] = [F.at(-A - o - 4, h.ridge - 10, 0), F.at(J ? ridgeEnd : A + o + 4, h.ridge - 10, 0)];
   kit.tiles.tube(ra, rb, 12, 12, 8, { a0: Math.PI, arc: Math.PI, caps: true });
-  // The ridge tiles' joints: thin dark rings every RIDGE_TILE.
+  // The ridge tiles' joints: thin dark rings every RIDGE_TILE (on low none on a wing's ridge,
+  // behind the house).
+  if (J && kit.tier === 'low') return;
   const run = Math.hypot(...sub(rb, ra));
   const ex = norm(sub(rb, ra));
   kit.paint.color(0x0a0a0a);

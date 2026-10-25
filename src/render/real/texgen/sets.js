@@ -255,8 +255,9 @@ export function grassSet(n = 512, { seed = 61, leaves = 0.6 } = {}) {
 }
 
 // Concrete pavers: `cols` square slabs a side with mossy green joints (the dad's grass-paver
-// path at 4; cobbles at 10).
-export function paversSet(n = 512, { cols = 4, seed = 71 } = {}) {
+// path at 4, `moss` more of it creeping over the slabs, `olive` its tint toward a yellow-olive:
+// W3; cobbles at 10).
+export function paversSet(n = 512, { cols = 4, seed = 71, moss: mossBias = 0, olive = 0 } = {}) {
   const h = field(n);
   const col = rgbField(n);
   const rough = field(n);
@@ -276,12 +277,12 @@ export function paversSet(n = 512, { cols = 4, seed = 71 } = {}) {
       const moss = mossNoise(s, t);
       const grit = gritNoise(s, t) - 0.5;
       const sid = hash(Math.floor(x / cw), Math.floor(y / cw), seed);
-      const mossy = smooth(0.48, 0.7, moss + (1 - slab) * 0.5 + (e < cw * 0.2 ? 0.08 : 0));
+      const mossy = smooth(0.48, 0.7, moss + mossBias + (1 - slab) * 0.5 + (e < cw * 0.2 ? 0.08 : 0));
       const g = 1 + grit * 0.25;
       const k = slab * (1 - mossy * 0.85);
-      const gr = 0.05;
-      const gg = 0.1 + moss * 0.05;
-      const gb = 0.02;
+      const gr = 0.05 + olive * 0.035;
+      const gg = 0.1 + moss * 0.05 - olive * 0.01;
+      const gb = 0.02 + olive * 0.004;
       const i = y * n + x;
       setRgb(col, i, gr + ((0.28 + sid * 0.06) * g - gr) * k, gg + ((0.28 + sid * 0.05) * g - gg) * k, gb + ((0.25 + sid * 0.04) * g - gb) * k);
       h[i] = slab * 2 + grit * 0.4 + (1 - slab) * jointNoise(s, t) * 1.2;

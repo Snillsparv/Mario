@@ -16,7 +16,15 @@
 //   bevelEnds(runs, G) -> [{ kind, pts, facing }]  // the drops' and edges' bevels closed at their
 //                                            // ends (below; BEVEL: how far in front they run)
 //   terraceSpans(L) -> [{ plot, spans }]     // the terraces' fronts (below)
-//   bedStones(L) -> [{ x, y, z, s, k, a, pink }]   // the dad's corner bed's field stones (below)
+//   bedStones(L) -> [{ x, y, z, s, k, a, pink }]   // the dad's red-leaf bed's field stones (below)
+//   redTreeStems(T) -> [[x, y, z, w]]        // the red-leaf tree's stems (layout RED_TREE): from its
+//                                            // fork out to each end, w thick (both looks)
+//   redTreeCrown(T) -> [{ c, r }]            // its crown's blobs (middle, radii), sparse
+//   ivyMasses(L) -> [{ c, r }]               // the ivy mound's lumps (layout IVY)
+//   chainFaces(h) -> [face]                  // a chain house's drawn faces (a wing's joined end
+//                                            // left out: lane/layout.js DAD_WINGS)
+//   brickSpans(h, face, half) -> [[u0, u1, brick?]]   // a face's spans, split at its brick
+//                                            // ranges (h.brick[face]: white brick to the eaves)
 
 import { makeRng } from '../../../core/math.js';
 
@@ -98,7 +106,7 @@ const KERB_SPANS = (L) => [
   { x0: L.LINK_DRIVE.x0, x1: L.LINK_DRIVE.x1, south: true, kind: 'drop' },
   ...L.PLOTS_N.map((p) => ({ x0: p.drive[0], x1: p.drive[1], south: false, kind: 'drop' })),
   { x0: L.FORECOURT.x0 - 10, x1: L.FORECOURT.x0 + 10, z0: L.FORECOURT.z0, z1: L.FORECOURT.z1, kind: 'drop' },
-  { x0: L.BED.x1 - L.BED.rx, x1: L.BED.x1, south: true, kind: 'bed' },
+  { x0: L.BED.x0, x1: L.BED.x1, south: true, kind: 'bed' },
   // (The apron's south-west corner rounds onto south_2's lawn: its edge, like the south edge's.)
   { x0: L.APRON.x0, x1: L.APRON.x0 + L.APRON.sw, z0: L.APRON.z1 - L.APRON.sw, z1: L.APRON.z1, kind: 'edge' },
 ];
@@ -266,22 +274,99 @@ export function bedStones(L) {
   const { BED: B, GROUND: G } = L;
   const R = makeRng(331);
   const out = [];
-  const put = (x, y, z, s, a) => out.push({ x, y, z, s, e: 1 + 0.35 * R(), h: 0.8 + 0.35 * R(), a: a + (R() - 0.5) * 0.5, k: 0.68 + 0.5 * R(), pink: R() < 0.35 });
-  // Along the asphalt: from the corner (round the sign's post) out along each edge.
-  const size = () => 22 + 14 * R() ** 1.4 + (R() < 0.15 ? 10 : 0);
-  for (const [len, at, a] of [[B.rx, (d, s) => [B.x1 - d, -3, B.z0 + s * 0.5], 0], [B.rz, (d, s) => [B.x1 - s * 0.5, G - 3, B.z0 + d], Math.PI / 2]]) {
-    for (let d = 40; d < len - 30; ) {
-      const s = size();
-      const [x, y, z] = at(d, s);
-      put(x, y, z, s, a);
-      d += s * 1.55 + 3 + 9 * R();
+  const S = L.TURN_SIGN;
+  const put = (x, y, z, s, a) => {
+    const st = { x, y, z, s, e: 1 + 0.35 * R(), h: 0.8 + 0.35 * R(), a: a + (R() - 0.5) * 0.5, k: 0.68 + 0.5 * R(), pink: R() < 0.3 };
+    // (None on the sign's post: one in its way moves aside along x, or is left out.)
+    const clear = s * st.e + S.collider + 4;
+    const dz = Math.abs(z - S.z);
+    if (Math.hypot(x - S.x, dz) < clear) {
+      if (dz >= clear) return;
+      st.x = S.x + Math.sign(x - S.x || 1) * Math.sqrt(clear * clear - dz * dz);
+      if (out.some((o) => Math.hypot(o.x - st.x, o.z - st.z) < (o.s + s) * 0.8)) return;
+    }
+    out.push(st);
+  };
+  const size = () => 20 + 14 * R() ** 1.4 + (R() < 0.15 ? 10 : 0);
+  // Along the asphalt (sitting on the road against the soil's face), then up the drive's side,
+  // round the back (its rounded corners) and down the path's side: a row each, the biggest at
+  // the north-east corner by the sign.
+  for (let d = 24; d < B.x1 - B.x0 - 16; ) {
+    const s = size() * 0.85 + (d < 130 ? 12 : 0);
+    put(B.x1 - d, -3, B.z0 + s * 0.5, s, 0);
+    d += s * 1.35 + 2 + 6 * R();
+  }
+  const ring = L.bedOutline(4);
+  const len = (i) => Math.hypot(ring[(i + 1) % ring.length][0] - ring[i][0], ring[(i + 1) % ring.length][1] - ring[i][1]);
+  for (let i = 1; i < ring.length; i++) {
+    const [[ax, az], [bx, bz]] = [ring[i], ring[(i + 1) % ring.length]];
+    const l = len(i);
+    const [ux, uz] = [(bx - ax) / l, (bz - az) / l];
+    for (let d = i === 1 ? 50 : 14; d < l - 14; ) {
+      const s = size() * 0.85;
+      // (Inside the edge by half a stone: the outline runs round counter-clockwise, its inside on
+      // the left.)
+      put(ax + ux * d - uz * s * 0.5, G - 3, az + uz * d + ux * s * 0.5, s, Math.atan2(uz, ux));
+      d += s * 1.6 + 6 + 10 * R();
     }
   }
-  // Round the lawn side, every ~110.
-  const n = Math.round((Math.PI / 4) * (B.rx + B.rz) / 110);
-  for (let i = 1; i < n; i++) {
-    const t = (i / n) * (Math.PI / 2) + (R() - 0.5) * 0.04;
-    put(B.x1 - (B.rx - 18) * Math.sin(t), G - 3, B.z0 + (B.rz - 18) * Math.cos(t), 16 + 12 * R(), Math.atan2(B.rz * Math.sin(t), B.rx * Math.cos(t)));
+  return out;
+}
+
+export function redTreeStems(T) {
+  // Four stems leaning out from the fork, each [x, y, z, w] at its end: long, rising to the
+  // crown's middle height, spread round the trunk (none straight over its top).
+  const C = T.canopy;
+  return [[0.5, 0.55, 640, 17], [2.0, 0.5, 600, 15], [-1.1, 0.6, 680, 16], [3.5, 0.45, 560, 13]].map(([a, out, y, w]) => [T.x + Math.sin(a) * C.r * out, y, T.z + Math.cos(a) * C.r * out, w]);
+}
+
+export function redTreeCrown(T) {
+  // Small blobs spread wide like an open umbrella: the outer ones lower (the limbs droop), the
+  // inner ones higher, none low over the trunk's top.
+  const C = T.canopy;
+  const R = makeRng(4517);
+  const out = [];
+  for (let i = 0; i < 14; i++) {
+    const a = i * 2.39996 + R() * 0.5;
+    const k = 0.3 + 0.7 * Math.sqrt((i + 0.5) / 14) * (0.85 + 0.15 * R());
+    const d = C.r * k;
+    const y = C.y1 - (C.y1 - C.y0) * (0.08 + 0.5 * k * k + 0.1 * R());
+    const r = C.r * (0.24 + 0.08 * R());
+    out.push({ c: [T.x + Math.sin(a) * d, y, T.z + Math.cos(a) * d], r: [r, r * (0.55 + 0.2 * R()), r] });
   }
   return out;
+}
+
+// A chain house's faces that are drawn: all four, but a wing's end that runs into the main body
+// (`join`: its +u end, the 'right' face, stands inside it).
+export const chainFaces = (h) => (h.join ? ['front', 'back', 'left'] : ['front', 'back', 'left', 'right']);
+
+// A face's spans across (-half..half) split where its brick ranges (h.brick[name]: [u0, u1], white
+// brick to the eaves) begin and end: [[u0, u1, brick?]].
+export function brickSpans(h, name, half) {
+  const ranges = (h.brick?.[name] ?? []).map(([a, b]) => [Math.max(-half, Math.min(a, b)), Math.min(half, Math.max(a, b))]).filter(([a, b]) => b > a).sort((p, q) => p[0] - q[0]);
+  const out = [];
+  let u = -half;
+  for (const [a, b] of ranges) {
+    if (a > u) out.push([u, a, false]);
+    out.push([Math.max(u, a), b, true]);
+    u = b;
+  }
+  if (u < half) out.push([u, half, false]);
+  return out;
+}
+
+// The ivy mound's masses ({ c, r }: three lumps along the front's east pier and round the corner
+// onto the gable; both looks draw them, lane/props.js too).
+export function ivyMasses(L) {
+  const I = L.IVY;
+  const G = L.GROUND;
+  // (Two lumps along the pier, one round the corner onto the gable, and a sheet climbing the
+  // pier flat against the wall up to the gutter.)
+  return [
+    { c: [I.x - I.rx * 0.45, G + I.h * 0.43, I.z + 40], r: [I.rx * 0.62, I.h * 0.44, I.rz * 0.7] },
+    { c: [I.x + I.rx * 0.2, G + I.h * 0.46, I.z + 30], r: [I.rx * 0.6, I.h * 0.47, I.rz * 0.78] },
+    { c: [L.DAD.x1 + 45, G + I.h * 0.42, L.DAD.z0 - 30], r: [I.rx * 0.38, I.h * 0.43, I.rz * 0.68] },
+    { c: [I.x - I.rx * 0.15, G + I.h * 0.74, L.DAD.z0 - 22], r: [I.rx * 0.85, I.h * 0.25, 34] },
+  ];
 }

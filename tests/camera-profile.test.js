@@ -69,8 +69,9 @@ function hash(numbers) {
 // pole since every lamppost is one, and grabs it; with L4 left solid it still gives 82c6f121.
 // Re-pinned again in W2, deliberately: the lane's plan drawn 1.3 times larger to the aerial's
 // scale, its run from the dad's door crosses other ground; the controller is unchanged, the
-// grounds' and the hall's pins hold.)
-const PINNED = { grounds: 'b3b1beef', hall: '3c74e247', lane: '7263d9be' };
+// grounds' and the hall's pins hold. And in W3: the door near the east end of his front, the
+// run starting there among the red-leaf bed, the tree and the mailbox.)
+const PINNED = { grounds: 'b3b1beef', hall: '3c74e247', lane: '37c7ff90' };
 
 test('without a profile the controller reads cameraConfig: the scripted runs on the grounds, in the hall and in the lane give the poses pinned before profiles existed', () => {
   for (const name of Object.keys(PLACES)) {

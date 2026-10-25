@@ -29,7 +29,7 @@ export const CATALOGUE = {
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
   roof: { set: 'tiles', cover: 270, color: 5 },
   cobbles: { set: 'pavers', opts: { cols: 10, seed: 73 }, cover: 240, color: 1.6 },
-  path: { set: 'pavers', cover: 240, color: [1.2, 1.42, 0.98], vertexColors: false }, // (mossy)
+  path: { set: 'pavers', opts: { moss: 0.24, olive: 1 }, cover: 240, color: [1.05, 0.82, 0.72], vertexColors: false }, // (mossed over: olive, W3)
 };
 export const DETAIL = {
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },

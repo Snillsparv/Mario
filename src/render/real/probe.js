@@ -11,13 +11,21 @@
 //       prefilter's programs are made) before the street is there to capture
 //
 // The shadow map is drawn once for all six faces (the sun does not move between them).
+//
+// The cube's eye is put a fraction of a unit off `at` (NUDGE): a vertex lying exactly on a face's
+// eye plane (the lane's lawn tiles meet at x 0, under the street's probe) projects to w = 0, and
+// the rasteriser interpolates the faces through it to NaN along a line of texels; the prefilter
+// then smears that over the cube, and every window reflecting it went white (the dad's windows on
+// the mid tier).
 
 import * as THREE from 'three';
+
+const NUDGE = [0.37, 0.29, 0.23];
 
 export function captureProbe(renderer, scene, { at, size = 256, near = 20, far = 40000, hide = [] }) {
   const cube = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType });
   const camera = new THREE.CubeCamera(near, far, cube);
-  camera.position.set(at.x, at.y, at.z);
+  camera.position.set(at.x + NUDGE[0], at.y + NUDGE[1], at.z + NUDGE[2]);
   camera.updateMatrixWorld();
   const shown = hide.map((o) => o.visible);
   for (const o of hide) o.visible = false;

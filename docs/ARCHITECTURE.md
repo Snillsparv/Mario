@@ -1712,23 +1712,49 @@ trees' leaves).
   facing the turning area across its forecourt: white render, a white board gable, two dark panel
   doors, a white brick pier) in front of east_house (x 8022 … 9699, its eaves at 522). Each house is one convex collider (its walls and its hipped or
   gable roof); the drawn overhangs have none.
-* **The dad's house** (`DAD`, x −860 … 1600, z 1330 … 2605; W2: its west end 240 east, as the aerial has it): Falu-red boards, its eaves at 412,
-  its ridge at 644 over z 1967.5; the black front door (`DAD.door`, 150 × 315 at x 0 in a white
-  frame: `door.js`, one leaf hinged on its left seen from the path, swinging 1.35 rad into a dark
-  vestibule 170 deep, its own mesh, a wall lamp beside it), six windows, the white brick gable
-  ends; in the front garden the path, the corner bed (`BED`, R fixes, from the dad's photo of
-  his corner: a quarter ellipse round the corner where his drive meets the street, 1000 along
-  the street and 750 along the drive, `bedOutline()`, `inBed(x, z)`; raised 6, under the knee
-  from the road; its collider a convex prism of the outline, grass; red leaves fallen on its
-  soil; no kerb along it: round field stones, grey and pink, close set along both asphalt edges
-  (on the road along the street's, on the drive along his drive's) and round its lawn side,
-  `real/plan.js bedStones`, both looks; the turning area's sign at its corner: `TURN_SIGN`
-  below) with the red-leaf tree (`RED_TREE`, a small ornamental
-  tree: its trunk a climbable pole to 442, six stems out to a round crown of nine blobs in three
-  reds from 330 to 700, about the house's height, drawn in render's white, not in the green leaf
-  texture, open over the trunk's top where Jonas stands), the rhododendron (solid), a blue pot by
-  the door (`POT`), the mailbox; the two wheelie bins against the east gable (`BINS`, solid to
-  182: they move, see "The bins" below) under the car charger (`DAD.charger`: a dark box, a round
+* **The dad's house** (`DAD`, W3: as the photos and the aerial have it): a shallow main body
+  (x −860 … 1600, z 1330 … 2260, 930 deep), Falu-red boards, its eaves at 412, its roof steeper
+  (the house's own `pitch` 32 over the chain houses' 20: the ridge at 703 over z 1795; overhang
+  30, the rim at 393, so a standing jump at the front wall still grabs the eave: since a ledge's
+  top must be flatter than 26°, `DAD.eaveLip` puts a flat lip 20 deep at the eave in front of
+  the wall, the gutter's, the one collider for it), white brick piers to the eaves at both ends
+  of the front (`DAD.brick`: u ranges per face; `real/plan.js brickSpans` splits a face at them,
+  both looks) and on both gable ends; on the front, east to west: a window, the black board door
+  (`DAD.door`, x 1005, 150 wide, its foot `sill` 20 up on the **landing** in front of it,
+  `LANDING`: a concrete slab, solid, a step up from the path, cobbles along its front edge, the
+  blue pot on its east end), its glazed side light west of it in one dark frame and the lantern
+  beyond, then four windows; every window (`DAD.win`: its opening 160 × 202 from 145 over the
+  floor) two casements of three lights; at the back two windows onto the patio
+  (`DAD.backWindows`, the back face's own u). The door: `door.js`, one leaf of near-black
+  vertical boards with a bronze kick plate and a silver lever, hinged on its left seen from the
+  path, swinging 1.35 rad into a dark vestibule 170 deep, its own mesh. Behind it the **wings**
+  (`DAD_WINGS`, chain records turned a quarter, their ridges along z, as high and steep as the
+  main roof): the west one (x −860 … −120 to z 2850) against the link, the east one (x 870 …
+  1600 to z 3280) flush with the east gable, white brick to its eaves along the drive (one white
+  wall); each one's `join` runs its slopes on past its wall into the main roof's back slope
+  (the valleys: its rim to `join.rim`, its ridge to `join.apex`; its near gable inside the main
+  body is not drawn, `real/plan.js chainFaces`), its collider the wall box under its gable roof
+  and a wedge over the main back slope from the wall's top to the apex (so his feet meet no step
+  walking off its ridge onto the main roof); downpipes only where `pipes` lists them (none on the
+  main back eave, none against the link). The patio between them (`PATIO`). In the **front
+  garden**, on the door's line: the mossy grass-paver path (`DAD_PATH`, x 885 … 1125, from the
+  road's edge to the landing), the pedestal mailbox at its street end on its west side with a
+  rose on three stakes beside it (`ROSE`, drawn only), the **red-leaf bed** east of the path
+  (`BED`: a rectangle x 1125 … 1600 from the street's edge back to z 980, its back corners rounded
+  r 120, `bedOutline()`, `inBed(x, z)`; raised 6, under the knee from the road; its collider a
+  convex prism of the outline, grass; russet leaves fallen on its soil; no kerb along it: round
+  field stones, grey and pink, close set along all four edges, on the road along the street's,
+  the biggest at its north-east corner by the sign's post, `real/plan.js bedStones`, both
+  looks; the turning area's sign at that corner: `TURN_SIGN` below), the **red-leaf tree** in its
+  middle (`RED_TREE`, (1390, 690): an old purple-leaved crab apple, its pale trunk a climbable
+  pole to 440, forking at 260 into four leaning stems, `real/plan.js redTreeStems`, its wide
+  sparse crown r 440 from 300 to 960, `redTreeCrown`'s blobs (five-sided in the classic look,
+  like the ivy's and the rose's), in dark purple-reds and browns, over the street and the eaves, open over the trunk's top where Jonas stands; the flip onto
+  the roof from 640 off the wall), the ivy mound over the north-east pier and round the corner
+  (`IVY`, `real/plan.js ivyMasses`, drawn only), the rhododendron out from the west pier
+  (`RHODODENDRON`: rx 240 along the street, rz 330, 390 high; solid, an eight-sided elliptic
+  prism a little inside it); the two wheelie bins against the east gable (`BINS`, solid to 182:
+  they move, see "The bins" below) under the car charger (`DAD.charger`: a dark box, a round
   green status light on its face, its cable hanging in a loop from its underside to the plug in
   a holster below: the cable a mover of its own, `part.movers.charger_cable`, so the boss can
   hide it later); his drive runs on under the carport, his two cars on it (see "Props").
@@ -1737,13 +1763,14 @@ trees' leaves).
   gone; grey, a flat head out on an arm that leaves the post `LAMP.root` 60 under its cap and
   rises to the head, so nothing is drawn where he stands on the cap; every one a climbable pole,
   no collider of its own: R fixes, the dad: "I want to climb ALL the lampposts"), the turning
-  area's sign (`TURN_SIGN`, R fixes, as in the dad's photo: at the corner bed's asphalt corner,
-  facing the street's way in (west): a grey post, a yellow plate 72 × 112 with a red rim, its
-  foot at 258, "Vänd-" over "plats" in black and under them the round no-parking sign, a blue
+  area's sign (`TURN_SIGN`, R fixes, as in the dad's photo; W3: taller, at the red-leaf bed's
+  north-east corner by the asphalt, (1520, 395), facing the street's way in (west): a grey post
+  16 thick up to 492, a yellow plate 84 × 130 with a red rim, its foot at 350, a small blank
+  blue plate under it (`sub`), "Vänd-" over "plats" in black and under them the round no-parking sign, a blue
   disc in a red ring with one red stripe from its upper left to its lower right; the face laid
   out once by `real/sign.js signFace` (a stroke font of its own, `GLYPHS`: only the letters of
   its two words, `SIGN_TEXT`; no canvas, no font), drawn in `lane-render` N64 style and in the
-  realistic look by `garden.js turnSign`; solid: a prism of 9 up the post, not a pole: the
+  realistic look by `garden.js turnSign`; solid: a prism of 12 up the post, not a pole: the
   plate is where a climb would go), white flagpoles F1 … F3 with gold knobs (climbable; each its own height
   `h`, W2: F1 1460 on north_2's terrace, F2 1200 by the east end, F3 1100 behind the corner
   house) flying their flags (`FLAGPOLES[].flag`: W2, as in the photos, long blue and yellow
@@ -1759,9 +1786,11 @@ trees' leaves).
   (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, a birch behind the
   corner house, a red-leaved shrub by the double garage; trunks and the shrub solid), cosmos beds
   on north_3's and north_4's terraces (`FLOWER_BEDS`: tufts of leaves with pink and white
-  flowers, drawn only), the mailbox (a black house-shaped box on a post: a brass slot, a door, a
-  blank name plate; the little blue sparrow standing on its ridge at the street end: a blue body
-  over a white belly, a round head, dark eyes, an orange beak, folded wings, its tail cocked),
+  flowers, drawn only), the mailbox (W3: one anthracite pedestal box standing on the lawn, 60 ×
+  45, its eaves at 182 under a gable lid to 204, its gable toward the street: the letter flap
+  under the lid, a blank plate in the gable, the lower door with its lock; solid to its eaves;
+  the little blue sparrow standing on its ridge at the street end: a blue body over a white
+  belly, a round head, dark eyes, an orange beak, folded wings, its tail fanned wide),
   the **cars** (`CARS`, `CAR_KINDS`: generic and plate-less, an SUV, crossovers, hatchbacks, an
   estate and a van: a body up to the belt with its nose and boot rounded off, a glass cabin
   narrowing up to a roof in the body's colour with a pillar down each side, four wheels, pale
@@ -1796,21 +1825,24 @@ trees' leaves).
   a polygon a little inside the drawn edges (the forest bank: 60 behind the gardens' sloping
   back edge, `flatZAt`; the hedges, the barrier, the firs; 17 corners, W2), the camera stopping
   at them too.
-* **Entries and exits**: `home` (0, 22, 1156), 174 in front of the dad's front door on the path,
+* **Entries and exits**: `home` (1005, 22, 1156; W3: the door near the east end), 174 in front of the dad's front door on the path,
   facing the street, `camYaw` π (the camera in front of him over the lawn, the door shutting
   behind him and the star over the ridge in the picture), walking out 8 ticks, its door
   `'lane_home'`; a lost life drops him in there from 1000 (`RESPAWN`). The dad's front door
   (`DOORS`: `lane_home`, yaw π) takes him back into the hall's `east_2`, as do the star exit and
   the pause screen's leave (`def.leave`, `def.starExit`); `card: true`. `PROBE_Y` 4400 (over
   every roof). `waterLevelAt` is `NO_WATER` everywhere.
-* **The star climb** (`STAR`: `lane_star` at (−250, 824, 1967.5), 180 over the ridge, placed):
-  from the drive onto a bin, onto the carport's roof, a hop west lands on the roof's south-west
-  slope anywhere along the carport's back half (walking into the gable gets him nowhere), up to
-  the ridge (the carport's edge is also grabbed anywhere along its deep fascia, D1: a standing
-  jump from the strip behind the cars hangs from it); or a standing jump within 100 of the front
-  wall grabs the eave; or the red-leaf
-  tree's handstand and a flip toward the house with the stick held 4 … 20 ticks. Every fall from
-  the dad's roof is harmless.
+* **The star climb** (`STAR`: `lane_star` at (300, 883, 1795), 180 over the ridge, placed; W3:
+  west of the door, clear of the red-leaf tree's crown, in the arrival's picture): from the
+  drive onto a bin, onto the carport's roof, a hop west lands on the east wing's roof (or, from
+  the carport's front part by the gable's back corner, over it onto the main roof's back slope)
+  anywhere along the carport's back half (walking into the gable or the wing's wall gets him
+  nowhere), up the wing's slope to its ridge and along it onto the main roof (the valleys' apex:
+  no step), up to the ridge (the carport's edge is also grabbed anywhere along its deep fascia,
+  D1: a standing jump from the strip behind the cars hangs from it); or a standing jump within
+  100 of the front wall grabs the eave (its lip); or the red-leaf tree's handstand and a flip
+  toward the house with the stick held 8 … 24 ticks (let go at once he lands in the garden).
+  Every fall from the dad's roofs is harmless.
 * **Coins** (`COINS`, 55, each at its floor + 60; W2: each from the layout's anchors, the
   straight's centreline, the wall line, the plots' drives, steps and edges, the apron's ring,
   L1): down the path, on the mailbox's roof, along the street both ways, round the apron (7, on
@@ -1818,7 +1850,7 @@ trees' leaves).
   block, up north_3's steps, up north_4's drive west of the van, up the side yard between
   north_2 and north_3, on the
   motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
-  the bins, on the carport's roof and up the roof's south-west slope, and five in a row across the
+  the bins, on the carport's roof, on the east wing's slope and the main roof's back slope (W3), and five in a row across the
   store room behind the garage doors (D1). The 1-ups: over the trampoline, and the store room's
   over its workbench (the lane's chunk's: "The garage doors"); no red coins.
 * **Signs** (`SIGNS`): `sparrow_mailbox` (`post: false`: the mailbox is the sign, no signpost is
@@ -2027,28 +2059,30 @@ trees' leaves).
   camera and objects: the budgets, the arrival (on the path, the camera in front of him clear
   after the walk-in, the star in the picture, the respawn drop onto the path unhurt), no water and
   a floor everywhere inside the boundary, spam from 14 spots and long jumps off the ridge and L1's
-  top never leaving it, the dad's house as measured (its slopes raycast at 18 points, the eaves,
-  the carport's roof and the store room under it), no floor under a ceiling lower than 300 anywhere,
+  top never leaving it, the dad's house as measured (W3: its pitch, its slopes raycast at 30
+  points, the wings' slopes and ridges onto the main roof with no step at the valleys' apex, the
+  eaves, the carport's roof and the store room under it), no floor under a ceiling lower than 300 anywhere,
   every coin over a floor, the star, every sign read from in front only (the mailbox with no
   signpost), the nine poles (every lamppost among them) grabbed from every open side with the
   camera swinging to `camYaw`, climbed to the top and
   jumps off them unhurt, the side yards walked with the follow camera and C-button swings never
   in a solid, the privacy scan of its sources and signs, the look (the sun, the villas' fronts lit
-  over the dad's, his walls Falu red, his roof dark, the red-leaf tree's crown about the house's
-  height in several reds), the details (the 1-up over the trampoline's mat, the butterflies and
+  over the dad's, his walls Falu red, his roof dark, the red-leaf tree's wide crown from under the
+  eaves to over the ridge in several reds), the details (the 1-up over the trampoline's mat, the butterflies and
   birds, the flags waving with their hoists still and allocating nothing per frame) and the cars
   (each on its drive with a floor on its roof and bonnet, clear of the coins and of the way to
   the bins)); `tests/lane-corner.test.js` (R fixes: the kerbs' runs never inside the road, closed
   at every corner, none across the straight's end, at the drives' mouths or along the bed, none
   along the south edge (W2), the north edge kerbed, the dad's drive's side on the apron dropped;
-  the straight running into the apron's open west side a road at 0 with a floor; the corner bed's floor, its stones close set along both asphalt edges in both looks;
+  the straight running into the apron's open west side a road at 0 with a floor; the red-leaf bed's floor, its rounded back corners, its stones on it and close set along its edges in both looks (W3);
   the sign's face (yellow, red rim, the words over the upper half, the disc under them, the
   stripe from upper left to lower right), the font only the words' letters, the sign drawn in
   both looks at the bed's corner facing west, its post solid and no pole, the robot's walking
   ground clear of it; the lettering only through `sign.js` and no canvas text in the lane's
   sources; every lamppost a pole to its cap, its side across its arm, nothing drawn over its
-  cap); `tests/lane-routes.test.js` (scripted input: the star climb, the front eave, the
-  red-leaf tree's flip, and the routes round the street, each collecting exactly its coins; the
+  cap); `tests/lane-routes.test.js` (scripted input: the star climb (W3: over the east wing), the
+  front eave (its lip, at three places along the front), the red-leaf tree's flip (and let go at
+  once, down in the garden), and the routes round the street, each collecting exactly its coins; the
   trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
   and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
   perch from the van's roof, the dad's cars as steps up to the carport); `tests/lane-bins.test.js`
@@ -2088,7 +2122,8 @@ trees' leaves).
   the lane and back with the doors swinging, a stick held through, the door ids, the star exit,
   the leave, GAME OVER); `tests/areas-browser.test.js` (E2E: `?area=lane`, the full walk through
   it; its draw-call views from the layout's anchors since the W2 fixes: on the apron, in the
-  bend, on the west leg looking at the junction and L1).
+  bend, on the west leg looking at the junction and L1; since W3 the arrival, the walk back in
+  through the dad's door and the star's run along the ridge from the layout too).
 
 ### STOMPWATT (Sparrow Lane's boss: `src/objects/laneBoss/*`)
 
@@ -2773,7 +2808,9 @@ both looks.)
   envMap; G2 adds one over the street in front of the villas, their windows' (they reflect the
   chain houses across it, not themselves), and one over each cluster of parked cars, their
   lacquer's and glass's: `look.addProbe(name, at, size)`, `useProbe(materials, name)`; each
-  taken in a task of its own, the cars' first), the sun's soft shadow (PCF, radius 2.5) in a tight box round Jonas
+  taken in a task of its own, the cars' first; each cube's eye a fraction of a unit off its
+  place: a vertex exactly on a face's eye plane, like the lawn tiles' corner at x 0 under the
+  street's probe, rasterises to NaN texels that the prefilter smears into white windows), the sun's soft shadow (PCF, radius 2.5) in a tight box round Jonas
   (`view.setFocus`, a little ahead of him along the view), snapped to whole shadow texels across the light so static shadows never
   shimmer, beyond it the far map over the whole street (`farShadow.js`: below), and the light preset (`layout.LANE_REAL`). The probe is taken once, as the build is
   readied (below), and kept for every later visit (the street does not change); until then a
@@ -2873,7 +2910,12 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   flashing), real openings, windows sitting in the wall (a black casing proud, a reveal 10
   deep, two casements with glazing bars, the glass over white curtains and a dim room box, a
   sloping sheet-metal sill), doors with a lamp (the dad's: `door.js`'s opening and swinging
-  leaf, its frame black, a glazed side light), and the roof: **pan tile courses**
+  leaf, its frame black, a glazed side light with a net curtain; W3: a house's own window
+  opening `win` (the dad's 2 × 3 lights), its own `backWindows`, its brick ranges `brick` (white
+  brick piers to the eaves, 2 proud, their sides closed), and a wing's `join`: its slopes run on
+  to the valleys with the main roof (no tile courses on it, the tile set's normal map; no verge
+  at that end, the ridge cap on to the apex, no ridge joints on low), its downpipes only where
+  `pipes` lists them), and the roof: **pan tile courses**
   (`tileCourses`: courses 54 up the slope, rolls 45 across with analytic normals, each nose 3.2
   proud of the course below, every quad wound to face out) on the houses `LANE_REAL.tiles`
   names (the dad's and his neighbours' south_1 and south_2; W2: on high the neighbours' rolls at
@@ -2899,10 +2941,15 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   blobs from the classic builder's own seeded stream, so every plant stands where its classic
   blob stood): the hedges (single cards over their faces and tops), the thujas, the junction's
   trees, the apple tree (apples), the birches (white bark, an airy yellowing canopy), the shrub,
-  the dad's red-leaf tree (red sprays, its fallen leaves on the corner bed and the bed's ground
-  cover: low tufts of red and green leaves, their own seeded stream), the rhododendron down to
-  the ground, the pot plant, the flower beds; dark cores where a real bush is dense; bark
-  trunks and limbs. The forest's **firs** are one spruce (`firGeometry`) instanced where
+  the dad's red-leaf tree (W3: a pale trunk forking into four bending stems, limbs from them into
+  the crown's blobs and fine bent twigs from the limbs, 14 a blob on high, forked, 9 on mid, 2
+  straight on low; sparse sprays of dark purple-red and brown, no core; russet fallen leaves on
+  the bed, fewer on mid and low, and its ground cover: low tufts of brown-red and green leaves,
+  their own seeded streams), the rhododendron down to the ground (three lumps along it, dark), the
+  ivy mound (`ivyMasses`: two lumps along the pier, one round the corner, a sheet up the wall to
+  the gutter; 900 cards on high, 520 mid, 100 low), the rose on its stakes (yellow-green, a few
+  hips; none on low), the pot plant on the landing, the flower beds; dark cores where a real bush
+  is dense; bark trunks and limbs. The forest's **firs** are one spruce (`firGeometry`) instanced where
   `spots.js forestSpots` plants them (the classic forest draws its cones from the same list),
   plus a far tree line where the ground ends in the haze (`extras.js treeLine`, casting none).
   Since the R fixes each whorl is a dense **skirt**: an opaque drooping star of five branch tips
@@ -2980,12 +3027,15 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   (`SHARE`): high all, mid 60 % of the leaves and weeds, low a quarter of the leaves, no weeds or
   flowers; ~23k / 13k / 4k triangles.
 * `hardware.js` (G2): the houses' hardware: snow guards along the chain houses' street eaves,
-  the gutters' brackets every 60, the dad's two vent pipes and ventilation hood, black roof
+  the gutters' brackets every 60, the dad's two vent pipes and ventilation hood (W3: just under
+  the ridge, where photos 19-21 have them: `DAD_VENTS`), black roof
   ladders on the dad's and south_2's roofs (all low over the roofs' planes: Jonas walks them),
   the TV antennas as real masts (a clamp, a boom of elements, a reflector, a second array;
-  `REAL_DRAWN` 'antennas'), air bricks in the plinths, vents under the soffits, letter slots and
+  `REAL_DRAWN` 'antennas'; the dad's clamped to his east gable's apex on a dark bracket board,
+  `ANTENNAS[].gable`), air bricks in the plinths, vents under the soffits, letter slots and
   doorbells (the dad's a bell only: his mailbox), splash blocks under the downpipes, window
-  handles, the dad's outdoor socket, hose reel and two pot plants on his inner sills; the villas'
+  handles, the dad's outdoor socket and hose reel (on his east gable by the drive, past the ivy)
+  and two pot plants on his inner sills; the villas'
   door lamps, garage door seals and a satellite dish on north_2; the terraces' walls' coping
   stones, 4 proud with joints.
 * `garage.js` (D1): the store room's things behind the garage doors (`garageRoom(kit, L)`, before
@@ -3014,20 +3064,24 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   patches, tinted with the lawn's own slow change of colour. The cells are ordered nearest the
   grid's middle first, so drawing the first n of them (`reach(share)`: the governor's) is a disc
   of a shorter reach.
-* `garden.js`: the mailbox (a chamfered charcoal board box, its roof boards, flap, blank enamel
-  plate, framed door, knob, concrete foot) and its carved wooden bird painted blue (white
-  breast, yellow beak, glossy eyes, raised wings); **granite kerbs** (`kerbs`: stones ~150 long
+* `garden.js`: the mailbox (W3: an anthracite sheet-steel pedestal box, its folded lid, the
+  flap under it, a blank enamel plate in the gable, the lower door in thin seams, its lock, a
+  concrete pad) and its bird, blue-grey (white breast, yellow beak, glossy eyes, raised wings, a
+  wide spiky tail fan), drawn at its carving's size and scaled about its feet to the real one's;
+  **granite kerbs** (`kerbs`: stones ~150 long
   with joints and a chamfer along every run of the road's edge (each joint backed dark and none
   at a run's own ends, W2 fixes: the sky showed through them from low down), the turning area round: `plan.js
   kerbRuns` gives both builds the same exact runs; at the drives an asphalt bevel up into them
   instead, in `patch`, closed at its ends as the classic one is, `plan.js bevelEnds`; along the
-  corner bed its soil's dark face); mended patches, a sealed
-  crack, manhole and drain covers; the corner bed's field stones (`plan.js bedStones`: lumpy,
-  grey or pink, longer along the edge, each its own); the turning area's sign (`turnSign`: a
+  red-leaf bed its soil's dark face); mended patches, a sealed
+  crack, manhole and drain covers; the red-leaf bed's field stones (`plan.js bedStones`: lumpy,
+  light grey or pink, longer along the edge, each its own, along all four edges, none on the
+  sign's post); the turning area's sign (`turnSign`: a
   galvanized post in a concrete collar, two clamps round it, the plate's aluminium back and
   edges in `steel`, its face in `enamel` (the reflective sheeting's sheen), the yellow field a
   grid of quads a little grimier toward its foot and rim, the rim, the no-parking sign and the
-  lettering each a hair in front: `sign.js signFace`). `street.js`: smooth tapered
+  lettering each a hair in front: `sign.js signFace`; the small blank blue plate under it).
+  `street.js`: smooth tapered
   steel lampposts with a curved arm (from 60 under the cap up to the luminaire) and luminaire, white flagpoles with a gilt ball and halyard
   (the flags their classic waving cloth), real pickets and rails, rounded wheelie bins.
   `extras.js`: the trampoline, the hoop, the motorhome, the cabinet.
@@ -3484,7 +3538,7 @@ street sign's plate blank, the clutter's share per tier; the walls' wear attribu
 the streaks hanging from the dad's sills; the bird on the ridge; the forest edge's second
 spruce on high; R fixes: the firs dense (each whorl's skirt over half its branches' reach, the
 crown solid all the way up, needles to the top, the trunk inside: the old firs fail it), the
-corner bed's stones along both asphalt edges and round its lawn side, no kerb along it; the garage's rust under its pipes' clips and the balcony's geraniums, not on
+red-leaf bed's stones along all four edges (W3), no kerb along it; the garage's rust under its pipes' clips and the balcony's geraniums, not on
 low), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
 tokens; the plugin's output), `tests/real-materials.test.js` (the haze and the
 clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
@@ -3495,7 +3549,7 @@ strengths, the walls' attribute, lite on low) and in none of the plain ones, ≤
 the signs'
 inverse tone mapping and grade), `tests/lane-real-browser.test.js` (E2E: the swap, the pixels, the grade
 and the recorder's framings, a crossfade, the counts and a blue sky at five views on high, mid
-and low, G, the
+and low, the dad's panes lit but not blown out on high and mid (a NaN in the probe), G, the
 low tier, `?look=classic`, and the exact restore of the renderer after a visit, with and
 without F2 (the camera's profile and field of view, Jonas's size, the post chain's targets
 freed, the far map kept and taken once); the GTA look: the post chain's draw calls per tier, the

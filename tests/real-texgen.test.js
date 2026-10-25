@@ -29,7 +29,7 @@ const PINNED = {
     'boards:{}': '7e263730eff300d0',
     'tiles:{}': '45d44a788bada083',
     'pavers:{"cols":10,"seed":73}': '7af87ac8440e7746',
-    'pavers:{}': '8c283e6c89994825',
+    'pavers:{"moss":0.24,"olive":1}': 'e39383ae37fa23f7', // (W3: the dad's path mossed over, olive; the plain set's bytes unchanged: 8c283e6c89994825)
     'tiles:{"relief":0}': '880063751491c992',
     'granite:{}': '2e69c35083fd3dbd',
     'bark:{}': '98e8c8d71d224033',
@@ -48,7 +48,7 @@ const MEANS = {
   render: [[0.7, 0.9], [0.7, 0.9], [0.7, 0.9]],
   boards: [[0.7, 0.95], [0.7, 0.95], [0.7, 0.95]], // light neutral: the tint gives Falu red
   tiles: [[0.4, 0.8], [0.4, 0.8], [0.4, 0.8]], // mid grey: the tint gives black or brown
-  pavers: [[0.1, 0.35], [0.12, 0.35], [0.08, 0.3]],
+  pavers: [[0.1, 0.35], [0.12, 0.35], [0.06, 0.3]], // (W3: the path's olive moss, less blue)
   soil: [[0.05, 0.2], [0.02, 0.1], [0.01, 0.05]],
   granite: [[0.15, 0.45], [0.15, 0.45], [0.15, 0.45]],
   bark: [[0.08, 0.25], [0.06, 0.2], [0.04, 0.16]], // grey-brown: the tint darkens it

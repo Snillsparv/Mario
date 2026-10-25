@@ -13,7 +13,7 @@
 // classic look's, REAL_DRAWN 'antennas'). On their walls: air bricks in the plinths, vents under
 // the soffits, a letter slot and a doorbell at the front doors (none at the dad's: his mailbox;
 // his bell beside it), concrete splash blocks under the downpipes' shoes, an outdoor socket and
-// a hose reel on the dad's front at its east end, window handles, two pot plants on the dad's
+// a hose reel on the dad's east gable by the drive, window handles, two pot plants on the dad's
 // inner sills. On the villas: a satellite dish on north_2's wall, lamps beside the front doors,
 // a seal under the garage doors; on the double garage gutters along its eaves (their brackets
 // on high), a downpipe at each front corner and faint rust streaks under the pipes' clips (not on
@@ -24,6 +24,8 @@ import { makeRng } from '../../../core/math.js';
 import { terraceSpans } from './plan.js';
 
 const CHAIN = { overhang: 60, thick: 18, plinth: 135, win: { w: 150, sill: 170, h: 130 }, door: { w: 116, h: 215 } };
+// The dad's roof vents (W3): the hood's and the two pipes' x.
+const DAD_VENTS = { hood: 475, pipes: [1095, -244] };
 const BLACK = 0x161718;
 const ANTENNA = 0x9a9ea2;
 
@@ -143,32 +145,35 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
       }
     }
   }
-  // The dad's roof: two vent pipes and a ventilation hood on the street slope (photo 19), a
-  // ladder up it; south_2's ladder.
+  // The dad's roof (W3, photos 19-21): two thin vent pipes and a sheet-metal vent hood on the
+  // street slope just under the ridge (DAD_VENTS: their x), a ladder up it; south_2's ladder.
   if (dad) {
-    steel.color(0x202224);
-    for (const [u, w] of [[-260, B * 0.42], [520, B * 0.3]]) {
-      const [x, , z] = F.at(u, 0, w);
-      steel.cyl('y', roof.y(w) - 6, roof.y(w) + 46, x, z, 5.5, 10, { caps: true });
-      steel.cyl('y', roof.y(w) + 44, roof.y(w) + 50, x, z, 7, 10, { caps: true });
+    const V = DAD_VENTS;
+    steel.color(0x2c2e30);
+    for (const x of V.pipes) {
+      const [u, w] = [h.cx - x, B * 0.22];
+      const [px, , pz] = F.at(u, 0, w);
+      steel.cyl('y', roof.y(w) - 6, roof.y(w) + 40, px, pz, 5, 10, { caps: true });
+      steel.cyl('y', roof.y(w) + 38, roof.y(w) + 44, px, pz, 6.5, 10, { caps: true });
     }
-    // The hood: a black box on a sloping base, its cap overhanging.
-    const w = B * 0.62;
-    paint.color(BLACK);
+    // The hood: a dark grey box on a sloping base, its flat cap overhanging.
+    const [uh, w] = [h.cx - V.hood, B * 0.2];
+    paint.color(0x3a3d42);
     const hood = (u0, u1, w0, w1, ya, yb) => {
       const c = (i, j, k) => F.at(i ? u1 : u0, j ? yb : ya, k ? w1 : w0);
       for (const q of [[c(0, 0, 1), c(1, 0, 1), c(1, 1, 1), c(0, 1, 1)], [c(1, 0, 0), c(0, 0, 0), c(0, 1, 0), c(1, 1, 0)], [c(0, 0, 0), c(0, 0, 1), c(0, 1, 1), c(0, 1, 0)], [c(1, 0, 1), c(1, 0, 0), c(1, 1, 0), c(1, 1, 1)], [c(0, 1, 1), c(1, 1, 1), c(1, 1, 0), c(0, 1, 0)]]) paint.quad(...orientOut(q, F, (u0 + u1) / 2, (ya + yb) / 2, (w0 + w1) / 2));
     };
-    hood(-660, -560, w - 25, w + 25, roof.y(w + 25) - 4, roof.y(w - 25) + 26);
-    hood(-668, -552, w - 33, w + 33, roof.y(w - 25) + 26, roof.y(w - 25) + 31);
+    hood(uh - 60, uh + 60, w - 25, w + 25, roof.y(w + 25) - 4, roof.y(w - 25) + 40);
+    hood(uh - 66, uh + 66, w - 31, w + 31, roof.y(w - 25) + 40, roof.y(w - 25) + 45);
   }
   if (fine && (dad || h.id === 'south_2')) ladder(kit, F, roof, dad ? 160 : -200);
   // The walls: air bricks in the plinth, vents under the soffit, splash blocks under the
   // downpipes.
   const plinth = h.plinth ?? CHAIN.plinth;
+  const backWins = h.backWindows ?? (h.windows ?? []).map((u) => -u);
   for (const name of ['front', 'back']) {
     const { f, half } = F.face(name);
-    const holes = (name === 'front' ? (h.windows ?? []) : (h.windows ?? []).map((u) => -u)).map((u) => [u - 100, u + 100]);
+    const holes = (name === 'front' ? (h.windows ?? []) : backWins).map((u) => [u - 100, u + 100]);
     if (typeof h.door === 'number' && name === 'front') holes.push([h.door - 120, h.door + 120]);
     if (typeof h.door === 'object' && name === 'front') holes.push([h.door.u - 160, h.door.u + 160]);
     for (let u = -half + 150; u < half - 150; u += 420) {
@@ -193,9 +198,10 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
         else paint.quad(q[0], q[1], q[2], q[3]);
       }
     }
-    // The downpipes' splash blocks (house.js gableRoof: a pipe at each end of each eave).
+    // The downpipes' splash blocks (house.js gableRoof: a pipe at each end of each eave, or those
+    // h.pipes lists).
     granite.color(0xb8b4ac);
-    for (const e of [-1, 1]) {
+    for (const e of h.pipes?.[name] ?? [-1, 1]) {
       const u = (name === 'front' ? 1 : -1) * e * (A - 25);
       fbox(granite, f, u - 14, u + 14, -1, 3, 4, 52, 'k');
     }
@@ -210,34 +216,36 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
   } else if (typeof h.door === 'object') bell(kit, front, h.door.u - h.door.w / 2 - 26, 118);
   if (fine) {
     kit.metal.color(0xc8c4bc);
-    const W = CHAIN.win;
-    for (const [f, us] of [[front, h.windows ?? []], [F.face('back').f, (h.windows ?? []).map((u) => -u)]]) {
+    const W = h.win ?? CHAIN.win;
+    for (const [f, us] of [[front, h.windows ?? []], [F.face('back').f, backWins]]) {
       for (const u of us) for (const du of [-12, 12]) fbox(kit.metal, f, u + du - 1, u + du + 1, W.sill + W.h * 0.45, W.sill + W.h * 0.45 + 11, -7, -5, 'k');
     }
   }
   if (dad) {
-    // The outdoor socket and the hose reel at the east end of the front (by the carport).
-    const u = -(A - 80);
+    // The outdoor socket and the hose reel on the east gable by the drive (W3: past the ivy at the
+    // corner, short of the bins).
+    const side = F.face('left').f;
+    const u = h.cz - 1500;
     kit.enamel.color(0xe8e6e0);
-    fbox(kit.enamel, front, u - 6, u + 6, 150, 166, 2, 6, 'k');
+    fbox(kit.enamel, side, u - 6, u + 6, 150, 166, 2, 6, 'k');
     paint.color(BLACK);
-    fbox(paint, front, u - 4, u + 4, 152, 160, 6, 6.6, 'k');
+    fbox(paint, side, u - 4, u + 4, 152, 160, 6, 6.6, 'k');
     // The reel: a green drum on a bracket, its hose wound on it, a loop hanging.
-    const [x, , z] = front.at(u - 70, 0, 22);
-    const out = front.out;
+    const [x, , z] = side.at(u + 30, 0, 22);
+    const out = side.out;
     paint.color(0x2f6a3a);
     const c = [x, y0 + 105, z];
-    const axis = [front.right[0], 0, front.right[2]];
+    const axis = [side.right[0], 0, side.right[2]];
     kit.paint.tube([c[0] - axis[0] * 12, c[1], c[2] - axis[2] * 12], [c[0] + axis[0] * 12, c[1], c[2] + axis[2] * 12], 20, 20, 12, { caps: true });
     kit.tyre.color(0x1d4a28);
     kit.tyre.tube([c[0] - axis[0] * 9, c[1], c[2] - axis[2] * 9], [c[0] + axis[0] * 9, c[1], c[2] + axis[2] * 9], 22, 22, 12);
     paint.color(0x2f6a3a);
-    fbox(paint, front, u - 76, u - 64, 70, 125, 0, 6, 'k');
+    fbox(paint, side, u + 24, u + 36, 70, 125, 0, 6, 'k');
     void out;
     // Two pot plants on the inner sills of the windows each side of the door.
     for (const wu of [h.windows[2], h.windows[3]]) {
       if (wu === undefined) continue;
-      const W = CHAIN.win;
+      const W = h.win ?? CHAIN.win;
       const [px, , pz] = front.at(wu + 30, 0, -24);
       kit.enamel.color(0xc8643a);
       kit.enamel.loft([[7, 0], [10, 14]].map(([r, v]) => ring(px, y0 + W.sill + 2 + v, pz, r, 10)), { capStart: true });
@@ -283,13 +291,20 @@ function bell({ enamel, paint }, f, u, v) {
 // A TV antenna on a chain house's ridge (layout.js ANTENNAS: lane/props.js antenna()'s place):
 // a mast clamped at the ridge, a boom of nine elements, a reflector of three rods, a second
 // small array lower down.
-function antenna({ steel }, L, { house, x }, fine) {
+function antenna({ steel, paint }, L, { house, x, gable }, fine) {
   const H = L.HOUSES.find((h) => h.id === house);
   const [y, z] = [H.ridge, H.cz];
-  const top = y + 250;
+  const top = y + (gable ? 300 : 250);
   steel.color(ANTENNA);
-  steel.cyl('y', y - 20, top, x, z, 3, fine ? 8 : 5, { caps: true });
-  steel.box(x - 7, x + 7, y - 2, y + 14, z - 9, z + 9, { skip: 'b' }); // (the clamp on the ridge)
+  steel.cyl('y', y - (gable ? 90 : 20), top, x, z, 3, fine ? 8 : 5, { caps: true });
+  if (gable) {
+    // (Clamped to the gable's apex: a dark bracket board on the wall under it, two clamps.)
+    const wall = H.cx + H.w / 2;
+    paint.color(0x1e1f21);
+    paint.box(wall, wall + 3, y - 92, y - 62, z - 22, z + 22, { skip: '-x' });
+    steel.color(ANTENNA);
+    for (const yc of [y - 84, y - 70]) steel.box(wall + 3, x + 4, yc - 2, yc + 2, z - 4, z + 4);
+  } else steel.box(x - 7, x + 7, y - 2, y + 14, z - 9, z + 9, { skip: 'b' }); // (the clamp on the ridge)
   const boom = (yb, z0, z1, n, len0, len1) => {
     steel.tube([x, yb, z0], [x, yb, z1], 1.6, 1.6, fine ? 6 : 4, { caps: true });
     for (let k = 0; k < n; k++) {

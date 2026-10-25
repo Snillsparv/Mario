@@ -50,7 +50,7 @@ import { makeRng } from '../../core/math.js';
 import { fir } from '../courseKit.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
-import { bedStones } from './real/plan.js';
+import { bedStones, redTreeStems, redTreeCrown, ivyMasses } from './real/plan.js';
 import { signFace } from './real/sign.js';
 
 const TINT = {
@@ -70,9 +70,13 @@ const TINT = {
   fruit: 0xc8342a,
   birch: 0xa0a840,
   bark: 0xe8e4da,
-  redLeaf: [0xa83a2a, 0x8e2c22, 0x7a2834, 0xb8502e], // the red-leaf tree's tones
+  redLeaf: [0x7a3236, 0x5a2a2a, 0x6e3a40, 0xa05a38], // the red-leaf tree's tones (purple-reds, browns: W3)
+  ivy: 0x3a4a22,
+  rose: 0xa8a848,
+  stake: 0x2a2a2a,
+  landing: 0x8a8884,
   shrub: [0xa83030, 0x8a2a2c],
-  litter: 0x6a3430, // red leaves fallen in the corner bed
+  litter: 0x8a6c5c, // russet leaves fallen in the bed (W3: brown, not red)
   trunk: 0x6a5444,
   redTrunk: 0x4a3428,
   stones: 0xa8a49c,
@@ -80,7 +84,7 @@ const TINT = {
   pot: 0x3a6a9a,
   potLeaves: 0x4a7a34,
   charger: 0x3a3e42, // (and the trampoline's legs)
-  mailbox: 0x2a2a2c,
+  mailbox: 0x45484f, // (anthracite)
   brass: 0xb08a40,
   plate: 0xd8d4c8,
   sparrow: 0x3a6ab8,
@@ -198,9 +202,10 @@ function lamppost(kit, layout, { x, z, yaw }) {
   solids.solid(prismPolys(x, z, LAMP.collider, 8, y0 - 10, LAMP.top), 'stone');
 }
 
-// The turning area's sign at the corner bed (TURN_SIGN): a grey post, the plate on its street
-// side (a grey back, its face as world/lane/real/sign.js lays it out: the red rim on yellow,
-// "Vänd-" over "plats", the round no-parking sign), solid: a thin prism up the post.
+// The turning area's sign at the bed's corner by the asphalt (TURN_SIGN): a grey post, the plate
+// on its street side (a grey back, its face as world/lane/real/sign.js lays it out: the red rim
+// on yellow, "Vänd-" over "plats", the round no-parking sign), the small blank blue plate under
+// it; solid: a thin prism up the post.
 function turnSign(kit, layout) {
   const { paint, solids } = kit.drawn('posts');
   const S = layout.TURN_SIGN;
@@ -218,6 +223,14 @@ function turnSign(kit, layout) {
   for (const { color, layer, poly } of signFace(P)) {
     paint.color(color);
     paint.poly(poly.map(([u, v]) => at(u, v, 0.15 + 0.15 * layer)), { facing: f });
+  }
+  // The small blank blue plate under it (W3).
+  if (S.sub) {
+    const [v0, v1] = [S.sub.y0 - P.y0, S.sub.y0 - P.y0 + S.sub.h];
+    paint.color(TINT.signBack);
+    paint.solid(orientedBoxPolys([S.x + f[0] * (out - 0.8), 0, S.z + f[2] * (out - 0.8)], f, 1.6, S.sub.y0, S.sub.y0 + S.sub.h, P.w));
+    paint.color(TINT.sign);
+    paint.poly([at(2, v0 + 2, 0.15), at(P.w - 2, v0 + 2, 0.15), at(P.w - 2, v1 - 2, 0.15), at(2, v1 - 2, 0.15)], { facing: f });
   }
   solids.solid(prismPolys(S.x, S.z, S.collider, 8, y0 - 10, S.top), 'stone');
 }
@@ -361,9 +374,19 @@ function frustum(cx, cz, r0, r1, sides, y0, y1) {
   return [hi, ...lo.map((p, i) => [p, lo[(i + 1) % sides], hi[(i + 1) % sides], hi[i]])];
 }
 
+// A prism round (cx, cz) with radii rx (along x) and rz, `sides` sides, from y0 to y1.
+function ellipsePrism(cx, cz, rx, rz, sides, y0, y1) {
+  const ring = (y) => Array.from({ length: sides }, (_, i) => {
+    const a = (i / sides) * Math.PI * 2;
+    return [cx + Math.sin(a) * rx, y, cz + Math.cos(a) * rz];
+  });
+  const [lo, hi] = [ring(y0), ring(y1)];
+  return [hi, ...lo.map((p, i) => [p, lo[(i + 1) % sides], hi[(i + 1) % sides], hi[i]])];
+}
+
 // One roughly round blob of leaves (a seven-sided lathe): r across, from cy - ry up to cy + ry.
-function blob(b, x, z, cy, r, ry, a0) {
-  b.lathe(x, z, [[0, cy - ry], [r * 0.72, cy - ry * 0.68], [r, cy - ry * 0.05], [r * 0.8, cy + ry * 0.6], [r * 0.35, cy + ry * 0.95], [0, cy + ry]], 7, { a0 });
+function blob(b, x, z, cy, r, ry, a0, sides = 7) {
+  b.lathe(x, z, [[0, cy - ry], [r * 0.72, cy - ry * 0.68], [r, cy - ry * 0.05], [r * 0.8, cy + ry * 0.6], [r * 0.35, cy + ry * 0.95], [0, cy + ry]], sides, { a0 });
 }
 
 // A lumpy canopy: `n` overlapping blobs round (x, z) between y0 and y1, out to r, into `leaves`
@@ -450,33 +473,36 @@ function birch(kit, x, z, base, h, r, seed) {
   canopy(kit, x, z, base + h * 0.36, base + h, r, TINT.birch, seed, 4);
 }
 
-// The dad's front garden: the corner bed (BED: red leaves fallen on its soil, a little step up,
-// round field stones along its asphalt edges and round its lawn side: real/plan.js bedStones),
-// the red-leaf tree in it (its trunk the climbable pole, six stems branching out of it, its round
-// crown of blobs in several reds drawn in render, open over the trunk's top where Jonas stands on
-// it; no collider), the rhododendron at the house's west corner (a dark green dome, solid), a
-// potted plant by the door and the car charger on the east gable.
+// The dad's front garden (W3): the red-leaf bed (BED: fallen russet leaves on its soil, a
+// little step up, round field stones along all four edges: real/plan.js bedStones), the
+// red-leaf tree in its middle (its trunk the climbable pole, forking into four leaning stems with
+// their branches, a wide open crown of small blobs in dark purple-reds and browns with gaps
+// between them, drawn in render, open over the trunk's top where Jonas stands on it; no
+// collider), the rhododendron out from the west pier (a dark green dome, longer across the lawn,
+// solid), the ivy mound over the north-east pier (dark green blobs, drawn only), the rose on its
+// stakes beside the mailbox (drawn only), the concrete landing at the door (solid: a step up) with
+// the blue pot on it, and the car charger on the east gable.
 function dadsGarden(kit, layout) {
   const { render, paint, solids } = kit;
   const { leaves, wood, render: crown, paint: pot } = kit.drawn('plants');
-  const { RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND } = layout;
-  const bedTop = GROUND + layout.BED.raise;
+  const { RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND, BED: B, LANDING: Lg } = layout;
+  const bedTop = GROUND + B.raise;
   const outline = layout.bedOutline();
   render.color(TINT.litter);
   render.poly(outline.map(([x, z]) => [x, bedTop, z]), { facing: [0, 1, 0] });
-  // Its soil's sides over the lawn and the drive (along the street the kerbs' run draws it).
+  // Its soil's sides over the lawn, the path and the drive (along the street, its first edge, the
+  // kerbs' run draws it).
   render.color(TINT.soil);
-  const [cx, cz] = [layout.BED.x1 - layout.BED.rx / 3, layout.BED.z0 + layout.BED.rz / 3];
-  for (let i = 0; i + 1 < outline.length; i++) {
-    const [[x, z], [x2, z2]] = [outline[i], outline[i + 1]];
+  const [cx, cz] = [(B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2];
+  for (let i = 1; i < outline.length; i++) {
+    const [[x, z], [x2, z2]] = [outline[i], outline[(i + 1) % outline.length]];
     render.poly([[x, GROUND - 2, z], [x2, GROUND - 2, z2], [x2, bedTop, z2], [x, bedTop, z]], { facing: [(x + x2) / 2 - cx, 0, (z + z2) / 2 - cz] });
   }
   const rng = makeRng(331);
-  const { x1, z0, rx, rz } = layout.BED;
   for (let i = 0; i < 40; i++) {
-    // A fallen leaf or two: small red flecks over the bed.
-    const [x, z, s] = [x1 - rng() * rx, z0 + rng() * rz, 14 + rng() * 10];
-    if (!layout.inBed(x, z) || !layout.inBed(x - s, z + s)) continue;
+    // A fallen leaf or two: small russet flecks over the bed.
+    const [x, z, s] = [B.x0 + rng() * (B.x1 - B.x0), B.z0 + rng() * (B.z1 - B.z0), 14 + rng() * 10];
+    if (!layout.inBed(x - s, z) || !layout.inBed(x + s, z)) continue;
     render.color(TINT.redLeaf[i % TINT.redLeaf.length], 1.1);
     render.poly([[x - s, bedTop + 3, z], [x, bedTop + 3, z - s * 0.6], [x + s, bedTop + 3, z], [x, bedTop + 3, z + s * 0.6]], { facing: [0, 1, 0] });
   }
@@ -490,41 +516,67 @@ function dadsGarden(kit, layout) {
     const [x2, z2] = outline[(i + 1) % outline.length];
     return [[x, GROUND - 10, z], [x2, GROUND - 10, z2], [x2, bedTop, z2], [x, bedTop, z]];
   })], 'grass');
-  // The tree: the trunk and six stems branching out of it into the crown.
+  // The tree: the trunk, its four stems from the fork leaning out and up into the crown, a
+  // branch off each.
   const C = T.canopy;
   wood.color(TINT.redTrunk);
   wood.lathe(T.x, T.z, [[T.radius + 6, bedTop - 4], [T.radius, bedTop + 60], [T.radius - 8, T.trunkTop], [0, T.trunkTop + 40]], 7, { flat: true });
-  for (const [a, out, y, w] of [[0.9, 0.62, 150, 16], [1.9, 0.6, 90, 14], [2.6, 0.5, 40, 12]]) {
-    for (const e of [-1, 1]) {
-      const [sx, sz] = [Math.sin(a * e), Math.cos(a * e)];
-      wood.solid(beamPolys([T.x, bedTop + 120, T.z], [T.x + sx * C.r * out, C.y0 + y, T.z + sz * C.r * out], [sz, 0, -sx], w, w));
-    }
+  for (const [x, y, z, w] of redTreeStems(T)) {
+    const l = Math.hypot(x - T.x, z - T.z);
+    wood.solid(beamPolys([T.x, GROUND + T.fork, T.z], [x, y, z], [(z - T.z) / l, 0, (T.x - x) / l], w, w));
   }
-  // The crown: blobs round the trunk's top in a ring (the side away from the house lower), three
-  // more over its back; four reds, darker underneath.
-  const blobs = [
-    [0.7, 170, 520, 150, 120], [-0.7, 170, 520, 150, 120],
-    [1.75, 190, 470, 140, 115], [-1.75, 190, 470, 140, 115],
-    [2.6, 170, 430, 115, 95], [-2.6, 170, 430, 115, 95],
-    [0, 150, 630, 135, 72], [1.3, 175, 605, 110, 72], [-1.3, 175, 605, 110, 72],
-  ];
+  // The crown: small blobs spread wide over the stems (gaps between them: it is sparse), in
+  // dark purple-reds and browns, darker underneath; five-sided, like the ivy's and the rose's
+  // (the classic look's few hundred triangles for the garden).
   crown.shade = (px, y) => 0.62 + 0.42 * Math.min(1, Math.max(0, (y - C.y0) / (C.y1 - C.y0)));
-  blobs.forEach(([a, off, cy, r, ry], i) => {
+  redTreeCrown(T).forEach(({ c, r }, i) => {
     crown.color(TINT.redLeaf[i % TINT.redLeaf.length], 0.92 + (i % 3) * 0.06);
-    blob(crown, T.x + Math.sin(a) * off, T.z + Math.cos(a) * off, cy, r, ry, a * 3);
+    blob(crown, c[0], c[2], c[1], r[0] * 0.8, r[1] * 0.85, i * 2.1, 5);
   });
   crown.shade = null;
-  // The rhododendron.
+  // The rhododendron: two domes along it (it is longer across the lawn), solid (an eight-sided
+  // prism, a little inside it).
   leaves.color(TINT.rhodo);
   leaves.shade = (x, y) => 0.7 + 0.3 * Math.min(1, (y - GROUND) / R.h);
-  leaves.lathe(R.x, R.z, [[R.r * 0.85, GROUND - 6], [R.r, GROUND + R.h * 0.35], [R.r * 0.8, GROUND + R.h * 0.8], [R.r * 0.3, GROUND + R.h], [0, GROUND + R.h + 6]], 8, { a0: 0.3 });
+  for (const k of [-1, 1]) {
+    const [r, z] = [R.rx, R.z + k * (R.rz - R.rx) * 0.9];
+    leaves.lathe(R.x, z, [[r * 0.85, GROUND - 6], [r, GROUND + R.h * 0.35], [r * 0.8, GROUND + R.h * 0.8], [r * 0.3, GROUND + R.h], [0, GROUND + R.h + 6]], 8, { a0: 0.3 + k });
+  }
   leaves.shade = null;
-  solids.solid(prismPolys(R.x, R.z, R.r * 0.85, 8, GROUND - 6, GROUND + R.h * 0.85), 'grass');
-  // A blue pot by the door with a little green plant in it (drawn only).
+  solids.solid(ellipsePrism(R.x, R.z, R.rx * 0.85, R.rz * 0.85, 8, GROUND - 6, GROUND + R.h * 0.85), 'grass');
+  // The ivy mound over the north-east pier and round the corner: three dark green blobs.
+  const I = layout.IVY;
+  leaves.color(TINT.ivy);
+  leaves.shade = (x, y) => 0.62 + 0.4 * Math.min(1, (y - GROUND) / I.h);
+  ivyMasses(layout).forEach(({ c, r }, i) => blob(leaves, c[0], c[2], c[1], Math.max(r[0], r[2]), r[1], i * 2, 5));
+  leaves.shade = null;
+  // The rose beside the mailbox: three thin dark stakes, a sparse yellow-green bush on them.
+  const Ro = layout.ROSE;
+  pot.color(TINT.stake);
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2 + 0.4;
+    const [x, z] = [Ro.x + Math.sin(a) * Ro.r * 0.55, Ro.z + Math.cos(a) * Ro.r * 0.55];
+    pot.box(x - 1.5, x + 1.5, GROUND, GROUND + Ro.h, z - 1.5, z + 1.5, { bottom: false });
+  }
+  leaves.color(TINT.rose);
+  blob(leaves, Ro.x - 12, Ro.z, GROUND + Ro.h * 0.7, Ro.r * 0.7, Ro.h * 0.26, 1.2, 5);
+  blob(leaves, Ro.x + 18, Ro.z + 10, GROUND + Ro.h * 0.42, Ro.r * 0.6, Ro.h * 0.22, 2.9, 5);
+  // The landing at the door: a concrete slab (solid, its top a step up from the path), a row of
+  // cobbles along its front edge.
+  paint.color(TINT.landing);
+  paint.box(Lg.x0, Lg.x1, GROUND - 2, Lg.top, Lg.z0, Lg.z1 - 1, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.05 : 0.8) });
+  paint.color(TINT.stones, 0.9);
+  const nc = Math.floor((Lg.x1 - Lg.x0) / 24);
+  for (let k = 0; k < nc; k++) {
+    const x = Lg.x0 + ((Lg.x1 - Lg.x0) * (k + 0.5)) / nc;
+    paint.box(x - 10, x + 10, GROUND, GROUND + 6, Lg.z0 - 13, Lg.z0 - 1, { bottom: false });
+  }
+  solids.box(Lg.x0, Lg.x1, GROUND - 10, Lg.top, Lg.z0, Lg.z1, 'stone');
+  // The blue pot on the landing's east end with a little green plant in it (drawn only).
   pot.color(TINT.pot);
-  pot.lathe(P.x, P.z, [[16, GROUND], [24, GROUND + 4], [27, GROUND + 40], [0, GROUND + 40]], 8, { flat: true });
+  pot.lathe(P.x, P.z, [[16, Lg.top], [24, Lg.top + 4], [27, Lg.top + 40], [0, Lg.top + 40]], 8, { flat: true });
   leaves.color(TINT.potLeaves);
-  leaves.lathe(P.x, P.z, [[22, GROUND + 38], [32, GROUND + 58], [22, GROUND + 80], [0, GROUND + 90]], 7);
+  leaves.lathe(P.x, P.z, [[22, Lg.top + 38], [32, Lg.top + 58], [22, Lg.top + 80], [0, Lg.top + 90]], 7);
   // The car charger: a dark box on the white gable by the bins, a round green status light on its
   // face, its cable hanging in a loop from its underside to the plug in a holster below (the
   // cable a mover of its own: kit.mover('charger_cable'), drawn in both looks).
@@ -579,10 +631,10 @@ function flowerBed(kit, layout, bed) {
 
 // ---------------------------------------------------------------- the mailbox and the sparrow
 
-// The dad's mailbox: a black wooden box shaped like a little house (its gable end toward the
-// street, with a brass slot, a door below it and a blank name plate) on a black post, the little
-// blue sparrow standing on its ridge at the street end; solid to its eaves (a coin waits over its
-// roof).
+// The dad's mailbox (W3): one anthracite pedestal box standing on the lawn, a gable lid
+// overhanging it (its gable toward the street), at the street end the letter flap under the lid,
+// a blank plate in the gable, the lower door with its lock; the little blue sparrow standing on
+// its ridge at the street end; solid to its eaves (a coin waits over its roof).
 function mailbox(kit, layout) {
   const { paint, solids } = kit.drawn('mailbox');
   const { MAILBOX: M, GROUND } = layout;
@@ -590,8 +642,7 @@ function mailbox(kit, layout) {
   const f = frame({ cx: M.x, cz: M.z, yaw: M.yaw, w: bw, d: bd, y0: GROUND });
   const y1 = GROUND + M.post;
   paint.color(TINT.mailbox);
-  paint.solid(localBoxPolys(wallFrame(f.at(0, GROUND, 0), f.dir(0, 0, 1)), -7, 7, 0, M.post, -7, 7, { bottom: false }));
-  paint.color(TINT.mailbox);
+  if (M.post > 0) paint.solid(localBoxPolys(wallFrame(f.at(0, GROUND, 0), f.dir(0, 0, 1)), -7, 7, 0, M.post, -7, 7, { bottom: false }));
   const box = [f.at(-bw / 2, 0, bd / 2), f.at(bw / 2, 0, bd / 2), f.at(bw / 2, 0, -bd / 2), f.at(-bw / 2, 0, -bd / 2)];
   const at = (p, y) => [p[0], y, p[2]];
   for (let i = 0; i < 4; i++) {
@@ -599,23 +650,27 @@ function mailbox(kit, layout) {
     const out = [box[i][0] + box[j][0] - 2 * M.x, 0, box[i][2] + box[j][2] - 2 * M.z];
     paint.poly([at(box[i], y1), at(box[j], y1), at(box[j], M.eaves), at(box[i], M.eaves)], { facing: out, shade: i === 0 ? 1 : 0.85 });
   }
-  paint.poly(box.map((p) => at(p, y1)), { facing: [0, -1, 0], shade: 0.5 });
-  // The roof: its ridge running from the street end to the back, the gable ends black too.
-  const r0 = f.at(0, M.ridge, bd / 2 + 8);
-  const r1 = f.at(0, M.ridge, -bd / 2 - 8);
-  const e = (u, w) => f.at(u, M.eaves - 4, w);
-  for (const s of [-1, 1]) paint.poly([e(s * (bw / 2 + 8), bd / 2 + 8), e(s * (bw / 2 + 8), -bd / 2 - 8), r1, r0], { facing: f.dir(s, 1.7, 0), shade: 0.9 });
-  for (const s of [-1, 1]) paint.poly([f.at(-bw / 2, M.eaves, (s * bd) / 2), f.at(bw / 2, M.eaves, (s * bd) / 2), f.at(0, M.ridge - 4, (s * bd) / 2)], { facing: f.dir(0, 0, s) });
-  // The street end: the slot, a blank plate over it, the door and its knob below.
+  if (M.post > 0) paint.poly(box.map((p) => at(p, y1)), { facing: [0, -1, 0], shade: 0.5 });
+  // The lid: its ridge running from the street end to the back, overhanging 8 all round, the
+  // gable ends the box's.
+  const ov = 8;
+  const r0 = f.at(0, M.ridge, bd / 2 + ov);
+  const r1 = f.at(0, M.ridge, -bd / 2 - ov);
+  const drop = (ov * (M.ridge - M.eaves)) / (bw / 2);
+  const e = (u, w) => f.at(u, M.eaves - drop, w);
+  for (const s of [-1, 1]) paint.poly([e(s * (bw / 2 + ov), bd / 2 + ov), e(s * (bw / 2 + ov), -bd / 2 - ov), r1, r0], { facing: f.dir(s, 1.3, 0), shade: 0.75 });
+  for (const s of [-1, 1]) paint.poly([f.at(-bw / 2, M.eaves, (s * bd) / 2), f.at(bw / 2, M.eaves, (s * bd) / 2), f.at(0, M.ridge - 2, (s * bd) / 2)], { facing: f.dir(0, 0, s) });
+  // The street end: the flap under the lid, the plate in the gable, the door and its lock.
   const front = wallFrame(f.at(0, y1, bd / 2), f.dir(0, 0, 1));
-  paint.color(TINT.brass);
-  paint.panel(front, [[-28, 80], [28, 80], [28, 92], [-28, 92]], 1);
-  paint.panel(front, [[22, 30], [28, 30], [28, 40], [22, 40]], 1.5);
+  const h = M.eaves - y1;
+  paint.color(TINT.mailbox, 1.25);
+  paint.panel(front, [[-22, h - 32], [22, h - 32], [22, h - 8], [-22, h - 8]], 1);
+  paint.panel(front, [[-26, 8], [26, 8], [26, h - 46], [-26, h - 46]], 0.5);
   paint.color(TINT.plate);
-  paint.panel(front, [[-18, 104], [18, 104], [18, 116], [-18, 116]], 1);
-  paint.color(TINT.mailbox, 1.35);
-  paint.panel(front, [[-36, 8], [36, 8], [36, 68], [-36, 68]], 0.5);
-  sparrow(paint, f.at(0, M.ridge - 9, bd / 2 - 16), f.dir(1, 0, 0));
+  paint.panel(front, [[-9, h + 3], [9, h + 3], [9, h + 10], [-9, h + 10]], 0.5);
+  paint.color(TINT.brass);
+  paint.panel(front, [[-20, h - 82], [-14, h - 82], [-14, h - 74], [-20, h - 74]], 1);
+  sparrow(paint, f.at(0, M.ridge - 5, bd / 2 - 10), f.dir(1, 0, 0));
   solids.solid([box.map((p) => at(p, M.eaves)), ...box.map((p, i) => [at(p, GROUND), at(box[(i + 1) % 4], GROUND), at(box[(i + 1) % 4], M.eaves), at(p, M.eaves)])], 'wood');
 }
 
@@ -623,7 +678,7 @@ function mailbox(kit, layout) {
 // over a white belly, a round head with dark eyes and an orange beak, darker wings folded on its
 // sides, its tail cocked up behind (in bird units, about 50 long).
 function sparrow(b, o, fwd) {
-  const K = 1.3;
+  const K = 0.8; // (W3: the real bird's size on the pedestal box)
   const side = [-fwd[2], 0, fwd[0]];
   const P = (a, y, s) => [o[0] + (fwd[0] * a + side[0] * s) * K, o[1] + y * K, o[2] + (fwd[2] * a + side[2] * s) * K];
   const mid = P(0, 17, 0);
@@ -644,7 +699,7 @@ function sparrow(b, o, fwd) {
   part(TINT.sparrow, 1, [nose, top, l], [nose, r, top], [back, l, top], [back, top, r]);
   part(TINT.white, 1, [nose, l, bottom], [nose, bottom, r], [back, bottom, l], [back, r, bottom]);
   block(TINT.sparrow, 1.1, 9, 23, 13, 6, 20, 23, 13, 6);
-  block(TINT.sparrow, 0.85, -9, 17, 4, 4, -21, 24, 3, 8);
+  block(TINT.sparrow, 0.85, -9, 17, 4, 4, -23, 27, 4, 13); // (its tail fanned wide)
   // The beak, the eyes and the folded wings.
   const tip = P(27, 30, 0);
   const [b0, b1, b2, b3] = [P(20, 28, -3), P(20, 33, -3), P(20, 33, 3), P(20, 28, 3)];
@@ -1007,13 +1062,15 @@ function fence(kit, layout, { house, kind, from, to, h }) {
 
 // A TV antenna on a chain house's ridge: a mast and a boom with five elements across it (drawn
 // only).
-function antenna(kit, layout, { house, x }) {
+function antenna(kit, layout, { house, x, gable }) {
   const { paint } = kit.drawn('antennas'); // (the realistic look's own: world/lane/real/hardware.js)
   const H = layout.HOUSES.find((h) => h.id === house);
   const [y, z] = [H.ridge, H.cz];
-  const top = y + 250;
+  const top = y + (gable ? 300 : 250);
   paint.color(TINT.antenna);
-  paint.box(x - 4, x + 4, y - 20, top, z - 4, z + 4);
+  paint.box(x - 4, x + 4, y - (gable ? 90 : 20), top, z - 4, z + 4);
+  // (Clamped to a gable's apex: a bracket board to the wall under it.)
+  if (gable) paint.box(H.cx + H.w / 2, x + 6, y - 82, y - 70, z - 10, z + 10);
   paint.box(x - 3, x + 3, top - 16, top - 10, z - 120, z + 80);
   [[110, -110], [95, -60], [85, -10], [75, 40], [65, 75]].forEach(([len, dz]) => paint.box(x - len / 2, x + len / 2, top - 15, top - 11, z + dz - 2, z + dz + 2));
 }

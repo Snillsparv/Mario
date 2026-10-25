@@ -96,7 +96,7 @@ const TINT = {
   lawn: 0xc8a050, // (over the green lawn texture: an autumn olive, as the photos' lawns: W1)
   backLawn: 0xb38f47,
   bank: 0x775e2c,
-  path: 0xb0a47a, // the grass-paver path: grass tinted grey-olive
+  path: 0x9c9466, // the grass-paver path: grass tinted a mossy olive (W3)
   walls: 0xc2b8a8,
   coping: 0xd8d0c2,
   steps: 0xc8c2b8,

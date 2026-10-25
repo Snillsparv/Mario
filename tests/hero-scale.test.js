@@ -80,7 +80,7 @@ function hang(name) {
     }
     return h;
   }
-  const [x, z] = name === 'eave' ? [-500, DAD.z0 - 110] : [2050, lane.CARPORT.z0 - 110];
+  const [x, z] = name === 'eave' ? [400, DAD.z0 - 110] : [2050, lane.CARPORT.z0 - 110]; // (W3: x 400, between two windows: the rhododendron stands out from the west pier)
   const h = hero(x, GROUND, z, 0);
   h.tick({}, 0);
   h.tick({}, 0);

@@ -1,13 +1,15 @@
 // The routes of Sparrow Lane, played with scripted input on the real course (world/area.js
 // buildArea at its origin) with the real Player and the course's own ObjectManager: the star
 // climb (from the dad's drive onto a wheelie bin, onto the carport's flat roof with the stick
-// pushed part way or all the way, a hop west onto the roof's south-west slope anywhere along the
-// carport's back half, up to the ridge and along it to the star: 'starCollected' { id:
-// 'lane_star', area: 'lane' }; walking into the gable from the carport gets him nowhere, and
-// past the back wall he drops off); the front eave (a standing jump within 100 of the front wall
-// grabs it and climbs on, from 150 or more it falls short); the red-leaf tree (climbed, a
-// handstand on its top, a flip toward the house with the stick held 4 to 20 ticks lands on the
-// roof; held on, he lands on its far side and walks on down into the back garden, unhurt); and
+// pushed part way or all the way, a hop west onto the east wing's roof (W3) or over the gable's
+// back corner onto the main roof's back slope anywhere along the carport's back half, up the
+// wing's ridge onto the main roof and along its ridge to the star: 'starCollected' { id:
+// 'lane_star', area: 'lane' }; walking into the gable or the wing's wall from the carport gets
+// him nowhere); the front eave (a standing jump within 100 of the front wall grabs it, its
+// gutter's flat lip, and climbs on, from 150 or more it falls short); the red-leaf tree (climbed,
+// a handstand on its top, a flip toward the house with the stick held 8 to 24 ticks lands on the
+// roof; held on, he lands on its far side and walks on down into the back garden, unhurt; let go
+// at once he lands in the garden); and
 // the routes round the street, each collecting exactly its coins: down the path from the front
 // door, onto the mailbox's roof (a single jump), along the street both ways, onto the villas'
 // wall tops (a hop) and up north_3's steps, up the side yard between north_2 and north_3, onto
@@ -81,7 +83,23 @@ const W = -Math.PI / 2; // -x
 const N = Math.PI; // -z (up the hill)
 const S = 0; // +z (the dad's side)
 
-test('the star climb: from the drive onto a bin, onto the carport (the stick part way or all the way), a hop west onto the roof\'s south-west slope, up to the ridge and along it to the star', () => {
+// The dad's roofs (W3): the main roof's slopes (its pitch), and each wing's (its ridge along z)
+// where it covers the main roof's back slope (past the valley) or its own footprint; the highest
+// of them over (x, z), or null.
+const roofOver = (x, z) => {
+  const tan = (DAD.ridge - DAD.eave) / (DAD.d / 2);
+  const ys = [];
+  if (x >= DAD.x0 && x <= DAD.x1 && z >= DAD.z0 && z <= DAD.z1) ys.push(DAD.ridge - Math.abs(z - DAD.ridgeZ) * tan);
+  for (const w of lane.DAD_WINGS) {
+    const half = w.d / 2;
+    const off = Math.abs(x - w.cx);
+    const valley = DAD.z1 - (w.join.apex - w.w / 2) + off; // (the valley's z at this x)
+    if (off <= half && z >= valley && z <= w.cz + w.w / 2) ys.push(w.ridge - (off * (w.ridge - w.eave)) / half);
+  }
+  return ys.length ? Math.max(...ys) : null;
+};
+
+test("the star climb: from the drive onto a bin, onto the carport (the stick part way or all the way), a hop west onto the east wing's roof (or over the gable's back corner onto the main roof's back slope) anywhere along the carport's back half, up along the wing's ridge onto the main roof and along its ridge to the star", () => {
   // Onto the bin from the drive.
   const a = hero(lane.BINS[0].x, GROUND, 1300, S);
   a.walk([[lane.BINS[0].x, 1450]], 0.5);
@@ -98,48 +116,48 @@ test('the star climb: from the drive onto a bin, onto the carport (the stick par
     const q = h.at();
     assert.ok(Math.abs(q.y - lane.CARPORT.top) < 1 && q.z > lane.CARPORT.z0, `stick ${push}: on the carport ${JSON.stringify(q)}`);
   }
-  // Walking west into the gable gets him nowhere; a hop lands on the slope anywhere along the
-  // carport's back half.
-  for (const z of [2200, 2400, 2500, 2560]) {
+  // Walking west into the gable or the wing's wall gets him nowhere; a hop lands on a roof
+  // anywhere along the carport's back half (W3: the east wing's from the gable's back corner on).
+  for (const z of [2100, 2200, 2400, 2560]) {
     const w = hero(1800, lane.CARPORT.top, z, W);
     for (let t = 0; t < 40; t++) w.tick({ stickY: 1 }, W);
-    assert.ok(Math.abs(w.at().y - lane.CARPORT.top) < 1 && w.at().x > DAD.x1, `z ${z}: walked into the gable, still on the carport ${JSON.stringify(w.at())}`);
+    assert.ok(Math.abs(w.at().y - lane.CARPORT.top) < 1 && w.at().x > DAD.x1, `z ${z}: walked into the wall, still on the carport ${JSON.stringify(w.at())}`);
     const h = hero(1800, lane.CARPORT.top, z, W);
     for (let t = 0; t < 4; t++) h.tick({ stickY: 1 }, W);
-    jump(h, W, { after: 20 });
+    jump(h, W, { after: 0 });
+    h.rest();
     const q = h.at();
-    const roof = DAD.ridge - Math.abs(q.z - DAD.ridgeZ) * Math.tan((20 * Math.PI) / 180);
-    assert.ok(q.x < DAD.x1 - 200 && Math.abs(q.y - roof) < 6 && h.p.grounded, `z ${z}: hopped onto the slope ${JSON.stringify(q)} (roof ${roof.toFixed(0)})`);
+    const roof = roofOver(q.x, q.z);
+    assert.ok(q.x < DAD.x1 - 100 && roof !== null && Math.abs(q.y - roof) < 6 && h.p.grounded, `z ${z}: hopped onto a roof ${JSON.stringify(q)} (roof ${roof?.toFixed(0)})`);
   }
-  // Past the back wall a hop drops him off behind the house.
-  const back = hero(1800, lane.CARPORT.top, DAD.z1 + 25, W);
-  for (let t = 0; t < 4; t++) back.tick({ stickY: 1 }, W);
-  jump(back, W, { after: 30 });
-  assert.ok(back.at().y < GROUND + 1 && back.at().z > DAD.z1, `off behind the house: ${JSON.stringify(back.at())}`);
-  // Up the slope and along the ridge to the star.
-  const h = hero(1300, 450, 2560, N);
-  h.walk([[1300, DAD.ridgeZ + 60], [lane.STAR.x, DAD.ridgeZ]], 1, 200);
+  // Up the wing's slope to its ridge, along it onto the main roof (its valleys) and along the
+  // ridge to the star.
+  const E = lane.DAD_WINGS[1];
+  const h = hero(1450, roofOver(1450, 2500) + 2, 2500, W);
+  h.rest(2);
+  h.walk([[E.cx, 2450], [E.cx, DAD.ridgeZ + 60], [lane.STAR.x, DAD.ridgeZ]], 1, 300);
   const got = h.log.find((e) => e.name === 'starCollected');
   assert.ok(got, `the star: at ${JSON.stringify(h.at())}`);
   assert.deepEqual([got.id, got.area], ['lane_star', 'lane']);
-  assert.ok(h.coins() >= 1, 'the slope\'s coin on the way');
+  assert.ok(h.coins() >= 1, 'the slopes\' coins on the way');
 });
 
-test('the front eave: a standing jump within 100 of the front wall grabs the eave and climbs onto the roof; from 150 or more it falls short', () => {
-  for (const d of [60, 100, 150, 250]) {
-    const h = hero(-500, GROUND, DAD.z0 - 50 - d, S);
-    h.rest(2);
-    for (let t = 0; t < 40; t++) h.tick({ stickY: 1, A: t < 15 }, S);
-    h.rest(30);
-    const q = h.at();
-    const roof = DAD.ridge - Math.abs(q.z - DAD.ridgeZ) * Math.tan((20 * Math.PI) / 180);
-    if (d <= 100) assert.ok(q.z > DAD.z0 && Math.abs(q.y - roof) < 4 && h.p.grounded, `from ${d}: on the roof ${JSON.stringify(q)}`);
-    else assert.ok(Math.abs(q.y - GROUND) < 1 && q.z < DAD.z0, `from ${d}: still on the lawn ${JSON.stringify(q)}`);
-    assert.equal(h.p.health, MAX_HEALTH);
+test('the front eave: a standing jump within 100 of the front wall grabs the eave (its gutter\'s flat lip: the roof is steeper than a ledge) and climbs onto the roof; from 150 or more it falls short', () => {
+  for (const x of [400, -100, 1250]) {
+    for (const d of [60, 100, 150, 250]) {
+      const h = hero(x, GROUND, DAD.z0 - 50 - d, S);
+      h.rest(2);
+      for (let t = 0; t < 40; t++) h.tick({ stickY: 1, A: t < 15 }, S);
+      h.rest(30);
+      const q = h.at();
+      if (d <= 100) assert.ok(q.z > DAD.z0 && Math.abs(q.y - roofOver(q.x, q.z)) < 4 && h.p.grounded, `x ${x}, from ${d}: on the roof ${JSON.stringify(q)}`);
+      else assert.ok(Math.abs(q.y - GROUND) < 1 && q.z < DAD.z0, `x ${x}, from ${d}: still on the lawn ${JSON.stringify(q)}`);
+      assert.equal(h.p.health, MAX_HEALTH);
+    }
   }
 });
 
-test('the red-leaf tree: climbed to a handstand on its top, a flip toward the house with the stick held 4 to 20 ticks lands on the roof; held on, he lands on its far side and walks on down into the back garden, unhurt', () => {
+test('the red-leaf tree: climbed to a handstand on its top, a flip toward the house with the stick held 8 to 24 ticks lands on the roof (W3: its trunk 640 from the wall); held on, he lands on its far side and walks on down into the back garden, unhurt; let go early, he lands in the garden', () => {
   const T = lane.RED_TREE;
   const flip = (hold, walkOn = false) => {
     const h = hero(T.x, GROUND, T.z - 250, S);
@@ -160,12 +178,15 @@ test('the red-leaf tree: climbed to a handstand on its top, a flip toward the ho
     h.rest();
     return { h, q: h.at(), peak };
   };
-  for (const hold of [4, 8, 12, 16, 20]) {
+  for (const hold of [8, 12, 16, 20, 24]) {
     const { h, q, peak } = flip(hold);
     assert.ok(peak > 900, `hold ${hold}: a high flip (${peak.toFixed(0)})`);
     assert.ok(q.y > DAD.eave && q.z > DAD.z0 && q.z < DAD.z1 && h.p.grounded, `hold ${hold}: on the roof ${JSON.stringify(q)}`);
     assert.equal(h.p.health, MAX_HEALTH);
   }
+  const short = flip(2);
+  assert.ok(short.h.p.grounded && short.q.y < GROUND + lane.BED.raise + 1 && short.q.z < DAD.z0, `let go at once: down in the garden ${JSON.stringify(short.q)}`);
+  assert.equal(short.h.p.health, MAX_HEALTH);
   const { h, q } = flip(Infinity, true);
   assert.ok(Math.abs(q.y - GROUND) < 1 && q.z > DAD.z1, `held on: down in the back garden ${JSON.stringify(q)}`);
   assert.equal(h.p.health, MAX_HEALTH);
@@ -179,7 +200,7 @@ test('welcome: out of the front door down the path to the street (its three coin
   const M = lane.MAILBOX;
   const m = hero(M.x, GROUND, M.z - 260, S);
   m.walk([[M.x, M.z - 160]], 0.4);
-  jump(m, S, { push: 0.4, after: 0 });
+  jump(m, S, { push: 0.6, after: 0 });
   m.rest();
   assert.ok(Math.abs(m.at().y - M.eaves) < 1 && m.p.grounded, `on the mailbox: ${JSON.stringify(m.at())}`);
   assert.equal(m.coins(), 1, "the mailbox's roof");

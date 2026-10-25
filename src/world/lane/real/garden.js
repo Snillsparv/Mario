@@ -13,23 +13,24 @@
 //   bedStones(kit, L)   // the corner bed's field stones (where the classic ones lie)
 //   turnSign(kit, L)    // the turning area's sign at the bed's corner (its face: sign.js)
 //
-// The mailbox (MAILBOX): a black wooden box shaped like a little house, its gable end toward the
-// street: chamfered board walls (the boards' texture, charcoal) on a planed post in a little
-// concrete foot, a floor; a roof of two boards overhanging all round under a rounded ridge
-// strip; at the street end the letter flap (proud, a shadow gap under it), a blank enamel plate
-// (no name: the repository is public) and a framed door with a knob. The little blue sparrow
-// (the sign calls it so) is a carved wooden bird painted blue: a white breast, a yellow beak,
-// glossy black eyes, its wings raised and swept back like the real ornament's, its tail cocked
-// up, on a rod at the ridge's street end, side-on to the street.
+// The mailbox (MAILBOX, W3): one anthracite pedestal box of sheet steel standing on the lawn
+// (a concrete pad at its foot), its gable end toward the street: a lid of two folded sheets
+// overhanging all round under a rounded ridge strip; at the street end the top-hinged letter flap
+// just under the lid (a shadow gap under it), a blank enamel plate in the gable (no name: the
+// repository is public) and the lower door in thin seams with its round lock. The little blue
+// sparrow (the sign calls it so) is a blue-grey bird on the ridge: a white breast, a yellow
+// beak, glossy black eyes, its wings raised and swept back like the real ornament's, its tail a
+// wide spiky fan cocked up behind, on a rod at the ridge's street end, side-on to the street.
 
 import { add, mul, norm, cross } from './geo.js';
 import { roadPieces, kerbRuns, bevelEnds, BEVEL, bedStones as bedStoneSpots } from './plan.js';
 import { signFace } from './sign.js';
 import { makeRng } from '../../../core/math.js';
 
-const CHARCOAL = 0x2c2e31;
-const ROOF = 0x26282b;
-const BLUE = 0x4c79b8;
+const ANTHRACITE = 0x484b52; // (the pedestal box: sheet steel, W3)
+const LID = 0x3a3d43;
+const BLUE = 0x6f8db4; // (the bird: a blue-grey)
+const BIRD_SIZE = 0.62; // (the bird's size against its carving's: ~30 long, as the real one)
 
 // An eight-sided chamfered post or box (corners cut by `ch`) from ya to yb.
 function chamfered(g, xa, xb, za, zb, ya, yb, ch) {
@@ -42,29 +43,28 @@ function chamfered(g, xa, xb, za, zb, ya, yb, ch) {
 }
 
 export function mailbox(kit, L) {
-  const { boards, paint, metal, enamel, bird, gloss } = kit;
+  const { paint, metal, enamel, gloss } = kit;
   const M = L.MAILBOX;
   const y0 = L.GROUND;
   const [bw, bd] = M.body;
   const { x: cx, z: cz } = M;
-  const yb = y0 + M.post; // the box's floor
+  const yb = y0 + M.post; // the box's foot
   const ye = M.eaves;
   const yr = M.ridge;
   const [x0, x1] = [cx - bw / 2, cx + bw / 2];
   const [zf, zb] = [cz - bd / 2, cz + bd / 2]; // the street end (-z), the back
-  boards.color(CHARCOAL);
-  chamfered(boards, cx - 6, cx + 6, cz - 6, cz + 6, y0 - 4, yb + 2, 1.6);
-  chamfered(boards, x0, x1, zf, zb, yb, ye, 1.6);
-  boards.quad([x0, yb, zf], [x1, yb, zf], [x1, yb, zb], [x0, yb, zb], { shade: 0.5 });
+  // The body: anthracite sheet steel, its corners a little rounded, the gable ends to the lid.
+  metal.color(ANTHRACITE);
+  chamfered(metal, x0, x1, zf, zb, yb, ye, 2.5);
   for (const [z, s] of [[zf, -1], [zb, 1]]) {
-    const [a, b, c] = [[x0, ye, z], [x1, ye, z], [cx, yr - 4, z]];
-    if (s < 0) boards.tri(b, a, c, { uvs: [[x1, ye], [x0, ye], [cx, yr]] });
-    else boards.tri(a, b, c, { uvs: [[x0, ye], [x1, ye], [cx, yr]] });
+    const [a, b, c] = [[x0, ye, z], [x1, ye, z], [cx, yr - 3, z]];
+    if (s < 0) metal.tri(b, a, c);
+    else metal.tri(a, b, c);
   }
-  // The roof: two 3-thick boards overhanging 8 all round, a rounded ridge strip.
-  paint.color(ROOF);
+  // The lid: two folded sheets overhanging 8 all round, a rounded ridge strip.
+  paint.color(LID);
   const ov = 8;
-  const T = 3;
+  const T = 2;
   for (const s of [-1, 1]) {
     const xe = cx + s * (bw / 2 + ov);
     const ylo = ye - (ov * (yr - ye)) / (bw / 2);
@@ -81,23 +81,31 @@ export function mailbox(kit, L) {
     paint.quad(dn(top[1]), top[1], top[0], dn(top[0]));
     paint.quad(dn(top[3]), top[3], top[2], dn(top[2]));
   }
-  paint.cyl('z', zf - ov - 1, zb + ov + 1, cx, yr - 1, 3.2, 8, { a0: 0, arc: Math.PI, caps: true });
-  // The street end: the flap (a shadow gap under it), the blank plate, the framed door and knob.
+  paint.cyl('z', zf - ov - 1, zb + ov + 1, cx, yr - 0.5, 2.2, 8, { a0: 0, arc: Math.PI, caps: true });
+  // The street end: the letter flap under the lid (top-hinged, a shadow gap under it), a blank
+  // plate in the gable, the lower door (thin seams round it) with its round lock.
   const front = (g, xa, xb, ya, yb2, d) => g.box(xa, xb, ya, yb2, zf - d, zf, { skip: '+z' });
-  paint.color(0x2a2c2f);
-  front(paint, cx - 30, cx + 30, ye - 50, ye - 36, 3.5);
+  metal.color(ANTHRACITE, 1.15);
+  front(metal, cx - 22, cx + 22, ye - 30, ye - 7, 2.5);
   gloss.rgb(0.01, 0.01, 0.01);
-  gloss.quad([cx + 28, ye - 52, zf - 0.3], [cx - 28, ye - 52, zf - 0.3], [cx - 28, ye - 50, zf - 0.3], [cx + 28, ye - 50, zf - 0.3]);
-  enamel.color(0xece9e2);
-  front(enamel, cx - 17, cx + 17, ye - 30, ye - 19, 1);
-  paint.color(0x2f3134);
-  for (const [xa, xb, ya, yb2] of [[x0 + 8, x1 - 8, yb + 8, yb + 11], [x0 + 8, x1 - 8, yb + 62, yb + 65], [x0 + 8, x0 + 11, yb + 8, yb + 65], [x1 - 11, x1 - 8, yb + 8, yb + 65]]) front(paint, xa, xb, ya, yb2, 1.2);
-  metal.color(0x8a8780);
-  metal.cyl('z', zf - 4, zf, x1 - 18, yb + 36, 2.2, 10, { caps: true });
-  // The concrete foot round the post.
+  gloss.quad([cx + 21, ye - 32, zf - 0.3], [cx - 21, ye - 32, zf - 0.3], [cx - 21, ye - 30, zf - 0.3], [cx + 21, ye - 30, zf - 0.3]);
+  enamel.color(0xd8d6d0);
+  enamel.quad([cx + 9, ye + 3, zf - 0.4], [cx - 9, ye + 3, zf - 0.4], [cx - 9, ye + 10, zf - 0.4], [cx + 9, ye + 10, zf - 0.4]);
+  paint.color(0x22252a);
+  const [d0, d1] = [yb + 8, ye - 46];
+  for (const [xa, xb, ya, yb2] of [[x0 + 4, x1 - 4, d0, d0 + 1.5], [x0 + 4, x1 - 4, d1 - 1.5, d1], [x0 + 4, x0 + 5.5, d0, d1], [x1 - 5.5, x1 - 4, d0, d1]]) front(paint, xa, xb, ya, yb2, 0.6);
+  metal.color(0x9a9890);
+  metal.cyl('z', zf - 2.5, zf, x0 + 13, d1 - 22, 2.6, 10, { caps: true });
+  // Its foot: a concrete pad flush with the lawn.
   enamel.color(0x8c8a84);
-  enamel.box(cx - 13, cx + 13, y0 - 2, y0 + 3, cz - 13, cz + 13, { skip: 'b' });
-  carvedBird(kit, [cx, yr + 6, zf + 6]);
+  enamel.box(x0 - 6, x1 + 6, y0 - 2, y0 + 2, zf - 6, zb + 6, { skip: 'b' });
+  // (The bird drawn at its carving's size, then scaled about its feet to the real one's: W3.)
+  const o = [cx, yr + 6, zf + 5];
+  const from = new Map(['bird', 'gloss', 'metal'].map((k) => [kit[k], kit[k].count]));
+  carvedBird(kit, o);
+  for (const [g, start] of from) {
+    for (let i = start * 3; i < g.pos.length; i += 3) for (let k = 0; k < 3; k++) g.pos[i + k] = o[k] + (g.pos[i + k] - o[k]) * BIRD_SIZE;
+  }
 }
 
 // The carved bird standing at o (its feet), facing +x, side-on to the street.
@@ -126,11 +134,11 @@ function carvedBird({ bird, gloss, metal }, o) {
   }
   gloss.rgb(0.004, 0.004, 0.005);
   for (const s of [-1, 1]) gloss.ellipsoid(B(19.5, 28, s * 5.4), fwd, up, side, 1.6, 1.6, 1.2, 8, 6);
-  // The tail: a flat fan cocked up behind.
+  // The tail: a wide fan of spiky feathers cocked up behind.
   bird.color(BLUE, 0.8);
   const root = B(-12, 15, 0);
-  const fan = [-1, -0.5, 0, 0.5, 1].map((k) => B(-30, 26 - Math.abs(k) * 2, k * 6));
-  for (let i = 0; i < 4; i++) bird.tri(root, fan[i], fan[i + 1]);
+  const fan = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1].map((k, i) => B(-34 + Math.abs(k) * 6 + (i % 2) * 5, 36 - Math.abs(k) * 6 - (i % 2) * 4, k * 13));
+  for (let i = 0; i < 8; i++) bird.tri(root, fan[i], fan[i + 1]);
   // The wings: curved plates raised from the shoulders, swept back.
   bird.color(BLUE, 0.9);
   for (const s of [-1, 1]) {
@@ -262,7 +270,7 @@ export function roadDecals({ patch, paint, metal }, L) {
 export function bedStones({ granite }, L) {
   bedStoneSpots(L).forEach((st, i) => {
     const { x, y, z, s, e, h, a } = st;
-    granite.color(st.pink ? 0xb89486 : 0xaaa69f, st.k);
+    granite.color(st.pink ? 0xc0a294 : 0xbab6ae, st.k);
     const lump = makeRng(1000 + i);
     const bumps = Array.from({ length: 10 * 5 }, () => 1 + 0.34 * (lump() - 0.5));
     const [ca, sa] = [Math.cos(a), Math.sin(a)];
@@ -284,7 +292,7 @@ export function bedStones({ granite }, L) {
 // The turning area's sign (TURN_SIGN; its face: sign.js): a galvanized post in a concrete
 // collar, two clamps, the plate's grey aluminium back and edges, its face in enamel (the
 // reflective sheeting's sheen) a little grimy toward its foot and rim, the no-parking sign and
-// the lettering on it.
+// the lettering on it; under it the small blank blue plate (W3).
 export function turnSign({ steel, enamel, paint }, L) {
   const S = L.TURN_SIGN;
   const P = S.plate;
@@ -332,5 +340,23 @@ export function turnSign({ steel, enamel, paint }, L) {
         enamel.quad(q(i, j), q(i + 1, j), q(i + 1, j + 1), q(i, j + 1), { n: [f, f, f, f], shade: [sh(i, j), sh(i + 1, j), sh(i + 1, j + 1), sh(i, j + 1)] });
       }
     }
+  }
+  // The small blue plate under it (no text): its back and edges, its face.
+  if (S.sub) {
+    const [v0, v1] = [S.sub.y0 - P.y0, S.sub.y0 - P.y0 + S.sub.h];
+    steel.color(0xb4b6b8);
+    const [a3, b3, c3, d3] = [at(0, v0, -1.6), at(P.w, v0, -1.6), at(P.w, v1, -1.6), at(0, v1, -1.6)];
+    const [a4, b4, c4, d4] = [at(0, v0, 0), at(P.w, v0, 0), at(P.w, v1, 0), at(0, v1, 0)];
+    steel.quad(b3, a3, d3, c3);
+    steel.quad(a3, b3, b4, a4);
+    steel.quad(d4, c4, c3, d3);
+    steel.quad(a3, a4, d4, d3);
+    steel.quad(b4, b3, c3, c4);
+    steel.color(0x8a8c8e);
+    steel.cyl('y', S.sub.y0 + S.sub.h / 2 - 3, S.sub.y0 + S.sub.h / 2 + 3, S.x, S.z, S.r + 1.2, 10, { caps: true });
+    enamel.color(0x1d4f9c);
+    enamel.quad(at(1.5, v0 + 1.5, 0.3), at(P.w - 1.5, v0 + 1.5, 0.3), at(P.w - 1.5, v1 - 1.5, 0.3), at(1.5, v1 - 1.5, 0.3), { n: [f, f, f, f] });
+    enamel.color(0xf0f0ec);
+    enamel.quad(at(0, v0, 0.2), at(P.w, v0, 0.2), at(P.w, v1, 0.2), at(0, v1, 0.2), { n: [f, f, f, f] });
   }
 }

@@ -28,10 +28,9 @@ import { fileURLToPath } from 'node:url';
 import * as lane from '../src/world/lane/layout.js';
 
 const skip = !process.env.E2E && 'browser test: set E2E=1 to run';
-// The dad's front windows' middles (x = cx - u: his frame faces the street), west to east, and
-// the boards' middle between two of them (W2: from the layout, his west end moved).
+// The dad's front windows' middles (x = cx - u: his frame faces the street), west to east (W2,
+// W3: from the layout).
 const DAD_WIN = lane.DAD.windows.map((u) => lane.DAD.cx - u).sort((a, b) => a - b);
-const between = (a, b) => (DAD_WIN[a] + DAD_WIN[b]) / 2;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let server;
 let browser;
@@ -173,13 +172,36 @@ async function open(query) {
 // blue over its red by more than 30 (the five views' measure 43-52 on every tier) and over its
 // green.
 const blue = ([r, g, b]) => b > r + 30 && b > g;
+// The sky over the arrival (W3: right of the picture's middle: the red-leaf tree's crown over the
+// path fills its top left and middle, as the photos have it).
+const ZENITH = [0.7, 0.98];
 
 // The five views (Jonas there, the camera behind him; local x, y, z, yaw): each one's draw calls,
 // triangles (the shadow pass included), realistic programs and texture bytes within the tier's
-// budgets, the sky at its top blue (the bluest of its top band's left, middle and right: the
+// budgets, the sky at its top blue (the bluest of five points across its top band: the
 // realistic look's lower, wider camera puts the golden glow round the low sun at the top of the
 // picture where he faces it, at the dad's drive).
-const VIEWS = { arrival: [0, 22, 1156, Math.PI], door: [-260, 22, 700, 0.4], west: [-600, 22, 200, -Math.PI / 2], turn: [1500, 0, 250, Math.PI / 2 + 0.3], cars: [1500, 22, 700, 0.7] };
+// (W3: the arrival and the door's views where the door is now, near the east end: the arrival's
+// camera then looks west along his front from the drive, the red-leaf tree's crown over the
+// left, the middle and the right of its top band; five points, not three.)
+const E = lane.ENTRIES.home;
+const VIEWS = { arrival: [E.x, 22, E.z, Math.PI], door: [E.x - 260, 22, 700, 0.4], west: [-600, 22, 200, -Math.PI / 2], turn: [1500, 0, 250, Math.PI / 2 + 0.3], cars: [1500, 22, 700, 0.7] };
+// The panes of the dad's two windows nearest the door from the arrival: lit (the probe's
+// reflections over a dim room), never black, nor blown out white (W3: a NaN texel in the probe's
+// capture, smeared over the cube by its prefilter, turned every window white on mid).
+async function dadPanes(page, t) {
+  for (const x of [DAD_WIN[3], DAD_WIN[4]]) {
+    const pane = [];
+    for (const dx of [-50, 0, 50]) for (const y of [255, 300, 335]) pane.push([x + dx, y, 1326]);
+    const px = await page.evaluate((pts) => window.__pixelsAt(pts), pane);
+    const mean = px.reduce((s, p) => s + lum(p), 0) / px.length;
+    t.diagnostic(`window ${x}: mean ${mean.toFixed(3)}`);
+    assert.ok(mean > 0.08, `window ${x}: not black (${mean})`);
+    assert.ok(mean < 0.6, `window ${x}: not blown out (${mean})`);
+    for (const p of px) assert.ok(p.some((c) => c > 0), `window ${x}: no black pixel ${p}`);
+  }
+}
+
 async function countViews(page, t, budget) {
   for (const [name, [x, y, z, yaw]] of Object.entries(VIEWS)) {
     const f = await page.evaluate(([x, y, z, yaw]) => {
@@ -194,7 +216,7 @@ async function countViews(page, t, budget) {
       let texels = 0;
       for (const s of g.areas.real.store.sets.values()) texels += s.albedo.length + s.normal.length + s.orm.length;
       const out = { calls: r.info.render.calls, triangles: r.info.render.triangles, programs, all: r.info.programs.length, textureBytes: Math.round(texels * 1.33) };
-      out.sky = window.__pixelsOn([[0.1, 0.98], [0.5, 0.98], [0.9, 0.98]]).sort((a, b) => b[2] - b[0] - (a[2] - a[0]))[0];
+      out.sky = window.__pixelsOn([[0.1, 0.98], [0.3, 0.98], [0.5, 0.98], [0.7, 0.98], [0.9, 0.98]]).sort((a, b) => b[2] - b[0] - (a[2] - a[0]))[0];
       return out;
     }, [x, y, z, yaw]);
     t.diagnostic(`${name}: ${JSON.stringify(f)}`);
@@ -256,7 +278,7 @@ async function gtaLook(page) {
     out.ao = sum / n;
     out.aoSize = [t.width, t.height];
     const ao = settings.ao;
-    const sky = [[0.5, 0.97], [0.2, 0.95], [0.8, 0.95]];
+    const sky = [[0.7, 0.97], [0.65, 0.95], [0.85, 0.95]]; // (W3: clear of the red-leaf tree's crown)
     out.skyAo = window.__pixelsOn(sky);
     settings.ao = 0;
     out.skyNoAo = window.__pixelsOn(sky);
@@ -306,23 +328,15 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     const mode = await page.evaluate(() => window.__game.view.describeMode());
     t.diagnostic(`mode: ${mode}; built in ${JSON.stringify(await page.evaluate(() => window.__game.areas.real.ms.lane))} ms`);
     assert.match(mode, /^real 960x540 msaa4 high$/);
-    // The arrival: the zenith blue, the wall Falu red (between the 2nd and 3rd windows from the west,
-    // and east of the door, where the realistic look's lower camera sees past the mailbox: the
-    // mean of a patch, the boards' grooves and the grain evened out), the panes of three windows
-    // lit (the probe's reflections over a dim room), never black.
-    const [zenith] = await page.evaluate(() => window.__pixelsOn([[0.5, 0.98]]));
+    // The arrival: the zenith blue, the wall Falu red (W3: between the side light and the window
+    // west of it, where the camera over the path sees past the mailbox and the rose: the mean of a
+    // patch, the boards' grooves and the grain evened out), the panes of the two windows nearest
+    // the door lit (the probe's reflections over a dim room), never black.
+    const [zenith] = await page.evaluate((z) => window.__pixelsOn([z]), ZENITH);
     assert.ok(blue(zenith), `the zenith ${zenith}`);
-    const wall = await page.evaluate((x) => window.__patchAt([[x, 250, 1329], [150, 250, 1329], [250, 250, 1329]]), between(1, 2));
+    const wall = await page.evaluate(() => window.__patchAt([[740, 250, 1329], [805, 250, 1329], [820, 200, 1329]]));
     for (const p of wall) assert.ok(p && p[0] > 2 * p[1] && p[0] > 2 * p[2], `Falu red: ${p}`);
-    for (const x of [DAD_WIN[0], DAD_WIN[1], DAD_WIN[3]]) {
-      const pane = [];
-      for (const dx of [-50, 0, 50]) for (const y of [205, 255, 305]) pane.push([x + dx, y, 1326]);
-      const px = await page.evaluate((pts) => window.__pixelsAt(pts), pane);
-      const mean = px.reduce((s, p) => s + lum(p), 0) / px.length;
-      t.diagnostic(`window ${x}: mean ${mean.toFixed(3)}`);
-      assert.ok(mean > 0.08, `window ${x}: not black (${mean})`);
-      for (const p of px) assert.ok(p.some((c) => c > 0), `window ${x}: no black pixel ${p}`);
-    }
+    await dadPanes(page, t);
     // The GTA look: Jonas smaller, the camera wider; the post chain's calls; the occlusion
     // neither black (a target of no size) nor white, never on the sky; the bloom round the sun.
     const gta = await gtaLook(page);
@@ -533,7 +547,7 @@ test('leaving restores the renderer exactly: the grounds before and after a visi
         const mode = await page.evaluate(() => window.__game.view.describeMode());
         t.diagnostic(`F2 in the lane: ${mode}`);
         assert.match(mode, /^real \d+x240 .* Retro$/, 'retro over realistic');
-        const [zenith] = await page.evaluate(() => window.__pixelsOn([[0.5, 0.98]]));
+        const [zenith] = await page.evaluate((z) => window.__pixelsOn([z]), ZENITH);
         assert.ok(blue(zenith), `through the retro filter: ${zenith}`);
         assert.equal(await page.evaluate(() => window.__game.view.n64), before.retro[0], 'the saved setting unchanged');
       }
@@ -589,6 +603,7 @@ test('?tier=mid within its budgets at the five views; ?tier=low draws straight t
       await real();
       await step(30);
       assert.match(await page.evaluate(() => window.__game.view.describeMode()), /^real 960x540 msaa2 mid$/);
+      await dadPanes(page, t);
       // The mid tier's budgets (a desktop with an integrated GPU): 70 % of the leaf clusters,
       // the smaller grass grid, 4 segments a tile roll.
       await countViews(page, t, { calls: 145, triangles: 500000, programs: 24, textureBytes: 64 * 1024 * 1024 });
@@ -608,9 +623,9 @@ test('?tier=mid within its budgets at the five views; ?tier=low draws straight t
       const mode = await page.evaluate(() => window.__game.view.describeMode());
       t.diagnostic(mode);
       assert.match(mode, /^real 960x540 direct low$/);
-      const [zenith] = await page.evaluate(() => window.__pixelsOn([[0.5, 0.98]]));
+      const [zenith] = await page.evaluate((z) => window.__pixelsOn([z]), ZENITH);
       assert.ok(blue(zenith), `the zenith ${zenith}`);
-      const wall = await page.evaluate((x) => window.__patchAt([[x, 300, 1329], [150, 300, 1329], [250, 300, 1329]]), between(1, 2));
+      const wall = await page.evaluate(() => window.__patchAt([[740, 300, 1329], [805, 300, 1329], [820, 250, 1329]]));
       for (const p of wall) assert.ok(p && p[0] > 2 * p[1], `Falu red: ${p}`);
       // The low tier's budgets (a phone): no grass blades, no tile courses, fewer casters.
       await countViews(page, t, { calls: 100, triangles: 220000, programs: 18, textureBytes: 20 * 1024 * 1024 });

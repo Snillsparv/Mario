@@ -215,11 +215,17 @@ export function lawnMask(L) {
   for (const t of L.THUJAS) disc(t.x, t.z, L.THUJA.r + 20);
   for (const t of L.TREES) disc(t.x, t.z, 90);
   for (const t of L.GARDEN_TREES) disc(t.x, t.z, t.kind === 'shrub' ? t.r + 20 : 60);
+  // The dad's front garden (W3): the bed (its outline and its stones' row round it), the
+  // rhododendron, the ivy mound, the rose, the mailbox, the landing.
   const bed = L.BED;
-  clear((x, z) => x < bed.x1 + m && z > bed.z0 - m && ((bed.x1 - x) / (bed.rx + 40)) ** 2 + ((z - bed.z0) / (bed.rz + 40)) ** 2 < 1, bed.x1 - bed.rx - 40, bed.x1 + 40, bed.z0 - 40, bed.z0 + bed.rz + 40);
-  disc(L.RHODODENDRON.x, L.RHODODENDRON.z, L.RHODODENDRON.r * 0.9);
-  disc(L.MAILBOX.x, L.MAILBOX.z, 40);
-  disc(L.POT.x, L.POT.z, 40);
+  rect(bed, 30);
+  const rh = L.RHODODENDRON;
+  clear((x, z) => ((x - rh.x) / (rh.rx * 0.9 + m)) ** 2 + ((z - rh.z) / (rh.rz * 0.9 + m)) ** 2 < 1, rh.x - rh.rx, rh.x + rh.rx, rh.z - rh.rz, rh.z + rh.rz);
+  const iv = L.IVY;
+  clear((x, z) => ((x - iv.x) / (iv.rx + m)) ** 2 + ((z - iv.z) / (iv.rz + m)) ** 2 < 1, iv.x - iv.rx, iv.x + iv.rx, iv.z - iv.rz, iv.z + iv.rz);
+  disc(L.ROSE.x, L.ROSE.z, L.ROSE.r * 0.6);
+  disc(L.MAILBOX.x, L.MAILBOX.z, 45);
+  rect(L.LANDING, 14);
   for (const p of [...L.LAMPS, ...L.FLAGPOLES, ...L.SIGNS, L.CABINET, L.PATH_SIGN]) disc(p.x, p.z, 50);
   for (const b of L.BINS) disc(b.x, b.z, 90);
   disc(L.HOOP.x, L.HOOP.z, 40);

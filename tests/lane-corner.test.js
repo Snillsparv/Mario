@@ -63,8 +63,8 @@ test('the kerbs: exactly where the road meets the lawn or the pavement (never in
     const along = (kind, x0, x1) => runs.filter((r) => r.kind === kind && edge(r)).reduce((s, r) => s + Math.max(0, Math.min(x1, Math.max(r.p[0], r.q[0])) - Math.max(x0, Math.min(r.p[0], r.q[0]))), 0);
     const D = lane.DAD_DRIVE;
     assert.ok(Math.abs(along('drop', D.x0, D.x1) - (D.x1 - D.x0)) < 1, `${label}: the drive's mouth all dropped`);
-    assert.ok(Math.abs(along('bed', BED.x1 - BED.rx, BED.x1) - BED.rx) < 1, `${label}: the bed's street edge, no kerb`);
-    assert.equal(along('kerb', BED.x1 - BED.rx + 1, D.x1 - 1), 0, `${label}: no granite kerb from the bed to the drive's east edge`);
+    assert.ok(Math.abs(along('bed', BED.x0, BED.x1) - (BED.x1 - BED.x0)) < 1, `${label}: the bed's street edge, no kerb`);
+    assert.equal(along('kerb', BED.x0 + 1, D.x1 - 1), 0, `${label}: no granite kerb from the bed to the drive's east edge`);
     // (W2: the photos' south edge has no kerb at all: a bevelled asphalt edge, the lawns and drives
     // a step up behind it; the granite kerb only along the north edge and round the apron.)
     assert.ok(runs.filter(edge).length >= 3 && runs.filter(edge).every((r) => r.kind !== 'kerb'), `${label}: no kerb along the straight's south edge`);
@@ -167,23 +167,30 @@ test('the straight runs on into the turning area: asphalt and a floor at 0 acros
   assert.ok(Math.abs(f.y - O.y - GROUND) < 0.5, `the neighbour's lawn at ${GROUND}`);
 });
 
-test('the dad\'s corner bed: at the corner where his drive meets the street, a little over the lawn (walked onto from the road), its field stones close set along both asphalt edges in both looks, the red-leaf tree in it', () => {
+test('the dad\'s red-leaf bed (W3: a rounded rectangle from the path to the drive): at the corner where his drive meets the street, a little over the lawn (walked onto from the road), its field stones close set along its edges in both looks, the red-leaf tree in its middle', () => {
   assert.ok(lane.inBed(BED.x1 - 5, BED.z0 + 5) && lane.inBed(lane.RED_TREE.x, lane.RED_TREE.z));
   assert.ok(!lane.inBed(BED.x1 + 5, BED.z0 + 100) && !lane.inBed(BED.x1 - 100, BED.z0 - 5), 'not on the drive or the street');
   // Its floor: the bed's top, under the knee from the road.
-  for (const [x, z] of [[BED.x1 - 60, BED.z0 + 60], [lane.RED_TREE.x + 100, lane.RED_TREE.z], [BED.x1 - BED.rx + 80, BED.z0 + 40]]) {
+  assert.ok(!lane.inBed(BED.x0 - 5, BED.z0 + 100) && !lane.inBed(BED.x0 + 5, BED.z1 - 5) && lane.inBed(BED.x0 + 5, BED.z1 - BED.r), 'not on the path, round at its back corners');
+  for (const [x, z] of [[BED.x1 - 60, BED.z0 + 60], [lane.RED_TREE.x + 100, lane.RED_TREE.z], [BED.x0 + 80, BED.z0 + 40], [BED.x0 + 60, BED.z1 - 60]]) {
     const f = floorAt(x, z);
     assert.ok(Math.abs(f.y - O.y - (GROUND + BED.raise)) < 0.5, `the bed's top at ${x}, ${z}: ${(f.y - O.y).toFixed(1)}`);
   }
   assert.ok(GROUND + BED.raise < 30, 'a step from the road under his knee');
-  // The stones: along the street's edge on the road, along the drive's on the drive, round the lawn.
+  // The stones: along the street's edge on the road, along the drive's on the drive, round the
+  // back and down the path's side.
   const stones = bedStones(lane);
   const street = stones.filter((s) => s.z < BED.z0 + 30 && s.y < 0);
   const drive = stones.filter((s) => s.x > BED.x1 - 30 && s.y > 0);
-  assert.ok(street.length >= 14 && drive.length >= 10 && stones.length - street.length - drive.length >= 10, `${street.length} along the street, ${drive.length} along the drive, ${stones.length} in all`);
-  // (Close set: each next to the one before, a hand's gap at most between them.)
+  assert.ok(street.length >= 7 && drive.length >= 8 && stones.length - street.length - drive.length >= 12, `${street.length} along the street, ${drive.length} along the drive, ${stones.length} in all`);
+  assert.ok(stones.every((s) => lane.inBed(s.x, s.z)), 'every stone on the bed');
+  // (Close set: each next to the one before, a hand's gap at most between them; the sign's post
+  // between two along the street.)
   for (const row of [street.map((s) => [s.x, s.s]).sort((a, b) => a[0] - b[0]), drive.map((s) => [s.z, s.s]).sort((a, b) => a[0] - b[0])]) {
-    for (let i = 1; i < row.length; i++) assert.ok(row[i][0] - row[i - 1][0] < 1.7 * Math.max(row[i][1], row[i - 1][1]) + 13, `close set (${(row[i][0] - row[i - 1][0]).toFixed(0)} apart)`);
+    for (let i = 1; i < row.length; i++) {
+      const post = row === drive ? false : row[i - 1][0] < S.x && row[i][0] > S.x;
+      assert.ok(row[i][0] - row[i - 1][0] < 1.7 * Math.max(row[i][1], row[i - 1][1]) + 13 + (post ? 2 * S.collider + 30 : 0), `close set (${(row[i][0] - row[i - 1][0]).toFixed(0)} apart)`);
+    }
   }
   // The classic look's stones are where they are (lane-blocks: their lathes' feet).
   const b = positions('lane-blocks');

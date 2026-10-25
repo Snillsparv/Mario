@@ -314,7 +314,8 @@ test('the full walk: in through the castle door (its leaves swing in), up the ha
     assert.deepEqual([s.area, s.warp], ['lane', null]);
     assert.equal((await east()).dad, 0, 'shut behind him');
     // Off the door's apron and back in: out of the east door into the hall, shutting behind him.
-    await page.evaluate(() => window.__walkToPoint(0, 900, 60));
+    // (W3: the dad's door from the layout, near the east end of his front.)
+    await page.evaluate((x) => window.__walkToPoint(x, 900, 60), lane.DAD.door.x);
     warp = await page.evaluate(() => window.__walkTo(0, 120));
     assert.deepEqual(warp, { phase: 'close', to: 'hall', entry: 'east_2', kind: 'door' });
     await step(18);
@@ -509,7 +510,8 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
   try {
     let s = await snap();
     assert.equal(s.area, 'lane');
-    assert.deepEqual([s.pos.x, s.pos.y, s.pos.z], [-60000, 22, 1330 - 174]);
+    const E = lane.ENTRIES.home; // (W3: at the moved door)
+    assert.deepEqual([s.pos.x, s.pos.y, s.pos.z], [E.x - 60000, E.y, E.z]);
     await step(30);
     assert.equal(await page.evaluate(() => window.__game.hud.card?.text), 'SPARROW LANE', 'the course card');
     assert.equal(await page.evaluate(() => window.__game.level.parts.find((p) => p.name === 'sky').object3D.visible), true, 'the sky dome');
@@ -545,10 +547,11 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
     // (Its own small textures: asphalt, render, pan tiles and, since W1, the fine brick courses.)
     assert.equal(sizes.length, 4);
     for (const [name, w, h] of sizes) assert.ok(w <= 128 && h <= 128, `${name}: ${w} x ${h}`);
-    // The star: on the ridge east of it, walking west into it; out in front of the east door.
-    const star = await page.evaluate(() => {
+    // The star: on the ridge 250 east of it, walking west into it; out in front of the east door.
+    // (W3: the star, the ridge's height and its z from the layout.)
+    const star = await page.evaluate(([x, y, z]) => {
       const g = window.__game;
-      g.player.teleport(-60000 - 250 + 250, 644, 1967.5, -Math.PI / 2);
+      g.player.teleport(x - 60000, y, z, -Math.PI / 2);
       g.player.setAction('idle');
       g.camera.reset(g.player);
       let n = 0;
@@ -558,7 +561,7 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
       }
       g.step(20);
       return { n, area: g.area, stars: g.player.stars, warp: g.snapshot().warp, x: g.player.pos.x, z: g.player.pos.z };
-    });
+    }, [lane.STAR.x + 250, lane.DAD.ridge, lane.DAD.ridgeZ]);
     assert.equal(star.area, 'hall', JSON.stringify(star));
     assert.equal(star.stars, 1);
     assert.equal(star.warp, null);
