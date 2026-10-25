@@ -196,7 +196,7 @@ export function kerbs({ granite, core, patch }, L) {
 // glossy), a sealed crack wandering across
 // the straight, manhole covers and drain grates by the kerbs.
 export function roadDecals({ patch, paint, metal }, L) {
-  patch.color(0x3c3c40); // (darker than the worn road round them: fresh, sealed)
+  patch.color(0x818185); // (darker than the worn road round them: sealed)
   for (const [x, z, w, d] of [[-700, 220, 420, 160], [900, -120, 260, 300], [-1900, 60, 600, 120], [-3300, -260, 380, 220], [1900, 150, 300, 180], [3300, -500, 340, 260]]) {
     patch.quad([x + w, 0.6, z], [x, 0.6, z], [x, 0.6, z + d], [x + w, 0.6, z + d], { uvs: [[x + w, z], [x, z], [x, z + d], [x + w, z + d]] });
   }

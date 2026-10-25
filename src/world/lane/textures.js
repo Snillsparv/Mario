@@ -1,6 +1,6 @@
 // Procedural textures of Sparrow Lane (small canvases, N64-style; painted in code, never from a
-// photograph): asphalt, render and concrete pan tiles. The rest of the course reuses the
-// terrain's grass, masonry and flagstones, the castle's stone and wood, the skerries' painted
+// photograph): asphalt, render, brick and concrete pan tiles. The rest of the course reuses the
+// terrain's grass, masonry and flagstones, the castle's wood, the skerries' painted
 // planks and the trees' leaves. Each returns an empty THREE.Texture in node
 // (texgen.canvasTexture handles that).
 
@@ -36,6 +36,27 @@ export function renderTexture() {
     paintPixels(ctx, w, h, (x, y) => {
       const k = 0.92 + grain(x, y) * 0.08 + (rng() - 0.5) * 0.04;
       return clamp255([250 * k, 248 * k, 244 * k]);
+    });
+  });
+}
+
+// Brick (64 x 64) in running bond: sixteen courses of five bricks (over the lane's 180-unit
+// repeat a 75 mm course and a 240 mm brick, as the real white brick), fine mortar joints a
+// shade darker, a faint grain and a tone per brick; near white, so the vertex colours give the
+// chain houses' white plinths and gable ends and the villas' red-brown upper floors.
+export function brickTexture() {
+  return canvasTexture(64, 64, (ctx, w, h) => {
+    const grain = tileableFbm(w, h, 8, 2, 1231);
+    const rng = makeRng(1233);
+    const tones = Array.from({ length: 16 * 5 }, () => 0.95 + rng() * 0.07);
+    const bw = w / 5;
+    paintPixels(ctx, w, h, (x, y) => {
+      const row = Math.floor(y / 4);
+      const u = (x + (row % 2) * bw * 0.5) % w;
+      const g = 0.95 + grain(x, y) * 0.07;
+      if (y % 4 === 3 || u % bw < 1) return clamp255([200 * g, 196 * g, 190 * g]);
+      const k = tones[row * 5 + Math.floor(u / bw)] * g;
+      return clamp255([240 * k, 237 * k, 232 * k]);
     });
   });
 }

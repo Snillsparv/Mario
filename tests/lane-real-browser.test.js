@@ -1,6 +1,6 @@
 // Sparrow Lane's realistic look in the real game (Vite dev server, headless Chromium with
 // SwiftShader), opt-in: E2E=1. ?area=lane&tier=high: the realistic look swaps in once built
-// (the F1 line 'real ...'), no console errors; its picture: a blue zenith, the dad's wall Falu
+// (the F1 line 'real ...'), no console errors; its picture: a pale blue zenith, the dad's wall Falu
 // red, its windows neither black nor NaN (the probe's old bug), the sign boards as the classic
 // look draws them, Jonas's shirt red as in the classic look; the storm's grade, a flash and the
 // meltdown draw through the grade pass; the recorder's 16:9 and 9:16 framings see drawn frames;
@@ -163,7 +163,10 @@ async function open(query) {
   return { page, errors, step, real };
 }
 
-const blue = ([r, g, b]) => b > r + 40;
+// A blue sky: since W1 a pale hazy one (the photos' golden hour: their sky's blue only 25-40 over
+// its red overhead, where the old saturated sky's was over 40), so a pale blue, not grey: its
+// blue over its red by more than 15 and over its green.
+const blue = ([r, g, b]) => b > r + 15 && b > g;
 
 // The five views (Jonas there, the camera behind him; local x, y, z, yaw): each one's draw calls,
 // triangles (the shadow pass included), realistic programs and texture bytes within the tier's
@@ -212,8 +215,10 @@ async function gtaLook(page) {
     const grain = u.uGrain.value;
     u.uGrain.value = 0;
     const settings = look.output.settings;
-    // Away from the sun: on the path facing the street, the camera behind him.
-    g.player.teleport(-60000, 22, 900, Math.PI);
+    // Away from the sun: on the street facing east, the camera behind him. (Before W1 on the
+    // path facing the street; with the sun low in the west-south-west the camera there swings
+    // out beside him, west of the house's wall, and looks into it.)
+    g.player.teleport(-60000, 0, 150, Math.PI / 2);
     g.player.setAction('idle');
     g.camera.reset(g.player);
     g.step(10);

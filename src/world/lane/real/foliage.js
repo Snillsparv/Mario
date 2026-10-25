@@ -32,7 +32,7 @@ import { forestSpots } from './spots.js';
 const CELL = { rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] };
 const CORE = { green: [0.03, 0.055, 0.018], red: [0.045, 0.012, 0.012] };
 // The hedges' cores a little lighter (under the ambient occlusion they read black-green).
-const HEDGE_CORE = [0.045, 0.075, 0.027];
+const HEDGE_CORE = [0.05, 0.062, 0.02];
 // The share of a shell's clusters per tier (mid a little sparser, low half); the broad trees',
 // the birches' and the apple tree's canopies denser still on high (their outline from afar was
 // the most "game" thing left in the street).
@@ -202,7 +202,7 @@ function hedge(kit, R, h) {
   const step = (kit.tier === 'low' ? 36 : kit.tier === 'mid' ? 29 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
   const tint = () => {
     const k = 0.8 + 0.35 * R();
-    foliage.rgb(0.95 * k, 1.05 * k, 0.85 * k);
+    foliage.rgb(1.35 * k, 1 * k, 0.5 * k); // (an autumn olive, as the photos' hedges)
   };
   const card = (c, n, s) => {
     tint();
@@ -243,7 +243,7 @@ function thuja(kit, R, L, { x, z }) {
     const rr = radius(y) * (0.85 + 0.2 * R());
     const d = norm([Math.sin(a), 0.25 + (y / h) * 0.5, Math.cos(a)]);
     const k = (0.6 + 0.4 * (y / h)) * (0.85 + 0.3 * R());
-    kit.foliage.rgb(0.55 * k, 0.72 * k, 0.5 * k);
+    kit.foliage.rgb(0.62 * k, 0.6 * k, 0.3 * k);
     cluster(kit.foliage, R, [x + Math.sin(a) * rr, y0 + y, z + Math.cos(a) * rr], d, 46 * (0.8 + 0.4 * R()), CELL.hedge, 2);
   }
   kit.core.rgb(...CORE.green);

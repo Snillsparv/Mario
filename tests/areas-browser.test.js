@@ -521,7 +521,8 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
         return [name, image.width, image.height];
       });
     });
-    assert.equal(sizes.length, 3);
+    // (Its own small textures: asphalt, render, pan tiles and, since W1, the fine brick courses.)
+    assert.equal(sizes.length, 4);
     for (const [name, w, h] of sizes) assert.ok(w <= 128 && h <= 128, `${name}: ${w} x ${h}`);
     // The star: on the ridge east of it, walking west into it; out in front of the east door.
     const star = await page.evaluate(() => {

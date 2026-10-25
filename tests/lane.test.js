@@ -586,9 +586,12 @@ test('privacy and originality: the course\'s sources name no one but Jonas on it
   for (const h of [...lane.HOUSES, ...lane.PLOTS_N]) assert.match(h.id, /^(north|south|east)_(\d|west|dad|garage|house)(_wing)?$/, h.id);
 });
 
-test('the look: the sun low in the south-west; the villas\' street faces lit, the chain houses\' in shade; the dad\'s walls Falu red under a dark roof', () => {
+test('the look: the sun low in the west-south-west; the villas\' street faces lit, the chain houses\' in shade; the dad\'s walls Falu red under a dark roof', () => {
   const S = lane.LANE_SUN;
-  assert.ok(S.z > 0.8 && S.y < 0.5 && S.y > 0.2, JSON.stringify(S));
+  // (The photos' golden hour: 45 deg from +z toward -x, ~12 deg up; not above ~14: W1.)
+  const turn = (Math.atan2(-S.x, S.z) * 180) / Math.PI;
+  const up = (Math.asin(S.y) * 180) / Math.PI;
+  assert.ok(Math.abs(Math.hypot(S.x, S.y, S.z) - 1) < 1e-9 && turn > 35 && turn < 55 && up > 10 && up < 14, `${JSON.stringify(S)}: ${turn.toFixed(1)} deg toward -x, ${up.toFixed(1)} up`);
   assert.equal(AREA_DEFS.lane.atmosphere.sunDir, S);
   // Mean brightness of a mesh's vertices on faces looking along `n`, in a box.
   const mean = (name, n, test) => {

@@ -41,8 +41,8 @@
 // Unlit worldMaterial meshes with the lighting baked into vertex colours under the low golden
 // sun (LANE_SUN, a warm tint), one mesh per material, thirteen: lane-asphalt (the road, the
 // turning area, the pavement, the drives and the footpath), -grass (lawns, terraces, verges, the
-// bank), -blocks (the terraces' walls, the steps, the kerbs, the corner bed's stones), -brick (the
-// castle's stone bricks tinted: the villas' upper floors, the chain houses' white brick plinths
+// bank), -blocks (the terraces' walls, the steps, the kerbs, the corner bed's stones), -brick (fine
+// running-bond brick, lane/textures.js, tinted: the villas' upper floors, the chain houses' white brick plinths
 // and gable ends), -render (white render, and every flat-coloured detail by vertex tint: frames,
 // panes, doors, poles, the bins, the mailbox and its sparrow, the cars, the hoop, the trampoline,
 // the red-leaf tree's crown and the leaves fallen in its bed, soffits and fascias, the vestibule
@@ -73,12 +73,12 @@
 import * as THREE from 'three';
 import { worldMaterial, bakeLighting } from '../../render/materials.js';
 import { GeoBuilder, SolidBuilder, polyArea, subtractConvex } from '../castle/geom.js';
-import { stoneTexture, woodTexture } from '../castle/textures.js';
+import { woodTexture } from '../castle/textures.js';
 import { flagstoneTexture, grassTexture, masonryTexture } from '../terrainTextures.js';
 import { MeshBuilder, bakedMesh } from '../props/geom.js';
 import { leafTexture, woodTexture as signWoodTexture } from '../props/textures.js';
 import { faluPlankTexture, sailTexture } from '../courseKit.js';
-import { asphaltTexture, panTileTexture, renderTexture } from './textures.js';
+import { asphaltTexture, brickTexture, panTileTexture, renderTexture } from './textures.js';
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
@@ -95,10 +95,10 @@ const TINT = {
   footpath: 0x84827c,
   kerb: 0xb8b2a8,
   bedEdge: 0x4e3c30, // (the dad's corner bed's soil, at the asphalt's edge)
-  lawn: 0x6e9a40,
-  backLawn: 0x5f8a38,
-  bank: 0x3e5a2a,
-  path: 0x8a9a78, // the grass-paver path: grass tinted grey-green
+  lawn: 0xc8a050, // (over the green lawn texture: an autumn olive, as the photos' lawns: W1)
+  backLawn: 0xb38f47,
+  bank: 0x775e2c,
+  path: 0xb0a47a, // the grass-paver path: grass tinted grey-olive
   walls: 0xc2b8a8,
   coping: 0xd8d0c2,
   steps: 0xc8c2b8,
@@ -108,10 +108,14 @@ const TINT = {
   patio: 0xa8a6a0,
   floor: 0x9a9890, // (the store room's concrete)
 };
+// The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
+// light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
+const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, footpath: 0xeae4dc, floor: 0xcfcdc6 };
 
 const UP = [0, 1, 0];
-// Golden hour, a touch warmer than the skerries'.
-export const LIGHT = { ambient: 0.6, diffuse: 0.55, maxBright: 1.1, tint: [1.07, 1.0, 0.9] };
+// Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
+// the lower sun's weaker light on the ground.
+export const LIGHT = { ambient: 0.64, diffuse: 0.55, maxBright: 1.1, tint: [1.1, 1.0, 0.86] };
 const GROUND_RECT = { x0: -16000, x1: 16000, z0: -8000, z1: 10000, tile: 2000 };
 const ARC_STEP = 300; // the terraces' fronts along the turning area: straight this long
 const KERB_LIFT = 1.5; // the kerbs' tops over the lawn and the pavement beside them
@@ -215,7 +219,7 @@ function assemble(kit, layout, leaf) {
   add('asphalt', asphaltTexture());
   add('grass', grassTexture());
   add('blocks', masonryTexture());
-  add('brick', stoneTexture());
+  add('brick', brickTexture());
   add('render', renderTexture());
   add('boards', faluPlankTexture());
   add('roof', panTileTexture());
@@ -402,7 +406,7 @@ const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 // under the carport's edge, the store room's concrete floor behind its door wall) and the
 // link's, the drive east of the turning area to the double garage, the north-west villa's
 // flagstones, the footpath, the dad's patio.
-function hardSurfaces(L, road) {
+function hardSurfaces(L, road, TINT) {
   const out = [];
   const add = (outline, mat, tint, shade = 1) => {
     for (const piece of cutOut(outline, road)) out.push({ outline: piece, mat, tint, shade });
@@ -443,6 +447,7 @@ function hardSurfaces(L, road) {
 // drawn over GROUND_RECT and solid where Jonas can be (inside the boundary's box).
 function ground(kit, L, road) {
   const { asphalt, grass, solids } = kit;
+  const tints = kit.look === 'real' ? REAL_GROUND : TINT;
   const G = L.GROUND;
   const xs = L.BOUNDS.map((p) => p[0]);
   const zs = L.BOUNDS.map((p) => p[1]);
@@ -450,12 +455,12 @@ function ground(kit, L, road) {
   const solid = (outline) => overlaps(outline, reach);
   // Soft light and dark swaths over the asphalt and the lawns.
   const swath = (x, z) => 0.93 + 0.07 * Math.sin(x / 530 + Math.cos(z / 610)) * Math.cos(z / 470 - x / 900);
-  asphalt.color(TINT.road);
+  asphalt.color(tints.road);
   for (const piece of road) {
     asphalt.poly(at(piece, 0), { facing: UP, shade: piece.map(([x, z]) => swath(x, z)) });
     if (solid(piece)) solids.face(at(piece, 0), UP, 'stone');
   }
-  const hard = hardSurfaces(L, road);
+  const hard = hardSurfaces(L, road, tints);
   for (const { outline, mat, tint, shade } of hard) {
     kit[mat].color(tint, shade);
     kit[mat].poly(at(outline, G), { facing: UP, shade: outline.map(([x, z]) => swath(x, z)) });

@@ -354,6 +354,7 @@ export class AreaSwitch {
     if (fade && this.real.fade > 0 && look !== this.view.look) this.view.crossfade?.(this.real.fade);
     area.showReal?.(look !== null);
     if (this.sky?.object3D) this.sky.object3D.visible = !!area.def.sky && look === null;
+    this.sky?.setPale?.(area.def.skyPale ?? 0); // (the lane's hazier golden-hour sky: paler)
     this.view.setLook?.(look);
     // (The F1 line: why an area with a realistic look draws classic.)
     this.view.setLookNote?.(this.real && area.def.real && !look ? this.real.reason || 'building' : '');

@@ -17,7 +17,7 @@
 import { add, mul } from './geo.js';
 import { frameOf } from './house.js';
 
-const STEEL = 0x9a9ea0;
+const STEEL = 0x8e8e8c; // (weathered galvanized: a neutral grey)
 const HEAD = 0x4a4e50;
 const WHITE = 0xf2f2f0;
 const GOLD = 0xe8b84a;

@@ -34,6 +34,7 @@
 //   waterLevelAt(x, z),          // local water surface, or NO_WATER
 //   probeY,                      // local height the ground probe starts from (under the ceiling)
 //   sky,                         // the grounds' sky dome shows (else the fog colour is the sky)
+//   skyPale,                     // ...that much paler (0 .. 1: world/sky.js setPale)
 //   atmosphere,                  // view.setAtmosphere preset (null: the grounds' own look)
 //   audio: { music, ambience, reverb, fires?, gulls?, seaLevel? },   // AudioEngine.setArea (on
 //                                //   'areaChange'): its own track, its ambience profile
@@ -96,11 +97,12 @@ export const SKERRIES_ATMOSPHERE = Object.freeze({
   sunDir: skerriesLayout.SKERRIES_SUN,
 });
 
-// A golden October afternoon in Sparrow Lane: the grounds' fog colour (the shared sky dome
-// shows; the lane is ringed by forest, so the horizon mostly hides), the fog a little nearer
-// than out on the sea, the actors lit by a low warm sun from the south-west (the bake's LANE_SUN)
-// under a warm sky and a green ground.
+// A golden October afternoon in Sparrow Lane: the shared sky dome paler (the photos' hazy sky:
+// skyPale) and the fog in its horizon's colour (the lane is ringed by forest, so the horizon
+// mostly hides), the fog a little nearer than out on the sea, the actors lit by a low warm sun
+// from the west-south-west (the bake's LANE_SUN) under a warm sky and a green ground.
 export const LANE_ATMOSPHERE = Object.freeze({
+  fog: 0xcbdbef, // (the paler dome's horizon: skyPale)
   near: 6000,
   far: 24000,
   sun: 0xffdcb0,
@@ -172,6 +174,7 @@ export const AREA_DEFS = {
     waterLevelAt: () => NO_WATER,
     probeY: laneLayout.PROBE_Y,
     sky: true,
+    skyPale: 0.45,
     atmosphere: LANE_ATMOSPHERE,
     // "Skerry Polska" again (a bright folk loop suits a summer street), the grounds' birds,
     // leaves and breeze without their waterfall and moat.

@@ -28,7 +28,7 @@
 
 import { hash, rng, makeFbm, makeCells, cavity, pack, coverageMips, clamp01, smooth, field, rgbField, setRgb } from './noise.js';
 
-export const TEXGEN_VERSION = 2;
+export const TEXGEN_VERSION = 3;
 
 // Vertical board-and-batten cladding (Falu paint): `boards` boards across, each with a batten
 // over its joint. A light neutral colour: the vertex tint gives red or yellow.
@@ -66,9 +66,9 @@ export function boardsSet(n = 512, { boards = 8, seed = 11 } = {}) {
 }
 
 // Brick in running bond (`cols` bricks x `rows` courses) in recessed mortar, a grainy face, a
-// few chipped arrises: the white sand-lime brick by default; `tone`, `mortar` and `jitter` give
-// the grey split-face blocks.
-export function brickSet(n = 512, { cols = 5, rows = 16, seed = 21, tone = [0.78, 0.77, 0.74], mortar = [0.55, 0.55, 0.53], jitter = 0.05 } = {}) {
+// few chipped arrises: the white sand-lime brick by default (painted white: light, the mortar a
+// shade darker); `tone`, `mortar` and `jitter` give the grey split-face blocks.
+export function brickSet(n = 512, { cols = 5, rows = 16, seed = 21, tone = [0.9, 0.89, 0.87], mortar = [0.68, 0.67, 0.65], jitter = 0.05 } = {}) {
   const h = field(n);
   const col = rgbField(n);
   const rough = field(n);
@@ -105,8 +105,8 @@ export function brickSet(n = 512, { cols = 5, rows = 16, seed = 21, tone = [0.78
 
 // Concrete double-roll pan tiles: `waves` across, `rows` courses (v 0 at the eaves' side: each
 // course's lower edge stands proud with a shadowed lap under it). A neutral mid grey: the vertex
-// tint gives black, brown or light grey. Satin. `relief` 0 keeps only the lap's line (for tile
-// geometry that has its own rolls).
+// tint gives black, brown or light grey. Matte (weathered concrete: no glare on a slope in the
+// shade). `relief` 0 keeps only the lap's line (for tile geometry that has its own rolls).
 export function tilesSet(n = 512, { waves = 6, rows = 5, seed = 31, relief = 1 } = {}) {
   const h = field(n);
   const col = rgbField(n);
@@ -140,17 +140,17 @@ export function tilesSet(n = 512, { waves = 6, rows = 5, seed = 31, relief = 1 }
       if (ly > 0.8) v *= 1 - 0.6 * smooth(0.8, 0.9, ly) * (1 - relief * 0.5);
       const lich = smooth(0.66, 0.8, blotNoise(s, t));
       setRgb(col, i, v * (1 + lich * 0.35), v * (1 + lich * 0.32), v * (0.97 + lich * 0.12));
-      rough[i] = 0.72 + 0.1 * tileId - 0.08 * prof + lich * 0.12 + grain * 0.06;
+      rough[i] = 0.88 + 0.05 * tileId - 0.03 * prof + lich * 0.06 + grain * 0.04;
     }
   }
   const ao = cavity(h, n, 10, 0.18);
   return pack(n, { col, h, strength: 0.7, ao, rough });
 }
 
-// Asphalt: a dark binder with fine, low-contrast aggregate (grey and dark stones, a few lighter
-// ones), sand between them and fine pits; rough. (Seen from a person's height a road's stones
-// are small and only a little lighter than the binder.)
-export function asphaltSet(n = 512, { seed = 41, tone = 0.072 } = {}) {
+// Asphalt: a worn grey binder with fine light aggregate (light grey chips, mid and dark stones),
+// sand between them and fine pits; very rough (an old dry road: no sheen). (Seen from a person's
+// height a road's stones are small, the lightest a little lighter than the worn binder.)
+export function asphaltSet(n = 512, { seed = 41, tone = 0.11 } = {}) {
   const h = field(n);
   const col = rgbField(n);
   const rough = field(n);
@@ -167,12 +167,12 @@ export function asphaltSet(n = 512, { seed = 41, tone = 0.072 } = {}) {
       const fine = hash(x, y, seed + 9);
       const sand = hash(x * 3 + 1, y * 5 + 2, seed + 17);
       let v = tone * (0.88 + 0.24 * mottleNoise(s, t)) * (0.94 + 0.12 * sand);
-      if (stone > 0.2) v = v * (1 - stone) + stone * (kind < 0.12 ? 0.15 : kind < 0.55 ? 0.105 : 0.07);
+      if (stone > 0.2) v = v * (1 - stone) + stone * (kind < 0.25 ? 0.22 : kind < 0.6 ? 0.15 : 0.085);
       v *= 0.94 + fine * 0.12;
       const i = y * n + x;
       h[i] = stone * 1.1 + (fine < 0.04 ? -0.7 : 0);
       setRgb(col, i, v, v * 0.99, v * 0.975);
-      rough[i] = 0.9 - stone * 0.1 * (kind < 0.12 ? 1 : 0.4);
+      rough[i] = 0.97 - stone * 0.04 * (kind < 0.25 ? 1 : 0.4);
     }
   }
   const ao = cavity(h, n, 2, 0.35);
@@ -292,7 +292,7 @@ export function paversSet(n = 512, { cols = 4, seed = 71 } = {}) {
   return pack(n, { col, h, strength: 1.3, ao, rough });
 }
 
-// Smooth white render: a fine trowelled grain.
+// Smooth white render: a fine trowelled grain, a cool white.
 export function renderSet(n = 256, { seed = 81 } = {}) {
   const h = field(n);
   const col = rgbField(n);
@@ -303,10 +303,10 @@ export function renderSet(n = 256, { seed = 81 } = {}) {
       const s = x / n;
       const t = y / n;
       const g = grainNoise(s, t);
-      const v = 0.8 + 0.06 * waveNoise(s, t) - 0.05 * g;
+      const v = 0.86 + 0.05 * waveNoise(s, t) - 0.05 * g;
       const i = y * n + x;
       h[i] = g * 1.2;
-      setRgb(col, i, v, v * 0.99, v * 0.97);
+      setRgb(col, i, v, v * 0.995, v * 0.985);
     }
   }
   return pack(n, { col, h, strength: 1.2, ao: null, rough: 0.88 });

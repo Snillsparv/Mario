@@ -1598,9 +1598,9 @@ lane's gentle climb dropped: the road is flat). `world/lane/build.js` builds the
 bank and the boundary, writing into its kit the houses through `world/lane/houses.js` (`house(kit,
 h)` by `h.kit`: `'villa'`, `'chain'`, `'garage'`; `link`, `carport`), the dad's front door through
 `world/lane/door.js` (`frontDoor`, `doorLeaf`) and the props through `world/lane/props.js`
-(`buildProps`); `world/lane/textures.js` paints its three textures of its own (`asphaltTexture`
-and `panTileTexture` 64 × 64, `renderTexture` 32 × 32; the rest reuses the terrain's grass,
-masonry and flagstones, the castle's stone bricks and wood, the skerries' painted planks, the
+(`buildProps`); `world/lane/textures.js` paints its four textures of its own (`asphaltTexture`,
+`brickTexture` and `panTileTexture` 64 × 64, `renderTexture` 32 × 32; the rest reuses the
+terrain's grass, masonry and flagstones, the castle's wood, the skerries' painted planks, the
 trees' leaves).
 
 ```
@@ -1786,11 +1786,17 @@ trees' leaves).
   the double garage): their sides across their arms (he climbs past an arm's root on his own
   side of the post); every lamppost a pole to its cap (`LAMP.top`, 1050), a handstand on top.
   Falls from them count from their foot.
-* **Look** (`LANE_ATMOSPHERE`): the grounds' fog colour and sky dome (`def.sky`), the fog from 6000
-  to 24000, a low warm actor sun 0xffdcb0 (0.66π) from the bake's `LANE_SUN` (−0.16, 0.40, 0.90:
-  low in the south-west, so the villas' street faces and the turning area glow while the chain
-  houses' fronts stand in soft shade), a warm hemisphere. Lighting baked from `LANE_SUN` with a
-  warm tint (ambient 0.6, diffuse 0.55, at most 1.1), with a little painted occlusion: the walls
+* **Look** (`LANE_ATMOSPHERE`): the grounds' sky dome (`def.sky`) paler (`def.skyPale` 0.45:
+  `world/sky.js setPale`, its blue mixed toward its brightest channel, the cartoon clouds kept:
+  the photos' hazy golden-hour sky, W1; AreaSwitch sets it with each area's look, 0 elsewhere)
+  and the fog in its horizon's colour (0xcbdbef) from 6000 to 24000, a low warm actor sun
+  0xffd09c (0.66π) from the bake's `LANE_SUN` (normalize(−0.67, 0.21, 0.71), W1: 45° from +z
+  toward −x and ~12° up, the photos' golden hour, its ~5° lifted for play; so the villas' street
+  faces and the treetops glow while the chain houses' fronts and most of the street stand in
+  soft shade), a warm hemisphere. Lighting baked from `LANE_SUN` with a warm golden tint
+  (ambient 0.64, a little up for the lower sun's weaker light on the ground, diffuse 0.55, at
+  most 1.1, tint (1.1, 1, 0.86)), the lawns an autumn olive (their tints over the green lawn
+  texture: 0xc8a050), the hedges and thujas olive, with a little painted occlusion: the walls
   darker toward their feet and under the eaves, the soffits dark, the drive under the carport
   0.62, hedges and canopies darker underneath, a soft shadow under each car; each villa's brick
   its own shade. Butterflies over the dad's lawn and north_3's flower beds
@@ -1935,8 +1941,9 @@ trees' leaves).
   (`door_rattle`, pitch 0.8); Jonas in the room is out of its reach (`fight.js`: as perched).
   Without the chunk the doors stand shut and solid. Numbers: `LaneGarage.js`'s module constants.
 * **Meshes** (15): `lane-asphalt`, `-grass` (also the bank), `-blocks` (masonry: the terraces'
-  walls, the steps, the kerbs, the corner bed's stones), `-brick` (the castle's stone bricks
-  tinted: the villas' upper floors, the white brick plinths and gable ends), `-render` (white
+  walls, the steps, the kerbs, the corner bed's stones), `-brick` (`brickTexture`: fine running
+  bond, a 75 mm course and a 240 mm brick over its 180 repeat, as the real brick: W1; tinted:
+  the villas' upper floors, the white brick plinths and gable ends), `-render` (white
   render and every flat-coloured detail by vertex tint: frames, panes, doors, poles, the bins,
   the mailbox and its sparrow, the cars, the hoop, the trampoline, the motorhome, the antennas,
   soffits, fascias, the vestibule, the red-leaf tree's crown and its fallen leaves, the shrub,
@@ -3079,7 +3086,7 @@ writes it back, so leaving restores the renderer exactly:
 | `renderer.shadowMap` enabled / type / autoUpdate | false / – / true | true / PCF / true |
 | `sun.castShadow`, `sun.shadow` (map, mapSize, radius, biases, camera box) | off | on, per tier, radius 2.5, bias −4e-4, normalBias 3 |
 | `sun.position`, `sun.target` | `setAtmosphere` | over the focus along `LANE_SUN` |
-| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: (1, 0.82, 0.62) × 3, sky 0xcfe0ff, ground 0x5a6040, 0.9; fog in the haze's horizon colour, 3000 … 45000 |
+| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: 0xffbe82 (1, 0.51, 0.22) × 4.4 (W1: the golden hour), sky 0xdde2e8, ground 0x5a5a3c, 0.9; fog in the haze's horizon colour (0xd0d8e0), 3000 … 45000 |
 | `scene.environment` / intensity / `background` | null / 1 / fog colour | sky PMREM / 1.3 / null (the sky draws) |
 | `renderer.toneMapping` / exposure | none / 1 | none (the output pass) or Neutral (low) / 1.3 |
 | retro filter | the saved setting | off; F2 / R: retro over realistic for this visit (`lookRetro`), never saved |
@@ -3132,7 +3139,7 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   mapping, **never on the sky** (depth 1) and **fading on bright pixels** (`aoLit` 0.35: sunlit
   faces never look dirty); the bloom mixed in at 7 %, the shafts added), tone maps, then
   **grades** (a filmic S-contrast 0.25, split toning 0.35: cool shadows, warm highlights;
-  more turns the Falu red brown in the house's shade; saturation 1.08 as a vibrance: the more
+  more turns the Falu red brown in the house's shade; saturation 1.1 (1.08 before W1) as a vibrance: the more
   saturated a colour already is the less it is boosted, so Jonas's red shirt in the sun keeps
   its colour) and adds the **lens**
   (vignette 0.3; edge colour fringing 0.0015 on high and grain 0.015, kept subtle: its hash
@@ -3296,6 +3303,59 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   built bundle in Chromium (the grounds, AI RACE's storm, the meltdown, retro, the hall, the
   skerries, the lane on high with F2 and on low, Pip's face) with no error and no program
   failing to link.
+
+**Golden hour and materials (W1, the photo match).** The dad's photos (a few minutes after four
+on an early October afternoon) set the light and every surface's tone, by eye and by single mean
+colours measured off them (never a texture, a crop or a pixel in the repo; the comparisons stay
+in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
+* **The sun** (`layout.LANE_SUN`, both looks): normalize(−0.67, 0.21, 0.71), 45° from +z toward
+  −x and ~12° up (the photos' ~5° lifted for play; not above ~14°): low in the west-south-west,
+  behind the dad's house, so his front, the arrival and most of the street stand in shade and
+  the villas' fronts and the west walls glow. Its colour 0xffb878 (~2900 K) at 2.9: brighter,
+  Jonas's red shirt, his back square to the low sun on the turning area, burns out pink in the
+  tone mapping (its chromaticity 14 % off the classic look's at 4.4; the bar is 8 %), so the
+  sunlit walls are a little less hot than in the photos instead. The hemisphere neutral
+  (0xe2e2e0 over 0x5a5850: an olive ground turned the shaded Falu red brown).
+* **The sky** (`LANE_REAL.sky`, `sky.js`): a pale hazy blue (zenith [0.27, 0.37, 0.53], the
+  horizon away from the sun near white [0.68, 0.72, 0.76]), a peach glow rising ~15° from the
+  horizon on the sun's side only (`pow(1 - y, 7) * pow(az, 5)`, [1.3, 0.86, 0.5]), the sun's
+  glow peach-gold, thin cirrus (0.25); `envTint` (1.04, 1, 0.88) (the shade near neutral), the
+  haze 2.5e-5 (the photos see clear to the street's end), the grade's saturation 1.1.
+* **Asphalt** (`texgen/sets.js asphaltSet`, `TEXGEN_VERSION` 3): a worn grey binder (0.11) with
+  light grey chips, very rough (0.96: no sky sheen, which painted the road blue); the catalogue's
+  colour 1.85 and the realistic look's own ground tints (`lane/build.js REAL_GROUND`: the road a
+  light warm grey, the pavement a shade lighter, the drives about half as light: the classic
+  tints are the classic look's); the sealed patches (`patch` 3.1, roughness 0.88, their decals'
+  tint) darker than the road, the gutters' grit darker still.
+* **Lawns**: an autumn olive (the grass set × [1.38, 1.15, 0.55]; the blades the same and
+  shorter, 3.5 to 7: a mown lawn).
+* **Walls and roofs**: Falu red 0x7a2422 (`layout.js FALU`, both looks: a cool deep red, the
+  blue near the green, so it stays red in the house's shade); the white brick lighter (the set's
+  tone 0.9, its mortar a shade darker; tint 0xf0ece8) in **75 mm courses** (`brick` cover 180:
+  11.25 units a course, 36 a brick; the classic look's `brickTexture` the same); the villas'
+  brick an orange red (their tints, both looks; no darker odd bricks: the white brick shares the
+  set); the render a cool white (the set neutral, the villas' tint 0xf8f8f4); the pan tiles
+  matte (the set's roughness ~0.89, no multiplier under it: the north slopes no longer glare);
+  the hedges and thujas olive (their cards' tints); the kerbs' granite lighter (1.35); the
+  lampposts' steel a neutral weathered grey (0x8e8e8c, roughness 0.6, metalness 0.15).
+* **Measured** (`tests/lane-real-browser.test.js`'s points, 960 × 540, high): the zenith (177,
+  191, 228) -> (156, 176, 203); the five views' sky at the top b − r 44-52 (was 64-109); the
+  arrival's Falu red wall (95, 44, 32) -> (92, 44, 27); the white plinth in the house's shade
+  (122, 129, 130) -> (161, 160, 152); Jonas's shirt (246, 59, 52) against the classic look's (220,
+  43, 29): 6.4 % (was 2.4 %; the bar 8 %). The test's sky check is a pale blue now (b > r + 15
+  and b > g: the photos' sky is only 25-40 bluer than red overhead; the old b > r + 40 was a
+  saturated sky's). Shadows: the lower sun's longer ones need no new bias on any tier (no acne
+  seen on low's 1024 map over ±1600, nor on high).
+* **Budgets** (the five views, E2E, the shadow pass and the post chain included): high 143-153
+  draw calls / 912-934k triangles (were 141-152 / 912-928k: the lower sun's longer shadows bring
+  a few more casters into the near box, and a view that now faces the sun draws the shafts' 2
+  calls), mid 128-135 / 468-478k (127-134 / 467-475k), low 90-94 / 202-210k (unchanged); the
+  fight's worst frame high 156 / 926k, mid 133 / 478k, low 95 / 210k; programs and texture bytes
+  unchanged (22 / 59.6 MB on high). The GTA-look test's view away from the sun is on the street
+  facing east now (on the path facing the street the camera, beside him west of the wall, looks
+  into the low sun). Bytes: `main` +199 (the sun, the sky's and the tints' numbers, the classic
+  dome's `setPale`), the lane's chunk +412 (`brickTexture`, `REAL_GROUND`), the worker and
+  `realLook` unchanged within a few bytes.
 
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its

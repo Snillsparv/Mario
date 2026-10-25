@@ -18,7 +18,7 @@
 //                                      // radius (blades fade out from 0.7 of it)
 //
 // A clump: `blades` blades round its foot, each `segs` segments tapering to a tip, bending a
-// little, 5 to 9.5 tall (a mown lawn), dark at the foot and lighter to the tip in the lawn
+// little, 3.5 to 7 tall (a short mown lawn), dark at the foot and lighter to the tip in the lawn
 // texture's greens (look.js matches them), normals up (no dark back faces); the tips sway.
 
 import { Geo } from './geo.js';
@@ -36,7 +36,7 @@ export function grassClump(tier) {
   for (let b = 0; b < G.blades; b++) {
     const a = (b / G.blades) * Math.PI * 2 + R();
     const [ox, oz] = [Math.cos(a) * 2.5, Math.sin(a) * 2.5];
-    const h = 5 + R() * 4.5;
+    const h = 3.5 + R() * 3.5;
     const [fx, fz] = [Math.cos(a + Math.PI / 2) * 1.3, Math.sin(a + Math.PI / 2) * 1.3];
     const [lx, lz] = [Math.cos(a) * 3, Math.sin(a) * 3];
     const at = (t, side) => [ox + fx * (1 - t) * side + lx * t * t, h * t, oz + fz * (1 - t) * side + lz * t * t];
@@ -49,7 +49,7 @@ export function grassClump(tier) {
       const up = [0, 1, 0];
       for (const i of [0, 1, 2, 0, 2, 3]) {
         const k = i < 2 ? k0 : k1;
-        g.rgb(0.15 * k, 0.33 * k, 0.055 * k);
+        g.rgb(0.125 * k, 0.21 * k, 0.018 * k);
         g.sway = (i < 2 ? t0 : t1) ** 2;
         g.vertex(q[i], up, [0, 0]);
       }

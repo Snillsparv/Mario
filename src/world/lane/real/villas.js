@@ -336,7 +336,7 @@ function villaHouse(kit, L, h) {
       if (door) holes.push({ u0: door.u - 55, u1: door.u + 55, v0: door.v, v1: door.v + 220, arch: true });
     }
     const wear = { L, eave: wallH };
-    kit.render.color(0xf0ece4);
+    kit.render.color(0xf8f8f4); // (a cool white)
     wall(kit.render, f, -half, half, 0, Math.min(renderTop, wallH), holes, wear);
     if (renderTop < wallH) {
       kit.brick.color(h.brick ?? 0xb05a3c);

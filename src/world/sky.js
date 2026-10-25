@@ -81,6 +81,7 @@ export function buildSky() {
     stormTime: { value: 0 },
     stormMap: { value: stormMap },
     stormHorizon: { value: new THREE.Color(SKY_STORM_HORIZON_COLOR) },
+    skyPale: { value: 0 }, // (an area's paler sky: setPale)
     // The meltdown (setMeltdown): warning glow, fire, the light's bloom and the white-out.
     meltWarn: { value: 0 },
     meltFire: { value: 0 },
@@ -133,6 +134,11 @@ export function buildSky() {
     setDarkness(t) {
       const k = clamp(t, 0, 1);
       storm.stormT.value = k * k * (3 - 2 * k);
+    },
+    // An area's sky paler (0: the grounds' own .. 1: white): its blue mixed toward its own
+    // brightest channel, the clouds' whites kept (Sparrow Lane's hazy golden hour).
+    setPale(k) {
+      storm.skyPale.value = clamp(k, 0, 1);
     },
     setMeltdown(levels) {
       storm.meltWarn.value = clamp(levels?.warn || 0, 0, 1);
@@ -193,6 +199,7 @@ uniform vec4 stormScroll;
 uniform float stormTime;
 uniform sampler2D stormMap;
 uniform vec3 stormHorizon;
+uniform float skyPale;
 uniform float meltWarn;
 uniform float meltFire;
 uniform float meltGlare;
@@ -205,6 +212,7 @@ ${MELT_SKY_GLSL}`,
     .replace(
       '#include <map_fragment>',
       /* glsl */ `#include <map_fragment>
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b))), skyPale);
 if (stormT > 0.0) {
   vec3 dir = normalize(vSkyDir);
   float up = max(dir.y, 0.0);

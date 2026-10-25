@@ -150,7 +150,7 @@ export function clutter(kit, L, ground) {
         const P = [[x0, z0, 0], [x1, z1, 0], [x1 - n[0] * w1, z1 - n[1] * w1, w1], [x0 - n[0] * w0, z0 - n[1] * w0, w0]];
         const q = P.map(([x, z]) => [x, 0.45, z]);
         const up = (q[1][0] - q[0][0]) * (q[3][2] - q[0][2]) - (q[1][2] - q[0][2]) * (q[3][0] - q[0][0]) < 0;
-        kit.patch.rgb(0.3, 0.29, 0.27);
+        kit.patch.rgb(0.15, 0.145, 0.135);
         if (up) kit.patch.quad(q[0], q[1], q[2], q[3], { n: UP, uvs: q.map((p) => [p[0], p[2]]) });
         else kit.patch.quad(q[1], q[0], q[3], q[2], { n: UP, uvs: [q[1], q[0], q[3], q[2]].map((p) => [p[0], p[2]]) });
         grit = null;

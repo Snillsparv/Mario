@@ -14,22 +14,23 @@ import { makeFbm, makeCells, coverageMips } from '../src/render/real/texgen/nois
 import { TIERS } from '../src/render/real/tier.js';
 import { laneJobs } from '../src/world/lane/real/look.js';
 
-// Each lane job's maps at 64 px (sha1 of albedo, normal, orm), for TEXGEN_VERSION 2 (2: the
-// asphalt's finer, lower-contrast aggregate in a darker binder). Bump the version and these
-// together whenever a generator's output changes.
+// Each lane job's maps at 64 px (sha1 of albedo, normal, orm), for TEXGEN_VERSION 3 (2: the
+// asphalt's finer, lower-contrast aggregate in a darker binder; 3, W1: the photos' light worn
+// asphalt with light chips and no sheen, the white brick lighter, the tiles matte, the render a
+// cool white). Bump the version and these together whenever a generator's output changes.
 const PINNED = {
-  version: 2,
+  version: 3,
   hashes: {
-    'asphalt:{}': '1dcd009fed8e1597',
+    'asphalt:{}': '4b978bdc6cca59ec',
     'grass:{}': '5b13b3937acf55e3',
     'brick:{"cols":3,"jitter":0.12,"mortar":[0.32,0.32,0.31],"rows":7,"seed":23,"tone":[0.5,0.5,0.48]}': 'a4a33d02f9351c8c',
-    'brick:{}': 'a4ed355d50ff7e64',
-    'render:{}': 'a3c36907ad8ac19f',
+    'brick:{}': 'd7e52cdddbc3c498',
+    'render:{}': '7b22c4bd9a85bc0d',
     'boards:{}': '7e263730eff300d0',
-    'tiles:{}': '0cd7c8bb18d84a8e',
+    'tiles:{}': '45d44a788bada083',
     'pavers:{"cols":10,"seed":73}': '7af87ac8440e7746',
     'pavers:{}': '8c283e6c89994825',
-    'tiles:{"relief":0}': '6c7004fd45c9e2a5',
+    'tiles:{"relief":0}': '880063751491c992',
     'granite:{}': '2e69c35083fd3dbd',
     'bark:{}': '98e8c8d71d224033',
     'bark:{"birch":1}': '2d7cafb7589aa3df',
@@ -41,7 +42,7 @@ const PINNED = {
 const CUTOUTS = new Set(['leaves', 'fir']);
 // Plausible linear albedo means (r, g, b) per set, before the catalogue's colour and the tints.
 const MEANS = {
-  asphalt: [[0.05, 0.15], [0.05, 0.15], [0.05, 0.15]], // dark: the material brightens it
+  asphalt: [[0.05, 0.15], [0.05, 0.15], [0.05, 0.15]], // a worn grey: the material brightens it
   grass: [[0.04, 0.15], [0.1, 0.3], [0.01, 0.06]],
   brick: [[0.35, 0.85], [0.35, 0.85], [0.35, 0.85]], // white sand-lime; the grey blocks lower
   render: [[0.7, 0.9], [0.7, 0.9], [0.7, 0.9]],

@@ -1,8 +1,9 @@
 // The realistic look's sky (render/real/RealLook.js): an art-directed analytic gradient for a
-// golden hour, not a physical model. A blue dome paling toward the horizon all round, the warm
-// band hugging the horizon only in the sun's quarter (mixed into the blue above it, peach turns
-// it grey-purple), a white-gold glow round the sun (three lobes) and its disc, warm-lit cirrus
-// wisps. Linear HDR out (the output pass tone maps; on the direct path the renderer does).
+// golden hour, not a physical model. A pale hazy blue dome paling to a near white horizon all
+// round, a peach glow rising from the horizon only in the sun's quarter (W1: as the photos, a
+// little higher than a band), a peach-gold glow round the sun (three lobes) and its disc, thin
+// warm-lit cirrus wisps. Linear HDR out (the output pass tone maps; on the direct path the
+// renderer does).
 //
 //   SKY_GLSL                     // skyGradient(dir) and hazeColor(dir), on the sky uniforms:
 //                                // every realistic material's haze (materials.js) uses the same
@@ -38,9 +39,9 @@ vec3 skyGradient(vec3 v) {
   float mu = dot(v, uSunDir);
   float az = clamp(dot(normalize(vec2(v.x, v.z) + 1e-5), normalize(uSunDir.xz)) * 0.5 + 0.5, 0.0, 1.0);
   vec3 c = mix(uZenith, uHorizonAway, pow(1.0 - y, 2.6));
-  c = mix(c, uHorizonSun, pow(1.0 - y, 10.0) * pow(az, 4.0) * 0.85);
+  c = mix(c, uHorizonSun, pow(1.0 - y, 7.0) * pow(az, 5.0) * 0.85);
   float m = max(mu, 0.0);
-  return c + vec3(1.0, 0.86, 0.62) * (0.10 * pow(m, 6.0) + 0.35 * pow(m, 40.0) + 1.2 * pow(m, 400.0));
+  return c + vec3(1.0, 0.8, 0.55) * (0.10 * pow(m, 6.0) + 0.35 * pow(m, 40.0) + 1.2 * pow(m, 400.0));
 }
 
 vec3 hazeColor(vec3 v) {

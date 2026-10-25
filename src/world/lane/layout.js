@@ -140,11 +140,11 @@ const villa = (id, cx, front, garage, extras) => ({
   ...extras,
 });
 export const VILLAS = [
-  villa('north_1', -4890, -1600, 450, { bays: [-300], windows: [450, -650], brick: 0xb05a3c, roof: 0x2e2c2c }),
-  villa('north_2', -2450, -1650, 400, { arches: [-450], bays: [350], door: -150, brick: 0x9c4a34, roof: 0x2e2c2c }),
-  villa('north_3', 200, -1650, 450, { arches: [-450], bays: [200], balcony: true, brick: 0xa65036, roof: 0x4a3a32 }),
-  villa('north_4', 2770, -1720, 300, { bays: [-350], windows: [350], brick: 0xa85438, roof: 0x4a3a32 }),
-  villa('north_5', 5190, -1930, 420, { arches: [-450], bays: [400], door: -250, doorTint: 0x6a4a32, brick: 0xb4603e, roof: 0x4a3a32 }),
+  villa('north_1', -4890, -1600, 450, { bays: [-300], windows: [450, -650], brick: 0xac6036, roof: 0x2e2c2c }),
+  villa('north_2', -2450, -1650, 400, { arches: [-450], bays: [350], door: -150, brick: 0xa05832, roof: 0x2e2c2c }),
+  villa('north_3', 200, -1650, 450, { arches: [-450], bays: [200], balcony: true, brick: 0xa45c34, roof: 0x4a3a32 }),
+  villa('north_4', 2770, -1720, 300, { bays: [-350], windows: [350], brick: 0xa85a32, roof: 0x4a3a32 }),
+  villa('north_5', 5190, -1930, 420, { arches: [-450], bays: [400], door: -250, doorTint: 0x6a4a32, brick: 0xae6236, roof: 0x4a3a32 }),
 ];
 
 // ---------------------------------------------------------------- the west end
@@ -183,6 +183,10 @@ export const NORTH_WEST_DRIVE = { u0: -825, u1: 1250, w0: 825, w1: 1275 };
 // jump from the drive falls short: its top stands more than 160 over that jump's peak).
 export const MOTORHOME = { cx: -5924, cz: -181, yaw: WEST_YAW, l: 930, w: 360, h: 500 };
 
+// Falu red as the photos have it (W1): a cool, deep red (hue ~2 deg), the blue close to the green,
+// so it stays red in the house's shade instead of turning brown.
+const FALU = 0x7a2422;
+
 // The corner house south of the west leg (south_west): red boards over white brick, a black
 // gable roof, a glazed veranda on its west gable (veranda: along u past the gable, flat roof at
 // `top`); a brown picket fence along its street side and a two-rail fence toward the junction.
@@ -198,7 +202,7 @@ export const SOUTH_WEST = {
   y0: GROUND,
   eave: 412,
   ridge: pitchRidge(412, 1300, 20),
-  boards: 0x983226,
+  boards: FALU,
   roof: 0x2c2c2e,
   door: -300,
   windows: [-750, 150, 600],
@@ -235,7 +239,7 @@ const uS = (x0, x1, x) => (x0 + x1) / 2 - x;
 // The dad's house (south_dad): red boards, the black front door (DOOR: its middle x, width,
 // height; face at z0) in a white frame, six windows, the white brick gable ends with red boards
 // in their triangles, black pan tiles.
-export const DAD = chain('south_dad', -1100, 1600, 1330, 2605, { boards: 0x983226, roof: 0x262628 });
+export const DAD = chain('south_dad', -1100, 1600, 1330, 2605, { boards: FALU, roof: 0x262628 });
 DAD.x0 = -1100;
 DAD.x1 = 1600;
 DAD.z0 = 1330;
@@ -276,7 +280,7 @@ export const GARAGE = {
   under: CARPORT.top - CARPORT.slab,
   fascia: GROUND + 258,
   lining: 10,
-  tints: [0x3e2c24, 0x983226, CARPORT.back], // dark brown, the house's Falu red, yellow
+  tints: [0x3e2c24, FALU, CARPORT.back], // dark brown, the house's Falu red, yellow
   inside: 0x5e4e3e, // the lining's bare boards
   fixed: [[1600, 1720, 0], [1870, 2010, 0], [2155, 2190, 1], [2470, 2500, 2]],
   leaves: [
@@ -621,11 +625,12 @@ export function bankHeight(z, foot) {
 }
 export const villaOf = (plot) => VILLAS.find((v) => v.id === plot.id);
 
-// Golden hour, as in the photographs (an early October afternoon): the sun low in the
-// south-west, so the villas' street faces and the turning area glow while the chain houses'
-// fronts (the dad's too) stand in soft shade.
+// Golden hour, as in the photographs (an early October afternoon, a little after four): the sun
+// low in the west-south-west (45 deg from +z toward -x, ~12 deg up: the photos' 5 deg lifted for
+// play), so the villas' street faces and the treetops glow while the chain houses' fronts (the
+// dad's too) and most of the street stand in soft shade.
 export const LANE_SUN = (() => {
-  const v = { x: -0.16, y: 0.4, z: 0.9 };
+  const v = { x: -0.67, y: 0.21, z: 0.71 };
   const l = Math.hypot(v.x, v.y, v.z);
   return Object.freeze({ x: v.x / l, y: v.y / l, z: v.z / l });
 })();
@@ -634,9 +639,10 @@ const DEG = Math.PI / 180;
 
 // The realistic look (world/lane/real/look.js, render/real/RealLook.js): the same golden hour,
 // physically lit. Tuned by eye against the photographs (never sampled from them).
-//   sky          the analytic sky's colours (linear: a blue zenith paling to a blue-white
-//                horizon away from the sun, a peach band only near the horizon on its side, the
-//                dim ground the environment's lower half shows), its brightness and cirrus, and
+//   sky          the analytic sky's colours (linear: W1, the photos' hazy golden hour: a pale
+//                blue zenith paling to a near white horizon away from the sun, a peach glow
+//                rising from the horizon only on its side, the dim ground the environment's
+//                lower half shows), its brightness and thin cirrus, and
 //                envTint: its light's colour beside its own (the environment only: a camera's
 //                white balance, so the shade, the road and the white plinths read near neutral
 //                as in the photos, not blue; G3)
@@ -650,8 +656,9 @@ const DEG = Math.PI / 180;
 //   probe        the reflection probe's place: over the road in front of the dad's house
 //   tiles        the houses whose roofs are real tile courses (world/lane/real/house.js: the dad's
 //                and his neighbours', close to play; the rest the tile set's normal map)
-//   atmosphere   the actors' look meanwhile (view.setAtmosphere): the sun (1, 0.82, 0.62) x 3
-//                along LANE_SUN, a pale sky and green ground hemisphere for Jonas, the classic
+//   atmosphere   the actors' look meanwhile (view.setAtmosphere): the golden sun (1, 0.48,
+//                0.19) x 2.9 along LANE_SUN (W1; no brighter: Jonas's red shirt, his back to the
+//                low sun, would burn out pink), a neutral sky and ground hemisphere, the classic
 //                objects' fog in the haze's horizon colour, far enough to match it
 //   post         the screen-space effects' settings (render/real/post/*: which of them run is
 //                the tier's level, tier.js): ao, the ambient occlusion from the depth buffer
@@ -676,15 +683,15 @@ const DEG = Math.PI / 180;
 //                only the model, scaled about his grip (player/model/scalePivot.js); his
 //                collider and everything he does stay
 export const LANE_REAL = Object.freeze({
-  sky: Object.freeze({ zenith: [0.095, 0.215, 0.56], horizonAway: [0.56, 0.68, 0.84], horizonSun: [1.25, 0.82, 0.42], ground: [0.08, 0.085, 0.06], intensity: 1, clouds: 0.55, envTint: Object.freeze([1.08, 1, 0.8]) }),
+  sky: Object.freeze({ zenith: [0.27, 0.37, 0.53], horizonAway: [0.68, 0.72, 0.76], horizonSun: [1.3, 0.86, 0.5], ground: [0.08, 0.08, 0.06], intensity: 1, clouds: 0.25, envTint: Object.freeze([1.04, 1, 0.88]) }),
   sunDir: LANE_SUN,
   exposure: 1.3,
   environment: 1.3,
-  haze: 4e-5,
+  haze: 2.5e-5,
   shadow: Object.freeze({ radius: 2.5, bias: -0.0004, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
-  atmosphere: Object.freeze({ fog: 0xbbd6f3, near: 3000, far: 45000, sun: 0xffeace, sunIntensity: 3, sunDir: LANE_SUN, sky: 0xcfe0ff, ground: 0x5a6040, ambientIntensity: 0.9 }),
+  atmosphere: Object.freeze({ fog: 0xd0d8e0, near: 3000, far: 45000, sun: 0xffb878, sunIntensity: 2.9, sunDir: LANE_SUN, sky: 0xe2e2e0, ground: 0x5a5850, ambientIntensity: 0.9 }),
   post: Object.freeze({
     ao: Object.freeze({ radius: 110, intensity: 2.6, bias: 0.12, maxPx: 90, fade: Object.freeze([4500, 9000]) }),
     bloom: Object.freeze({ threshold: 1.1, knee: 0.6, radius: 1 }),
@@ -700,7 +707,7 @@ export const LANE_REAL = Object.freeze({
     split: 0.35,
     shadowTint: Object.freeze([0.97, 0.99, 1.02]),
     highTint: Object.freeze([1.07, 1, 0.9]),
-    saturation: 1.08,
+    saturation: 1.1,
     vignette: 0.3,
     ca: 0.0015,
     grain: 0.015,

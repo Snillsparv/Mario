@@ -73,7 +73,7 @@ export function fbox(g, f, u0, u1, v0, v1, w0, w1, skip = '') {
   for (const [k, q] of Object.entries(faces)) if (!skip.includes(k)) g.quad(q[0], q[1], q[2], q[3]);
 }
 
-const TINT = { brick: 0xece8de, black: 0x1a1b1d, door: 0x161718, curtain: 0xe8e2d6, sill: 0x2a2c2e, fascia: 0x18191b, soffit: 0x2a2624, gutter: 0x1c1d1f, lamp: 0xf2e6c4, handle: 0xa8a49a };
+const TINT = { brick: 0xf0ece8, black: 0x1a1b1d, door: 0x161718, curtain: 0xe8e2d6, sill: 0x2a2c2e, fascia: 0x18191b, soffit: 0x2a2624, gutter: 0x1c1d1f, lamp: 0xf2e6c4, handle: 0xa8a49a };
 const WIN = { w: 150, sill: 170, h: 130, casing: 9, reveal: 10 };
 const DOOR = { w: 116, h: 215 };
 const PLINTH = 135;

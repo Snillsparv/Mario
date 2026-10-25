@@ -62,8 +62,8 @@ const TINT = {
   blue: 0x1e5aa8, // the flags' blue and yellow
   yellow: 0xf6c81c,
   bin: 0x2c302c,
-  hedge: 0x45682c,
-  thuja: 0x2f4a24,
+  hedge: 0x9a9040, // (over the green leaf texture: an olive, W1)
+  thuja: 0x5e5a30,
   rhodo: 0x34522a,
   canopy: 0x5f8a34,
   apple: 0x6a9a3a,
