@@ -80,7 +80,7 @@ import { asphaltTexture, brickTexture, panTileTexture, renderTexture } from './t
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
-import { normals, band, roadPieces, kerbRuns, terraceSpans } from './real/plan.js';
+import { normals, band, roadPieces, kerbRuns, bevelEnds, BEVEL, terraceSpans } from './real/plan.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -508,19 +508,25 @@ function lawnTint(L, piece) {
 // asphalt runs on up into them: a bevel from the road to the drive's edge), along the south edge
 // (the asphalt's edge bevelled up to the lawns) or along the dad's corner bed (its field stones
 // edge the asphalt: its soil's face up to the bed's top, lane/props.js dadsGarden lays the
-// stones along it).
+// stones along it). The bevels closed at their ends (plan.js bevelEnds: an end face, or a fan
+// on the inside of a corner), the drops' in the kerbs' kit, the edges' in both looks.
 function kerbs(kit, L, road, all = kit) {
   const { blocks, cobbles } = kit;
   const G = L.GROUND;
-  for (const { p, q, n: [nx, nz], kind } of kerbRuns(L, road)) {
+  const runs = kerbRuns(L, road);
+  // (At a drive the asphalt runs on up into it, and along the south edge up to the lawn: a bevel
+  // from the road to its edge; the south edge's in both looks, the road's own asphalt: `all`, the
+  // kit drawing everything.)
+  const bevel = (kind) => {
+    const asphalt = kind === 'edge' ? all.asphalt : kit.asphalt;
+    asphalt.color(kind === 'drop' ? TINT.drive : all.look === 'real' ? REAL_GROUND.road : TINT.road);
+    return asphalt;
+  };
+  for (const { kind, pts, facing } of bevelEnds(runs, G)) bevel(kind).poly(pts, { facing, shade: facing[1] > 0 ? 0.95 : 0.8 });
+  for (const { p, q, n: [nx, nz], kind } of runs) {
     if (kind === 'drop' || kind === 'edge') {
-      // (At a drive the asphalt runs on up into it, and along the south edge up to the lawn: a
-      // bevel from the road to its edge; the south edge's in both looks, the road's own
-      // asphalt: `all`, the kit drawing everything.)
-      const D = 22;
-      const asphalt = kind === 'edge' ? all.asphalt : kit.asphalt;
-      asphalt.color(kind === 'drop' ? TINT.drive : all.look === 'real' ? REAL_GROUND.road : TINT.road);
-      asphalt.poly([[p[0] - nx * D, 0.4, p[1] - nz * D], [q[0] - nx * D, 0.4, q[1] - nz * D], [q[0], G, q[1]], [p[0], G, p[1]]], { facing: [-nx, 1, -nz], shade: 0.95 });
+      const D = BEVEL;
+      bevel(kind).poly([[p[0] - nx * D, 0.4, p[1] - nz * D], [q[0] - nx * D, 0.4, q[1] - nz * D], [q[0], G, q[1]], [p[0], G, p[1]]], { facing: [-nx, 1, -nz], shade: 0.95 });
       continue;
     }
     const b = kind === 'kerb' ? blocks : cobbles;

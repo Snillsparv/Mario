@@ -33,8 +33,26 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as lane from '../src/world/lane/layout.js';
 
 const skip = !process.env.E2E && 'browser test: set E2E=1 to run';
+
+// Sparrow Lane's views (lane-local [x, y, z, yaw], yaw 0 along +z, pi/2 along +x) from its
+// layout's anchors (lane/layout.js: APRON, ROAD.line, SIDE_ROAD, LAMPS).
+function laneViews() {
+  const { APRON, ROAD, SIDE_ROAD: S } = lane;
+  const [W0, W1] = ROAD.line;
+  const l = Math.hypot(W1[0] - W0[0], W1[1] - W0[1]);
+  const d = [(W1[0] - W0[0]) / l, (W1[1] - W0[1]) / l];
+  const mouth = (S.x - W0[0]) * d[0] + (S.z - W0[1]) * d[1];
+  const J = [W0[0] + d[0] * (mouth + 1200), W0[1] + d[1] * (mouth + 1200)];
+  const B = ROAD.line[3];
+  return {
+    turn: [APRON.x0 + 200, 0, ROAD.line.at(-1)[1], Math.PI / 2],
+    bend: [B[0], 0, B[1], Math.atan2(W1[0] - B[0], W1[1] - B[1])],
+    junction: [J[0], 0, J[1], Math.atan2(-d[0], -d[1])],
+  };
+}
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let server;
 let browser;
@@ -497,8 +515,11 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
     assert.equal(await page.evaluate(() => window.__game.level.parts.find((p) => p.name === 'sky').object3D.visible), true, 'the sky dome');
     const built = await page.evaluate(() => window.__game.areas.buildMs.lane);
     // From the arrival and four views over the course (with everything in: the cars, the flags,
-    // the trampoline, the birds and butterflies): fewer than 55 draw calls each.
-    const views = { arrival: null, roof: [1750, 370, 2300, -Math.PI / 2], turn: [2000, 0, 0, Math.PI / 2], bend: [-3600, 0, 0, -Math.PI / 2], junction: [-7600, 22, 1500, -1.17] };
+    // the trampoline, the birds and butterflies): fewer than 55 draw calls each. (Since W2 from
+    // the layout's anchors: the carport's roof; on the apron 200 in from the straight's end,
+    // looking east over it; in the bend's middle, looking along it to the west leg; on the west
+    // leg 1200 short of the side road's mouth, looking at the junction and L1.)
+    const views = { arrival: null, roof: [1750, 370, 2300, -Math.PI / 2], ...laneViews() };
     for (const [name, at] of Object.entries(views)) {
       if (at) {
         await page.evaluate(([x, y, z, yaw]) => {

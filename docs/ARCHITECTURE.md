@@ -1653,8 +1653,16 @@ trees' leaves).
   `drop` in front of the drives and the forecourt (a bevel 22 wide from the road up to the
   drive), `bed` along the dad's corner bed (its field stones edge the asphalt) and `edge` along
   the south edge and the apron's south side (`SOUTH_FACING`: an outward normal's z over 0.5; a
-  bevel in the road's own asphalt); their 22 needs no collider (under the knee probe). Out past
-  the junction the road runs on into the fog with the side road (drawn only).
+  bevel in the road's own asphalt); their 22 needs no collider (under the knee probe). Each
+  bevel is closed at its ends (`real/plan.js bevelEnds`, both looks, W2 fixes: the one-sided road
+  and lawn behind an open end showed the sky through the ground at ~28 places where a drop or an
+  edge met a kerb, the bed, a free end or the inside of a corner): where no other bevel carries on
+  over the end (straight on, or round a corner turning its way), on the inside of a corner
+  between two bevels a fan from the corner's top round to both feet (the dad's drive on the
+  apron, the side road's mouth, the bend's south edge), anywhere else an end face from the bevel
+  down to under the road; `lane-corner` probes a point just inside every end from all round in
+  both looks. Out past the junction the road runs on into the fog with the side road (drawn
+  only).
 * **The terraces** (`NORTH`, `PLOTS_N`, `STEPS`, `wallZAt`, `flatZAt`, `backZAt`): the five
   villas' gardens behind a retaining wall of split-face blocks (a paler coping along its top)
   from the pavement up to `TERRACE` 150; the wall's face follows the polyline `NORTH.wall`
@@ -2079,7 +2087,8 @@ trees' leaves).
   `tests/areas.test.js` (through the east door into
   the lane and back with the doors swinging, a stick held through, the door ids, the star exit,
   the leave, GAME OVER); `tests/areas-browser.test.js` (E2E: `?area=lane`, the full walk through
-  it).
+  it; its draw-call views from the layout's anchors since the W2 fixes: on the apron, in the
+  bend, on the west leg looking at the junction and L1).
 
 ### STOMPWATT (Sparrow Lane's boss: `src/objects/laneBoss/*`)
 
@@ -3008,9 +3017,11 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
 * `garden.js`: the mailbox (a chamfered charcoal board box, its roof boards, flap, blank enamel
   plate, framed door, knob, concrete foot) and its carved wooden bird painted blue (white
   breast, yellow beak, glossy eyes, raised wings); **granite kerbs** (`kerbs`: stones ~150 long
-  with joints and a chamfer along every run of the road's edge, the turning area round: `plan.js
+  with joints and a chamfer along every run of the road's edge (each joint backed dark and none
+  at a run's own ends, W2 fixes: the sky showed through them from low down), the turning area round: `plan.js
   kerbRuns` gives both builds the same exact runs; at the drives an asphalt bevel up into them
-  instead, in `patch`; along the corner bed its soil's dark face); mended patches, a sealed
+  instead, in `patch`, closed at its ends as the classic one is, `plan.js bevelEnds`; along the
+  corner bed its soil's dark face); mended patches, a sealed
   crack, manhole and drain covers; the corner bed's field stones (`plan.js bedStones`: lumpy,
   grey or pink, longer along the edge, each its own); the turning area's sign (`turnSign`: a
   galvanized post in a concrete collar, two clamps round it, the plate's aluminium back and

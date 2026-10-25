@@ -1,6 +1,7 @@
 // The R fixes in Sparrow Lane (the dad's round): the kerbs along the road's edge clipped exactly
 // (plan.js kerbRuns: no stub of kerb into the road where two pieces meet, no gap at a corner,
-// none at the drives: the asphalt runs up into them), the straight running on into the turning
+// none at the drives: the asphalt runs up into them; W2 fixes: the bevels and the realistic
+// stones closed at their ends and joints, no sky through the ground), the straight running on into the turning
 // area (no lawn left between them and the dad's drive), the dad's corner bed (the photo's: round
 // field stones right at the asphalt's edge, no kerb there, the red-leaf tree in it, walked onto
 // from the road), the turning area's sign at its corner in both looks (its face as sign.js lays
@@ -17,7 +18,7 @@ import { buildArea } from '../src/world/area.js';
 import { AREA_DEFS } from '../src/world/areas.js';
 import { buildLane } from '../src/world/lane/build.js';
 import { buildLaneDetail } from '../src/world/lane/real/detail.js';
-import { kerbRuns, roadPieces, inside, bedStones } from '../src/world/lane/real/plan.js';
+import { kerbRuns, roadPieces, inside, bedStones, BEVEL } from '../src/world/lane/real/plan.js';
 import { SIGN_TEXT, GLYPHS, signFace } from '../src/world/lane/real/sign.js';
 import { kerbs as realKerbs } from '../src/world/lane/real/garden.js';
 import { Geo } from '../src/world/lane/real/geo.js';
@@ -83,6 +84,74 @@ test('the realistic look\'s kerb stones and the drives\' bevels face up (W2: the
       assert.ok(n[1] >= -1e-6 * Math.hypot(...n), `${name}: a face wound down at ${ax.toFixed(0)}, ${az.toFixed(0)}`);
     }
   }
+});
+
+test('the bevels and the kerbs closed (W2 left the bevels\' cross-sections open where a drop or an edge met a kerb, the bed or the inside of a corner, and the realistic stones\' joints open: the sky through the ground): a point just inside each bevel\'s end and behind each kerb\'s joints and ends, under the ground, hidden from all round in both looks', () => {
+  // (One-sided faces, as drawn: Raycaster culls the back faces of front-sided materials.)
+  const ground = (o) => o.children.filter((m) => m.isMesh && ['lane-asphalt', 'lane-grass', 'lane-blocks', 'lane-cobbles', 'lane-path'].includes(m.name));
+  const real = buildLane(lane, { look: 'real', materials: new Proxy({}, { get: () => new THREE.MeshBasicMaterial() }) });
+  const kit = { granite: new Geo(), core: new Geo(), patch: new Geo() };
+  realKerbs(kit, lane);
+  const soup = (g) => {
+    const b = new THREE.BufferGeometry();
+    b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3));
+    return new THREE.Mesh(b, new THREE.MeshBasicMaterial());
+  };
+  const looks = { classic: ground(classic.object3D), real: [...ground(real.object3D), ...Object.values(kit).map(soup)] };
+  const runs = kerbRuns(lane, roadPieces(lane));
+  const rc = new THREE.Raycaster();
+  let ends = 0;
+  for (const r of runs.filter((r) => r.kind === 'drop' || r.kind === 'edge')) {
+    for (const [s, o] of [[r.p, r.q], [r.q, r.p]]) {
+      ends++;
+      const l = Math.hypot(o[0] - s[0], o[1] - s[1]);
+      const t = [(o[0] - s[0]) / l, (o[1] - s[1]) / l];
+      const n = r.n;
+      for (const [d, k] of [[2, 0.9], [5, 0.85], [5, 0.4], [9, 0.8], [14, 0.6], [19, 0.5]]) {
+        const P = new THREE.Vector3(s[0] + t[0] * 0.5 - n[0] * d, k * (GROUND - ((GROUND - 0.4) * d) / BEVEL), s[1] + t[1] * 0.5 - n[1] * d);
+        for (const [lt, ln, lh] of [[60, 30, 30], [120, 60, 40], [30, 90, 30], [200, 20, 25], [80, 0, 30], [10, 40, 10], [300, 150, 150], [-60, 120, 60], [40, -60, 80], [500, 60, 240]]) {
+          const [vx, vz] = [s[0] - t[0] * lt - n[0] * ln, s[1] - t[1] * lt - n[1] * ln];
+          const V = new THREE.Vector3(vx, lane.groundHeight(vx, vz) + lh, vz);
+          const dist = V.distanceTo(P);
+          rc.set(V, P.clone().sub(V).normalize());
+          for (const [look, meshes] of Object.entries(looks)) {
+            const hit = rc.intersectObjects(meshes, false)[0];
+            assert.ok(hit && hit.distance < dist + 0.05, `${look}: the ${r.kind}'s end at ${s[0].toFixed(0)}, ${s[1].toFixed(0)} open (seen from ${vx.toFixed(0)}, ${vz.toFixed(0)})`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(ends >= 40, `${ends} bevel ends`);
+  // The kerbs too: a point behind the kerb's face at every joint between the realistic stones and
+  // at each run's ends (W2 fixes: the stones' joints, and the gap they left at a run's ends, let
+  // the sky through from low down), seen from the road wherever the camera can be.
+  let probes = 0;
+  for (const r of runs.filter((r) => r.kind === 'kerb')) {
+    const [p, q] = (r.q[0] - r.p[0]) * r.n[1] - (r.q[1] - r.p[1]) * r.n[0] < 0 ? [r.q, r.p] : [r.p, r.q];
+    const l = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const d = [(q[0] - p[0]) / l, (q[1] - p[1]) / l];
+    const count = Math.max(1, Math.round(l / 150));
+    for (let k = 0; k <= count; k++) {
+      const t = k === 0 ? 0.5 / l : k === count ? 1 - 0.5 / l : k / count;
+      for (const back of k === 0 || k === count ? [4, 15, 40] : [40]) {
+        const P = new THREE.Vector3(p[0] + (q[0] - p[0]) * t + r.n[0] * back, GROUND / 2, p[1] + (q[1] - p[1]) * t + r.n[1] * back);
+        for (const [ln, la, lh] of [[150, 0, 60], [300, 30, 60], [100, -40, 20], [500, 0, 80], [200, 60, 40]]) {
+          const [vx, vz] = [P.x - r.n[0] * (ln + back) + d[0] * la, P.z - r.n[1] * (ln + back) + d[1] * la];
+          if (!lane.inBounds(vx, vz)) continue;
+          const V = new THREE.Vector3(vx, lane.groundHeight(vx, vz) + lh, vz);
+          const dist = V.distanceTo(P);
+          rc.set(V, P.clone().sub(V).normalize());
+          for (const [look, meshes] of Object.entries(looks)) {
+            probes++;
+            const hit = rc.intersectObjects(meshes, false)[0];
+            assert.ok(hit && hit.distance < dist + 0.05, `${look}: the kerb ${k === 0 || k === count ? 'open at its end' : 'open at a joint'} at ${P.x.toFixed(0)}, ${P.z.toFixed(0)} (seen from ${vx.toFixed(0)}, ${vz.toFixed(0)})`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(probes > 1000, `${probes} kerb probes`);
 });
 
 test('the straight runs on into the turning area: asphalt and a floor at 0 across the apron\'s open west side, beside the dad\'s drive\'s mouth', () => {

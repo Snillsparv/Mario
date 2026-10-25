@@ -13,6 +13,8 @@
 //   inside(outline, x, z) -> boolean         // inside a convex outline (either winding)
 //   polyArea(outline) -> signed area         // positive counter-clockwise (x right, z up)
 //   kerbRuns(L, road) -> [{ p, q, n, kind }] // the kerbs (below)
+//   bevelEnds(runs, G) -> [{ kind, pts, facing }]  // the drops' and edges' bevels closed at their
+//                                            // ends (below; BEVEL: how far in front they run)
 //   terraceSpans(L) -> [{ plot, spans }]     // the terraces' fronts (below)
 //   bedStones(L) -> [{ x, y, z, s, k, a, pink }]   // the dad's corner bed's field stones (below)
 
@@ -166,6 +168,65 @@ export function kerbRuns(L, road) {
     });
   }
   return runs.map(({ p, q, n, kind }) => ({ p, q, n, kind }));
+}
+
+// The bevels' ends (both builds close them beside their bevels: lane/build.js kerbs, garden.js
+// kerbs). A drop's or an edge's bevel runs from its edge at GROUND down to 0.4 at BEVEL in front of
+// it; where it ends with no other bevel carrying on over its end (at a kerb or the bed, at a free
+// end, on the inside of a corner) its cross-section was open, the one-sided road and lawn behind
+// it showing the sky. Closed there: on the inside of a corner between two bevels a fan from the
+// corner's top round to both feet (in the first one's kind), anywhere else an end face from the
+// bevel down to under the road. -> [{ kind, pts: [[x, y, z]], facing }] each a convex polygon
+// wound counter-clockwise seen from `facing` (its outward direction).
+export const BEVEL = 22;
+
+export function bevelEnds(runs, G) {
+  const ends = runs
+    .filter((r) => r.kind === 'drop' || r.kind === 'edge')
+    .flatMap((run) => [[run.p, run.q], [run.q, run.p]].map(([s, o]) => {
+      const l = Math.hypot(o[0] - s[0], o[1] - s[1]);
+      return { run, s, t: [(o[0] - s[0]) / l, (o[1] - s[1]) / l] }; // (t: into the run)
+    }));
+  const foot = (s, [nx, nz], y = 0.4) => [s[0] - nx * BEVEL, y, s[1] - nz * BEVEL];
+  const wound = (pts, facing) => {
+    const [a, b, c] = pts;
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const f = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    return f[0] * facing[0] + f[1] * facing[1] + f[2] * facing[2] < 0 ? [pts[0], ...pts.slice(1).reverse()] : pts;
+  };
+  const out = [];
+  ends.forEach((e, i) => {
+    const { run: A, s, t } = e;
+    const met = ends.filter((f) => f.run !== A && Math.hypot(f.s[0] - s[0], f.s[1] - s[1]) < 2);
+    // (Straight on, or round a corner turning its way, another bevel covers this end.)
+    const turn = (f) => -(A.n[0] * f.t[0] + A.n[1] * f.t[1]);
+    if (met.some((f) => turn(f) > -1e-3)) return;
+    const inner = met.find((f) => turn(f) <= -1e-3);
+    if (inner) {
+      if (ends.indexOf(inner) < i) return; // (each corner's fan once)
+      const B = inner.run;
+      const a = Math.acos(Math.max(-1, Math.min(1, A.n[0] * B.n[0] + A.n[1] * B.n[1])));
+      const segs = Math.max(1, Math.ceil(a / (Math.PI / 6)));
+      const top = [s[0], G, s[1]];
+      const feet = [];
+      for (let k = 0; k <= segs; k++) {
+        const [nx, nz] = [A.n[0] + (B.n[0] - A.n[0]) * (k / segs), A.n[1] + (B.n[1] - A.n[1]) * (k / segs)];
+        const l = Math.hypot(nx, nz);
+        feet.push(foot(s, [nx / l, nz / l]));
+      }
+      for (let k = 0; k < segs; k++) {
+        const pts = [top, feet[k], feet[k + 1]];
+        const [dx, dz] = [(feet[k][0] + feet[k + 1][0]) / 2 - s[0], (feet[k][2] + feet[k + 1][2]) / 2 - s[1]];
+        const facing = [dx, (BEVEL * BEVEL) / (G - 0.4), dz];
+        out.push({ kind: A.kind, pts: wound(pts, facing), facing });
+      }
+      return;
+    }
+    const facing = [-t[0], 0, -t[1]];
+    out.push({ kind: A.kind, pts: wound([[s[0], G, s[1]], foot(s, A.n), foot(s, A.n, -1), [s[0], -1, s[1]]], facing), facing });
+  });
+  return out;
 }
 
 // The terraces' fronts (both builds: lane/build.js terraces and the lawn's holes, the realistic

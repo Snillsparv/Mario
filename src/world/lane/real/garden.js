@@ -23,7 +23,7 @@
 // up, on a rod at the ridge's street end, side-on to the street.
 
 import { add, mul, norm, cross } from './geo.js';
-import { roadPieces, kerbRuns, bedStones as bedStoneSpots } from './plan.js';
+import { roadPieces, kerbRuns, bevelEnds, BEVEL, bedStones as bedStoneSpots } from './plan.js';
 import { signFace } from './sign.js';
 import { makeRng } from '../../../core/math.js';
 
@@ -169,7 +169,9 @@ export function kerbs({ granite, core, patch }, L) {
       const t1 = (k + 1) / count;
       const at = (t, d, y) => [p[0] + (q[0] - p[0]) * t + n[0] * d, y, p[1] + (q[1] - p[1]) * t + n[1] * d];
       const j = KERB.joint / len;
-      const [a, b] = [t0 + j, t1 - j];
+      // (No joint at the run's own ends: there it meets the next run's stone or a bevel's end
+      // flush, no slit through to the void under the lawn.)
+      const [a, b] = [k ? t0 + j : t0, k + 1 < count ? t1 - j : t1];
       granite.color(drop ? 0x8a8884 : 0xd8d6d2);
       // The road face, the chamfer, the top; the joints' ends in shade.
       granite.quad(at(b, 0, -2), at(a, 0, -2), at(a, 0, top - ch), at(b, 0, top - ch));
@@ -177,9 +179,20 @@ export function kerbs({ granite, core, patch }, L) {
       granite.quad(at(b, ch, top), at(a, ch, top), at(a, w, top), at(b, w, top));
       granite.quad(at(a, 0, -2), at(a, w, -2), at(a, w, top), at(a, 0, top), { shade: 0.6 });
       granite.quad(at(b, w, -2), at(b, 0, -2), at(b, 0, top), at(b, w, top), { shade: 0.6 });
+      // The joint's back, dark (a joint, not the sky through it).
+      if (k + 1 < count) granite.quad(at(t1 + j, w, -2), at(t1 - j, w, -2), at(t1 - j, w, top), at(t1 + j, w, top), { shade: 0.3 });
     }
   };
-  for (const { p, q, n, kind } of kerbRuns(L, roadPieces(L))) {
+  const runs = kerbRuns(L, roadPieces(L));
+  // The drives' bevels closed at their ends (plan.js bevelEnds; the edges' by lane/build.js).
+  patch.color(0x7c7a74, 1.12);
+  for (const { kind, pts, facing } of bevelEnds(runs, G)) {
+    if (kind !== 'drop') continue;
+    const uvs = pts.map(([x, y, z]) => (facing[1] > 0 ? [x, z] : [x * facing[2] - z * facing[0], y]));
+    if (pts.length === 3) patch.tri(pts[0], pts[1], pts[2], { uvs });
+    else patch.quad(pts[0], pts[1], pts[2], pts[3], { uvs });
+  }
+  for (const { p, q, n, kind } of runs) {
     if (kind === 'kerb') {
       stone(p, q, n, false);
       continue;
@@ -191,7 +204,7 @@ export function kerbs({ granite, core, patch }, L) {
       const o = (t, d, y) => [t[0] - n[0] * d, y, t[1] - n[1] * d];
       // (Wound to face up whichever way the run goes: W2's drive side along the apron runs
       // against the street's.)
-      let Q = [o(q, 22, 0.4), o(p, 22, 0.4), o(p, 0, G), o(q, 0, G)];
+      let Q = [o(q, BEVEL, 0.4), o(p, BEVEL, 0.4), o(p, 0, G), o(q, 0, G)];
       const [a, b, c] = Q;
       if ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) < 0) Q = [Q[1], Q[0], Q[3], Q[2]];
       patch.quad(Q[0], Q[1], Q[2], Q[3], { uvs: Q.map((v) => [v[0], v[2]]) });
