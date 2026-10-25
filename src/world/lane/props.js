@@ -14,13 +14,15 @@
 // against the dad's east gable by his car charger; hedges (leafy boxes, a soft crown along their
 // tops) and thuja columns; the big broad-leaved trees off the junction, an apple tree on north_4's
 // terrace, a birch behind the corner house, a red-leaved shrub by the double garage; the dad's
-// garden: the corner bed (field stones, red leaves fallen in it) with the small red-leaved
-// tree (several stems, a round crown of several reds about as high as the eaves), the
-// rhododendron, a potted plant by the door; the dad's mailbox (a black house-shaped box on a
-// post, a brass slot, a door, a blank name plate, the little blue sparrow standing on its ridge;
-// it is the welcome sign); the turning area's sign at the corner bed (a yellow plate, "Vänd-"
-// over "plats", a no-parking sign: world/lane/real/sign.js lays its face out); the cars on the
-// drives (generic, plate-less: a body, a glass cabin under a roof, four wheels, lights);
+// garden: the red-leaf bed (field stones along all four edges, russet leaves fallen in it) with
+// the old crab apple in its middle (a slim pale trunk, four leaning stems, a wide sparse crown of
+// small blobs over the eaves), the rhododendron, the ivy mound, the rose on its stakes, the
+// concrete landing at the door with the blue pot on it; the dad's mailbox (one anthracite
+// pedestal box on the lawn under a gable lid, the flap, a blank plate, the lower door and its
+// lock, the little blue sparrow standing on its ridge; it is the welcome sign); the turning
+// area's sign at the corner bed (a yellow plate, "Vänd-" over "plats", a no-parking sign:
+// world/lane/real/sign.js lays its face out); the cars on the drives (generic, plate-less: a
+// body, a glass cabin under a roof, four wheels, lights);
 // north_4's basketball hoop and the trampoline in north_5's front
 // garden; the motorhome (its cab's windscreen and lights, a door, a stripe, the ladder up its
 // back); flower beds on the terraces; TV antennas on the chain houses' ridges; the corner
@@ -39,10 +41,11 @@
 // the red-leaf tree; a lamppost that were not would get a prism), the bins, the hedges (boxes,
 // their tops walkable), the thujas (steep frustums), the trees' trunks and the shrub, the
 // rhododendron, the corner bed, the turning area's sign's post (a thin prism), the mailbox
-// (a box to its eaves, within the sign's box), each car (its body and its cabin), the hoop's post
-// and its board (a block from the wall: a perch), the trampoline (a prism up to its mat), the
-// motorhome, the fences and the barrier (slabs), the cabinet and the sign's post, the signposts,
-// the side road's houses (houses.js, out of reach).
+// (a box to its eaves over its lid's footprint, within the sign's box), the landing (a slab, a
+// step up), each car (its body and its cabin), the hoop's post and its board (a block from the
+// wall: a perch), the trampoline (a prism up to its mat), the motorhome, the fences and the
+// barrier (slabs), the cabinet and the sign's post, the signposts, the side road's houses
+// (houses.js, out of reach).
 
 import { beamPolys, centroid, hexaPolys, localBoxPolys, orientedBoxPolys, prismPolys, wallFrame } from '../castle/geom.js';
 import { addSignpost } from '../props/decor.js';
@@ -74,11 +77,11 @@ const TINT = {
   ivy: 0x3a4a22,
   rose: 0xa8a848,
   stake: 0x2a2a2a,
-  landing: 0x8a8884,
+  landing: 0x4c4b4c, // (dark grey concrete, as the photos have it: W3 fix)
   shrub: [0xa83030, 0x8a2a2c],
   litter: 0x8a6c5c, // russet leaves fallen in the bed (W3: brown, not red)
   trunk: 0x6a5444,
-  redTrunk: 0x4a3428,
+  redTrunk: 0x948a80, // (the red-leaf tree's pale grey bark, over the render texture: W3 fix)
   stones: 0xa8a49c,
   pinkStone: 0xb89a8e, // (the corner bed's pinkish granite field stones)
   pot: 0x3a6a9a,
@@ -484,7 +487,7 @@ function birch(kit, x, z, base, h, r, seed) {
 // the blue pot on it, and the car charger on the east gable.
 function dadsGarden(kit, layout) {
   const { render, paint, solids } = kit;
-  const { leaves, wood, render: crown, paint: pot } = kit.drawn('plants');
+  const { leaves, render: crown, paint: pot } = kit.drawn('plants');
   const { RED_TREE: T, RHODODENDRON: R, POT: P, DAD, GROUND, BED: B, LANDING: Lg } = layout;
   const bedTop = GROUND + B.raise;
   const outline = layout.bedOutline();
@@ -518,12 +521,16 @@ function dadsGarden(kit, layout) {
   })], 'grass');
   // The tree: the trunk, its four stems from the fork leaning out and up into the crown, a
   // branch off each.
+  // (Its pale grey bark in the render's builder: the wood texture's browns under any tint read
+  // dark brown.)
   const C = T.canopy;
-  wood.color(TINT.redTrunk);
-  wood.lathe(T.x, T.z, [[T.radius + 6, bedTop - 4], [T.radius, bedTop + 60], [T.radius - 8, T.trunkTop], [0, T.trunkTop + 40]], 7, { flat: true });
+  crown.color(TINT.redTrunk);
+  // (Slim, about 22 at the foot inside the pole's 28; rounded off at the pole's top, where Jonas
+  // stands: W3 fix.)
+  crown.lathe(T.x, T.z, [[T.radius - 4, bedTop - 4], [T.radius - 8, bedTop + 60], [T.radius - 14, T.trunkTop], [8, T.trunkTop + 15], [0, T.y1]], 7, { flat: true });
   for (const [x, y, z, w] of redTreeStems(T)) {
     const l = Math.hypot(x - T.x, z - T.z);
-    wood.solid(beamPolys([T.x, GROUND + T.fork, T.z], [x, y, z], [(z - T.z) / l, 0, (T.x - x) / l], w, w));
+    crown.solid(beamPolys([T.x, GROUND + T.fork, T.z], [x, y, z], [(z - T.z) / l, 0, (T.x - x) / l], w, w));
   }
   // The crown: small blobs spread wide over the stems (gaps between them: it is sparse), in
   // dark purple-reds and browns, darker underneath; five-sided, like the ivy's and the rose's
@@ -671,7 +678,10 @@ function mailbox(kit, layout) {
   paint.color(TINT.brass);
   paint.panel(front, [[-20, h - 82], [-14, h - 82], [-14, h - 74], [-20, h - 74]], 1);
   sparrow(paint, f.at(0, M.ridge - 5, bd / 2 - 10), f.dir(1, 0, 0));
-  solids.solid([box.map((p) => at(p, M.eaves)), ...box.map((p, i) => [at(p, GROUND), at(box[(i + 1) % 4], GROUND), at(box[(i + 1) % 4], M.eaves), at(p, M.eaves)])], 'wood');
+  // (Solid to its eaves over the lid's footprint, the overhang with it: a box 60 x 45 alone made
+  // the single jump onto it a precision one.)
+  const lid = [f.at(-bw / 2 - ov, 0, bd / 2 + ov), f.at(bw / 2 + ov, 0, bd / 2 + ov), f.at(bw / 2 + ov, 0, -bd / 2 - ov), f.at(-bw / 2 - ov, 0, -bd / 2 - ov)];
+  solids.solid([lid.map((p) => at(p, M.eaves)), ...lid.map((p, i) => [at(p, GROUND), at(lid[(i + 1) % 4], GROUND), at(lid[(i + 1) % 4], M.eaves), at(p, M.eaves)])], 'wood');
 }
 
 // The little blue sparrow, its belly on the ridge at o, facing horizontal `fwd`: a blue body

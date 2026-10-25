@@ -197,13 +197,17 @@ test('welcome: out of the front door down the path to the street (its three coin
   const h = hero(e.x, e.y, e.z, e.yaw);
   h.walk([[e.x, 520]]);
   assert.equal(h.coins(), 3, 'the path');
+  // (Its collider is the lid's footprint, 76 x 61: walking up at 0.4 to 160 short of its middle,
+  // a jump south lands on it for pushes about 0.53 to 0.63; three across that window's middle.)
   const M = lane.MAILBOX;
-  const m = hero(M.x, GROUND, M.z - 260, S);
-  m.walk([[M.x, M.z - 160]], 0.4);
-  jump(m, S, { push: 0.6, after: 0 });
-  m.rest();
-  assert.ok(Math.abs(m.at().y - M.eaves) < 1 && m.p.grounded, `on the mailbox: ${JSON.stringify(m.at())}`);
-  assert.equal(m.coins(), 1, "the mailbox's roof");
+  for (const push of [0.55, 0.58, 0.61]) {
+    const m = hero(M.x, GROUND, M.z - 260, S);
+    m.walk([[M.x, M.z - 160]], 0.4);
+    jump(m, S, { push, after: 0 });
+    m.rest();
+    assert.ok(Math.abs(m.at().y - M.eaves) < 1 && m.p.grounded, `on the mailbox (push ${push}): ${JSON.stringify(m.at())}`);
+    assert.equal(m.coins(), 1, "the mailbox's roof");
+  }
 });
 
 test('west: along the street (five coins), a hop onto north_2\'s wall top (three), north_3\'s steps (three) and its wall top (three), up the side yard between them (three)', () => {

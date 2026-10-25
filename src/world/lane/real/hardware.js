@@ -223,15 +223,16 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
   }
   if (dad) {
     // The outdoor socket and the hose reel on the east gable by the drive (W3: past the ivy at the
-    // corner, short of the bins).
+    // corner, short of the car charger: the socket at z 1405, the reel at 1435, clear of the
+    // charger's box, cable and holster from 1470 on).
     const side = F.face('left').f;
-    const u = h.cz - 1500;
+    const u = h.cz - 1405;
     kit.enamel.color(0xe8e6e0);
     fbox(kit.enamel, side, u - 6, u + 6, 150, 166, 2, 6, 'k');
     paint.color(BLACK);
     fbox(paint, side, u - 4, u + 4, 152, 160, 6, 6.6, 'k');
     // The reel: a green drum on a bracket, its hose wound on it, a loop hanging.
-    const [x, , z] = side.at(u + 30, 0, 22);
+    const [x, , z] = side.at(u - 30, 0, 22);
     const out = side.out;
     paint.color(0x2f6a3a);
     const c = [x, y0 + 105, z];
@@ -240,9 +241,9 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
     kit.tyre.color(0x1d4a28);
     kit.tyre.tube([c[0] - axis[0] * 9, c[1], c[2] - axis[2] * 9], [c[0] + axis[0] * 9, c[1], c[2] + axis[2] * 9], 22, 22, 12);
     paint.color(0x2f6a3a);
-    fbox(paint, side, u + 24, u + 36, 70, 125, 0, 6, 'k');
+    fbox(paint, side, u - 36, u - 24, 70, 125, 0, 6, 'k');
     void out;
-    // Two pot plants on the inner sills of the windows each side of the door.
+    // Two pot plants on the inner sills of the third and fourth windows from the east.
     for (const wu of [h.windows[2], h.windows[3]]) {
       if (wu === undefined) continue;
       const W = h.win ?? CHAIN.win;

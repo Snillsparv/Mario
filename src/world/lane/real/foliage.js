@@ -179,7 +179,7 @@ export function plants(kit, L) {
   const rh = L.RHODODENDRON;
   const rhodo = [[0.9, 1, 0.8], [0.72, 0.82, 0.66], [0.98, 1.04, 0.82], [0.85, 0.95, 0.75], [1.5, 1.35, 0.6]].map(([r, g, b]) => [r * 0.7, g * 0.72, b * 0.62]);
   const lumps = [
-    { c: [rh.x, G + rh.h * 0.45, rh.z], r: [rh.rx, rh.h * 0.58, rh.rz * 0.8], n: 560 },
+    { c: [rh.x, G + rh.h * 0.36, rh.z], r: [rh.rx, rh.h * 0.66, rh.rz * 0.8], n: 560 }, // (a dome on the ground, not a ball)
     { c: [rh.x - rh.rx * 0.15, G + rh.h * 0.34, rh.z - rh.rz * 0.55], r: [rh.rx * 0.72, rh.h * 0.4, rh.rz * 0.42], n: 140 },
     { c: [rh.x + rh.rx * 0.2, G + rh.h * 0.6, rh.z + rh.rz * 0.42], r: [rh.rx * 0.7, rh.h * 0.42, rh.rz * 0.42], n: 120 },
   ];
@@ -310,9 +310,72 @@ function birch(kit, R, x, z, base, h, r, seed) {
   canopy(kit, R, blobs, { size: 70, cell: CELL.hedge, tints: yellow, density: 0.85 * (DENSE[kit.tier] ?? 1), below: -0.6, sway: 9, core: null });
 }
 
+// The red tree's bark tint over the bark set's dark brown (linear, a pale grey a little warm),
+// and its lichen: a colour per vertex from a smooth hash of where it is (paler grey-green
+// patches, a few darker), no stream of its own.
+const RED_BARK = [2.35, 2.2, 2.7];
+function lichen(p) {
+  const w = Math.sin(p[0] * 0.071 + p[1] * 0.043) * Math.sin(p[2] * 0.067 - p[1] * 0.029 + 1.3) + 0.5 * Math.sin(p[1] * 0.11 + p[0] * 0.05 - p[2] * 0.04);
+  if (w > 0.55) return [1.1, 1.18, 1.0]; // (grey-green lichen)
+  if (w < -0.6) return [0.66, 0.64, 0.62];
+  return 1 + 0.12 * w;
+}
+
+// A crooked limb through `pts` (its radii `rs` at each) in one skin: each ring square to the
+// bend's bisector and carried along the limb on one frame, so no wedge of sky opens at a kink;
+// the bark's uvs in world units (round it, along it); `tip`: its end rounded off (no open
+// end); `tone(p)`: a colour (a number or [r, g, b]) at each vertex over the Geo's tint.
+function limb(g, pts, rs, sides, { tip = false, tone = null } = {}) {
+  const n = pts.length;
+  const dirs = [];
+  for (let k = 0; k + 1 < n; k++) dirs.push(norm(sub(pts[k + 1], pts[k])));
+  const tan = pts.map((_, k) => (k === 0 ? dirs[0] : k === n - 1 ? dirs[n - 2] : norm(add(dirs[k - 1], dirs[k]))));
+  let u = norm(cross(tan[0], Math.abs(tan[0][1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
+  const len = [0];
+  for (let k = 1; k < n; k++) len.push(len[k - 1] + Math.hypot(...sub(pts[k], pts[k - 1])));
+  const rings = pts.map((c, k) => {
+    const t = tan[k];
+    if (k) u = norm(sub(u, mul(t, dot(u, t))));
+    const v = cross(t, u);
+    const [a, b] = [Math.max(0, k - 1), Math.min(n - 1, k + 1)];
+    const lean = (rs[a] - rs[b]) / (len[b] - len[a] || 1);
+    return Array.from({ length: sides + 1 }, (_, i) => {
+      const ang = (Math.PI * 2 * i) / sides;
+      const d = add(mul(u, Math.cos(ang)), mul(v, Math.sin(ang)));
+      const p = add(c, mul(d, rs[k]));
+      return { p, n: norm(add(d, mul(t, lean))), s: tone ? tone(p) : 1 };
+    });
+  });
+  const step = (Math.PI * 2 * rs[0]) / sides;
+  for (let k = 0; k + 1 < n; k++) {
+    for (let i = 0; i < sides; i++) {
+      const q = [rings[k][i], rings[k][i + 1], rings[k + 1][i + 1], rings[k + 1][i]];
+      g.quad(q[0].p, q[1].p, q[2].p, q[3].p, { n: q.map((v) => v.n), shade: q.map((v) => v.s), uvs: [[i * step, len[k]], [(i + 1) * step, len[k]], [(i + 1) * step, len[k + 1]], [i * step, len[k + 1]]] });
+    }
+  }
+  if (!tip) return;
+  // (The end: a ring part way round a dome, its apex.)
+  const t = tan[n - 1];
+  const r = rs[n - 1];
+  const last = rings[n - 1];
+  const c = add(pts[n - 1], mul(t, r * 0.55));
+  const apex = add(pts[n - 1], mul(t, r * 0.9));
+  const mid = last.map((e) => {
+    const d = norm(sub(e.p, pts[n - 1]));
+    return { p: add(c, mul(d, r * 0.78)), n: norm(add(d, mul(t, 0.8))), s: e.s };
+  });
+  const L0 = len[n - 1];
+  for (let i = 0; i < sides; i++) {
+    const q = [last[i], last[i + 1], mid[i + 1], mid[i]];
+    g.quad(q[0].p, q[1].p, q[2].p, q[3].p, { n: q.map((v) => v.n), shade: q.map((v) => v.s), uvs: [[i * step, L0], [(i + 1) * step, L0], [(i + 1) * step, L0 + r * 0.6], [i * step, L0 + r * 0.6]] });
+    g.tri(mid[i].p, mid[i + 1].p, apex, { n: [mid[i].n, mid[i + 1].n, t], shade: [mid[i].s, mid[i + 1].s, mid[i].s], uvs: [[i * step, L0 + r * 0.6], [(i + 1) * step, L0 + r * 0.6], [(i + 0.5) * step, L0 + r]] });
+  }
+}
+
 // The dad's red-leaf tree in the middle of the bed (W3: an old purple-leaved crab apple): its
-// pale grey-brown trunk (the climbable pole) forking into four leaning stems, limbs from them up
-// into the crown and fine twigs out through it; a wide, sparse crown of small dark purple-red and
+// pale grey trunk with lichen on it (the climbable pole) forking into four leaning stems and on
+// up as a slim leader that forks again at the pole's top, limbs from them up into the crown and
+// fine twigs out through it; a wide, sparse crown of small dark purple-red and
 // brown sprays (the sky shows through; open over the trunk's top, where Jonas stands). Its own
 // streams (the plants' R stepped on as before, so every plant after it keeps its place).
 // (The crown's sprays per tier: their size, their density over the blobs' skins.)
@@ -326,34 +389,40 @@ function redTree(kit, R, L) {
   const fork = [T.x + 8, G + T.fork, T.z - 6];
   const S = makeRng(7331);
   const fine = kit.tier !== 'low';
-  kit.bark.color(0xb4a69a); // (pale grey-brown, lichen on it: the bark set's grey)
-  // The trunk up to the fork, leaning a little; on from it to the pole's top (where Jonas stands
-  // on it) a stub of the leader.
-  kit.bark.tube([T.x, bedTop - 4, T.z], fork, T.radius + 6, T.radius + 1, 8);
+  // (W3 fix: pale grey, lichen on it, as the photos have it: over the bark set's dark brown a
+  // light tint, greener and paler in patches; slimmer, about 22 at the foot: the pole's radius
+  // 28 is the post's plus 6, as a lamppost's.)
+  kit.bark.rgb(...RED_BARK);
+  const sides = fine ? 8 : 7;
+  // The trunk, a little crooked, swelling at the fork and on up as the leader (thinner at once:
+  // one stem among the others) to the pole's top, where Jonas stands, rounded off there: one skin.
   const top = [T.x + 2, T.trunkTop + 20, T.z + 4];
-  kit.bark.tube(fork, top, T.radius - 3, 12, 7, { caps: true });
-  // Four stems leaning out from the fork, each in three pieces bending up toward its end (a
-  // little crooked), a side branch off each out toward the crown's rim.
+  limb(kit.bark, [[T.x, bedTop - 4, T.z], [T.x - 3, bedTop + 50, T.z + 2], [T.x + 3, G + 170, T.z - 3], fork, [T.x + 6, fork[1] + 40, T.z - 3], [T.x + 3, G + 370, T.z + 2], top], [24, 20.5, 18.5, 18, 12.5, 11, 9.5], sides, { tip: true, tone: lichen });
+  // Four stems leaning out from inside the fork, each bending up toward its end (a little
+  // crooked) in one skin, its end rounded; a side branch off each out toward the crown's rim.
   const ends = redTreeStems(T);
   const rims = [];
+  const inside = [fork[0], fork[1] - 18, fork[2]];
   for (const [x, y, z, w] of ends) {
     const at = (t, lift) => [fork[0] + (x - fork[0]) * t + (S() - 0.5) * 24, fork[1] + (y - fork[1]) * (t * t * 0.6 + t * 0.4) - lift, fork[2] + (z - fork[2]) * t + (S() - 0.5) * 24];
     const [a, b] = [at(0.35, 10), at(0.7, 14)];
-    kit.bark.tube(fork, a, w + 4, w + 1.5, 7);
-    kit.bark.tube(a, b, w + 1.5, w, 7);
-    kit.bark.tube(b, [x, y, z], w, w * 0.6, 6);
+    limb(kit.bark, [inside, a, b, [x, y, z]], [w * 0.72, w * 0.6, w * 0.48, w * 0.4], fine ? 7 : 6, { tip: true, tone: lichen });
     const out = [x - T.x, z - T.z];
     const l = Math.hypot(out[0], out[1]);
     const turn = (S() - 0.5) * 1.4;
     const [ox, oz] = [(out[0] * Math.cos(turn) - out[1] * Math.sin(turn)) / l, (out[0] * Math.sin(turn) + out[1] * Math.cos(turn)) / l];
     const tip = [b[0] + ox * T.canopy.r * 0.45, b[1] + 60 + S() * 80, b[2] + oz * T.canopy.r * 0.45];
-    kit.bark.tube(b, tip, w * 0.5, 2.5, 5);
+    kit.bark.tube(b, tip, w * 0.3, 2.5, 5);
     rims.push(tip);
   }
-  // (Three short twigs round the leader's top, a collar of them, not a sawn stub.)
+  // (Three branches from the leader's top up and out into the crown's middle, bending as they
+  // go: the leader forks again there, not a sawn stub with spikes.)
   for (let k = 0; k < 3; k++) {
     const a = k * 2.1 + S();
-    kit.bark.tube(top, [top[0] + Math.sin(a) * 55, top[1] + 40 + S() * 30, top[2] + Math.cos(a) * 55], 4, 1, 4);
+    const lift = S();
+    const [dx, dz] = [Math.sin(a), Math.cos(a)];
+    const p0 = [top[0], top[1] - 14, top[2]];
+    limb(kit.bark, [p0, [p0[0] + dx * 55, p0[1] + 95, p0[2] + dz * 55], [p0[0] + dx * 150, p0[1] + 210 + lift * 60, p0[2] + dz * 150]], [7.5, 5, 2.5], fine ? 6 : 5, { tip: true, tone: lichen });
   }
   // Limbs from each stem's end up and out into the blobs nearest it, twigs out through each blob.
   const blobs = redTreeCrown(T);
@@ -361,7 +430,7 @@ function redTree(kit, R, L) {
     let best = ends[0];
     for (const t of ends) if (Math.hypot(t[0] - b.c[0], t[2] - b.c[2]) + Math.abs(t[1] - b.c[1]) < Math.hypot(best[0] - b.c[0], best[2] - b.c[2]) + Math.abs(best[1] - b.c[1])) best = t;
     const [x, y, z, w] = best;
-    kit.bark.tube([x, y, z], b.c, w * 0.55, 3.2, fine ? 5 : 4);
+    kit.bark.tube([x, y, z], b.c, w * 0.34, 2.6, fine ? 5 : 4);
     // (Each twig from a point along the limb, in two pieces, bent, out past the blob's skin
     // round it: a fine mesh, not spokes; on low two, straight.)
     for (let k = 0; k < (TWIGS[kit.tier] ?? TWIGS.high); k++) {

@@ -339,7 +339,7 @@ DAD.door.u = uS(DAD.x0, DAD.x1, DAD.door.x);
 DAD.win = { w: 160, h: 202, sill: 145 };
 DAD.windows = [1228, 623, 205, -67, -378].map((x) => uS(DAD.x0, DAD.x1, x));
 DAD.backWindows = [130, 560].map((x) => x - DAD.cx);
-DAD.brick = { front: [[uS(DAD.x0, DAD.x1, DAD.x1), uS(DAD.x0, DAD.x1, 1330)], [uS(DAD.x0, DAD.x1, -650), uS(DAD.x0, DAD.x1, DAD.x0)]] };
+DAD.brick = { front: [[uS(DAD.x0, DAD.x1, DAD.x1), uS(DAD.x0, DAD.x1, 1330)], [uS(DAD.x0, DAD.x1, -470), uS(DAD.x0, DAD.x1, DAD.x0)]] }; // (the west pier from the west window's outer edge: W3 fix)
 DAD.gableEnds = true; // white brick to the eaves at both ends
 DAD.pipes = { front: [-1, 1], back: [] }; // (the back eave's run into the wings)
 DAD.eaveLip = 20; // (its roof is steeper than a ledge's top: lane/houses.js chain())
@@ -463,7 +463,7 @@ export const TURN_SIGN = { x: 1520, z: SOUTH_EDGE + 55, yaw: -Math.PI / 2, top: 
 // The rhododendron out from the west pier (an ellipsoid, rx along the street, rz across, h
 // high; solid), the ivy mound over the north-east pier and round the corner (drawn only), the
 // rose on three stakes beside the mailbox (drawn only), the pot on the landing.
-export const RHODODENDRON = { x: -650, z: 1020, rx: 240, rz: 330, h: 390 };
+export const RHODODENDRON = { x: -650, z: 1020, rx: 210, rz: 330, h: 330 }; // (W3 fix: under the gutter, the west pier showing over it, as photos 19 and 41 have it)
 export const IVY = { x: 1520, z: 1205, rx: 210, rz: 130, h: 420 };
 export const ROSE = { x: 745, z: 525, r: 70, h: 250 };
 export const POT = { x: 1118, z: 1292 };

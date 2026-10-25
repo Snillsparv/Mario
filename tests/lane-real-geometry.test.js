@@ -7,7 +7,8 @@
 // mailbox, the bushes, the walls' steps), the cars standing on their wheels inside their
 // colliders (their bodies and tyres closed: no hole to see through), every tyre's patch on the
 // drive's drawn surface and each car level on it, the bonnets and roofs on the colliders Jonas
-// stands on, no plate or badge, the bird on the mailbox's ridge; the double garage's rust under
+// stands on, no plate or badge, the bird on the mailbox's ridge; the red-leaf tree's pale trunk
+// inside its pole, its leader rounded off at the pole's top (W3 fix); the double garage's rust under
 // its downpipes' clips and the balcony's geraniums (not on low); the store room's things behind
 // the garage doors (D1: in the room, clear of its middle, painted dim, the tube glowing, each
 // tier's share); every tier within its triangle
@@ -368,6 +369,26 @@ test('the cars stand on their wheels inside their colliders; the bird stands on 
   }
   assert.ok(bins.street.size >= 3 && bins.drive.size >= 5 && bins.back.size >= 3 && bins.path.size >= 5, `stones along the street (${bins.street.size}), the drive (${bins.drive.size}), the back (${bins.back.size}), the path (${bins.path.size})`);
   assert.equal(bins.kerb, 0, 'no kerb along the bed');
+});
+
+test('the red-leaf tree (W3 fix): its trunk pale (a light tint over the bark set\'s dark brown) and inside the pole up to the fork, as a lamppost\'s post is; its leader rounded off at the pole\'s top, where Jonas stands', () => {
+  const T = lane.RED_TREE;
+  for (const [tier, d] of [['high', high], ['low', low]]) {
+    const { position: p, color: c } = mesh(d, 'bark');
+    let [n, tint, wide, top] = [0, 0, 0, -Infinity];
+    for (let i = 0; i < p.length; i += 3) {
+      const r = Math.hypot(p[i] - T.x, p[i + 2] - T.z);
+      if (r < 40 && p[i + 1] < lane.GROUND + T.fork - 30) {
+        n++;
+        tint += (c[i] + c[i + 1] + c[i + 2]) / 3;
+        wide = Math.max(wide, r);
+      }
+      if (r < 16) top = Math.max(top, p[i + 1]);
+    }
+    assert.ok(n > 0 && wide <= T.radius, `${tier}: the trunk within the pole's ${T.radius} (${wide.toFixed(1)})`);
+    assert.ok(tint / n > 1.5, `${tier}: the trunk's tint pale over the dark bark (${(tint / n).toFixed(2)})`);
+    assert.ok(Math.abs(top - T.y1) <= 12, `${tier}: the leader's top at the pole's (${top.toFixed(1)} vs ${T.y1})`);
+  }
 });
 
 test('the cars\' bodies and tyres are closed: every edge of each shared by exactly two of its faces, once each way', () => {

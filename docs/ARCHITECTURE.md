@@ -1718,12 +1718,13 @@ trees' leaves).
   30, the rim at 393, so a standing jump at the front wall still grabs the eave: since a ledge's
   top must be flatter than 26°, `DAD.eaveLip` puts a flat lip 20 deep at the eave in front of
   the wall, the gutter's, the one collider for it), white brick piers to the eaves at both ends
-  of the front (`DAD.brick`: u ranges per face; `real/plan.js brickSpans` splits a face at them,
+  of the front (the east one from 1330 under the ivy, the west one from the west window's outer
+  edge at −470; `DAD.brick`: u ranges per face; `real/plan.js brickSpans` splits a face at them,
   both looks) and on both gable ends; on the front, east to west: a window, the black board door
   (`DAD.door`, x 1005, 150 wide, its foot `sill` 20 up on the **landing** in front of it,
-  `LANDING`: a concrete slab, solid, a step up from the path, cobbles along its front edge, the
-  blue pot on its east end), its glazed side light west of it in one dark frame and the lantern
-  beyond, then four windows; every window (`DAD.win`: its opening 160 × 202 from 145 over the
+  `LANDING`: a dark grey concrete slab, solid, a step up from the path, cobbles along its front
+  edge, the blue pot on its east end), its glazed side light west of it in one dark frame and
+  the lantern beyond, then four windows; every window (`DAD.win`: its opening 160 × 202 from 145 over the
   floor) two casements of three lights; at the back two windows onto the patio
   (`DAD.backWindows`, the back face's own u). The door: `door.js`, one leaf of near-black
   vertical boards with a bronze kick plate and a silver lever, hinged on its left seen from the
@@ -1752,7 +1753,8 @@ trees' leaves).
   like the ivy's and the rose's), in dark purple-reds and browns, over the street and the eaves, open over the trunk's top where Jonas stands; the flip onto
   the roof from 640 off the wall), the ivy mound over the north-east pier and round the corner
   (`IVY`, `real/plan.js ivyMasses`, drawn only), the rhododendron out from the west pier
-  (`RHODODENDRON`: rx 240 along the street, rz 330, 390 high; solid, an eight-sided elliptic
+  (`RHODODENDRON`: rx 210 along the street, rz 330, 330 high, under the gutter with the west pier
+  showing over it; solid, an eight-sided elliptic
   prism a little inside it); the two wheelie bins against the east gable (`BINS`, solid to 182:
   they move, see "The bins" below) under the car charger (`DAD.charger`: a dark box, a round
   green status light on its face, its cable hanging in a loop from its underside to the plug in
@@ -1788,7 +1790,11 @@ trees' leaves).
   on north_3's and north_4's terraces (`FLOWER_BEDS`: tufts of leaves with pink and white
   flowers, drawn only), the mailbox (W3: one anthracite pedestal box standing on the lawn, 60 ×
   45, its eaves at 182 under a gable lid to 204, its gable toward the street: the letter flap
-  under the lid, a blank plate in the gable, the lower door with its lock; solid to its eaves;
+  under the lid, a blank plate in the gable, the lower door with its lock; solid to its eaves
+  over the lid's footprint, 76 × 61 (its 8 of overhang all round: the box alone made the single
+  jump onto it a precision one; it is still a small perch, 160 high, too low for a ledge grab to
+  help: walking up at 0.4 to 160 short of it, a jump lands on it for stick pushes of about 0.53
+  to 0.63, the routes test three across that);
   the little blue sparrow standing on its ridge at the street end: a blue body over a white
   belly, a round head, dark eyes, an orange beak, folded wings, its tail fanned wide),
   the **cars** (`CARS`, `CAR_KINDS`: generic and plate-less, an SUV, crossovers, hatchbacks, an
@@ -2941,8 +2947,14 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   blobs from the classic builder's own seeded stream, so every plant stands where its classic
   blob stood): the hedges (single cards over their faces and tops), the thujas, the junction's
   trees, the apple tree (apples), the birches (white bark, an airy yellowing canopy), the shrub,
-  the dad's red-leaf tree (W3: a pale trunk forking into four bending stems, limbs from them into
-  the crown's blobs and fine bent twigs from the limbs, 14 a blob on high, forked, 9 on mid, 2
+  the dad's red-leaf tree (W3: a pale grey trunk with lichen on it, 24 at its foot, inside the
+  pole's 28 as a lamppost's post is, forking into four bending stems and on up as a slim leader
+  to the pole's top, rounded there, where it forks again into three branches up into the crown;
+  the trunk, each stem and each of those branches one skin (`limb`: rings square to each bend's
+  bisector on one frame carried along it, so no wedge of sky shows at a kink; each end rounded
+  off), the bark set's dark brown under a pale tint and a lichen tone per vertex; in the classic
+  look a slim lathe rounded at the pole's top, pale grey in the render's builder; limbs from the
+  stems into the crown's blobs and fine bent twigs from the limbs, 14 a blob on high, forked, 9 on mid, 2
   straight on low; sparse sprays of dark purple-red and brown, no core; russet fallen leaves on
   the bed, fewer on mid and low, and its ground cover: low tufts of brown-red and green leaves,
   their own seeded streams), the rhododendron down to the ground (three lumps along it, dark), the
@@ -3034,7 +3046,8 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   `REAL_DRAWN` 'antennas'; the dad's clamped to his east gable's apex on a dark bracket board,
   `ANTENNAS[].gable`), air bricks in the plinths, vents under the soffits, letter slots and
   doorbells (the dad's a bell only: his mailbox), splash blocks under the downpipes, window
-  handles, the dad's outdoor socket and hose reel (on his east gable by the drive, past the ivy)
+  handles, the dad's outdoor socket and hose reel (on his east gable by the drive, past the ivy,
+  the socket at z 1405 and the reel at 1435, short of the car charger's box at 1470)
   and two pot plants on his inner sills; the villas'
   door lamps, garage door seals and a satellite dish on north_2; the terraces' walls' coping
   stones, 4 proud with joints.
