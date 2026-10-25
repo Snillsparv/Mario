@@ -24,6 +24,8 @@ import { PLAYER_RADIUS } from '../src/core/constants.js';
 import { BIN_HOLD, BIN_DRAG_SPEED, BIN_GRAB_SPEED, BIN_GRAB_HOLD } from '../src/player/physics/tuning.js';
 import * as chunk from '../src/objects/laneBoss/index.js';
 import { LaneBins, BINS_TUNING } from '../src/objects/laneBoss/index.js';
+import { bins as realBin } from '../src/world/lane/real/street.js';
+import { Geo } from '../src/world/lane/real/geo.js';
 
 const O = AREA_DEFS.lane.origin;
 const area = buildArea(new THREE.Scene(), AREA_DEFS.lane);
@@ -446,4 +448,39 @@ test('the bins\' feel (B4): running at one a quick B punches (it rocks on its wh
   const clack = q.sounds.find((e) => e.name === 'bin_lid');
   assert.ok(clack && clack.pitch < 1 && pound > rocked, `a pound beside it (${pound.toFixed(3)})`);
   assert.deepEqual(q.bin(0), { x: bx, z: bz });
+});
+
+test('W4 fix: the two at home are two bins in both looks: in every slice of their height the back one (its handle, hinge bar and wheels toward the street) clear of the front one, their lids a gap apart (photos 36 and 37)', () => {
+  // Each look's drawn bin in its own frame (origin at its foot's middle), as triangles.
+  const classic = area.parts[0].movers.bins.geometry;
+  const pos = classic.attributes.position.array;
+  const idx = classic.index ? classic.index.array : Array.from({ length: pos.length / 3 }, (_, i) => i);
+  const flat = Array.from(idx, (i) => [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]]);
+  const g = new Geo();
+  realBin({ paint: g, tyre: g, steel: g }, lane);
+  const real = [];
+  for (let i = 0; i < g.pos.length; i += 3) real.push([g.pos[i], g.pos[i + 1], g.pos[i + 2]]);
+  const gap = BINS[1].z - BINS[0].z;
+  for (const [name, v] of [['classic', flat], ['realistic', real]]) {
+    // A face's z range in each 6-high slice it reaches: the front bin's furthest back, the back
+    // one's furthest forward.
+    const top = Math.max(...v.map((p) => p[1]));
+    for (let y = 0; y < top; y += 6) {
+      let back = -Infinity;
+      let front = Infinity;
+      for (let i = 0; i + 2 < v.length; i += 3) {
+        const f = [v[i], v[i + 1], v[i + 2]];
+        const ys = f.map((p) => p[1]);
+        if (Math.max(...ys) < y || Math.min(...ys) > y + 6) continue;
+        back = Math.max(back, ...f.map((p) => p[2]));
+        front = Math.min(front, ...f.map((p) => p[2]));
+      }
+      if (back === -Infinity) continue;
+      assert.ok(gap + front - back >= 4, `${name}, ${y}..${y + 6} up: the back one ${(gap + front - back).toFixed(1)} clear of the front one`);
+    }
+    // The lids' tops: a gap a hand wide between them.
+    const lid = v.filter((p) => p[1] > top - 2);
+    const lidGap = gap + Math.min(...lid.map((p) => p[2])) - Math.max(...lid.map((p) => p[2]));
+    assert.ok(lidGap >= 10, `${name}: the lids ${lidGap.toFixed(1)} apart`);
+  }
 });

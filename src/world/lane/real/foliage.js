@@ -216,32 +216,78 @@ function climber(kit, L) {
   for (const m of masses) shell(kit, S, { c: m.c, r: m.r, count: Math.round((n * (m.r[0] + m.r[2]) * m.r[1]) / total / k), size: 30, cell: CELL.rhodo, tints, below: -0.9, sway: 1, outside: masses.filter((o) => o !== m), coreK: 0.75 });
 }
 
-// The columnar tree far behind the garage row (COLUMN_TREES, W4: out of bounds): a narrow
-// conifer column (a thuja's cards on a taller, rounder profile), its top a little yellower.
+// The columnar tree far behind the garage row (COLUMN_TREES, W4: out of bounds; W4 fix: the
+// Lombardy poplar photo 37 shows over the row): a short trunk parting low into upright leaders
+// (hidden in the leaves but where the sky shows through), the leaves in loose clumps over the
+// crown, the outer ones poking past its outline: a slim, lacy column, widest low, ragged at its
+// top, the sky through its gaps (no solid core: the old one's smooth frustum read as an ivy-clad
+// chimney). Olive leaves, yellowing toward its top. Cards per tier (POPLAR); the crown's outline
+// (CROWN: its radius, a share of r, at a share of h).
+const POPLAR = { high: 2000, mid: 1400, low: 900 };
+const CROWN = [[0.12, 0], [0.5, 0.16], [0.85, 0.3], [0.95, 0.42], [0.8, 0.49], [0.66, 0.55], [0.6, 0.65], [0.56, 0.75], [0.5, 0.83], [0.44, 0.9], [0.38, 0.95], [0.28, 0.985], [0.1, 1]];
 function column(kit, L, { x, z, r, h }) {
   const S = makeRng(9377);
   const y0 = L.groundHeight(x, z);
-  const prof = [[r * 0.5, 0], [r * 0.85, h * 0.15], [r, h * 0.45], [r * 0.85, h * 0.75], [r * 0.45, h * 0.94], [0, h]];
-  const radius = (y) => {
-    for (let i = 0; i + 1 < prof.length; i++) {
-      const [[ra, ya], [rb, yb]] = [prof[i], prof[i + 1]];
-      if (y <= yb) return ra + ((rb - ra) * (y - ya)) / (yb - ya);
+  const crown = (f) => {
+    for (let i = 0; i + 1 < CROWN.length; i++) {
+      const [[ra, fa], [rb, fb]] = [CROWN[i], CROWN[i + 1]];
+      if (f <= fb) return (ra + ((rb - ra) * (Math.max(f, 0) - fa)) / (fb - fa)) * r;
     }
     return 0;
   };
-  const count = kit.tier === 'low' ? 90 : 180;
-  for (let i = 0; i < count; i++) {
-    const y = h * Math.pow(S(), 0.8) * 0.97;
-    const a = S() * Math.PI * 2;
-    const rr = radius(y) * (0.85 + 0.2 * S());
-    const d = norm([Math.sin(a), 0.25 + (y / h) * 0.5, Math.cos(a)]);
-    const t = y / h;
-    const k = (0.65 + 0.45 * t) * (0.85 + 0.3 * S());
-    kit.foliage.rgb((0.55 + 0.25 * t * t) * k, (0.6 + 0.12 * t * t) * k, 0.28 * k);
-    cluster(kit.foliage, S, [x + Math.sin(a) * rr, y0 + y, z + Math.cos(a) * rr], d, 70 * (0.8 + 0.4 * S()), CELL.hedge, 2);
+  // The trunk and the leaders up from its top, each leaning out toward its own side.
+  const fork = h * 0.14;
+  kit.bark.color(0x8a8278);
+  kit.bark.tube([x, y0 - 10, z], [x, y0 + fork + 20, z], r * 0.09, r * 0.07, 7);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + S() * 0.7;
+    const tip = i === 0 ? 0.75 : 0.5 + 0.2 * S();
+    const out = i === 0 ? 0.05 : 0.2 + 0.25 * S();
+    let p = [x, y0 + fork, z];
+    [0.3, 0.5, tip].forEach((f, j) => {
+      const o = crown(f) * out;
+      const q = [x + Math.sin(a) * o, y0 + f * h, z + Math.cos(a) * o];
+      kit.bark.tube(p, q, r * (0.03 - j * 0.008), r * (0.022 - j * 0.006), 5);
+      p = q;
+    });
   }
-  kit.core.rgb(...CORE.green);
-  kit.core.loft(prof.slice(0, 5).map(([pr, py]) => ring(x, y0 + py, z, pr * 0.7, 8)), { capEnd: true });
+  // The leaves: clumps over the crown (more where it is wide; the outer ones the most), each a
+  // dozen cards round its middle, a few past the outline (its ragged lumps); darker deep inside
+  // and low, yellower toward the top.
+  // (Dark: seen ~35 m off through the haze, which brings its own pale blue to it.)
+  const tints = [[0.95, 0.9, 0.42], [0.82, 0.82, 0.38], [1.1, 0.96, 0.4], [0.9, 0.86, 0.48]].map((t) => [t[0] * 0.42, t[1] * 0.4, t[2] * 0.28]);
+  const count = POPLAR[kit.tier] ?? POPLAR.high;
+  const per = 12;
+  const area = (f) => crown(f) / r;
+  for (let c = 0; c < count / per; c++) {
+    let f;
+    do f = 0.12 + 0.87 * S();
+    while (S() > 0.35 + 0.65 * area(f)); // (the slim top a little denser than its share)
+    const lim = crown(f);
+    const a = S() * Math.PI * 2;
+    const rho = lim * (0.4 + 0.55 * Math.sqrt(S()));
+    const m = [x + Math.sin(a) * rho, y0 + f * h, z + Math.cos(a) * rho];
+    const cr = lim * (0.34 + 0.12 * S());
+    const deep = rho / Math.max(1, lim);
+    const t = tints[Math.floor(S() * tints.length)];
+    for (let k = 0; k < per; k++) {
+      let d;
+      do d = [S() * 2 - 1, S() * 2 - 1, S() * 2 - 1];
+      while (dot(d, d) > 1 || dot(d, d) < 0.05);
+      let p = [m[0] + d[0] * cr, m[1] + d[1] * cr * 1.7, m[2] + d[2] * cr];
+      const fy = Math.min(1, Math.max(0, (p[1] - y0) / h));
+      const ax = [p[0] - x, p[2] - z];
+      const dist = Math.hypot(ax[0], ax[1]);
+      const edge = crown(fy) * 1.08;
+      if (dist > edge) p = [x + (ax[0] / dist) * edge, p[1], z + (ax[1] / dist) * edge];
+      const out = dist > 1 ? [ax[0] / dist, 0, ax[1] / dist] : [Math.sin(a), 0, Math.cos(a)];
+      const dd = norm([out[0] + d[0] * 0.6, 0.35 + 0.35 * fy, out[2] + d[2] * 0.6]);
+      const kk = (0.5 + 0.5 * Math.min(1, dist / Math.max(1, edge))) * (0.75 + 0.35 * fy) * (0.88 + 0.24 * S()) * (0.9 + 0.1 * deep);
+      const yel = 1 + 0.22 * fy * fy;
+      kit.foliage.rgb(t[0] * kk * yel, t[1] * kk * (1 + 0.08 * fy * fy), t[2] * kk);
+      cluster(kit.foliage, S, p, dd, r * (0.24 + 0.14 * S()) * (1 - 0.3 * fy), CELL.tree, 4);
+    }
+  }
 }
 
 // A ring of `sides` points round (x, z) at y, radius r (counter-clockwise seen from below:

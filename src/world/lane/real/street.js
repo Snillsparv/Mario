@@ -130,13 +130,17 @@ export function fences({ boards, tier }, L) {
   }
 }
 
+// The bins' near-black blue-grey plastic (W4 fix: as photos 36 and 37 have it in the gable's
+// shade, ~(17, 25, 34) on every tier, once the haze's sun glow no longer veiled it brown on high
+// and mid).
+const BIN_TINT = 0x182434;
 export function bins({ paint, tyre, steel }, L) {
   const { BIN } = L;
   const [hx, hz] = [BIN.x / 2, BIN.z / 2];
   const [x, z, G, top] = [0, 0, 0, BIN.h]; // (in the bin's own frame: its foot's middle)
   {
     // The body: rounded sections from its foot (narrower) to its rim.
-    paint.color(0x1c2834); // (W4: the photos' near-black blue-grey, under the warm evening light)
+    paint.color(BIN_TINT); // (W4: the photos' near-black blue-grey in the gable's shade)
     const sec = (y, k, r = 10) => {
       const pts = [];
       for (const [cx, cz, a0] of [[hx * k - r, -hz * k + r, -Math.PI / 2], [hx * k - r, hz * k - r, 0], [-hx * k + r, hz * k - r, Math.PI / 2], [-hx * k + r, -hz * k + r, Math.PI]]) {
@@ -150,7 +154,7 @@ export function bins({ paint, tyre, steel }, L) {
     paint.loft([sec(G + 2, 0.86), sec(G + 30, 0.9), sec(top - 14, 1), sec(top - 10, 1.03), sec(top - 9, 0.99)]);
     // The lid over the rim, a little wider, its front lip; split front and back (W4: the
     // photos' four-compartment bins): a dark seam across its middle.
-    paint.color(0x1c2834, 1.08);
+    paint.color(BIN_TINT, 1.08);
     paint.loft([sec(top - 12, 1.06, 12), sec(top - 1, 1.06, 12), sec(top, 1.02, 12), sec(top + 0.5, 0.1, 2)]);
     paint.color(0x121412);
     paint.box(-hx * 1.06 - 1, hx * 1.06 + 1, top - 12, top + 0.8, z - 2, z + 2, { skip: 'b' });

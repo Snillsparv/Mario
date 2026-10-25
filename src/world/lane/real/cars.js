@@ -44,9 +44,12 @@ import { sub, cross, dot, norm } from './geo.js';
 // bonnet's leading edge's and the tail's radii, the plan's corner radii at the nose and tail,
 // its roof rails, whether its rear quarters are black, the shoulder crease under the deck, and
 // how far the window line rises over the bonnet behind it (the cowl: a high belt line, a low
-// greenhouse).
+// greenhouse); the floor's rise to the tail (`depart`: over its last run, by rise; 55 and 11 if
+// not given) and the rear bumper's lower corners swept up from the rear arch (`kick`: to that
+// height at the tail, tucked in by the second: W4 fix, the SUV parked tail out, as photo 37
+// has it: its rear tyres show under its corners, on the drive).
 const STYLE = {
-  suv: { tall: true, clear: 30, noseR: 14, tailR: 10, front: 40, rear: 28, rails: 'black', blackRear: true, crease: 17, rise: 13 },
+  suv: { tall: true, clear: 30, noseR: 14, tailR: 10, front: 40, rear: 28, rails: 'black', blackRear: true, crease: 17, rise: 13, depart: [90, 28], kick: [84, 10] },
   cross: { tall: true, clear: 28, noseR: 16, tailR: 12, front: 42, rear: 32, rails: 'black', blackRear: true, crease: 16, rise: 13 },
   hatch: { tall: false, clear: 22, noseR: 18, tailR: 16, front: 46, rear: 38, rails: null, blackRear: false, crease: 15, rise: 9 },
   estate: { tall: false, clear: 22, noseR: 18, tailR: 12, front: 44, rear: 30, rails: 'silver', blackRear: false, crease: 15, rise: 9 },
@@ -207,10 +210,19 @@ function car(kit, L, c, probe) {
     if (w < -hl + S.tailR) top -= S.tailR - Math.sqrt(Math.max(0, S.tailR ** 2 - (-hl + S.tailR - w) ** 2));
     return top - (hw - 1 - halfAt(w)) * (EV ? 0.05 : 0.12);
   };
+  const [dRun, dRise] = S.depart ?? [55, 11];
+  // The rear bumper's lower corners (S.kick): from the rear arch's axis height behind it up to
+  // kick[0] at the tail, tucked in toward it; the floor stays at bottomAt out to the knee
+  // (kneeOf: its outer edge over the tyre's inner face), so from behind the rear tyres show under
+  // the corners, beside the bumper's flat foot.
+  const kickFrom = axles[1] - ra;
+  const kickT = (w) => (S.kick && w < kickFrom ? Math.min(1, (kickFrom - w) / (kickFrom + hl)) : 0);
+  const cornerAt = (w, b) => (kickT(w) > 0 ? Math.max(b, yC + (y0 + S.kick[0] - yC) * kickT(w)) : b);
+  const kneeOf = (u) => Math.min(hw - 45, u - 8);
   const bottomAt = (w) => {
     let b = floor;
     if (w > hl - 50) b += (EV ? 5 : 9) * ((w - (hl - 50)) / 50) ** 2; // (the approach angle)
-    if (w < -hl + 55) b += 11 * ((-hl + 55 - w) / 55) ** 2; // (the departure angle)
+    if (w < -hl + dRun) b += dRise * ((-hl + dRun - w) / dRun) ** 2; // (the departure angle)
     for (const wc of axles) {
       const d = Math.abs(w - wc);
       if (d < ra) b = Math.max(b, yC + Math.sqrt(ra * ra - d * d));
@@ -227,8 +239,9 @@ function car(kit, L, c, probe) {
   // The right half of a section, from the floor's edge up to the deck's: [u, y].
   const sideOf = (w) => {
     const a = halfAt(w);
+    const tuck = S.kick ? S.kick[1] * kickT(w) : 0; // (the swept-up corner tucked in)
     const top = topAt(w);
-    const bottom = bottomAt(w);
+    const bottom = cornerAt(w, bottomAt(w));
     const h = Math.max(14, top - bottom);
     const sw = swellAt(w) * Math.min(1, h / 40);
     const yc = top - Math.min(S.crease, h * 0.45);
@@ -236,7 +249,7 @@ function car(kit, L, c, probe) {
     const hb = Math.max(2, yc - 2 - bottom);
     const rb = Math.min(6, hb * 0.3);
     const ar = arch(w);
-    const pts = [[a - 7, bottom], [a - 2.6, bottom + rb * 0.3], [a - 0.6, bottom + rb], [a + sw * 0.55, bottom + rb + (hb - rb) * 0.35], [a + sw, bottom + rb + (hb - rb) * 0.7], [a + sw * 0.8, yc - 1.6], [a + sw * 0.6, yc - 0.4], [a - 1.8, yc + 0.8], [a - 4.6, top - 3.6 - ar * 0.7], [a - 7.2, top - 1.1 - ar * 0.9], [a - 10.5, top - ar]];
+    const pts = [[a - 7 - tuck, bottom], [a - 2.6 - tuck * 0.5, bottom + rb * 0.3], [a - 0.6, bottom + rb], [a + sw * 0.55, bottom + rb + (hb - rb) * 0.35], [a + sw, bottom + rb + (hb - rb) * 0.7], [a + sw * 0.8, yc - 1.6], [a + sw * 0.6, yc - 0.4], [a - 1.8, yc + 0.8], [a - 4.6, top - 3.6 - ar * 0.7], [a - 7.2, top - 1.1 - ar * 0.9], [a - 10.5, top - ar]];
     if (!D.fine) return [pts[0], pts[2], pts[4], pts[6], pts[7], pts[9], pts[10]];
     return pts;
   };
@@ -245,7 +258,9 @@ function car(kit, L, c, probe) {
     const top = right[right.length - 1][1] + arch(w);
     const mid = top + 2.2 - arch(w) * 0.45;
     const left = right.map(([u, y]) => [-u, y]).reverse();
-    return [[0, right[0][1]], ...right, [right[right.length - 1][0] * 0.5, mid], [0, top + 3], [-right[right.length - 1][0] * 0.5, mid], ...left];
+    const b = bottomAt(w);
+    const foot = S.kick ? [[0, b], [kneeOf(right[0][0]), b]] : [[0, b]];
+    return [...foot, ...right, [right[right.length - 1][0] * 0.5, mid], [0, top + 3], [-right[right.length - 1][0] * 0.5, mid], ...left, ...foot.slice(1).map(([u, y]) => [-u, y]).reverse()];
   };
   // The side's u at height y (on its outline from the tucked corner up), and the plan's outward
   // normal there (u, w): decals lie on the body.
@@ -268,7 +283,7 @@ function car(kit, L, c, probe) {
   // body there: near the ends its floor rises, and a strip must not hang under it).
   const onSide = (s, w, y, off = 0.5) => {
     const [nu, nw] = planN(w);
-    const yy = Math.min(Math.max(y, bottomAt(w) + 0.3), topAt(w) - 0.3);
+    const yy = Math.min(Math.max(y, cornerAt(w, bottomAt(w)) + 0.3), topAt(w) - 0.3);
     return W(s * (sideU(w, yy) + nu * off), yy, w + nw * off);
   };
   // A strip on side s over a grid of stations (ws) and heights (ys).
@@ -653,13 +668,32 @@ function car(kit, L, c, probe) {
   // reflectors and a silver insert.
   metal.rgb(...(S.tall ? BLACK : SILVER));
   endFace(metal, -1, [[-hw * 0.22, tLo - 8], [hw * 0.22, tLo - 8], [hw * 0.22, tLo - 5], [-hw * 0.22, tLo - 5]], 0.6);
-  const bumperHi = tailBottom + (S.tall ? 30 : 20);
+  // (Its corners swept up (S.kick): the bumper's foot a shallow V, the middle on the floor.)
+  const cornerY = cornerAt(-hl, tailBottom);
+  const cornerU = sideOf(-hl)[0][0] - 0.4;
+  const kneeU = kneeOf(cornerU + 0.4);
+  const footAt = (u) => (Math.abs(u) <= kneeU ? tailBottom : tailBottom + ((cornerY - tailBottom) * Math.min(1, (Math.abs(u) - kneeU) / (cornerU - kneeU))));
+  const bumperHi = Math.max(tailBottom + (S.tall ? 30 : 20), cornerY + 12);
   trim.rgb(...PLASTIC);
-  endFace(trim, -1, [[-edgeU(-hl, tailBottom + 1), tailBottom + 0.5], [edgeU(-hl, tailBottom + 1), tailBottom + 0.5], [edgeU(-hl, bumperHi), bumperHi], [-edgeU(-hl, bumperHi), bumperHi]], 0.5);
+  if (S.kick) for (const s of [-1, 1]) endPoly(trim, -1, [[0, tailBottom + 0.5], [s * kneeU, tailBottom + 0.5], [s * cornerU, cornerY + 0.5], [s * edgeU(-hl, bumperHi), bumperHi], [0, bumperHi]], 0.5);
+  else endFace(trim, -1, [[-edgeU(-hl, tailBottom + 1), tailBottom + 0.5], [edgeU(-hl, tailBottom + 1), tailBottom + 0.5], [edgeU(-hl, bumperHi), bumperHi], [-edgeU(-hl, bumperHi), bumperHi]], 0.5);
   if (D.wrap) for (const s of [-1, 1]) sideStrip(trim, s, along(-hl, -hl + S.rear * 1.2), [tailBottom + 0.5, bumperHi], 0.5);
+  if (S.kick) {
+    // (Under the swept corners and the raised floor behind the rear arch, the bumper's black
+    // underside, a skin just under the body's: never the paint lit from the drive below.)
+    const underOf = (w) => {
+      const right = sideOf(w);
+      const b = bottomAt(w) - 0.4;
+      const half = [[kneeOf(right[0][0]), b], [right[0][0] + 0.3, right[0][1] - 0.4], [right[1][0] + 0.4, right[1][1] - 0.2]];
+      return [...half.map(([u, y]) => [-u, y]).reverse(), [0, b], ...half];
+    };
+    const rows = along(-hl, kickFrom).map((w) => underOf(w).map(([u, y]) => W(u, y, w)));
+    for (let k = 0; k + 1 < rows.length; k++) for (let i = 0; i + 1 < rows[k].length; i++) orient(trim, [rows[k][i], rows[k][i + 1], rows[k + 1][i + 1], rows[k + 1][i]], dirW(0, -1, 0));
+  }
   if (S.tall) {
     metal.rgb(...SILVER);
-    endFace(metal, -1, [[-hw * 0.4, tailBottom + 3], [hw * 0.4, tailBottom + 3], [hw * 0.38, tailBottom + 9], [-hw * 0.38, tailBottom + 9]], 0.9);
+    const y = footAt(hw * 0.4);
+    endFace(metal, -1, [[-hw * 0.4, y + 3], [hw * 0.4, y + 3], [hw * 0.38, y + 9], [-hw * 0.38, y + 9]], 0.9);
   }
   tail.rgb(0.3, 0.01, 0.008);
   for (const s of [-1, 1]) endFace(tail, -1, [[s * (hw * 0.6), bumperHi - 12], [s * (edgeU(-hl, bumperHi) - 6), bumperHi - 12], [s * (edgeU(-hl, bumperHi) - 6), bumperHi - 8], [s * (hw * 0.6), bumperHi - 8]], 0.9);

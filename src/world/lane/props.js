@@ -375,13 +375,14 @@ function thuja(kit, layout, { x, z }) {
 }
 
 // A columnar tree far behind the garage row (COLUMN_TREES, out of bounds: drawn only): a tall
-// narrow eight-sided column, rounded at its top, its top a little yellower.
+// narrow eight-sided column, widest low and slim above (photo 37's poplar), its top a little
+// yellower.
 function columnTree(kit, layout, { x, z, r, h }) {
   const { leaves } = kit.drawn('plants');
   const y0 = layout.groundHeight(x, z);
   leaves.color(TINT.column);
   leaves.shade = (px, y) => 0.7 + 0.45 * Math.min(1, (y - y0) / h);
-  leaves.lathe(x, z, [[r * 0.5, y0], [r * 0.85, y0 + h * 0.15], [r, y0 + h * 0.45], [r * 0.85, y0 + h * 0.75], [r * 0.45, y0 + h * 0.94], [0, y0 + h]], 8, { a0: 0.4 });
+  leaves.lathe(x, z, [[r * 0.12, y0], [r * 0.55, y0 + h * 0.16], [r * 0.92, y0 + h * 0.32], [r * 0.92, y0 + h * 0.42], [r * 0.66, y0 + h * 0.58], [r * 0.52, y0 + h * 0.8], [r * 0.32, y0 + h * 0.94], [0, y0 + h]], 8, { a0: 0.4 });
   leaves.shade = null;
 }
 

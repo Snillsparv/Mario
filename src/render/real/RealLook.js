@@ -9,7 +9,7 @@
 // and how Jonas is framed and drawn meanwhile (the camera's profile, his model's size).
 //
 //   const look = new RealLook({ preset, tier, probeAt, farBox, canRetro })
-//       preset: { sky, sunDir, exposure, environment, haze, shadow: { radius, bias, normalBias }
+//       preset: { sky, sunDir, exposure, environment, haze, hazeGlow, shadow: { radius, bias, normalBias }
 //                 (bias and normalBias in world units),
 //                 atmosphere, post, grade, camera, hero }   (layout.LANE_REAL: atmosphere is the
 //                 view.setAtmosphere preset the look's sun and hemisphere come from; post and
@@ -108,7 +108,7 @@ export class RealLook {
     this.canRetro = canRetro; // (retro over realistic needs half-float targets)
     this.camera = preset.camera ?? null; // the camera's profile meanwhile (core/AreaSwitch.js)
     this.heroScale = preset.hero ?? 1; // Jonas's model's size meanwhile (view.heroScale)
-    this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze } };
+    this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze }, uHazeGlow: { value: preset.hazeGlow ?? 0 } };
     this.far = farBox && tier.far ? new FarShadow({ size: tier.far, sunDir: preset.sunDir, box: farBox }) : null;
     this.heights = farBox ? [farBox.y0, farBox.y1] : SHADOW_HEIGHTS; // (the near shadow camera's depth: shadowFar)
     if (this.far) Object.assign(this.haze, this.far.uniforms); // (every realistic material's)

@@ -39,11 +39,16 @@
 //       the look's grade uniforms, RealLook.grade, turned back too)
 //   CLAMP_GLSL                                               // the clamp's source (the tests')
 //
-// `haze` is the look's uniforms (sky.js skyUniforms + uHazeDensity), shared by every material,
-// so the sky and the haze change together.
+// `haze` is the look's uniforms (sky.js skyUniforms + uHazeDensity, uHazeGlow), shared by every
+// material, so the sky and the haze change together.
 //
 // The haze chunk replaces the fog: the fragment's distance to the camera fades it toward the
-// sky's own colour in that direction (sky.js hazeColor: exponential, uHazeDensity per unit). And
+// sky's own colour in that direction (sky.js hazeColor: exponential, uHazeDensity per unit). The
+// sky's glow on the sun's side belongs to the long paths: near the camera the haze takes the sky's
+// colour away from the sun (sky.js hazeAway), the glow coming in with the distance (1 - e^(-d /
+// uHazeGlow); 0: at once). Mixed in linear light (high and mid), the glow had veiled every dark
+// thing near the camera brown when looking toward the sun (the bins, the tyres), while on the
+// direct path (low, mixed in display space) it hardly showed: W4 fix. And
 // first it clamps the lit colour to 32: a sun highlight on a mirror-smooth surface (the glass at
 // roughness 0.02) is ~1e6, which overflows a half-float target (the reflection probe's cube) to
 // Inf, and the probe's prefilter then smears it into NaN: every window and car went black. The
@@ -115,6 +120,7 @@ const HAZE_FRAG = /* glsl */ `{
     vec3 hazeDir = vHazeWorld - cameraPosition;
     float hazeDist = length(hazeDir);
     vec3 hazeTint = hazeColor(hazeDir / hazeDist);
+    if (uHazeGlow > 0.0) hazeTint = mix(hazeAway(hazeDir / hazeDist), hazeTint, 1.0 - exp(-hazeDist / uHazeGlow));
     #ifdef TONE_MAPPING
       hazeTint = toneMapping(hazeTint);
     #endif
@@ -277,7 +283,7 @@ export function hazeChunk(material, haze, key = 'real-haze', patch = null, wear 
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, haze);
     shader.vertexShader = 'varying vec3 vHazeWorld;\n' + shader.vertexShader.replace('#include <project_vertex>', HAZE_VERT);
-    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG);
+    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG);
     patch?.(shader);
     if (worn) wearChunk(shader, material.userData.wear, wear);
     if (far) sunShadowChunk(shader);

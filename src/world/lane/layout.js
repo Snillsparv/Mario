@@ -498,7 +498,7 @@ export const PATIO = { x0: DAD_WINGS[0].cx + DAD_WINGS[0].d / 2 + 20, x1: DAD_WI
 // front and back, the handle and the wheels toward the street), their homes against the gable's
 // front clear of the hose reel (W3's: z <= 1447) and the charger.
 export const BIN = { x: 120, z: 105, h: 165, top: GROUND + 165 };
-export const BINS = [{ x: 1680, z: 1548 }, { x: 1680, z: 1656 }]; // (their street faces at ~1495 and ~1603: photo 37's wheels)
+export const BINS = [{ x: 1680, z: 1552 }, { x: 1680, z: 1676 }]; // (W4 fix: 124 apart, each lid clear of the other's and the back one's handle and wheels of the front one: two bins, as photos 36 and 37 have them)
 // The bins move (objects/laneBoss/LaneBins.js, once the lane's lazy chunk is in): pushed by
 // walking into them, grabbed with the attack button and pulled, kept on the dad's drive (BIN_LEASH:
 // the box a bin's middle stays in, 20 off the gable (its charger and cable stand out of it); never
@@ -567,10 +567,14 @@ export const TREES = [
 // (EDGE_FOREST: `count` firs `from`..`to` outside it), so the camera never looks out on nothing;
 // none in `clear` (x0..x1 beyond z0: W4, the sky the photos show over the garage row and the
 // dad's roof from his drive; its seeded spots are skipped, the others stay where they were),
-// only the columnar tree there far behind (COLUMN_TREES: drawn only, out of bounds).
+// only the columnar tree there far behind (COLUMN_TREES: drawn only, out of bounds: the Lombardy
+// poplar over the garage row in photo 37, out on the field on that photo's line of sight (W4
+// fix: far enough that photos 33 and 35 no longer show it over south_2's roof, near enough that
+// the haze leaves it near as dark as 37 has it; photo 36, which shows none, has it near its
+// edge), its outline as 37 has it: r its crown's widest, h its height).
 export const FOREST = { count: 34, birches: 10, x0: -9600, x1: 9300, z0: NORTH.flat0 - 150, z1: NORTH.flat0 - 1850, slope: NORTH.slope, seed: 0x5ba77 };
 export const EDGE_FOREST = { count: 70, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 } };
-export const COLUMN_TREES = [{ x: 1700, z: 4600, r: 120, h: 1300 }];
+export const COLUMN_TREES = [{ x: 1415, z: 6000, r: 230, h: 1650 }];
 
 // Lampposts (grey, an arm and a flat lamp head) where the photos have them, every one a climbable
 // pole (POLES; no collider of its own but the pole's trunk) up to its very top (a handstand on its
@@ -870,7 +874,10 @@ const DEG = Math.PI / 180;
 //                phone photos without blowing out the sunlit villas)
 //   environment  the sky's light on every realistic material (1.3: at 1 the shaded lawn is too
 //                dark); haze: the aerial perspective's density per unit (exponential, toward the
-//                sky's colour in each direction)
+//                sky's colour in each direction), the sky's glow on the sun's side coming into it
+//                over hazeGlow (W4 fix: near the camera the sky's colour away from the sun; mixed
+//                in linear light on high and mid the glow had veiled the dark bins brown in photos
+//                36 and 37's views toward the sun, low's display-space mix hardly at all)
 //   shadow       the sun's soft shadow (three's PCF with this radius; biases for the flat walls
 //                at a grazing sun, both in world units: RealLook turns the depth bias into its
 //                share of the near shadow camera's depth, -4e-4 over the old 16000)
@@ -911,6 +918,7 @@ export const LANE_REAL = Object.freeze({
   exposure: 1.3,
   environment: 1.3,
   haze: 2.5e-5,
+  hazeGlow: 6000,
   shadow: Object.freeze({ radius: 2.5, bias: -6.4, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2']),

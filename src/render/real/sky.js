@@ -5,7 +5,8 @@
 // warm-lit cirrus wisps. Linear HDR out (the output pass tone maps; on the direct path the
 // renderer does).
 //
-//   SKY_GLSL                     // skyGradient(dir) and hazeColor(dir), on the sky uniforms:
+//   SKY_GLSL                     // skyGradient(dir), hazeColor(dir) and hazeAway(dir) (the
+//                                // sky there without the sun's glow), on the sky uniforms:
 //                                // every realistic material's haze (materials.js) uses the same
 //                                // colour, so distant houses melt into the sky behind them
 //   skyUniforms(sky, sunDir) -> uniforms   // sky: { zenith, horizonAway, horizonSun, ground
@@ -46,6 +47,12 @@ vec3 skyGradient(vec3 v) {
 
 vec3 hazeColor(vec3 v) {
   return skyGradient(normalize(vec3(v.x, max(v.y, 0.02), v.z))) * uSkyIntensity;
+}
+
+// The sky's colour there without the sun's side (its horizon glow and halo).
+vec3 hazeAway(vec3 v) {
+  float y = max(normalize(vec3(v.x, max(v.y, 0.02), v.z)).y, 0.0);
+  return mix(uZenith, uHorizonAway, pow(1.0 - y, 2.6)) * uSkyIntensity;
 }
 `;
 

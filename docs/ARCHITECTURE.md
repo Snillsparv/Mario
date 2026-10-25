@@ -1758,8 +1758,10 @@ trees' leaves).
   (`RHODODENDRON`: rx 210 along the street, rz 330, 330 high, under the gutter with the west pier
   showing over it; solid, an eight-sided elliptic
   prism a little inside it); the two wheelie bins against the front of the east gable (`BINS`,
-  W4: the photos' four-compartment ones, 120 × 105, solid to 187, near-black blue-grey, their lids
-  split, handles and wheels toward the street: they move, see "The bins" below); near the gable's
+  W4: the photos' four-compartment ones, 120 × 105, solid to 187, near-black blue-grey (the
+  realistic look's `street.js BIN_TINT`, in the gable's shade near (17, 25, 34) on every tier as
+  in the photos), their lids split, handles and wheels toward the street, 124 apart: they move, see
+  "The bins" below); near the gable's
   back corner the car charger (`DAD.charger`, z 2125: a dark box, a round green status light on
   its face, its cable hanging in a loop from its underside to the plug in a holster below: the
   cable a mover of its own, `part.movers.charger_cable`, so the boss can hide it later) under the
@@ -1833,7 +1835,10 @@ trees' leaves).
   side (W4: x −1100 … 5000 beyond z 4300, the sky the photos show over the garage row and his roof
   from the drive; those spots drawn and dropped, the others where they were, as in the realistic
   look's far tree line), only one columnar tree far behind the garage row (`COLUMN_TREES`, out of
-  bounds, drawn only); and two houses down the side road in the fog (`SIDE_BLOCKS`, drawn only).
+  bounds, drawn only: W4 fix, photo 37's Lombardy poplar, out on the field on that photo's line of
+  sight, 1650 tall, far enough that photos 33 and 35 do not show it over south_2's roof and near
+  enough that the haze leaves it near as dark as 37 has it; photo 36, which shows none, has it near
+  its left edge: the two photos do not agree); and two houses down the side road in the fog (`SIDE_BLOCKS`, drawn only).
 * **The trampoline and the 1-up** (`TRAMPOLINE`, `TRAMPOLINES`, `ONE_UP`): in north_5's front
   garden on the terrace (x 5380, z −2300): a dark mat in a padded blue ring on six legs, r 250,
   solid from the terrace up to its top at 240 (`props.js`); its spring is
@@ -1946,7 +1951,9 @@ trees' leaves).
   distance (its collider parked while held, back where it stands when he lets go; where it may
   not go he is held back); pulled, the drawn bin tips 15 degrees toward him onto its wheels. At
   home (W4) they stand one behind the other against the gable's front (20 off it, the charger's
-  box and cable standing out of the wall nearer its back corner), the first one's street end
+  box and cable standing out of the wall nearer its back corner; W4 fix: 124 apart, so each lid
+  clears the other's and the back one's handle and wheels clear the front one: two bins in both
+  looks, as photos 36 and 37 have them), the first one's street end
   free: the one behind is pushed back along the gable once the first is pulled out of the line
   (no chain pushes). **Leashed** to his drive (never the road, the lawns, a roof or the store
   room: `BIN_LEASH.z1 = GARAGE.wall - 110 - BIN.z / 2`, a bin's back 110 short of the door wall,
@@ -2124,7 +2131,8 @@ trees' leaves).
   arrival, lost life, new game and by themselves, both looks' instances, the star climb from
   them: onto one at home, the other pushed back along the gable to the garage row once the first
   is pulled out of the line, and from one at its leash's back edge anywhere along the row (W4),
-  idle costing nothing; B4 the feel: running
+  the two at home two bins in both looks, each slice of the back one clear of the front one and
+  their lids a gap apart (W4 fix), idle costing nothing; B4 the feel: running
   at one a quick B punches it, rocking, clacking, staying put; held it grabs, never the press that
   let go; standing or pushing a press grabs at once; rolling it rumbles, stopping it clacks; a
   pound beside it rocks it harder); `tests/player-bin.test.js` (the grab's conditions, the mittens on the face at full size and at
@@ -2996,8 +3004,12 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   the gutter; 900 cards on high, 520 mid, 100 low), the rose on its stakes (yellow-green, a few
   hips; none on low), the pot plant on the landing, the flower beds, the climber at the gable's
   back corner (W4: `climberMasses`, small dark leaves; 330 cards on high, 200 mid, 50 low, its own
-  stream), the columnar tree far behind the garage row (a thuja's cards on a taller column, 180
-  clusters, 90 on low); dark cores where a real bush
+  stream), the columnar tree far behind the garage row (W4 fix: a Lombardy poplar, `POPLAR`: a
+  short trunk parting into upright leaders, the leaves in loose clumps over a slim crown widest
+  low and blunt and ragged at its top (`CROWN`), some poking past it, the sky through its gaps,
+  no solid core; olive, yellowing toward its top; 2000 clusters of crossed cards on high, 1400 mid,
+  900 low); dark
+  cores where a real bush
   is dense; bark trunks and limbs. The forest's **firs** are one spruce (`firGeometry`) instanced where
   `spots.js forestSpots` plants them (the classic forest draws its cones from the same list),
   plus a far tree line where the ground ends in the haze (`extras.js treeLine`, casting none;
@@ -3056,7 +3068,13 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   it multiplied by the vertex colour, darkest under its middle and round each tyre's patch,
   after the opaque scene, no depth written): the car sits on its drive (the dad's two, W4,
   darker and dark further out toward their ends: the SUV parked nose in shows the street its
-  tail, and photos 36 and 37 have the drive under it nearly black). Lacquered paint
+  tail, and photos 36 and 37 have the drive under it nearly black). The SUV's tail (W4 fix,
+  `STYLE.suv`): its floor rising to the tail (`depart`: 28 over the last 90) and its rear
+  bumper's lower corners swept up from the rear arch to 84 at the tail and tucked in (`kick`),
+  the bumper's foot flat between them out to the knee over the tyre's inner face, the underside
+  black plastic: seen tail on from a standing eye (photo 37) its rear tyres show under the
+  corners on the drive, as the photo has them, where its deep box of a bumper had hidden them
+  and it looked afloat. Lacquered paint
   (`plainMaterial({ clearcoat })`: three's clearcoat lobe switched on in the standard material,
   `USE_CLEARCOAT`, without the physical material's class), dark opaque glass with ior 2's F0;
   each cluster's (`carClusters`, by place: `clusterOf`, the dad's drive, the west link, the
@@ -3492,7 +3510,13 @@ in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
   horizon away from the sun near white [0.68, 0.72, 0.76]), a peach glow rising ~15° from the
   horizon on the sun's side only (`pow(1 - y, 7) * pow(az, 5)`, [1.3, 0.86, 0.5]), the sun's
   glow peach-gold, thin cirrus (0.25); `envTint` (1.04, 1, 0.88) (the shade near neutral), the
-  haze 2.5e-5 (the photos see clear to the street's end), the grade's saturation 1.1.
+  haze 2.5e-5 (the photos see clear to the street's end), its colour near the camera the sky's
+  away from the sun (`sky.js hazeAway`), the sun's side's glow coming in over `hazeGlow` 6000
+  (`1 - e^(-d / 6000)`: W4 fix; the glow belongs to the long paths: mixed in linear light on high
+  and mid it had veiled every dark thing near the camera brown in the views toward the sun, the
+  bins (42, 36, 31) in photo 36 for its (17, 25, 34), while low's mix in display space hardly
+  touched them: a pop between the tiers; a clear first stretch instead darkened every near
+  surface the light had been tuned with), the grade's saturation 1.1.
 * **Asphalt** (`texgen/sets.js asphaltSet`, `TEXGEN_VERSION` 3): a worn grey binder (0.11) with
   light grey chips, very rough (0.96: no sky sheen, which painted the road blue); the catalogue's
   colour 1.85 and the realistic look's own ground tints (`lane/build.js REAL_GROUND`: the road a
@@ -3583,7 +3607,10 @@ the tile courses in the classic roof planes (the crowns at most 1.5 over them, t
 top 2), the firs on the classic forest's spots, the lawn mask, the cars on their wheels
 inside their colliders and their bodies and tyres closed, every tyre's patch on the drive's
 drawn surface (neither floating nor sunk) and each car level on its four patches and its sill,
-a contact shadow under each, the bonnets and roofs within 4 of the colliders Jonas stands on,
+a contact shadow under each, the SUV's rear tyres seen tail on from photo 37's standing eye up
+to a third of their height and its bumper's underside black (W4 fix: rays to the tread, faces
+seen from behind culled), the columnar tree a poplar of cards over its whole crown with no
+core (W4 fix), the bonnets and roofs within 4 of the colliders Jonas stands on,
 the cars' clusters and probes, no plate-shaped part on either end; the clutter on the ground
 (every leaf within 2 of it, none under a collider, none on the road's middle 60 %), the weeds
 only in the kerbs' joints, at the walls' feet and on the path, the grit in the gutters, the
@@ -3593,8 +3620,8 @@ spruce on high; R fixes: the firs dense (each whorl's skirt over half its branch
 crown solid all the way up, needles to the top, the trunk inside: the old firs fail it), the
 red-leaf bed's stones along all four edges (W3), no kerb along it; the garage's rust under its pipes' clips and the balcony's geraniums, not on
 low), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
-tokens; the plugin's output), `tests/real-materials.test.js` (the haze and the
-clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
+tokens; the plugin's output), `tests/real-materials.test.js` (the haze (the sun's glow coming into
+it with the distance: W4 fix) and the clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
 the glass's F0 and premultiplied output, the leaf
 cards' (no sheen on a card seen from behind), the grass's and the lacquer's patches, shared
 uniforms, the weathering in every textured material (the look's ground map, its kind's

@@ -62,7 +62,10 @@ test('every realistic material hazes, with the clamp to 32 before the haze, in p
     const at = (chunk) => s.fragmentShader.indexOf(chunk);
     assert.ok(at('#include <colorspace_fragment>') < at(CLAMP_GLSL), `${name}: after the colour space`);
     assert.ok(s.vertexShader.includes('#include <project_vertex>\n  vec4 hazePosition') && s.vertexShader.includes('vHazeWorld = (modelMatrix * hazePosition).xyz;'), `${name}: the world position after projection`);
-    for (const u of ['uSunDir', 'uZenith', 'uHorizonAway', 'uHorizonSun', 'uGround', 'uSkyIntensity', 'uHazeDensity']) assert.equal(s.uniforms[u], look.haze[u], `${name}: ${u} shared`);
+    for (const u of ['uSunDir', 'uZenith', 'uHorizonAway', 'uHorizonSun', 'uGround', 'uSkyIntensity', 'uHazeDensity', 'uHazeGlow']) assert.equal(s.uniforms[u], look.haze[u], `${name}: ${u} shared`);
+    // (W4 fix: near the camera the sky's colour away from the sun, its glow coming in with the
+    // distance.)
+    assert.ok(s.fragmentShader.includes('hazeTint = mix(hazeAway(hazeDir / hazeDist), hazeTint, 1.0 - exp(-hazeDist / uHazeGlow))'), `${name}: the sun's glow coming into the haze with the distance`);
     assert.equal(m.fog, false);
     // The sun's shadow: the far map where the near one's box ends (SUN_SHADOW: three's
     // directional shadow term for the sun, wrapped), its uniforms the look's.

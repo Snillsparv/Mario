@@ -855,3 +855,83 @@ test('D1: the store room\'s things behind the garage doors: inside the room unde
   const at = high.hide.dad_ev;
   assert.ok(at && Object.keys(at).length > 3, 'the dad\'s car still hideable');
 });
+
+// A segment from a to b against a triangle soup (flat [x, y, z] x 3 per face): does any face
+// turned toward a cut it short of b (Möller–Trumbore)?
+function blocked(a, b, tris) {
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  for (let i = 0; i < tris.length; i += 9) {
+    const e1 = [tris[i + 3] - tris[i], tris[i + 4] - tris[i + 1], tris[i + 5] - tris[i + 2]];
+    const e2 = [tris[i + 6] - tris[i], tris[i + 7] - tris[i + 1], tris[i + 8] - tris[i + 2]];
+    const p = [d[1] * e2[2] - d[2] * e2[1], d[2] * e2[0] - d[0] * e2[2], d[0] * e2[1] - d[1] * e2[0]];
+    const det = e1[0] * p[0] + e1[1] * p[1] + e1[2] * p[2];
+    if (det < 1e-9) continue; // (a face seen from behind is culled: the cars' materials are one-sided)
+    const s = [a[0] - tris[i], a[1] - tris[i + 1], a[2] - tris[i + 2]];
+    const u = (s[0] * p[0] + s[1] * p[1] + s[2] * p[2]) / det;
+    if (u < 0 || u > 1) continue;
+    const q = [s[1] * e1[2] - s[2] * e1[1], s[2] * e1[0] - s[0] * e1[2], s[0] * e1[1] - s[1] * e1[0]];
+    const v = (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]) / det;
+    if (v < 0 || u + v > 1) continue;
+    const t = (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]) / det;
+    if (t > 1e-4 && t < 0.995) return true;
+  }
+  return false;
+}
+
+test('W4 fix: the SUV parked tail out stands on its rear tyres seen tail on from a standing eye (photo 37: its tyres show under the bumper\'s swept-up corners; the deep box of a bumper had hidden them, the car looked afloat); its underside black', () => {
+  const suv = lane.CARS.find((c) => c.kind === 'suv' && Math.abs(c.yaw) < 0.01);
+  assert.ok(suv, 'the dad\'s SUV, nose in');
+  const K = lane.CAR_KINDS.suv;
+  for (const tier of ['high', 'mid', 'low']) {
+    const kit = { tier };
+    for (const name of ['carPaint', 'carGlass', 'tyre', 'rim', 'trim', 'lamp', 'tail', 'metal']) kit[name] = new Geo();
+    carOf(kit, lane, suv);
+    const tris = [...['carPaint', 'carGlass', 'trim', 'lamp', 'tail', 'metal'].flatMap((n) => kit[n].pos)];
+    const { y0, R, axles, at } = carFrame(lane, suv);
+    // Photo 37's eye: ~1.8 m up, ~5 m behind the tail, a little toward the gap.
+    const eye = at(-117, y0 + 269, -K.l / 2 - 765);
+    const yC = y0 + R;
+    for (const s of [-1, 1]) {
+      // Points up each rear tyre's tread on its tail side, its outer half: the highest seen (the
+      // old bumper hid all but its lowest 8, lost in the contact shadow).
+      let top = 0;
+      for (const du of [4, 10, 16]) {
+        for (const h of [8, 16, 24, 32, 40]) {
+          const w = axles[1] - Math.sqrt(R * R - (yC - (y0 + h)) ** 2) - 0.5;
+          if (!blocked(eye, at(s * (K.w / 2 - 3 - du), y0 + h, w), tris)) top = Math.max(top, h);
+        }
+      }
+      assert.ok(top >= 32, `${tier}: the ${s > 0 ? 'left' : 'right'} rear tyre shows tail on up to ${top} (of its ${Math.round(2 * R)})`);
+    }
+    // The paint's faces under the floor's knee are covered by the black skin: no paint face low
+    // behind the rear arch faces down without trim under it (sampled by rays straight up).
+    const paint = kit.carPaint.pos;
+    for (const u of [-100, -60, 0, 60, 100]) {
+      const w = -K.l / 2 + 20;
+      const from = at(u, y0 + 1, w);
+      const to = at(u, y0 + K.belt, w);
+      assert.ok(blocked(from, to, kit.trim.pos), `${tier}: the bumper's black underside over (${u}, ${w})`);
+      assert.ok(blocked(from, to, paint), `${tier}: the body's floor there too`);
+    }
+  }
+});
+
+test('W4 fix: the columnar tree is a lacy poplar (photo 37), not a frustum: leaf cards over its whole crown, out to its width and up to its top, the sky through them; no solid core in it', () => {
+  const [t] = lane.COLUMN_TREES;
+  const y0 = lane.groundHeight(t.x, t.z);
+  for (const [tier, d] of [['high', high], ['low', low]]) {
+    const near = (p) => {
+      const out = [];
+      for (let i = 0; i < p.length; i += 3) if (Math.hypot(p[i] - t.x, p[i + 2] - t.z) < t.r * 1.6) out.push([Math.hypot(p[i] - t.x, p[i + 2] - t.z), p[i + 1] - y0]);
+      return out;
+    };
+    const leaves = near(positionsOf(d, 'foliage'));
+    assert.ok(leaves.length / 6 >= (tier === 'high' ? 3000 : 1500), `${tier}: ${leaves.length / 6} cards`);
+    assert.ok(Math.max(...leaves.map(([, y]) => y)) > t.h * 0.97, `${tier}: up to its top`);
+    const band = (f0, f1) => leaves.filter(([, y]) => y > t.h * f0 && y < t.h * f1).map(([r]) => r);
+    assert.ok(Math.max(...band(0.35, 0.5)) > t.r * 0.85, `${tier}: out to its widest low`);
+    assert.ok(Math.max(...band(0.8, 0.9)) < t.r * 0.8, `${tier}: slim above`);
+    // No core: nothing of the dark cores' mesh in its crown.
+    assert.equal(near(positionsOf(d, 'core')).filter(([, y]) => y > t.h * 0.2).length, 0, `${tier}: no solid core`);
+  }
+});
