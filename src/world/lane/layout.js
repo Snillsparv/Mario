@@ -652,7 +652,8 @@ const DEG = Math.PI / 180;
 //                dark); haze: the aerial perspective's density per unit (exponential, toward the
 //                sky's colour in each direction)
 //   shadow       the sun's soft shadow (three's PCF with this radius; biases for the flat walls
-//                at a grazing sun)
+//                at a grazing sun, both in world units: RealLook turns the depth bias into its
+//                share of the near shadow camera's depth, -4e-4 over the old 16000)
 //   probe        the reflection probe's place: over the road in front of the dad's house
 //   tiles        the houses whose roofs are real tile courses (world/lane/real/house.js: the dad's
 //                and his neighbours', close to play; the rest the tile set's normal map)
@@ -688,7 +689,7 @@ export const LANE_REAL = Object.freeze({
   exposure: 1.3,
   environment: 1.3,
   haze: 2.5e-5,
-  shadow: Object.freeze({ radius: 2.5, bias: -0.0004, normalBias: 3 }),
+  shadow: Object.freeze({ radius: 2.5, bias: -6.4, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
   atmosphere: Object.freeze({ fog: 0xd0d8e0, near: 3000, far: 45000, sun: 0xffb878, sunIntensity: 2.9, sunDir: LANE_SUN, sky: 0xe2e2e0, ground: 0x5a5850, ambientIntensity: 0.9 }),

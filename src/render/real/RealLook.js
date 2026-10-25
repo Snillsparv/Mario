@@ -9,14 +9,16 @@
 // and how Jonas is framed and drawn meanwhile (the camera's profile, his model's size).
 //
 //   const look = new RealLook({ preset, tier, probeAt, farBox, canRetro })
-//       preset: { sky, sunDir, exposure, environment, haze, shadow: { radius, bias, normalBias },
+//       preset: { sky, sunDir, exposure, environment, haze, shadow: { radius, bias, normalBias }
+//                 (bias and normalBias in world units),
 //                 atmosphere, post, grade, camera, hero }   (layout.LANE_REAL: atmosphere is the
 //                 view.setAtmosphere preset the look's sun and hemisphere come from; post and
 //                 grade the post chain's and the output pass's settings; camera the camera's
 //                 profile, hero Jonas's model's size)
 //       tier: tier.js TIERS[name]; probeAt: the probe's place { x, y, z } (world); farBox: the
 //       far shadow map's box { x0, x1, y0, y1, z0, z1 } (world; none: no far map, as on the low
-//       tier); canRetro: half-float targets work (else F2 leaves the look as it is)
+//       tier; its heights also the near shadow camera's depth's: shadowFar); canRetro:
+//       half-float targets work (else F2 leaves the look as it is)
 //   look.camera, look.heroScale     // the camera's profile (core/AreaSwitch.js sets it with the
 //                                   // look) and Jonas's model's size (view.heroScale) meanwhile
 //   look.grade                      // the output pass's grade uniforms (its bloom's share too,
@@ -88,9 +90,14 @@ import { makeSky, skyEnvironment, skyUniforms } from './sky.js';
 import { captureProbe, blankProbe } from './probe.js';
 import { TIERS, lookPixelRatio, ladder, saveLevel } from './tier.js';
 
-const SUN_DISTANCE = 8000; // the shadow camera's distance from the focus, toward the sun
+// The near shadow camera's depth (W1 fix): it holds everything between the heights it is given
+// (the far box's: the area's lowest receiver to its tallest caster; else these, round the
+// world's origin) over its box across the light, however low the sun (its sine at least
+// MIN_SUN): at a low sun a tall tree's shadow falls into the box from far toward the sun.
 const SHADOW_NEAR = 10;
-const SHADOW_FAR = 16000;
+const SHADOW_MARGIN = 100; // (that depth this much deeper each way)
+const SHADOW_HEIGHTS = Object.freeze([-100, 3200]);
+const MIN_SUN = 0.08; // (~4.6 deg)
 const AHEAD = 0.35; // the near shadow box's middle this share of its half size ahead of the focus
 const AWAY = 1e5; // a probe's near shadow box this far off the street (its shadows the far map's)
 
@@ -103,6 +110,7 @@ export class RealLook {
     this.heroScale = preset.hero ?? 1; // Jonas's model's size meanwhile (view.heroScale)
     this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze } };
     this.far = farBox && tier.far ? new FarShadow({ size: tier.far, sunDir: preset.sunDir, box: farBox }) : null;
+    this.heights = farBox ? [farBox.y0, farBox.y1] : SHADOW_HEIGHTS; // (the near shadow camera's depth: shadowFar)
     if (this.far) Object.assign(this.haze, this.far.uniforms); // (every realistic material's)
     this.farDirty = !!this.far;
     this.sky = makeSky(this.haze, { clouds: preset.sky.clouds });
@@ -175,16 +183,14 @@ export class RealLook {
     sun.castShadow = true;
     const shadow = sun.shadow;
     shadow.radius = preset.shadow.radius;
-    shadow.bias = preset.shadow.bias;
     shadow.normalBias = preset.shadow.normalBias;
-    shadow.camera.near = SHADOW_NEAR;
-    shadow.camera.far = SHADOW_FAR;
     this.fitShadow(sun);
     this.probeDirty = !this.probeTaken; // (taken once: the street does not change)
     this.last = 0;
   }
 
-  // The level's shadow map and box.
+  // The level's shadow map and box, the camera's depth for it (shadowFar) and the bias in it
+  // (the preset's in world units: three's is a share of the depth).
   fitShadow(sun) {
     const { shadow: size, box } = this.level;
     const shadow = sun.shadow;
@@ -193,8 +199,36 @@ export class RealLook {
       shadow.map = null;
       shadow.mapSize.set(size, size);
     }
-    Object.assign(shadow.camera, { left: -box, right: box, top: box, bottom: -box });
+    const far = this.shadowFar();
+    Object.assign(shadow.camera, { left: -box, right: box, top: box, bottom: -box, near: SHADOW_NEAR, far });
     shadow.camera.updateProjectionMatrix();
+    shadow.bias = this.preset.shadow.bias / (far - SHADOW_NEAR);
+  }
+
+  // The near shadow camera's depth at the level's box (the same for every focus) and its
+  // distance toward the sun from a focus at height h (placeSun). A point at height y, v from the
+  // focus along the camera's up (across the light), lies (y - h) / sin e - v cot e toward the
+  // sun from it (e the sun's height): over |v| <= box and the heights y0..y1 the nearest to the
+  // sun at (y1 - h) / sin e + box cot e, the farthest (y1 - y0) / sin e + 2 box cot e behind it.
+  shadowFar() {
+    const [y0, y1] = this.heights;
+    return SHADOW_NEAR + 2 * SHADOW_MARGIN + (y1 - y0) / this.sunSin() + 2 * this.shadowAcross();
+  }
+
+  // (h held within the heights: the camera never behind its focus.)
+  sunDistance(h) {
+    const [y0, y1] = this.heights;
+    return SHADOW_NEAR + SHADOW_MARGIN + (y1 - Math.min(Math.max(h, y0), y1)) / this.sunSin() + this.shadowAcross();
+  }
+
+  sunSin() {
+    return Math.max(this.sunDir.y, MIN_SUN);
+  }
+
+  // (box cot e: the box's half size across the light, along the light.)
+  shadowAcross() {
+    const sin = this.sunSin();
+    return (this.level.box * Math.sqrt(1 - sin * sin)) / sin;
   }
 
   // Draws at levels[index] from now (view: the renderer it is set on, if any).
@@ -289,10 +323,14 @@ export class RealLook {
     const { axisX, axisY, sunDir, snapped } = this;
     const x = Math.round(focus.dot(axisX) / texel) * texel;
     const y = Math.round(focus.dot(axisY) / texel) * texel;
-    snapped.copy(sunDir).multiplyScalar(focus.dot(sunDir)).addScaledVector(axisX, x).addScaledVector(axisY, y);
+    // (Read before `snapped` is written: captureOne passes `snapped` itself as the focus. Read
+    // after it, as until the W1 fix, the depth came out 1: hidden while the distance was fixed,
+    // but with the distance from the height it put the probes' sun on the wrong side.)
+    const along = focus.dot(sunDir);
+    snapped.copy(sunDir).multiplyScalar(along).addScaledVector(axisX, x).addScaledVector(axisY, y);
     sun.target.position.copy(snapped);
     sun.target.updateMatrixWorld();
-    sun.position.copy(snapped).addScaledVector(sunDir, SUN_DISTANCE);
+    sun.position.copy(snapped).addScaledVector(sunDir, this.sunDistance(snapped.y));
   }
 
   get probeAt() {

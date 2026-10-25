@@ -164,9 +164,10 @@ async function open(query) {
 }
 
 // A blue sky: since W1 a pale hazy one (the photos' golden hour: their sky's blue only 25-40 over
-// its red overhead, where the old saturated sky's was over 40), so a pale blue, not grey: its
-// blue over its red by more than 15 and over its green.
-const blue = ([r, g, b]) => b > r + 15 && b > g;
+// its red overhead, where the old saturated sky's was 64-109), so a pale blue, not grey: its
+// blue over its red by more than 30 (the five views' measure 43-52 on every tier) and over its
+// green.
+const blue = ([r, g, b]) => b > r + 30 && b > g;
 
 // The five views (Jonas there, the camera behind him; local x, y, z, yaw): each one's draw calls,
 // triangles (the shadow pass included), realistic programs and texture bytes within the tier's
@@ -257,7 +258,7 @@ async function gtaLook(page) {
     out.wallNoAo = window.__pixelsAt([[600, 26, 1329]]);
     settings.ao = ao;
     out.wallAo = window.__pixelsAt([[600, 26, 1329]]);
-    // Toward the sun (low in the south-west): the camera on the road looking at it.
+    // Toward the sun (low in the west-south-west): the camera on the road looking at it.
     const d = look.sunDir;
     const cam = v.camera;
     g.step(1);

@@ -406,7 +406,7 @@ const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 // under the carport's edge, the store room's concrete floor behind its door wall) and the
 // link's, the drive east of the turning area to the double garage, the north-west villa's
 // flagstones, the footpath, the dad's patio.
-function hardSurfaces(L, road, TINT) {
+function hardSurfaces(L, road, tints) {
   const out = [];
   const add = (outline, mat, tint, shade = 1) => {
     for (const piece of cutOut(outline, road)) out.push({ outline: piece, mat, tint, shade });
@@ -414,31 +414,31 @@ function hardSurfaces(L, road, TINT) {
   // The pavement: along the bend and the straight, on its north side, up to the turning area.
   const line = L.ROAD.line.slice(1);
   const pave = band(line, L.PAVEMENT.from, L.PAVEMENT.to);
-  for (const q of pave) add(q.map(([x, z]) => [Math.min(x, L.PAVEMENT.x1), z]), 'asphalt', TINT.pavement);
+  for (const q of pave) add(q.map(([x, z]) => [Math.min(x, L.PAVEMENT.x1), z]), 'asphalt', tints.pavement);
   for (const p of L.PLOTS_N) {
     const v = L.villaOf(p);
     const [d0, d1] = p.drive;
-    add([[d0, L.wallZAt(d0)], [d1, L.wallZAt(d1)], [d1, v.front], [d0, v.front]], 'cobbles', TINT.cobbles);
+    add([[d0, L.wallZAt(d0)], [d1, L.wallZAt(d1)], [d1, v.front], [d0, v.front]], 'cobbles', tints.cobbles);
   }
-  add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', TINT.path);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', TINT.drive);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.GARAGE.wall), 'asphalt', TINT.drive, CARPORT_SHADE);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', TINT.floor, 0.4);
-  add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', TINT.drive);
-  add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', TINT.patio);
-  add(rectOf(L.TURN.x + 800, L.EAST_GARAGE.cx - L.EAST_GARAGE.d / 2, L.EAST_GARAGE.cz - L.EAST_GARAGE.w / 2, L.EAST_GARAGE.cz + L.EAST_GARAGE.w / 2), 'asphalt', TINT.drive);
+  add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', tints.path);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', tints.drive);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.GARAGE.wall), 'asphalt', tints.drive, CARPORT_SHADE);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', tints.floor, 0.4);
+  add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', tints.drive);
+  add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', tints.patio);
+  add(rectOf(L.TURN.x + 800, L.EAST_GARAGE.cx - L.EAST_GARAGE.d / 2, L.EAST_GARAGE.cz - L.EAST_GARAGE.w / 2, L.EAST_GARAGE.cz + L.EAST_GARAGE.w / 2), 'asphalt', tints.drive);
   const F = frame(L.NORTH_WEST);
   const D = L.NORTH_WEST_DRIVE;
   add([[D.u0, D.w0], [D.u1, D.w0], [D.u1, D.w1], [D.u0, D.w1]].map(([u, w]) => {
     const p = F.at(u, 0, w);
     return [p[0], p[2]];
-  }), 'cobbles', TINT.flags);
+  }), 'cobbles', tints.flags);
   const P = L.FOOTPATH;
   const fp = (t, s) => {
     const p = L.footpathAt(t, s);
     return [p.x, p.z];
   };
-  add([fp(P.from, P.half), fp(P.from, -P.half), fp(P.len, -P.half), fp(P.len, P.half)], 'asphalt', TINT.footpath);
+  add([fp(P.from, P.half), fp(P.from, -P.half), fp(P.len, -P.half), fp(P.len, P.half)], 'asphalt', tints.footpath);
   return out;
 }
 

@@ -15,6 +15,9 @@ import { RealPost } from '../src/render/real/post/RealPost.js';
 import { RealLook } from '../src/render/real/RealLook.js';
 import * as lane from '../src/world/lane/layout.js';
 import { TextureStore, poolSize } from '../src/render/real/textureStore.js';
+import { shadowBox } from '../src/world/lane/real/look.js';
+import { forestSpots } from '../src/world/lane/real/spots.js';
+import { AREA_DEFS } from '../src/world/areas.js';
 
 test('the guess: phones low, Apple silicon and discrete GPUs high, other desktops mid; ?tier= overrides; the render size capped by pixels', () => {
   assert.equal(guessTier({ coarse: true, touchPoints: 5, shortSide: 390, gpu: 'Apple GPU' }), 'low');
@@ -183,6 +186,84 @@ test('the post chain degrades gracefully down the high ladder: each level draws 
   assert.deepEqual(seen, ['high: 14', 'high -shafts: 12', 'high ao8: 12', 'high bloom4: 10', 'high -ao: 7', 'high 85%: 7', 'mid: 7', 'mid 85%: 7']);
   post.dispose();
   look.dispose();
+});
+
+test('the near shadow camera\'s depth (W1 fix: the low golden-hour sun\'s long shadows): on every tier, wherever its box is (the street, the terraces, a lamppost\'s cap, the bank), the tallest caster the lane may have over any receiver in the box lies inside it, as do every receiver and the lane\'s trees\' and lampposts\' own tops; its bias stays 6.4 units along the light; a probe\'s box (its focus the look\'s own snapped point) on its point with the sun on the sun\'s side; at a lower sun too', () => {
+  const origin = AREA_DEFS.lane.origin;
+  const farBox = shadowBox(lane, origin);
+  const at = (x, y, z) => new THREE.Vector3(x + origin.x, y + origin.y, z + origin.z);
+  const { firs, birches } = forestSpots(lane);
+  const tops = [
+    ...[...firs, ...birches].flatMap((t) => [0.5, 0.75, 1].map((k) => at(t.x, t.base + t.h * k, t.z))),
+    ...lane.TREES.map((t) => at(t.x, t.h, t.z)),
+    ...lane.GARDEN_TREES.map((t) => at(t.x, t.h, t.z)),
+    ...lane.LAMPS.map((l) => at(l.x, lane.GROUND + lane.LAMP.top, l.z)),
+  ];
+  assert.ok(Math.max(...tops.map((p) => p.y)) < farBox.y1, 'the box over the bank\'s firs\' tops');
+  // The receivers: the ground every 400 over the lane and round it; the box's focus along the
+  // street and the terraces, up on each lamppost's cap and over the bank.
+  const ground = [];
+  for (let x = -9600; x <= 8600; x += 400) for (let z = -5800; z <= 5800; z += 400) ground.push(at(x, lane.groundHeight(x, z), z));
+  const foci = [];
+  for (let x = -9000; x <= 7500; x += 500) for (const z of [-2400, -1200, 0, 900, 2000]) foci.push(at(x, lane.groundHeight(x, z), z));
+  for (const l of lane.LAMPS) foci.push(at(l.x, lane.GROUND + lane.LAMP.top + 100, l.z));
+  for (let x = -6000; x <= 6000; x += 3000) foci.push(at(x, lane.groundHeight(x, -4800), -4800));
+  const low = { ...lane.LANE_REAL, sunDir: { x: -0.69, y: 0.12, z: 0.71 } }; // (~7 deg: the photos')
+  const q = new THREE.Vector3();
+  const caster = new THREE.Vector3();
+  for (const preset of [lane.LANE_REAL, low]) {
+    for (const name of ['high', 'mid', 'low']) {
+      const look = new RealLook({ preset, tier: TIERS[name], farBox });
+      const sun = new THREE.DirectionalLight();
+      look.fitShadow(sun);
+      const cam = sun.shadow.camera;
+      const box = TIERS[name].box;
+      const what = `${preset === low ? '7 deg' : 'the lane\'s sun'}, ${name}`;
+      assert.ok(Math.abs(sun.shadow.bias * (cam.far - cam.near) - preset.shadow.bias) < 1e-9 && preset.shadow.bias === -6.4, `${what}: the bias ${sun.shadow.bias} over ${cam.far}`);
+      const sin = look.sunDir.y;
+      let receivers = 0;
+      let kept = 0;
+      for (const f of foci) {
+        look.placeSun(sun, f);
+        sun.updateMatrixWorld();
+        sun.shadow.updateMatrices(sun);
+        assert.ok(sun.target.position.distanceTo(f) < (2 * box) / TIERS[name].shadow, `${what}: the box on its focus`);
+        const depth = (p) => {
+          q.copy(p).applyMatrix4(cam.matrixWorldInverse);
+          return Math.abs(q.x) <= box && Math.abs(q.y) <= box ? -q.z : null;
+        };
+        for (const g of ground) {
+          const d = depth(g);
+          if (d === null) continue;
+          receivers++;
+          assert.ok(d <= cam.far, `${what}: the ground at ${g.x - origin.x}, ${g.z - origin.z} (focus ${f.x - origin.x}, ${f.y}, ${f.z - origin.z}) ${d} deep, the camera ${cam.far}`);
+          // The tallest caster the box holds over it: at the heights' top toward the sun.
+          caster.copy(g).addScaledVector(look.sunDir, (farBox.y1 - g.y) / sin);
+          const c = depth(caster);
+          assert.ok(c !== null && c >= cam.near, `${what}: a caster ${farBox.y1} high over ${g.x - origin.x}, ${g.z - origin.z} (focus ${f.x - origin.x}, ${f.y}, ${f.z - origin.z}): ${c} from the camera`);
+        }
+        for (const t of tops) {
+          const d = depth(t);
+          if (d === null) continue;
+          kept++;
+          assert.ok(d >= cam.near && d <= cam.far, `${what}: a tree's or lamppost's top at ${t.x - origin.x}, ${t.y}, ${t.z - origin.z} (focus ${f.x - origin.x}, ${f.z - origin.z}): ${d} from the camera`);
+        }
+      }
+      assert.ok(receivers > 20 * foci.length && kept > 2 * foci.length, `${what}: ${receivers} receivers, ${kept} tops in the boxes`);
+      // A probe's box (captureOne: its focus is look.snapped itself, put far off the street): the
+      // box on that point, the sun still shining from the sun's side (the distance from the
+      // point's own height, not a stale one's).
+      const texel = (2 * box) / TIERS[name].shadow;
+      for (const p of [at(1e5, 260, 250), at(1e5, 420, -350), at(0, 260, 250)]) {
+        const want = p.clone();
+        look.snapped.copy(p);
+        look.placeSun(sun, look.snapped);
+        const toward = sun.position.clone().sub(sun.target.position);
+        assert.ok(sun.target.position.distanceTo(want) < texel && toward.normalize().dot(look.sunDir) > 0.9999 && sun.position.distanceTo(sun.target.position) > 5000, `${what}: a probe's sun at ${p.x - origin.x}: ${sun.target.position.toArray()} -> ${sun.position.toArray()}`);
+      }
+      look.dispose();
+    }
+  }
 });
 
 test('the last good level is kept per device and per tier (local storage, a convenience: none, the top)', () => {

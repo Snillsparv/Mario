@@ -1790,10 +1790,10 @@ trees' leaves).
   `world/sky.js setPale`, its blue mixed toward its brightest channel, the cartoon clouds kept:
   the photos' hazy golden-hour sky, W1; AreaSwitch sets it with each area's look, 0 elsewhere)
   and the fog in its horizon's colour (0xcbdbef) from 6000 to 24000, a low warm actor sun
-  0xffd09c (0.66π) from the bake's `LANE_SUN` (normalize(−0.67, 0.21, 0.71), W1: 45° from +z
-  toward −x and ~12° up, the photos' golden hour, its ~5° lifted for play; so the villas' street
-  faces and the treetops glow while the chain houses' fronts and most of the street stand in
-  soft shade), a warm hemisphere. Lighting baked from `LANE_SUN` with a warm golden tint
+  0xffdcb0 (0.66π; kept in W1: the realistic look's shirt check is against it) from the bake's
+  `LANE_SUN` (normalize(−0.67, 0.21, 0.71), W1: 45° from +z toward −x and ~12° up, the photos'
+  golden hour, its ~5° lifted for play; so the villas' street faces and the treetops glow while
+  the chain houses' fronts and most of the street stand in soft shade), a warm hemisphere. Lighting baked from `LANE_SUN` with a warm golden tint
   (ambient 0.64, a little up for the lower sun's weaker light on the ground, diffuse 0.55, at
   most 1.1, tint (1.1, 1, 0.86)), the lawns an autumn olive (their tints over the green lawn
   texture: 0xc8a050), the hedges and thujas olive, with a little painted occlusion: the walls
@@ -3084,9 +3084,9 @@ writes it back, so leaving restores the renderer exactly:
 | state | classic | realistic (the lane) |
 |---|---|---|
 | `renderer.shadowMap` enabled / type / autoUpdate | false / – / true | true / PCF / true |
-| `sun.castShadow`, `sun.shadow` (map, mapSize, radius, biases, camera box) | off | on, per tier, radius 2.5, bias −4e-4, normalBias 3 |
+| `sun.castShadow`, `sun.shadow` (map, mapSize, radius, biases, camera box and depth) | off | on, per tier, radius 2.5, bias 6.4 units toward the light (`LANE_REAL.shadow.bias` −6.4 in world units, three's bias its share of the near camera's depth: −2.1e-4 to −2.3e-4 by tier), normalBias 3; the camera's depth from the sun's height (`shadowFar`) |
 | `sun.position`, `sun.target` | `setAtmosphere` | over the focus along `LANE_SUN` |
-| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: 0xffbe82 (1, 0.51, 0.22) × 4.4 (W1: the golden hour), sky 0xdde2e8, ground 0x5a5a3c, 0.9; fog in the haze's horizon colour (0xd0d8e0), 3000 … 45000 |
+| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: 0xffb878 (1, 0.48, 0.19) × 2.9 (W1: the golden hour; no brighter, Jonas's shirt burns pink at 4.4), sky 0xe2e2e0, ground 0x5a5850, 0.9; fog in the haze's horizon colour (0xd0d8e0), 3000 … 45000 |
 | `scene.environment` / intensity / `background` | null / 1 / fog colour | sky PMREM / 1.3 / null (the sky draws) |
 | `renderer.toneMapping` / exposure | none / 1 | none (the output pass) or Neutral (low) / 1.3 |
 | retro filter | the saved setting | off; F2 / R: retro over realistic for this visit (`lookRetro`), never saved |
@@ -3176,9 +3176,15 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   tier (phones: no post chain) never had them.
 * **Shadows near and far.** The sun's own map (re-drawn each frame, PCF) is a tight, sharp box
   (high 2048 over ±1500, texel 1.5 units; mid 1024 over ±1300) centred a little ahead of the
-  focus along the view; the **far map** (`farShadow.js`: 4096 on high, 2048 on mid, none on low)
-  covers the lane's bounds up to 3000 high, its box reaching 6000 toward the sun for casters
-  outside them, and is drawn **once a build** (the readying chain's task before the probes,
+  focus along the view, its camera's depth holding everything from just under the ground to over
+  the bank's firs' tops (`look.js shadowBox`'s heights, −100 to 3200) across its box, however
+  low the sun (`RealLook.shadowFar`: (y1 − y0) / sin e + 2 box cot e, ~29800 on high at the
+  lane's 12°; the camera `sunDistance(h)` toward the sun from a focus h high; W1 fix: at the
+  old fixed 8000 / 16000 the low sun's long shadows of the edge forest's firs fell into the box
+  from beyond its near plane, so they went missing round Jonas and popped at the box's edge),
+  its depth bias 6.4 units whatever that depth; the **far map** (`farShadow.js`: 4096 on high,
+  2048 on mid, none on low) covers the lane's bounds up to 3200 high, its box reaching 6000
+  toward the sun for casters outside them, and is drawn **once a build** (the readying chain's task before the probes,
   whose shadows are all its own; else the first frame drawn), by three's own shadow pass for a light of its own that is never in
   the scene (so no actor's program changes), inside a render of the scene from a camera that sees
   nothing (three's pass needs the renderer's render state). `materials.js sunShadowChunk` (in
@@ -3342,10 +3348,17 @@ in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
   191, 228) -> (156, 176, 203); the five views' sky at the top b − r 44-52 (was 64-109); the
   arrival's Falu red wall (95, 44, 32) -> (92, 44, 27); the white plinth in the house's shade
   (122, 129, 130) -> (161, 160, 152); Jonas's shirt (246, 59, 52) against the classic look's (220,
-  43, 29): 6.4 % (was 2.4 %; the bar 8 %). The test's sky check is a pale blue now (b > r + 15
+  43, 29): 6.4 % (was 2.4 %; the bar 8 %). The test's sky check is a pale blue now (b > r + 30
   and b > g: the photos' sky is only 25-40 bluer than red overhead; the old b > r + 40 was a
   saturated sky's). Shadows: the lower sun's longer ones need no new bias on any tier (no acne
-  seen on low's 1024 map over ±1600, nor on high).
+  seen on low's 1024 map over ±1600, nor on high); they did need a deeper near shadow camera
+  (the W1 fix: its depth from the sun's height, the bias kept at 6.4 units; see **Shadows near
+  and far**; `tests/real-tier.test.js` checks the tallest caster over every receiver in the box
+  on every tier, `lane-real-build` the build's casters under its heights). `placeSun` reads its
+  focus before it writes `look.snapped`: a probe's capture passes that very vector, whose depth
+  along the light used to be read back as 1 (harmless at a fixed distance; with the distance
+  from the focus's height it put the probes' sun on the wrong side, tinting the windows' and
+  the cars' reflections).
 * **Budgets** (the five views, E2E, the shadow pass and the post chain included): high 143-153
   draw calls / 912-934k triangles (were 141-152 / 912-928k: the lower sun's longer shadows bring
   a few more casters into the near box, and a view that now faces the sun draws the shafts' 2

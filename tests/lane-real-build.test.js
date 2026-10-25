@@ -198,7 +198,7 @@ test('the realistic lane: each mesh in its catalogue material, shadows cast by a
   look.dispose();
 });
 
-test('the worker\'s detail in the realistic lane: every mesh in its detail material (leaf cards alpha-tested and swaying, the cars lacquered, the tiles casting through their flat stand-in), the firs instanced, the grass following the camera', () => {
+test('the worker\'s detail in the realistic lane: every mesh in its detail material (leaf cards alpha-tested and swaying, the cars lacquered, the tiles casting through their flat stand-in), the firs instanced, the grass following the camera, every caster under the near shadow camera\'s heights (W1 fix)', () => {
   for (const tierName of ['high', 'low']) {
     const tier = TIERS[tierName];
     const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
@@ -212,6 +212,20 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     const bins = D['lane-detail-bins'];
     assert.ok(bins.isInstancedMesh && bins.count === lane.BINS.length && bins === part.movers.bins && bins.material === D['lane-detail-paint'].material && bins.castShadow, `${tierName}: the bins' mover`);
     assert.equal(D['lane-detail-fir-leaves-far'].castShadow, false, 'the far tree line casts none');
+    // (W1 fix) Every caster under the top of the heights the near shadow camera's depth holds
+    // (RealLook shadowFar: shadowBox's, over the bank's firs' tops), the build's own boxes.
+    part.object3D.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    let top = -Infinity;
+    part.object3D.traverse((o) => {
+      if (!o.isMesh || !o.castShadow) return;
+      if (o.isInstancedMesh) o.computeBoundingBox();
+      else o.geometry.computeBoundingBox();
+      box.copy(o.isInstancedMesh ? o.boundingBox : o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+      top = Math.max(top, box.max.y + AREA_DEFS.lane.origin.y);
+    });
+    assert.deepEqual(look.heights, [AREA_DEFS.lane.origin.y - 100, AREA_DEFS.lane.origin.y + 3200]);
+    assert.ok(top > (tierName === 'high' ? 3000 : 1000) && top < look.heights[1], `${tierName}: the casters' top ${top}`);
     for (const [name, m] of Object.entries(D)) {
       if (name === 'lane-detail-shadow') {
         assert.ok(m.material.isMeshBasicMaterial && !m.material.colorWrite && !m.material.depthWrite && m.castShadow, 'the stand-in only casts');

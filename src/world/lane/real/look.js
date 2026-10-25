@@ -23,8 +23,10 @@
 //       materials; part.movers: the bins (the worker's, instanced: lane-detail-bins) and the
 //       charger's cable; part.hide: the dad's car's first vertex in each detail mesh; part.robot:
 //       the dad's car as the lane's boss's pieces, detail.js robotPieces, in their materials), look: the
-//       RealLook from layout.LANE_REAL (its probe over the road in world coordinates, its far
-//       shadow map over the course's bounds up to FAR_TOP)
+//       RealLook from layout.LANE_REAL (its probe over the road in world coordinates, its
+//       shadows' box shadowBox's)
+//   shadowBox(layout, origin) -> { x0, x1, y0, y1, z0, z1 }   // (world) the far shadow map's
+//       box: the course's bounds up to FAR_TOP; its heights the near map's depth's too
 //
 // The catalogue (CATALOGUE): each mesh's set (and its options), the world units one repeat of
 // the set covers, a colour the map and the vertex tint are multiplied by (linear: the tints stay
@@ -63,7 +65,10 @@ const PAINT = { roughness: 0.5 };
 const CLOTH = { roughness: 0.85, side: THREE.DoubleSide };
 const ATTRIBUTES = { position: 3, normal: 3, uv: 2, color: 3, sway: 1, wear: 3 };
 const WIND_SPEED = 1.7; // the plants' sway, radians a second
-const FAR_TOP = 3000; // the far shadow map's box reaches this high (the hill's trees' tops)
+// The shadows' box (shadowBox: the far map's, and the heights the near map's depth holds,
+// RealLook shadowFar) reaches this high: over the bank's firs' tops, ~3090
+// (tests/lane-real-build.test.js).
+const FAR_TOP = 3200;
 const CLOUD_DRIFT = 0.002; // the cirrus's drift along the wind (the sky's units a second)
 // The meshes that cast no sun shadow on mid and low (B4: the fight's draw calls within the tiers'
 // budgets): the front door's leaf (flush with its wall) and the charger's cable; on mid the cars'
@@ -215,6 +220,13 @@ function grassGrid(group, { clump, ground }, G, haze, wind) {
   return { follow, reach, mesh };
 }
 
+// The shadows' box (world): the course's bounds, from just under the ground up to FAR_TOP.
+export function shadowBox(layout, origin) {
+  const xs = layout.BOUNDS.map(([x]) => x + origin.x);
+  const zs = layout.BOUNDS.map(([, z]) => z + origin.z);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: origin.y - 100, y1: origin.y + FAR_TOP, z0: Math.min(...zs), z1: Math.max(...zs) };
+}
+
 export function buildLaneReal(layout, options) {
   const steps = laneRealSteps(layout, options);
   let step = steps.next();
@@ -227,9 +239,7 @@ export function buildLaneReal(layout, options) {
 export function* laneRealSteps(layout, { store, tier, origin, anisotropy, canRetro = true, detail = null }) {
   const preset = layout.LANE_REAL;
   const p = preset.probe;
-  const xs = layout.BOUNDS.map(([x]) => x + origin.x);
-  const zs = layout.BOUNDS.map(([, z]) => z + origin.z);
-  const farBox = { x0: Math.min(...xs), x1: Math.max(...xs), y0: origin.y - 100, y1: origin.y + FAR_TOP, z0: Math.min(...zs), z1: Math.max(...zs) };
+  const farBox = shadowBox(layout, origin);
   const look = new RealLook({ preset, tier, probeAt: { x: p.x + origin.x, y: p.y + origin.y, z: p.z + origin.z }, farBox, canRetro });
   // The weathering's ground map (the worker's lawn mask), every realistic material's.
   const wear = detail?.ground ? wearUniforms(detail.ground, origin) : null;
