@@ -124,10 +124,17 @@ test('the walls are open at every window and door of the chain houses and the vi
     else if (typeof h.door === 'number' && h.kit === 'chain') openings.push([front, h.door, 1, 214]);
     for (const [f, u, v0, v1] of openings) {
       // A point in the opening's middle, on the wall's plane (and on the plinth's, 2 proud);
-      // (south_2's back window where its wing stands against it is inside the wing: no matter).
+      // (south_2's and south_west's back windows where their wings stand against them are inside
+      // the wings: no matter).
       for (const w of [0, 2]) {
         const [x, y, z] = f.at(u, (v0 + v1) / 2, w);
-        if (lane.HOUSES.some((o) => o !== h && Math.abs(x - o.cx) < (Math.abs(Math.sin(o.yaw ?? 0)) > 0.5 ? o.d : o.w) / 2 + 5 && Math.abs(z - o.cz) < (Math.abs(Math.sin(o.yaw ?? 0)) > 0.5 ? o.w : o.d) / 2 + 5)) continue;
+        // (In the other house's own frame: the west houses stand turned to the west leg.)
+        const within = (o) => {
+          const [c, sn] = [Math.cos(o.yaw ?? 0), Math.sin(o.yaw ?? 0)];
+          const [dx, dz] = [x - o.cx, z - o.cz];
+          return Math.abs(dx * c - dz * sn) < o.w / 2 + 5 && Math.abs(dx * sn + dz * c) < o.d / 2 + 5;
+        };
+        if (lane.HOUSES.some((o) => o !== h && within(o))) continue;
         for (const { position: p } of walls) {
           for (let i = 0; i < p.length; i += 9) {
             const tri = [0, 1, 2].map((k) => [p[i + k * 3], p[i + k * 3 + 1], p[i + k * 3 + 2]]);
@@ -147,7 +154,9 @@ test('the walls are open at every window and door of the chain houses and the vi
 
 test('the tile courses lie in the classic roof planes (the colliders Jonas walks on): their crowns at most 1.5 over them (he stands on the crowns), the troughs under them', () => {
   const { position: p } = mesh(high, 'tiles');
-  const roofs = lane.LANE_REAL.tiles.map((id) => {
+  // (And south_2's wing, its courses plain since W2: its ridge cap and verge rolls, in the tiles,
+  // reach over south_2's back eave.)
+  const roofs = [...lane.LANE_REAL.tiles, 'south_2_wing'].map((id) => {
     const h = lane.HOUSES.find((o) => o.id === id);
     return { h, F: frameOf(h), o: h.overhang ?? 60, A: h.w / 2, B: h.d / 2, tan: (h.ridge - h.eave) / (h.d / 2) };
   });
@@ -265,23 +274,25 @@ test('the firs read as dense spruces, not a net of cards (R fixes: the dad\'s "s
 
 test('the grass\'s mask: blades on the lawns and the gardens (at their height), none on the road, the turning area, the pavement, the paths, the drives, the dad\'s corner bed, the mailbox, the bushes, the houses, the walls or the steps up them', () => {
   const m = lawnMask(lane);
-  assert.deepEqual([m.width, m.height], [1024, 512]);
+  // (W2: the 1.3 plan's lawns, a cell still ~17 square.)
+  assert.deepEqual([m.width, m.height], [1280, 608]);
   const at = (x, z) => {
     const i = Math.floor(((x - m.x0) / (m.x1 - m.x0)) * m.width);
     const j = Math.floor(((z - m.z0) / (m.z1 - m.z0)) * m.height);
     return [m.data[(j * m.width + i) * 4], m.data[(j * m.width + i) * 4 + 1] * 4];
   };
-  const lawns = [[-500, 900], [600, 1050], [400, 1150], [-2500, 1000], [-900, -1500], [2000, -1100], [-2000, 3000]];
+  const { DAD, SOUTH_EDGE, HEDGES, PLOTS_N, APRON, wallZAt } = lane;
+  const lawns = [[DAD.x0 + 360, (SOUTH_EDGE + DAD.z0) / 2], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [3500, 1600]];
   for (const [x, z] of lawns) {
     const [grow, y] = at(x, z);
     assert.equal(grow, 255, `a lawn at ${x}, ${z}`);
     assert.ok(Math.abs(y - lane.groundHeight(x, z)) <= 2, `its height at ${x}, ${z}: ${y}`);
   }
   const bare = {
-    road: [0, 0],
-    'turning area': [lane.TURN.x, lane.TURN.z + 800],
-    pavement: [-1000, -560],
-    path: [0, 900],
+    road: [0, lane.ROAD.line.at(-1)[1]],
+    'turning area': [APRON.ring.x, APRON.ring.z + 800],
+    pavement: [-1000, (lane.ROAD.line.at(-1)[1] - lane.ROAD.half + wallZAt(-1000)) / 2],
+    path: [0, (SOUTH_EDGE + DAD.z0) / 2],
     drive: [2000, 900],
     'corner bed': [lane.RED_TREE.x, lane.RED_TREE.z],
     "corner bed's corner": [lane.BED.x1 - 60, lane.BED.z0 + 60],
@@ -289,11 +300,13 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     steps: [(lane.PLOTS_N[3].steps[0] + lane.PLOTS_N[3].steps[1]) / 2, lane.wallZAt(lane.PLOTS_N[3].steps[0]) - 130],
     mailbox: [lane.MAILBOX.x, lane.MAILBOX.z],
     rhododendron: [lane.RHODODENDRON.x, lane.RHODODENDRON.z],
-    hedge: [-2500, 640],
+    hedge: [-2500, (HEDGES[0].z0 + HEDGES[0].z1) / 2],
     house: [0, 2000],
-    'drive notch': [650, -1000],
-    "terrace's wall": [-2000, lane.NORTH.wallZ - 5],
-    'outside the boundary': [-3000, 3700],
+    'drive notch': [(PLOTS_N[2].drive[0] + PLOTS_N[2].drive[1]) / 2, wallZAt(PLOTS_N[2].drive[0]) - 240],
+    "terrace's wall": [-2000, wallZAt(-2000) - 5],
+    forecourt: [lane.FORECOURT.x0 + 300, (lane.FORECOURT.z0 + lane.FORECOURT.z1) / 2],
+    footway: [(lane.FOOTWAY.x0 + lane.FOOTWAY.x1) / 2, 0],
+    'outside the boundary': [-3000, 4450],
   };
   for (const [what, [x, z]] of Object.entries(bare)) assert.equal(at(x, z)[0], 0, `none on the ${what}`);
   assert.equal(GRASS.high.side ** 2, 16384, 'the plan\'s 16,384 clumps on high');
@@ -467,7 +480,7 @@ test('every car sits flat on its drive: each tyre\'s patch on the drawn surface 
 test('the cars\' bonnets and roofs lie on the colliders Jonas stands on (within 4), their parts in the probes\' clusters, no plate or badge on either end', () => {
   const clusters = carClusters(lane);
   assert.equal(clusters.length, 4, 'the dad\'s drive, the west link, the north drives, the east end');
-  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5], [6, 7]]);
+  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5, 6], [7]]); // (W2: the van on north_4's drive with the north drives)
   assert.deepEqual(high.probes.map((p) => p.name), ['car0', 'car1', 'car2', 'car3', 'north']);
   assert.deepEqual(low.probes, [], 'no probes on low');
   for (const [k, g] of clusters.entries()) {
@@ -541,7 +554,7 @@ test('the clutter lies on the ground: every fallen leaf within 2 of the ground (
   for (const c of buildLane(lane).colliders) world.addCollider(c);
   world.finalize();
   const ground = lawnMask(lane);
-  const pieces = roadPieces(lane, { round: true });
+  const pieces = roadPieces(lane);
   const kitOf = (tier) => {
     const kit = { tier };
     for (const name of ['foliage', 'core', 'patch', 'granite', 'paint', 'steel', 'enamel']) kit[name] = new Geo();
@@ -566,10 +579,8 @@ test('the clutter lies on the ground: every fallen leaf within 2 of the ground (
       const onRoad = near(12, 12);
       const g = onRoad ? 0 : lane.groundHeight(x, z);
       assert.ok(Math.abs(y - g) <= 2, `${tier}: a leaf at ${x.toFixed(0)}, ${z.toFixed(0)} ${(y - g).toFixed(1)} off the ground`);
-      // (The straight's end, where its south half meets the turning area at a kerb, aside.)
-      const end = lane.ROAD.line[lane.ROAD.line.length - 1][0];
-      if (g === 0 && lane.roadDistance(x, z) <= lane.ROAD.half && x < end - 100) assert.ok(lane.roadDistance(x, z) > 0.6 * lane.ROAD.half || Math.hypot(x - lane.TURN.x, z - lane.TURN.z) <= lane.TURN.r, `${tier}: a leaf on the road's middle at ${x.toFixed(0)}, ${z.toFixed(0)}`);
-      if (Math.hypot(x - lane.TURN.x, z - lane.TURN.z) <= lane.TURN.r) assert.ok(Math.hypot(x - lane.TURN.x, z - lane.TURN.z) > 0.6 * lane.TURN.r, `${tier}: a leaf in the turning area's middle`);
+      // (Never out in the middle of the street or the turning area: within 100 of an edge.)
+      if (onRoad) assert.ok(Array.from({ length: 8 }, (_, k) => [Math.cos(k * 0.785) * 100, Math.sin(k * 0.785) * 100]).some(([dx, dz]) => !pieces.some((piece) => inside(piece, x + dx, z + dz))), `${tier}: a leaf on the road's middle at ${x.toFixed(0)}, ${z.toFixed(0)}`);
       const hit = world.raycast({ x, y: 5000, z }, { x: 0, y: -1, z: 0 }, 6000);
       assert.ok(hit && hit.point.y <= y + 0.5 && y - hit.point.y <= 3.5, `${tier}: a leaf at ${x.toFixed(0)}, ${z.toFixed(0)} under a collider (${hit?.point.y.toFixed(1)} vs ${y.toFixed(1)})`);
     }
@@ -697,7 +708,7 @@ test('G3\'s details: the double garage\'s downpipes with faint rust under their 
   }
   assert.equal(rust(low).length, 0, 'none on low');
   // The boxes hung outside the balcony's front rail: geraniums in leafy tufts.
-  const villa = lane.HOUSES.find((h) => h.balcony);
+  const villa = lane.HOUSES.find((h) => h.balcony !== undefined);
   const left = frameOf(villa).face('left').f;
   const at = left.at(0, 0, 0);
   const planted = (d) => {
@@ -706,7 +717,7 @@ test('G3\'s details: the double garage\'s downpipes with faint rust under their 
     for (let i = 0; i < p.length; i += 3) {
       const w = (p[i] - at[0]) * left.out[0] + (p[i + 2] - at[2]) * left.out[2];
       const u = (p[i] - at[0]) * left.right[0] + (p[i + 2] - at[2]) * left.right[2];
-      if (w > 140 && w < 190 && Math.abs(u) < 270 && p[i + 1] > at[1] + 400) n++;
+      if (w > 140 && w < 190 && Math.abs(u - villa.balcony) < 270 && p[i + 1] > at[1] + 400) n++; // (its middle at `balcony` along the gable)
     }
     return n;
   };

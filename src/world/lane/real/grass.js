@@ -59,7 +59,7 @@ export function grassClump(tier) {
   return g;
 }
 
-const MASK = { width: 1024, height: 512, x0: -9200, x1: 8200, z0: -4200, z1: 3800, margin: 16 };
+const MASK = { width: 1280, height: 608, x0: -12000, x1: 9900, z0: -5000, z1: 4600, margin: 16 };
 
 export function lawnMask(L) {
   const { width: W, height: H, x0, x1, z0, z1, margin: m } = MASK;
@@ -92,8 +92,24 @@ export function lawnMask(L) {
     }
     return Math.sqrt(best);
   };
+  // Which side of the road's line (x, z) lies: negative north of it (its segments run east).
+  const roadSide = (x, z) => {
+    let best = Infinity;
+    let side = 0;
+    for (const [ax, az, ex, ez, l2] of near) {
+      const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2));
+      const d = (x - ax - ex * t) ** 2 + (z - az - ez * t) ** 2;
+      if (d < best) {
+        best = d;
+        side = ex * (z - az) - ez * (x - ax);
+      }
+    }
+    return side;
+  };
   const B = L.BOUNDS;
-  const turn = (L.TURN.r + L.KERB.w + m) ** 2;
+  const A = L.APRON;
+  // (The apron's distance: none inside it; its kerbs' margin out from its outline.)
+  const apronNear = (x, z, d) => x > A.x0 - d && x < A.x1 + d && z > A.z0 - d && z < A.z1 + d && (L.inApron(x, z) || [[d, 0], [-d, 0], [0, d], [0, -d], [d * 0.7, d * 0.7], [-d * 0.7, d * 0.7], [d * 0.7, -d * 0.7], [-d * 0.7, -d * 0.7]].some(([dx, dz]) => L.inApron(x + dx, z + dz)));
   for (let j = 0; j < H; j++) {
     const z = z0 + (j + 0.5) * sz;
     near = segs.filter(([, az, , ez]) => Math.min(az, az + ez) - reach < z && Math.max(az, az + ez) + reach > z);
@@ -111,15 +127,21 @@ export function lawnMask(L) {
         const x = x0 + (i + 0.5) * sx;
         const road = roadAt(x, z);
         const k0 = j * W + i;
-        const tr = Math.hypot(x - L.TURN.x, z - L.TURN.z);
-        // The ground's height everywhere (the road and the turning area at 0), and the wheel
-        // track on them.
-        const onRoad = road <= L.ROAD.half || tr <= L.TURN.r;
+        // The ground's height everywhere (the road and the apron at 0), and the wheel track on
+        // them (the apron's: a ring round its coins' ring, where cars turn).
+        const apron = L.inApron(x, z);
+        const onRoad = road <= L.ROAD.half || apron;
         ground[k0] = onRoad ? 0 : L.offRoadHeight(x, z);
-        if (onRoad) track[k0] = Math.max(Math.exp(-((road / (0.42 * L.ROAD.half)) ** 2)) * (road <= L.ROAD.half ? 1 : 0), 0.75 * Math.exp(-(((tr - 0.55 * L.TURN.r) / (0.18 * L.TURN.r)) ** 2)) * (tr <= L.TURN.r ? 1 : 0));
-        if (road < L.ROAD.half + L.KERB.w + m || (x - L.TURN.x) ** 2 + (z - L.TURN.z) ** 2 < turn) continue;
-        // The pavement: along the bend and the straight on the north side.
-        if (z < 0 && road < L.PAVEMENT.to + m && x < L.PAVEMENT.x1 + m) continue;
+        if (onRoad) {
+          const R = A.ring;
+          const tr = Math.hypot(x - R.x, z - R.z);
+          track[k0] = Math.max(Math.exp(-((road / (0.42 * L.ROAD.half)) ** 2)) * (road <= L.ROAD.half ? 1 : 0), apron ? 0.75 * Math.exp(-(((tr - R.r) / (0.25 * R.r)) ** 2)) : 0);
+        }
+        if (road < L.ROAD.half + L.KERB.w + m || apronNear(x, z, L.KERB.w + m)) continue;
+        // The pavement: along the west leg, the bend and the straight on the north side, and on
+        // over the apron's kerb's S to the wall.
+        if (x < L.PAVEMENT.x1 + m && road < L.PAVEMENT.to + m && roadSide(x, z) < 0) continue;
+        if (x >= L.PAVEMENT.x1 - m && x < L.APRON.curve[1] + m && z < L.APRON.kerb + m && z > L.wallZAt(x) - m) continue;
         const px = x - P.x;
         const pz = z - P.z;
         if (px * P.dir[0] + pz * P.dir[1] > P.from - m && Math.abs(-px * P.dir[1] + pz * P.dir[0]) < P.half + m) continue;
@@ -177,8 +199,8 @@ export function lawnMask(L) {
   };
   for (const h of L.HOUSES) footprint(h, h.w + (h.veranda ? 2 * h.veranda.depth : 0), h.d);
   for (const r of [L.LINK, L.CARPORT, L.DAD_PATH, L.DAD_DRIVE, L.LINK_DRIVE, L.PATIO]) rect(r, 10);
-  const EG = L.EAST_GARAGE;
-  rect({ x0: L.TURN.x + 800, x1: EG.cx, z0: EG.cz - EG.w / 2, z1: EG.cz + EG.w / 2 });
+  rect(L.FORECOURT, 10);
+  rect({ x0: L.FOOTWAY.x0, x1: L.FOOTWAY.x1, z0: L.FORECOURT.z1, z1: L.FOOTPATH.z }, 10);
   const NW = L.NORTH_WEST;
   const D = L.NORTH_WEST_DRIVE;
   footprint({ ...NW, cx: NW.cx, cz: NW.cz }, 2 * Math.max(-D.u0, D.u1) + 60, 2 * D.w1 + 60, 0);

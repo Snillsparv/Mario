@@ -1615,68 +1615,96 @@ trees' leaves).
                                +Z (the dad's side)
 ```
 
-* **The ground** (`ROAD`, `TURN`, `KERB`, `PAVEMENT`, `FOOTPATH`): the carriageway (half width 450
-  round a centreline polyline: the west leg from the junction, a bend of three short segments,
-  the long straight at z 0, mitred, running on to x 2620: its south-east corner inside the
-  turning area, so no lawn is left between them and the dad's drive) and the turning area (a
-  16-sided disc r 1150 at (3500, −250)) at y 0; everything else a step up at `GROUND` 22 (walked up without a jump): the north
-  pavement (paler asphalt, 450 … 700 off the line, along the bend and the straight), the drives
-  (asphalt; the villas' notches cobbled), the dad's grass-paver path, the footpath (450 wide, out
-  of the turning area's south-east rim, a low two-rail barrier across it 1300 along: the play
-  space's end) and the lawn. The lawn is drawn as 2000 tiles with every road and hard surface
-  (and the terraces) cut out of them (castle/geom.js `subtractConvex`, after a separating-axis
-  test, each piece rid of repeated corners), so nothing lies over anything; the same pieces are
-  its colliders (grass; the road and hard surfaces stone) wherever Jonas can be (the dad's drive
-  darker under the carport's roof, the link's own short drive, the dad's patio of grey slabs
-  behind the house). Granite kerbs
-  run along every edge of the road's pieces that is the road's edge (a face from the road up and
-  a strip on top), clipped exactly where another piece begins (`real/plan.js kerbRuns`, both
-  looks: Cyrus-Beck against every other piece a hair out from the edge, then split where a
-  drive's or the bed's span begins or ends: no stub of kerb into the road where two pieces meet,
-  no gap at a corner; R fixes: before, runs of 150-long samples left a stub across the road where
-  the straight ended short of the turning area, with a wedge of lawn behind it); none in front of
-  the drives (the asphalt runs on up into them: a bevel 22 wide from the road to the drive's
-  edge) or along the dad's corner bed (its field stones edge the asphalt); their 22 needs no
-  collider (under the knee probe). Out past the junction the road runs on into the fog with the side road (drawn
-  only).
-* **The terraces** (`NORTH`, `PLOTS_N`, `STEPS`): the five villas' gardens behind a retaining wall
-  of split-face blocks (a paler coping along its top) from the pavement (z −700) up to `TERRACE`
-  150, flat back to z −3400, then rising 1 in 4 to 300 at the forest's edge (z −4000); along the
-  turning area the wall follows an arc of r 1400 round its middle, then runs on east at z −1300
-  (`wallZAt(x)`). Each plot is convex blocks (their fronts straight, 300 long round the arc), cut
-  by its drive notch (cobbles at 22 from the wall back to the villa's garage door, block walls
-  either side) and its steps (five drawn steps on a smooth `not_slippery` ramp up from the
-  pavement, a dark railing on their drive side); where two blocks' fronts differ, the one nearer
-  the street shows its side. Behind them the forest's bank rises to 1500 and on, far out into
-  the fog, to a crest 4100 high (drawn only; the wedges where its strips turn a corner filled),
-  so no camera sees its far edge against the sky.
+* **The plan** (W2, `PLAN_K`, `plan(x, z)`): the aerial's readings stretched 1.3 times about the
+  dad's north-east front corner (its (1600, 1220) is the game's (1600, 1330)), the heights kept
+  (`SCALE` 150 a metre): the aerial's 19.5 units a pixel were ~0.156 m, not 0.13, so before W2
+  the plan was drawn ~1.25 times its real size under heights drawn 1.5 times theirs and every
+  photo looked squeezed; now the aerial, the photos taken against true lengths and those against
+  the game's heights agree within ~5 %. The dad's house, his drive, carport and corner bed keep
+  their measured numbers; everything else is a reading through `plan()`.
+* **The ground** (`ROAD`, `SOUTH_EDGE`, `APRON`, `KERB`, `PAVEMENT`, `FOOTPATH`, `FOOTWAY`,
+  `FORECOURT`): the carriageway (half width 430 round a centreline polyline: the west leg from
+  the junction, a bend of short segments, the long straight at z −90, mitred) runs on to x 2766
+  (`APRON.x0`) and straight into the turning area's **apron** (the aerial's: a rectangle x 2766 …
+  5190, z −880 … 1180, its west side open to the straight and the dad's drive, its south-east
+  corner rounded r 400 toward the footpath's mouth, its south-west r 150; the straight's north
+  kerb, z −520, runs on along it to x 4380 and curves out in an S to its north edge at x 4900;
+  `APRON.pieces`: the rounded rectangle and a quad under each piece of the S, all convex;
+  `inApron(x, z)`), all at y 0; everything else a step up at `GROUND` 22 (walked up without a
+  jump): the north pavement (paler asphalt, 430 … 670 off the line to the terraces' wall at z
+  −760, along the bend and the straight to x 4420, then narrowing over the kerb's S to the wall's
+  bend: `lane/build.js hardSurfaces`), the drives (asphalt; the villas' notches cobbled), the
+  double garage's forecourt (`FORECOURT`, from the apron's east kerb to the garage), the footway
+  behind that kerb (`FOOTWAY`, 210 wide), the dad's grass-paver path, the footpath (480 wide, out
+  of the apron's south-east corner, a low two-rail barrier across it 1700 along: the play space's
+  end) and the lawn. **South of the straight there is no kerb** (`SOUTH_EDGE`, z 340: the
+  photos' bevelled asphalt edge, the lawns and drives a step up behind it); the granite kerbs run
+  along the north edge and round the apron. The lawn is drawn as 2000 tiles with every road and
+  hard surface (and the terraces) cut out of them (castle/geom.js `subtractConvex`, after a
+  separating-axis test, each piece rid of repeated corners), so nothing lies over anything; the
+  same pieces are its colliders (grass; the road and hard surfaces stone) wherever Jonas can be
+  (the dad's drive darker under the carport's roof, the link's own short drive, the dad's patio
+  of grey slabs behind the house). The kerbs' runs are clipped exactly where another piece
+  begins (`real/plan.js kerbRuns`, both looks: Cyrus-Beck against every other piece a hair out
+  from the edge, then split where a span begins or ends: no stub of kerb into the road where two
+  pieces meet, no gap at a corner; R fixes: before, runs of 150-long samples left a stub across
+  the road where the straight ended short of the turning area), each of a kind
+  (`KERB_SPANS`, else by its normal): `kerb` (a face from the road up and a strip on top),
+  `drop` in front of the drives and the forecourt (a bevel 22 wide from the road up to the
+  drive), `bed` along the dad's corner bed (its field stones edge the asphalt) and `edge` along
+  the south edge and the apron's south side (`SOUTH_FACING`: an outward normal's z over 0.5; a
+  bevel in the road's own asphalt); their 22 needs no collider (under the knee probe). Out past
+  the junction the road runs on into the fog with the side road (drawn only).
+* **The terraces** (`NORTH`, `PLOTS_N`, `STEPS`, `wallZAt`, `flatZAt`, `backZAt`): the five
+  villas' gardens behind a retaining wall of split-face blocks (a paler coping along its top)
+  from the pavement up to `TERRACE` 150; the wall's face follows the polyline `NORTH.wall`
+  (`wallZAt(x)`, W2, the aerial's: back at z −1100 behind the motorhome west of x −7300, straight
+  at z −760 along the pavement to x 4420, out to z −910 along the apron's north edge in front of
+  north_5's bed, then back to z −1179 behind the double garage's forecourt). The gardens are flat
+  back to `flatZAt(x)` (a line ~200 … 300 behind the villas' backs, sloping away eastward: z
+  −4249 at x −8000, −4879 at 8000), then rise 1 in 4 over 600 to 300 at `backZAt(x)`, the
+  forest's edge. Each plot is convex blocks, one per stretch of the wall between its corners and
+  the plot's drive notch and steps (`real/plan.js terraceSpans`: `wall`, `steps` and `drive`
+  spans), their backs sloping with `flatZAt` (planar ramp faces); the drive notch cobbles at 22
+  from the wall back to the villa's garage door, block walls either side; the steps five drawn
+  steps on a smooth `not_slippery` ramp up from the pavement, a dark railing on their drive side.
+  Behind them the forest's bank rises over 1200 to 1500 and on, far out into the fog, to a crest
+  4100 high (drawn only; the wedges where its strips turn a corner filled), so no camera sees its
+  far edge against the sky.
 * **The houses** (`HOUSES`, `houses.js`): a record is a footprint `w` along its own u by `d` along
   its w, turned by `yaw` (u runs (cos yaw, −sin yaw), w (sin yaw, cos yaw); its front the +w face),
   so the west end's houses, set at an angle to the street, are built like any other (`frame(h)`).
-  **Villas** (`VILLAS`, north_1 … north_5, 1800 × 1500, the split-level brick houses: white render
-  to 412 with the garage door at drive level, red-brown brick to the eaves at 822, plain, arched
-  and bay windows, an arched front door at its garden's level, a hipped roof of pan tiles, 27°, to
-  1204, wide eaves (110) over a dark soffit; north_3 a balcony on its west gable, solid, 390 over
-  its side yard; north_5 the basketball hoop, see "Props"); **north_west** (white render to its eaves at 462, a light grey pyramid roof with
-  two roof windows, a double garage, a low wing behind it, a flagstone drive in front) with the
-  **motorhome** on its drive (a white box with a dark window band on four wheels, solid to 522:
-  a running double jump grabs its edge, a single one from the drive falls short). **Chain houses**
-  (south_west, south_1, `DAD`, south_2 and its wing, east_house): a white brick plinth (135), boards
-  to the eaves at 412 (or white brick gable ends with boards in their triangles), black-framed
-  windows with a pale glint and white curtains, a black front door with a little black wall
-  lamp beside it, a low gable roof (20°) along u, 60 overhangs, TV antennas on three ridges
-  (`ANTENNAS`, drawn only); south_west a glazed veranda on its west gable, a brown picket fence and a rail
-  fence (slabs). The **link** (south_1 … the dad's, a block to its flat roof at 370) and the
-  **carport** (`CARPORT`, the dad's … south_2: its roof slab 345 … 370, its deep dark fascia hanging
-  to 280 along its front edge (a wall under the whole lip: the edge grabbed anywhere along it), and
-  under it, 150 behind the edge, the **store room's door wall** with the four garage doors as in
-  the photos (`GARAGE`, D1: see "The garage doors" below), the room behind it back to the old
-  back wall (880 × 660, 323 high, a concrete floor; wood underfoot), no posts).
+  **Villas** (`VILLAS`, north_1 … north_5, the split-level brick houses: white render to 412
+  with the garage door at drive level, red-brown brick to the eaves at 822, plain, arched and bay
+  windows, an arched front door at its garden's level, a hipped roof of pan tiles, 27°, wide
+  eaves (110) over a dark soffit; W2, the aerial's L-shaped roofs: each villa two blocks with
+  their own hips, its east block (the garage's, forward: the villa's id) and its west block
+  (`<id>_west`, set back), `villaPair` from the aerial's readings; `sides` the faces with a
+  window, not where the other block stands; north_3 a balcony on its east block's west gable,
+  solid, its middle 500 along it; north_4 the basketball hoop, see "Props"); **north_west**
+  (white render to its eaves at 462, a light grey hipped roof with two roof windows, a double
+  garage facing the west leg, a low wing behind it, a flagstone drive in front cut at the
+  pavement and along the first terrace's wall) with the **motorhome** on its drive (a white box
+  with a dark window band on four wheels, solid to 522: a running double jump grabs its edge, a
+  single one from the drive falls short). **Chain houses** (south_west and its wing, south_1,
+  `DAD`, south_2 and its wing, east_house): a white brick plinth (135), boards to the eaves at
+  412 (or white brick gable ends with boards in their triangles), black-framed windows with a
+  pale glint and white curtains, a black front door with a little black wall lamp beside it, a
+  low gable roof (20°) along u, 60 overhangs, TV antennas on three ridges (`ANTENNAS`, drawn
+  only); south_west a glazed veranda on its west gable (the photos' veranda is the house's west
+  of the side road: W8) and a brown picket fence (`FENCES`, slabs) along its street side. The
+  **link** (south_1 … the dad's, x −1430 … −860, a block to its flat roof at 370) and the
+  **carport** (`CARPORT`, the dad's … the apron's west edge, x 1600 … 2766: its roof slab 345 …
+  370, its deep dark fascia hanging to 280 along its front edge (a wall under the whole lip: the
+  edge grabbed anywhere along it), and under it, 150 behind the edge, the **store room's door
+  wall** with the four garage doors as in the photos (`GARAGE`, D1: see "The garage doors"
+  below), the room behind it back to the old back wall (880 × 660, 323 high, a concrete floor;
+  wood underfoot), no posts).
   **east_garage** (a double garage
-  facing the turning area: white render, a white board gable, two dark panel doors, a white brick
-  pier) in front of east_house. Each house is one convex collider (its walls and its hipped or
+  facing the turning area across its forecourt: white render, a white board gable, two dark panel
+  doors, a white brick pier) in front of east_house (x 8022 … 9699, its eaves at 522). Each house is one convex collider (its walls and its hipped or
   gable roof); the drawn overhangs have none.
-* **The dad's house** (`DAD`, x −1100 … 1600, z 1330 … 2605): Falu-red boards, its eaves at 412,
+* **The dad's house** (`DAD`, x −860 … 1600, z 1330 … 2605; W2: its west end 240 east, as the aerial has it): Falu-red boards, its eaves at 412,
   its ridge at 644 over z 1967.5; the black front door (`DAD.door`, 150 × 315 at x 0 in a white
   frame: `door.js`, one leaf hinged on its left seen from the path, swinging 1.35 rad into a dark
   vestibule 170 deep, its own mesh, a wall lamp beside it), six windows, the white brick gable
@@ -1696,10 +1724,11 @@ trees' leaves).
   green status light on its face, its cable hanging in a loop from its underside to the plug in
   a holster below: the cable a mover of its own, `part.movers.charger_cable`, so the boss can
   hide it later); his drive runs on under the carport, his two cars on it (see "Props").
-* **Props** (`props.js`): lampposts L1 … L7 (grey, a flat head out on an arm that leaves the
-  post `LAMP.root` 60 under its cap and rises to the head, so nothing is drawn where he stands
-  on the cap; every one a climbable pole, no collider of its own: R fixes, the dad: "I want to
-  climb ALL the lampposts"; L6's arm turned out over the turning area, yaw 0.74), the turning
+* **Props** (`props.js`): lampposts L1, L2, L3, L5 and L7 (W2: where the photos have them: L1 at
+  the junction, three along the pavement, L7 on the footpath; L4 and L6, which they do not show,
+  gone; grey, a flat head out on an arm that leaves the post `LAMP.root` 60 under its cap and
+  rises to the head, so nothing is drawn where he stands on the cap; every one a climbable pole,
+  no collider of its own: R fixes, the dad: "I want to climb ALL the lampposts"), the turning
   area's sign (`TURN_SIGN`, R fixes, as in the dad's photo: at the corner bed's asphalt corner,
   facing the street's way in (west): a grey post, a yellow plate 72 × 112 with a red rim, its
   foot at 258, "Vänd-" over "plats" in black and under them the round no-parking sign, a blue
@@ -1707,15 +1736,18 @@ trees' leaves).
   out once by `real/sign.js signFace` (a stroke font of its own, `GLYPHS`: only the letters of
   its two words, `SIGN_TEXT`; no canvas, no font), drawn in `lane-render` N64 style and in the
   realistic look by `garden.js turnSign`; solid: a prism of 9 up the post, not a pole: the
-  plate is where a climb would go), white flagpoles F1 … F3 with gold knobs (climbable) flying their
-  flags (`FLAGPOLES[].flag`: north_2's blue and yellow cross flag, `FLAG` 300 × 188; long blue and
-  yellow pennants on F2 and F3, `PENNANT`; all in `lane-cloth`, streaming along `WIND` and waving:
+  plate is where a climb would go), white flagpoles F1 … F3 with gold knobs (climbable; each its own height
+  `h`, W2: F1 1460 on north_2's terrace, F2 1200 by the east end, F3 1100 behind the corner
+  house) flying their flags (`FLAGPOLES[].flag`: W2, as in the photos, long blue and yellow
+  pennants on all three, `PENNANT`, F1's hanging nearly limp, `limp` 0.15; the cross flag,
+  `FLAG` 300 × 188, no longer flown; all in `lane-cloth`, streaming along `WIND` and waving:
   `waveFlags(geometry, layout)` returns the per-frame update the part's `update(time)` runs, each
   vertex swung across the wind the more the farther down its flag, in a wave running down it,
   from typed arrays, allocating nothing), hedges (solid leafy boxes with a soft crown, their
-  tops walkable: south_1's 165 high along the street, south_2's along the turning area, the back
-  hedges at 242, north_3's low box hedge on its terrace), thujas (steep frustum colliders), the
-  three big trees at the junction (solid trunks under lumpy canopies), the garden trees
+  tops walkable: south_1's 165 high along the street's south edge, the back hedge at 242, one
+  at 202 east of the double garage, north_3's low box hedge on its terrace), thujas (a row of
+  five on north_1's terrace, steep frustum colliders), the two big trees out past the junction
+  (lumpy canopies; drawn only: a tree's trunk collider only inside the boundary), the garden trees
   (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, a birch behind the
   corner house, a red-leaved shrub by the double garage; trunks and the shrub solid), cosmos beds
   on north_3's and north_4's terraces (`FLOWER_BEDS`: tufts of leaves with pink and white
@@ -1729,9 +1761,10 @@ trees' leaves).
   convex: a hop onto a bonnet, a grab of a roof's edge. The dad's dark blue SUV and blue
   crossover side by side before the carport, noses out, the way to the bins clear on their
   west (the crossover a lookalike of his own car: "The dad's car" below); the west neighbour's white one at the link; a silver hatchback, a dark grey crossover, a
-  black hatchback and a black van noses in on north_1's, north_2's, north_3's and north_5's
-  drives (not north_4's: its coins); a grey estate at the double garage), north_5's
-  **basketball hoop** (`HOOP`, a children's one: a post against the wall, a white board 412 …
+  black hatchback noses in on north_1's, north_2's and north_3's drives, a black van on north_4's
+  (the photos' hoop house; its coins up the drive west of the van); a grey estate on the double
+  garage's forecourt), north_4's **basketball hoop** (`HOOP`, on its front wall west of its
+  garage door, a children's one: a post against the wall, a white board 412 …
   522 on an arm, an orange ring and a net; the board and its arm one solid block from the wall: a
   perch, a hop from the van's roof lands on it), the **trampoline** (see below), the motorhome
   (its cab's windscreen, headlights and bumper, a door on its road side, a stripe down both
@@ -1742,18 +1775,19 @@ trees' leaves).
   camera never looks out on nothing, and two houses down the side road in the fog
   (`SIDE_BLOCKS`, drawn only).
 * **The trampoline and the 1-up** (`TRAMPOLINE`, `TRAMPOLINES`, `ONE_UP`): in north_5's front
-  garden on the terrace (x 4580, z −1650): a dark mat in a padded blue ring on six legs, r 250,
+  garden on the terrace (x 5380, z −2300): a dark mat in a padded blue ring on six legs, r 250,
   solid from the terrace up to its top at 240 (`props.js`); its spring is
   `objects/Trampoline.js` (see "Objects"): every landing on the mat throws him back up with a
   `boing` (`player.bounce(50, 'boing')`), to 578 (feet) without the jump button and to **852**
   every time with it held (`BOUNCE_HELD_VY`), steering from one bounce to the next. The 1-up
   floats at y 1020 over the mat's middle (the gem takes feet from 200 under it): only a held
   bounce reaches it; a jump from the mat (~507), bounces without the button or a running triple
-  jump on the terrace beside it (~780) fall short. A sign at the turning area's rim under
+  jump on the terrace beside it (~780) fall short. A sign at the pavement's end short of
   north_5's steps points the way (`trampoline`).
 * **Boundary** (`BOUNDS`, `inBounds(x, z)`): invisible walls from −200 up to 4500, facing in, along
-  a polygon a little inside the drawn edges (the forest bank, the hedges, the barrier, the firs):
-  the camera stops at them too.
+  a polygon a little inside the drawn edges (the forest bank: 60 behind the gardens' sloping
+  back edge, `flatZAt`; the hedges, the barrier, the firs; 17 corners, W2), the camera stopping
+  at them too.
 * **Entries and exits**: `home` (0, 22, 1156), 174 in front of the dad's front door on the path,
   facing the street, `camYaw` π (the camera in front of him over the lawn, the door shutting
   behind him and the star over the ridge in the picture), walking out 8 ticks, its door
@@ -1769,9 +1803,12 @@ trees' leaves).
   wall grabs the eave; or the red-leaf
   tree's handstand and a flip toward the house with the stick held 4 … 20 ticks. Every fall from
   the dad's roof is harmless.
-* **Coins** (`COINS`, 55, each at its floor + 60): down the path, on the mailbox's roof, along the
-  street both ways, round the turning area (7), along north_2's and north_3's wall tops, up
-  north_3's steps, up north_4's drive, up the side yard between north_2 and north_3, on the
+* **Coins** (`COINS`, 55, each at its floor + 60; W2: each from the layout's anchors, the
+  straight's centreline, the wall line, the plots' drives, steps and edges, the apron's ring,
+  L1): down the path, on the mailbox's roof, along the street both ways, round the apron (7, on
+  `APRON.ring`), along north_2's wall top west of its drive and north_3's in front of its west
+  block, up north_3's steps, up north_4's drive west of the van, up the side yard between
+  north_2 and north_3, on the
   motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
   the bins, on the carport's roof and up the roof's south-west slope, and five in a row across the
   store room behind the garage doors (D1). The 1-ups: over the trampoline, and the store room's
@@ -1780,12 +1817,12 @@ trees' leaves).
   drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
   the junction facing up the lane, `lane_footpath` beside the blue sign, `trampoline` at the
   turning area's rim. Only "Jonas" is named.
-* **Poles** (`POLES`, each with its own side, `camYaw`): L1 (looking along the west leg), L6 (at
-  the dad's roof), F1, F2 (west up the lane), F3, the red-leaf tree (the roof ahead), then (R
-  fixes) L2 (looking west to the junction), L3, L4, L5 (looking east up the lane), L7 (from by
-  the double garage): their sides across their arms (he climbs past an arm's root on his own
-  side of the post); every lamppost a pole to its cap (`LAMP.top`, 1050), a handstand on top.
-  Falls from them count from their foot.
+* **Poles** (`POLES`, nine, each with its own side, `camYaw`): L1 (looking along the west leg),
+  F1, F2 (west up the lane), F3, the red-leaf tree (the roof ahead), then (R fixes) L2 (looking
+  west to the junction), L3, L5 (looking east up the lane), L7 (from by the double garage):
+  their sides across their arms (he climbs past an arm's root on his own side of the post);
+  every lamppost a pole to its cap (`LAMP.top`, 1050), a handstand on top; each flagpole to its
+  own height. Falls from them count from their foot.
 * **Look** (`LANE_ATMOSPHERE`): the grounds' sky dome (`def.sky`) paler (`def.skyPale` 0.45:
   `world/sky.js setPale`, its blue mixed toward its brightest channel, the cartoon clouds kept:
   the photos' hazy golden-hour sky, W1; AreaSwitch sets it with each area's look, 0 elsewhere)
@@ -1985,7 +2022,7 @@ trees' leaves).
   top never leaving it, the dad's house as measured (its slopes raycast at 18 points, the eaves,
   the carport's roof and the store room under it), no floor under a ceiling lower than 300 anywhere,
   every coin over a floor, the star, every sign read from in front only (the mailbox with no
-  signpost), the eleven poles (every lamppost among them) grabbed from every open side with the
+  signpost), the nine poles (every lamppost among them) grabbed from every open side with the
   camera swinging to `camYaw`, climbed to the top and
   jumps off them unhurt, the side yards walked with the follow camera and C-button swings never
   in a solid, the privacy scan of its sources and signs, the look (the sun, the villas' fronts lit
@@ -1994,9 +2031,9 @@ trees' leaves).
   birds, the flags waving with their hoists still and allocating nothing per frame) and the cars
   (each on its drive with a floor on its roof and bonnet, clear of the coins and of the way to
   the bins)); `tests/lane-corner.test.js` (R fixes: the kerbs' runs never inside the road, closed
-  at every corner, none across the straight's end, at the drives' mouths or along the bed, both
-  for the round turning area and the colliders' 16-gon; the old lawn notch a road at 0 with a
-  floor; the corner bed's floor, its stones close set along both asphalt edges in both looks;
+  at every corner, none across the straight's end, at the drives' mouths or along the bed, none
+  along the south edge (W2), the north edge kerbed, the dad's drive's side on the apron dropped;
+  the straight running into the apron's open west side a road at 0 with a floor; the corner bed's floor, its stones close set along both asphalt edges in both looks;
   the sign's face (yellow, red rim, the words over the upper half, the disc under them, the
   stripe from upper left to lower right), the font only the words' letters, the sign drawn in
   both looks at the bed's corner facing west, its post solid and no pole, the robot's walking
@@ -2208,9 +2245,10 @@ skinning classes).
     right to its left in 8 ticks, low: it hurts him where it passes with his feet under 90 over
     its floor: **jump it** (or step back out of the arc).
   It walks only on its walking ground (`LANE_BOSS.walk`: the street, the dad's drive between his
-  gable and the SUV, reached by its mouth, and the drive's mouth and the lawn's front east of
-  it: never behind the cars, under the carport, in a garden or over the dad's corner bed and
-  its sign's post, 145 off it; R fixes: the boxes before took it over the bed, where the post
+  gable and the SUV, reached by its mouth, and the drive's mouth and the apron's west part east
+  of it (W2: the apron where south_2's lawn front was): never behind the cars, under the
+  carport, in a garden or over the dad's corner bed and its sign's post, 140 off it (W2: the
+  street's box to z 255, the sign 110 nearer the street with its south edge); R fixes: the boxes before took it over the bed, where the post
   held it fast in a corner and the scripted fight lost its third round), its feet a circle of 120 against the
   walls (findWalls at 40 and 200 up, sliding along them), its feet on the ground (a height grid
   from `layout.groundHeight` made once: no query), shoving a bin in its way aside
@@ -2708,9 +2746,9 @@ mailbox, the plants, the forest, the chain houses, the cars, the kerbs, the lamp
 posts, the fences, the bins, the villas' walls and windows, the garage doors, the toys, the
 motorhome, the cabinet, the TV antennas); a classic builder asks `kit.drawn(name)` for the kit to draw one into, the kit or
 one whose builders draw nothing (`NOTHING`, a no-op proxy) with the same `solids` and `signs`,
-so every collider is still made exactly as before. The realistic build also draws the turning
-area round (`round`: `plan.js roadPieces({ round })`, 64 sides at the mean of the 16-gon's
-radii, the lawns and drives cut round it) while its colliders keep the 16-gon.
+so every collider is still made exactly as before. (Before W2 the realistic build drew the
+turning area round over the colliders' 16-gon; the apron's convex pieces are now one outline for
+both looks.)
 
 **Modules.**
 
@@ -2829,7 +2867,9 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   leaf, its frame black, a glazed side light), and the roof: **pan tile courses**
   (`tileCourses`: courses 54 up the slope, rolls 45 across with analytic normals, each nose 3.2
   proud of the course below, every quad wound to face out) on the houses `LANE_REAL.tiles`
-  names (the dad's and his neighbours'), the tile set's normal map on the others; a soffit, a
+  names (the dad's and his neighbours' south_1 and south_2; W2: on high the neighbours' rolls at
+  mid's 4 segments, on mid the dad's alone, `tilesMid`; south_2's wing plain: their bigger roofs
+  on the 1.3 plan would have cost ~28k triangles more), the tile set's normal map on the others; a soffit, a
   fascia, half-round gutters with downpipes down the wall, barge boards and verge rolls, a ridge
   cap. The courses are sunk into the roof's plane (`SINK` 7.2: the rolls' crowns at most 1.5 over
   it, the ridge cap's and the verge rolls' tops 2 over the ridge), so Jonas, on the collider's
@@ -2903,19 +2943,24 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   last (`detail.js`). The wheels are to the bodies' scale (0.9 of the classic
   ones): tyres with a bulging sidewall whose tread's lowest ring is flattened onto the ground
   (the patch the car stands on: every car level on its four patches), ten-spoke rims (five on
-  mid and low) over a dark barrel and a brake disc, in black liners that close each arch. Under
+  mid and low) over a dark barrel and a brake disc, in black liners that close each arch (W2: on
+  high the cars across the street, on the north drives, at mid's detail: `LOD`, the plan's lever
+  for them). Under
   each car a **contact shadow** (`contact`: `materials.js contactMaterial`, the colour drawn under
   it multiplied by the vertex colour, darkest under its middle and round each tyre's patch,
   after the opaque scene, no depth written): the car sits on its drive. Lacquered paint
   (`plainMaterial({ clearcoat })`: three's clearcoat lobe switched on in the standard material,
   `USE_CLEARCOAT`, without the physical material's class), dark opaque glass with ior 2's F0;
-  each cluster's (`carClusters`: cars on the same side of the street within 2800 of another of
-  theirs: the dad's drive, the west link, the north drives, the east end) on its own probe over
+  each cluster's (`carClusters`, by place: `clusterOf`, the dad's drive, the west link, the
+  north drives (north_4's van with them), the east end's estate; W2: on the 1.3 plan no one
+  distance kept four compact clusters, and a cluster spanning the street drew its cars in more
+  views and shadows) on its own probe over
   its roofs (`carPaint@k`, `carGlass@k` meshes; on low one paint on the sky's environment): the
   single probe in front of the dad's house painted his red wall into every bonnet as rust.
 * `clutter.js` (G2): fallen leaves (small atlas cards lying flat, curled at one end, tints at most
   1) drifting along every kerb (a slow wave of density, most at its foot, strays to 70, a few on
-  the verge; kept clear of the kerbs, the cars, the fences and the course's edge), under the
+  the verge; kept clear of the kerbs, the cars, the fences and the course's edge; `KERB_LEAVES`
+  0.72, W2: the 1.3 plan's longer kerbs as many leaves as before), under the
   junction's trees, the birch and the apple tree, on the dad's path; a dark grit line wandering
   along the gutters (`patch`, 4 to 18 wide); weeds (leafy cards and grass blades) in the kerbs'
   joints, at the terraces' walls' feet, at the chain houses' plinths and between the path's
@@ -2924,7 +2969,7 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   sign** at the junction (`streetSign`: a grey post, a white plate with a black border, both
   faces blank: no name). No overhead wires, no road markings (the street has none). Per tier
   (`SHARE`): high all, mid 60 % of the leaves and weeds, low a quarter of the leaves, no weeds or
-  flowers; ~18k / 11k / 3.4k triangles.
+  flowers; ~23k / 13k / 4k triangles.
 * `hardware.js` (G2): the houses' hardware: snow guards along the chain houses' street eaves,
   the gutters' brackets every 60, the dad's two vent pipes and ventilation hood, black roof
   ladders on the dad's and south_2's roofs (all low over the roofs' planes: Jonas walks them),
@@ -2949,7 +2994,8 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   that follows the camera (centred ahead of it, snapped to whole cells: `look.js grassGrid`, one
   uniform a frame); the vertex shader (`materials.js grassMaterial`) places each clump in its
   cell at a hash of the cell, turns and sizes it, stands it on the **lawn mask** (`lawnMask`: a
-  1024 × 512 RGBA8 map of where blades grow (R) and the ground's height (G, everywhere inside
+  1280 × 608 RGBA8 map over x −12000 … 9900, z −5000 … 4600 (W2: the 1.3 plan's, a cell still
+  ~17 square) of where blades grow (R) and the ground's height (G, everywhere inside
   the boundary), built in the worker from `layout.js` on every tier: none on the road, the
   pavement, paths, drives, the corner bed, the mailbox, bushes, hedges, houses, posts, the steps
   up the terraces (R fixes: a fallen leaf had found their ramp), or where
@@ -2990,7 +3036,9 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   test as at full size; else distant foliage thins to nothing), uploaded as the
   `DataTexture`'s own mipmaps.
 * **Tiers**: low (phones) halves the leaf clusters, has no tile courses (the normal map), no
-  blades, plainer windows and cars, fewer materials (`LOW_MERGE`) and only the houses and the
+  blades, plainer windows (W2: the villas' without the frame inside the reveal and the sashes)
+  and cars, the picket fence's pickets on its street side only, the villas' gutters without
+  their insides, fewer materials (`LOW_MERGE`) and only the houses and the
   cars casting the sun's shadow (`LOW_CASTERS`); mid has 70 % of the leaf clusters, 4 segments a
   roll and the smaller grass grid. (B4, the boss fight's draw calls: on mid and low a few small
   things cast no sun shadow, `look.js QUIET`: the front door's leaf and the charger's cable; on
@@ -3359,7 +3407,14 @@ in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
   along the light used to be read back as 1 (harmless at a fixed distance; with the distance
   from the focus's height it put the probes' sun on the wrong side, tinting the windows' and
   the cars' reflections).
-* **Budgets** (the five views, E2E, the shadow pass and the post chain included): high 143-153
+* **Budgets** (the five views, E2E, the shadow pass and the post chain included). W2 (the 1.3
+  plan): high 143-154 draw calls / 886-913k triangles, mid 128-135 / 435-450k, low 90-94 /
+  200-208k (each view against W1's: high and mid at most 2 calls more where the north drives'
+  cluster, north_4's van now in it, comes into view, at the turn and cars views; the triangles
+  down 13-32k on high and 28-36k on mid with the north cars at mid's detail and the mid tile
+  courses on the dad's roof only, low 1.5k down; the fight's worst frame high 158 / 913k, mid
+  135 / 450k, low 94 / 208k; bytes: `main` +2,506, the lane's chunk +1,002,
+  the worker +3,515, layout.js's +2.5k in both main and the worker). W1: high 143-153
   draw calls / 912-934k triangles (were 141-152 / 912-928k: the lower sun's longer shadows bring
   a few more casters into the near box, and a view that now faces the sun draws the shafts' 2
   calls), mid 128-135 / 468-478k (127-134 / 467-475k), low 90-94 / 202-210k (unchanged); the
@@ -4614,18 +4669,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,277,986 | 398 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,280,690 | 397 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 60,474 | 24 kB | 72 KiB |
-| realLook | 48,611 | 17 kB | 60 KiB (from 90) |
-| laneBoss | 101,976 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| lane | 61,888 | 25 kB | 72 KiB |
+| realLook | 49,059 | 17 kB | 60 KiB (from 90) |
+| laneBoss | 101,981 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 138,379 | 57 kB | 160 KiB |
+| laneRealWorker | 141,891 | 58 kB | 160 KiB |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

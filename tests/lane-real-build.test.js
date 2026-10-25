@@ -31,7 +31,7 @@ import { SMALL_FONT, measureText } from '../src/ui/bitmapFont.js';
 const classic = buildLane(lane);
 const real = buildLane(lane, { look: 'real', materials: {} });
 // The classic look without what the realistic one draws itself, its turning area drawn round.
-const kept = buildLane(lane, { replaced: REAL_DRAWN, round: true });
+const kept = buildLane(lane, { replaced: REAL_DRAWN });
 const meshes = (part) => {
   const out = {};
   part.object3D.traverse((o) => o.isMesh && (out[o.name] = o));

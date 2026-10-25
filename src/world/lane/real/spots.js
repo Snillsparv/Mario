@@ -26,9 +26,15 @@ export function forestSpots(L) {
     const [h, rad] = size(FIR_SIZE, r);
     firs.push({ x, z, base: L.groundHeight(x, z) - 10, h, r: rad, a0: r() });
   };
-  for (let i = 0; i < F.count; i++) fir(F.x0 + rng() * (F.x1 - F.x0), F.z0 + rng() * (F.z1 - F.z0), rng);
+  // (The band's z follows the gardens' sloping back edge: F.slope per unit x.)
+  const band = (x, r) => F.z0 + (F.slope ?? 0) * x + r * (F.z1 - F.z0);
+  for (let i = 0; i < F.count; i++) {
+    const x = F.x0 + rng() * (F.x1 - F.x0);
+    fir(x, band(x, rng()), rng);
+  }
   for (let i = 0; i < F.birches; i++) {
-    const [x, z] = [F.x0 + rng() * (F.x1 - F.x0), F.z0 + rng() * (F.z1 - F.z0)];
+    const x = F.x0 + rng() * (F.x1 - F.x0);
+    const z = band(x, rng());
     const [h, rad] = size(BIRCH_SIZE, rng);
     birches.push({ x, z, base: L.groundHeight(x, z) - 10, h, r: rad, seed: 500 + i });
   }
@@ -48,7 +54,7 @@ export function forestSpots(L) {
     const nz = -(q[0] - p[0]) / lengths[k];
     const x = p[0] + (q[0] - p[0]) * t + nx * out;
     const z = p[1] + (q[1] - p[1]) * t + nz * out;
-    if (L.inBounds(x, z) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 300 || (x > F.x0 && z < F.z0)) continue;
+    if (L.inBounds(x, z) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 300 || (x > F.x0 && z < band(x, 0))) continue;
     fir(x, z, er);
     i++;
   }

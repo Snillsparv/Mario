@@ -10,7 +10,7 @@
 // ridge and the junction lamppost's top), the dad's house as measured (its roof's slopes, the
 // carport's roof and the room under it) and no floor under a ceiling lower than 300, every coin
 // over a floor (exactly 50), the star waiting over the ridge, every sign read from in front only
-// (the mailbox is one, with no signpost), the eleven climbable poles (every lamppost among them;
+// (the mailbox is one, with no signpost), the nine climbable poles (every lamppost among them;
 // grabbed from every open side with the follow camera, which swings round to the pole's own
 // side, climbed to the top; jumping off them never hurts), the side yards between the villas
 // walked up and back with the follow camera (never in a solid, seldom trapped) and C-button
@@ -177,7 +177,7 @@ test('the details: the 1-up high over the trampoline, butterflies over the dad\'
   assert.ok(om.trampolines && om.trampolines.spots.length === 1, 'the trampoline\'s spring');
   assert.equal(om.butterflies.list.length, lane.BUTTERFLY_SPOTS.length * 3);
   assert.equal(lane.BUTTERFLY_SPOTS.length, 2);
-  assert.ok(om.birds.birds.length > 0 && lane.BIRD_CIRCLES.every((c) => c.z < lane.NORTH.backZ && !lane.inBounds(c.x, c.z)), 'birds over the forest');
+  assert.ok(om.birds.birds.length > 0 && lane.BIRD_CIRCLES.every((c) => c.z < lane.backZAt(c.x) && !lane.inBounds(c.x, c.z)), 'birds over the forest');
   assert.equal(area.objectsLayout.BIRD_TINT, 0x5a5048);
   // The flags: lane-cloth (both faces) moves with the clock, its hoists still.
   const cloth = mesh('lane-cloth');
@@ -322,22 +322,29 @@ function spam(start, seed, n) {
 
 test('the boundary holds: jump, crouch and attack spam from all over the course never gets Jonas or the camera out of it', () => {
   const M = lane.MOTORHOME;
+  // (W2: from the layout's anchors; each start's height its ground's.)
+  const on = (x, z) => [x, lane.groundHeight(x, z), z];
+  const SW = lane.HOUSES.find((h) => h.id === 'south_west');
+  // (Its back garden: 900 along its back wall, 300 out from it, in its own frame.)
+  const [c, sn, w] = [Math.cos(SW.yaw), Math.sin(SW.yaw), -SW.d / 2 - 300];
+  const [bx, bz] = [SW.cx + 900 * c + w * sn, SW.cz - 900 * sn + w * c];
   const starts = [
-    [-8300, GROUND, 1300], // the junction
+    on(lane.LAMPS[0].x + 300, lane.LAMPS[0].z), // the junction
     [M.cx, GROUND + M.h, M.cz], // the motorhome's roof
-    [-3670, lane.TERRACE, -2500], // the side yards
-    [-1125, lane.TERRACE, -2300],
-    [1485, lane.TERRACE, -2600],
-    [3980, lane.TERRACE, -2800],
-    [0, 237, -3750], // the forest's edge
+    on(lane.PLOTS_N[0].x1, -2500), // the side yards
+    on(lane.PLOTS_N[1].x1, -2300),
+    on(lane.PLOTS_N[2].x1, -2600),
+    on(lane.PLOTS_N[3].x1, -2800),
+    on(0, lane.flatZAt(0) - 30), // the forest's edge
     [lane.footpathAt(1150).x, GROUND, lane.footpathAt(1150).z], // the footpath's barrier
     [lane.TRAMPOLINE.x, lane.TRAMPOLINE.y, lane.TRAMPOLINE.z], // the trampoline
     [-250, DAD.ridge, DAD.ridgeZ], // the dad's ridge
-    [lane.TURN.x, 0, lane.TURN.z], // the turning area
-    [7200, GROUND, 1100], // the east end
-    [0, GROUND, 3200], // the back gardens
-    [-6500, GROUND, -2500], // behind the north-west villa
-    [-6200, GROUND, 3100], // the corner house's garden
+    on(lane.APRON.ring.x, lane.APRON.ring.z), // the turning area
+    on(lane.FORECOURT.x0 + 300, (lane.FORECOURT.z0 + lane.FORECOURT.z1) / 2), // the east end
+    on(lane.EAST_HOUSE.cx - lane.EAST_HOUSE.w / 2 - 300, lane.EAST_HOUSE.cz),
+    on(0, 3200), // the back gardens
+    on(-9000, -2800), // behind the north-west villa
+    on(bx, bz), // the corner house's garden
   ];
   const out = [];
   starts.forEach((s, run) => {
@@ -369,9 +376,9 @@ test('the farthest leaps, long jumps at full speed in 16 directions off the dad\
 });
 
 test('the dad\'s house: its footprint, eaves at 412, its 20-degree roof up to the ridge at 644 over z 1967.5 (raycast down at 9 points on each slope); the carport\'s roof at 370 with 300 or more over its floor; no floor anywhere under a ceiling lower than 300', () => {
-  assert.deepEqual([DAD.x0, DAD.x1, DAD.z0, DAD.z1, DAD.eave, Math.round(DAD.ridge), DAD.ridgeZ], [-1100, 1600, 1330, 2605, 412, 644, 1967.5]);
+  assert.deepEqual([DAD.x0, DAD.x1, DAD.z0, DAD.z1, DAD.eave, Math.round(DAD.ridge), DAD.ridgeZ], [-860, 1600, 1330, 2605, 412, 644, 1967.5]);
   const tan = Math.tan((20 * Math.PI) / 180);
-  for (const x of [-1000, 250, 1500]) {
+  for (const x of [-760, 250, 1500]) {
     for (const z of [1400, 1650, 1900, 2035, 2300, 2550]) {
       const hit = col.raycast(world(x, 2000, z), { x: 0, y: -1, z: 0 }, 3000);
       const want = DAD.ridge - Math.abs(z - DAD.ridgeZ) * tan;
@@ -389,8 +396,8 @@ test('the dad\'s house: its footprint, eaves at 412, its 20-degree roof up to th
   assert.ok(ceil - GROUND >= 300 && ceil < C.top, `the store room under the carport: ${ceil - GROUND}`);
   // Every floor he can stand on (not too steep) has 300 or more over it, all over the course.
   const low = [];
-  for (let x = -9000; x <= 8000; x += 100) {
-    for (let z = -4000; z <= 3600; z += 100) {
+  for (let x = -12000; x <= 10000; x += 100) {
+    for (let z = -5000; z <= 4500; z += 100) {
       if (!lane.inBounds(x, z)) continue;
       let y = 4400;
       for (let k = 0; k < 6; k++) {
@@ -461,11 +468,11 @@ test('every sign is read from in front of its face, never from behind; the mailb
 });
 
 for (const [label, prof] of CAMERAS) {
-  test('eleven climbable poles (every lamppost, R fixes: the dad wants to climb them all), each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it, climbed to its top; jumping off one never hurts' + label, withCamera(prof, () => {
+  test('nine climbable poles (every lamppost, R fixes: the dad wants to climb them all), each grabbed from every open side with the follow camera, which swings round to the pole\'s own side (camYaw) as he holds it, climbed to its top; jumping off one never hurts' + label, withCamera(prof, () => {
     // (To a thousandth: the footpath's lamppost stands at a computed point, moved by the origin.)
     const r = (v) => Math.round(v * 1000) / 1000;
     const built = col.poles.map((p) => ({ x: r(p.x - O.x), z: r(p.z - O.z), y0: r(p.y0 - O.y), y1: r(p.y1 - O.y), camYaw: p.camYaw }));
-    assert.equal(built.length, 11);
+    assert.equal(built.length, 9); // (W2: the photos' five lampposts, the red-leaf tree, three flagpoles)
     assert.deepEqual(built, lane.POLES.map(({ x, z, y0, y1, camYaw }) => ({ x: r(x), z: r(z), y0: r(y0), y1: r(y1), camYaw })));
     for (const l of lane.LAMPS) assert.ok(lane.POLES.some((p) => p.x === l.x && p.z === l.z && p.y1 >= lane.LAMP.top - 60), `lamppost ${l.id} a pole up to its top`);
     const problems = [];
@@ -516,7 +523,7 @@ for (const [label, prof] of CAMERAS) {
 
 for (const [label, prof] of CAMERAS) {
   test('the side yards between the villas: walked up to the back gardens and back (turning round in them) with the follow camera, it is never in a solid and seldom trapped; C-button swings in them, under the carport and on the roof never put it in a solid' + label, withCamera(prof, () => {
-    const yards = [-3670, -1125, 1485, 3980];
+    const yards = lane.PLOTS_N.slice(0, 4).map((pl) => pl.x1); // (W2: on the plots' edges)
     const out = [];
     for (const x of yards) {
       const z0 = lane.wallZAt(x) - 200;
@@ -535,14 +542,15 @@ for (const [label, prof] of CAMERAS) {
           if (insideSolid(cam.pos)) out.push(`yard ${x}: the camera in a solid at ${JSON.stringify(local(cam.pos))}`);
         }
       };
-      leg(-3300, 300);
-      if (at().z > -3000) out.push(`yard ${x}: stuck at ${JSON.stringify(at())}`);
+      const back = lane.flatZAt(x) + 120; // (the back gardens behind the villas)
+      leg(back, 400);
+      if (at().z > back + 300) out.push(`yard ${x}: stuck at ${JSON.stringify(at())}`);
       leg(z0, 300);
       if (at().z < z0 - 200) out.push(`yard ${x}: not back at ${JSON.stringify(at())}`);
       if (trapped > 35) out.push(`yard ${x}: trapped ${trapped} ticks (occluded ${occluded})`);
     }
     // C-button swings round him in the yards, under the carport and on the roof, facing 8 ways.
-    const spots = [[-3670, lane.TERRACE, -2400], [-1125, lane.TERRACE, -2600], [1485, lane.TERRACE, -2200], [3980, lane.TERRACE, -2500], [2050, GROUND, 2300], [0, DAD.ridge - 40, 1860]];
+    const spots = [...yards.map((x, k) => [x, lane.TERRACE, [-2400, -2600, -2200, -2500][k]]), [2050, GROUND, 2300], [0, DAD.ridge - 40, 1860]];
     for (const [x, y, z] of spots) {
       for (let k = 0; k < 8; k++) {
         const { p, ctl } = hero(x, y, z, (k / 8) * Math.PI * 2);
@@ -583,7 +591,7 @@ test('privacy and originality: the course\'s sources name no one but Jonas on it
     }
   }
   // Houses go by neutral ids.
-  for (const h of [...lane.HOUSES, ...lane.PLOTS_N]) assert.match(h.id, /^(north|south|east)_(\d|west|dad|garage|house)(_wing)?$/, h.id);
+  for (const h of [...lane.HOUSES, ...lane.PLOTS_N]) assert.match(h.id, /^(north|south|east)_(\d|west|dad|garage|house)(_wing|_west)?$/, h.id);
 });
 
 test('the look: the sun low in the west-south-west; the villas\' street faces lit, the chain houses\' in shade; the dad\'s walls Falu red under a dark roof', () => {

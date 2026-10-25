@@ -186,26 +186,37 @@ test('welcome: out of the front door down the path to the street (its three coin
 });
 
 test('west: along the street (five coins), a hop onto north_2\'s wall top (three), north_3\'s steps (three) and its wall top (three), up the side yard between them (three)', () => {
-  const st = hero(-300, 0, 0, W);
-  st.walk([[-3500, 0]]);
+  // (W2: every start from the layout's anchors: the straight's centreline, the terraces' wall
+  // line, the plots' steps and edges.)
+  const Z = lane.ROAD.line.at(-1)[1];
+  const top = (x) => lane.wallZAt(x) - 50; // (along a wall top, its coins' line)
+  const pave = (x) => (lane.ROAD.line.at(-1)[1] - lane.ROAD.half - lane.KERB.w + lane.wallZAt(x)) / 2; // (the pavement's middle)
+  const st = hero(-300, 0, Z, W);
+  st.walk([[-3500, Z]]);
   assert.equal(st.coins(), 5, 'the street west');
-  // A hop up the wall from the pavement, then along its top.
-  const w = hero(-3550, GROUND, -600, N);
+  // A hop up the wall from the pavement, then along its top (west of north_2's drive).
+  const w = hero(-4650, GROUND, pave(-4650), N);
   jump(w, N, { push: 0.6, after: 4 });
   assert.ok(Math.abs(w.at().y - TERRACE) < 1, `on the wall top: ${JSON.stringify(w.at())}`);
-  w.walk([[-3550, -750], [-2850, -750]], 0.5);
+  w.walk([[-4650, top(-4650)], [-4050, top(-4050)]], 0.5);
   assert.equal(w.coins(), 3, "north_2's wall top");
-  // Up north_3's steps from the pavement, then west along its wall top.
+  // Up north_3's steps from the pavement (east of its drive).
   const [s0, s1] = lane.PLOTS_N[2].steps;
-  const u = hero((s0 + s1) / 2, GROUND, -560, N);
-  u.walk([[(s0 + s1) / 2, -1060]], 0.6);
+  const u = hero((s0 + s1) / 2, GROUND, pave(s0), N);
+  u.walk([[(s0 + s1) / 2, lane.wallZAt(s0) - lane.STEPS.run - 80]], 0.6);
   assert.ok(Math.abs(u.at().y - TERRACE) < 1, `up the steps: ${JSON.stringify(u.at())}`);
   assert.equal(u.coins(), 3, "north_3's steps");
-  u.walk([[-80, -1060], [-80, -750], [-900, -750]], 0.5);
-  assert.equal(u.coins(), 6, "...and its wall top");
-  // Up the side yard to the back garden.
-  const y = hero(-1125, TERRACE, -1500, N);
-  y.walk([[-1125, -3000]]);
+  // Its wall top west of the drive (in front of its west block, short of the box hedge): a hop
+  // from the pavement and along it.
+  const v = hero(-1250, GROUND, pave(-1250), N);
+  jump(v, N, { push: 0.6, after: 4 });
+  assert.ok(Math.abs(v.at().y - TERRACE) < 1, `on north_3's wall top: ${JSON.stringify(v.at())}`);
+  v.walk([[-1250, top(-1250)], [-650, top(-650)]], 0.5);
+  assert.equal(v.coins(), 3, "north_3's wall top");
+  // Up the side yard between north_2 and north_3 to the back garden.
+  const X = lane.PLOTS_N[1].x1;
+  const y = hero(X, TERRACE, -1500, N);
+  y.walk([[X, -3000]]);
   assert.equal(y.coins(), 3, 'the side yard');
 });
 
@@ -238,8 +249,8 @@ test('the motorhome: a running double jump from the drive in front of it grabs i
 
 test('the junction: round the lamppost (three coins) and up it to a handstand on its top', () => {
   const L1 = lane.POLES[0];
-  const h = hero(-8370, GROUND, 1300, S);
-  h.walk([[-8370, 1590], [-7995, 1807], [-7995, 1373]], 0.6);
+  const h = hero(L1.x - 250, GROUND, L1.z - 300, S);
+  h.walk([[L1.x - 250, L1.z], [L1.x + 125, L1.z + 217], [L1.x + 125, L1.z - 217]], 0.6);
   assert.equal(h.coins(), 3, 'round the lamppost');
   const q = h.at();
   h.walk([[L1.x - 300, L1.z]], 0.6);
@@ -251,19 +262,24 @@ test('the junction: round the lamppost (three coins) and up it to a handstand on
 });
 
 test('east: along the street (three coins), round the turning area (seven), up north_4\'s drive (three), along the footpath (one)', () => {
-  const st = hero(300, 0, 0, E);
-  st.walk([[2200, 0]]);
+  const Z = lane.ROAD.line.at(-1)[1];
+  const st = hero(300, 0, Z, E);
+  st.walk([[2200, Z]]);
   assert.equal(st.coins(), 3, 'the street east');
-  const T = lane.TURN;
-  const ring = hero(T.x, 0, T.z + 650, E);
+  // Round the coins' ring on the apron.
+  const R = lane.APRON.ring;
+  const ring = hero(R.x, 0, R.z + R.r, E);
   const pts = Array.from({ length: 29 }, (_, k) => {
     const a = ((k + 0.5) / 28) * Math.PI * 2;
-    return [T.x + 650 * Math.sin(a), T.z + 650 * Math.cos(a)];
+    return [R.x + R.r * Math.sin(a), R.z + R.r * Math.cos(a)];
   });
   ring.walk(pts, 0.5);
   assert.equal(ring.coins(), 7, 'the turning area');
-  const d = hero(3070, 0, -1000, N);
-  d.walk([[3070, -1700]], 0.5);
+  // Up north_4's drive west of the van, from the pavement to its garage door.
+  const x = lane.PLOTS_N[3].drive[0] + 220;
+  const z0 = lane.wallZAt(x) + 100;
+  const d = hero(x, lane.groundHeight(x, z0), z0, N);
+  d.walk([[x, -1700]], 0.5);
   assert.equal(d.coins(), 3, "north_4's drive");
   const f = lane.footpathAt(100);
   const g = lane.footpathAt(900);
@@ -275,10 +291,11 @@ test('east: along the street (three coins), round the turning area (seven), up n
 test("the hedge walk: a single jump from the lawn up onto south_1's hedge (165 high), and along its top (three coins)", () => {
   const H = lane.HEDGES[0];
   assert.equal(H.top - GROUND, 165);
-  const h = hero(-3300, GROUND, H.z0 - 120, S);
-  jump(h, S, { push: 0.6, after: 4 });
+  // (W2: its street side is the road's south edge, a step down: up from the lawn behind it.)
+  const h = hero(H.x0 + 440, GROUND, H.z1 + 120, N);
+  jump(h, N, { push: 0.5, after: 4 }); // (a gentler push: the hedge is 130 deep, the road behind it)
   assert.ok(Math.abs(h.at().y - H.top) < 1 && h.p.grounded, `on the hedge: ${JSON.stringify(h.at())}`);
-  h.walk([[-3300, (H.z0 + H.z1) / 2], [-2000, (H.z0 + H.z1) / 2]], 0.4);
+  h.walk([[H.x0 + 440, (H.z0 + H.z1) / 2], [H.x1 - 670, (H.z0 + H.z1) / 2]], 0.4);
   assert.ok(Math.abs(h.at().y - H.top) < 1, `along its top: ${JSON.stringify(h.at())}`);
   assert.equal(h.coins(), 3, 'its coins');
 });
@@ -320,8 +337,8 @@ test('the trampoline: with the jump button held every bounce rises to 852 with a
   d.p.setAction('freefall');
   const low = arcs(d, () => ({}), E, 150);
   assert.ok(low.length >= 3 && Math.max(...low) < U.y - 200 - 100 && ones(d) === 0, `bounces without the button: ${low.map((p) => p.toFixed(0))}`);
-  // A running triple jump on the terrace (up the yard west of it) peaks short of it.
-  const tj = hero(3980, TERRACE, -1700, N);
+  // A running triple jump on the terrace (up the side yard west of it) peaks short of it.
+  const tj = hero(T.x - 600, TERRACE, T.z + 600, N);
   tj.rest(1);
   for (let t = 0; t < 10; t++) tj.tick({ stickY: 1 }, N);
   const tops = [];

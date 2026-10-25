@@ -14,9 +14,6 @@
 //                   to the byte, and only the classic build's are used)
 //     replaced      the elements not drawn (default: REAL_DRAWN in the realistic look, none in
 //                   the classic): the builders still make their colliders
-//     round         the turning area drawn round (TURN_ROUND sides: world/lane/real/plan.js),
-//                   the lawns and drives cut round it (default: in the realistic look); its
-//                   colliders stay the 16-gon's
 //   REAL_DRAWN      the elements the realistic look draws itself (world/lane/real/detail.js, in
 //                   its worker); a builder asks kit.drawn(name) for the kit to draw one into: the
 //                   kit, or one whose builders draw nothing (the same solids and signs)
@@ -27,8 +24,9 @@
 //                   (core/AreaSwitch.js swings it as Jonas comes out of it and goes back in)
 //
 // The ground: the asphalt road (its west leg from the junction, the bend, the long straight) and
-// the turning area at 0, granite kerbs along their edges (none at the drives); everything
-// else a step up at GROUND: the north pavement (asphalt, paler), the drives, the dad's
+// the turning area's apron at 0, granite kerbs along their north edges and round the apron (none
+// at the drives; along the south edge none: the asphalt's bevelled edge); everything else a step
+// up at GROUND: the north pavement (asphalt, paler), the drives and forecourts, the dad's
 // grass-paver path, the footpath, and lawn (the ground drawn as tiles with every road and hard
 // surface cut out of them, so nothing lies over anything). Up the hill the villas' gardens are
 // terraces (TERRACE) behind a retaining wall of split-face blocks (a paler coping along its
@@ -62,7 +60,7 @@
 // itself) and its signs stay baked. It leaves out what it draws itself (REAL_DRAWN: the worker's
 // world/lane/real/detail.js builds those: the chain houses, the plants and the forest, the cars,
 // the kerbs, the posts, fences and bins, the villas' walls and windows, the garage doors, the
-// toys, the motorhome, the cabinet, the mailbox) and draws its turning area round.
+// toys, the motorhome, the cabinet, the mailbox).
 //
 // Colliders, all { positions, terrain[, surface] } (world/area.js shifts them): the road and
 // every hard surface (stone), the lawns and the terraces' tops (grass), the terraces' walls and
@@ -82,7 +80,7 @@ import { asphaltTexture, brickTexture, panTileTexture, renderTexture } from './t
 import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
-import { normals, band, roadPieces, kerbRuns } from './real/plan.js';
+import { normals, band, roadPieces, kerbRuns, terraceSpans } from './real/plan.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -117,11 +115,10 @@ const UP = [0, 1, 0];
 // the lower sun's weaker light on the ground.
 export const LIGHT = { ambient: 0.64, diffuse: 0.55, maxBright: 1.1, tint: [1.1, 1.0, 0.86] };
 const GROUND_RECT = { x0: -16000, x1: 16000, z0: -8000, z1: 10000, tile: 2000 };
-const ARC_STEP = 300; // the terraces' fronts along the turning area: straight this long
 const KERB_LIFT = 1.5; // the kerbs' tops over the lawn and the pavement beside them
-// The bank: up to its top over `depth`, on a little higher `beyond`, then rising on `far` more
-// to `crest` over its top, out in the fog.
-const BANK = { depth: 1200, beyond: 2600, far: 200, out: 9000, crest: 2600 };
+// The bank: up to its top over NORTH.bank, on a little higher `beyond`, then rising on `far`
+// more to `crest` over its top, out in the fog.
+const BANK = { beyond: 2600, far: 200, out: 9000, crest: 2600 };
 const CARPORT_SHADE = 0.62; // the drive's asphalt under the carport's roof
 // The realistic look's own meshes (their repeats; the classic look draws them in render's and
 // grass's builders).
@@ -158,7 +155,7 @@ export function buildLane(layout, options) {
 
 // buildLane a step at a time (a generator: each next() runs a builder or two, a few ms; its
 // return value the part): the realistic build runs it over several frames.
-export function* laneSteps(layout, { look = 'classic', materials = null, replaced = look === 'real' ? REAL_DRAWN : [], round = look === 'real' } = {}) {
+export function* laneSteps(layout, { look = 'classic', materials = null, replaced = look === 'real' ? REAL_DRAWN : [] } = {}) {
   const real = look === 'real';
   const kit = { look, solids: new SolidBuilder(), signs: { wood: new MeshBuilder(), colliders: { wood: [] }, shadow: () => {} }, groundAt: layout.groundHeight };
   for (const name of Object.keys(REPEAT)) kit[name] = new (real && name === 'roof' ? SlopeBuilder : GeoBuilder)(REPEAT[name]);
@@ -175,15 +172,9 @@ export function* laneSteps(layout, { look = 'classic', materials = null, replace
   kit.drawn = (name) => (replaced.includes(name) ? hidden : kit);
   hidden.drawn = kit.drawn;
   const road = roadPieces(layout);
-  if (round) {
-    // The realistic look draws the turning area round (the lawns and the drives cut round it)
-    // and its own granite kerbs (world/lane/real/garden.js); the colliders keep the 16-gon.
-    ground(hidden, layout, road);
-    yield;
-    ground({ ...kit, solids: NOTHING }, layout, roadPieces(layout, { round: true }));
-  } else ground(kit, layout, road);
+  ground(kit, layout, road);
   yield;
-  kerbs(kit.drawn('kerbs'), layout, road);
+  kerbs(kit.drawn('kerbs'), layout, road, kit);
   terraces(kit, layout);
   yield;
   bank(kit, layout);
@@ -402,23 +393,41 @@ const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 // ---------------------------------------------------------------- the ground
 
 // The hard surfaces a step up at GROUND (each its outline, builder, tint and shade): the
-// pavement, the drives and the notches' cobbles, the dad's grass-paver path, his drive (darker
-// under the carport's edge, the store room's concrete floor behind its door wall) and the
-// link's, the drive east of the turning area to the double garage, the north-west villa's
-// flagstones, the footpath, the dad's patio.
+// pavement (along the west leg, the bend and the straight, then narrowing over the apron's kerb S
+// to the terraces' wall), the drives and the notches' cobbles, the dad's grass-paver path, his
+// drive (darker under the carport's edge, the store room's concrete floor behind its door wall)
+// and the link's, the double garage's forecourt east of the apron and the footway behind its east
+// kerb, the north-west villa's flagstones (cut at the pavement), the footpath, the dad's patio.
 function hardSurfaces(L, road, tints) {
   const out = [];
-  const add = (outline, mat, tint, shade = 1) => {
-    for (const piece of cutOut(outline, road)) out.push({ outline: piece, mat, tint, shade });
+  const pavement = [];
+  const add = (outline, mat, tint, shade = 1, cut = road) => {
+    for (const piece of cutOut(outline, cut)) out.push({ outline: piece, mat, tint, shade });
   };
-  // The pavement: along the bend and the straight, on its north side, up to the turning area.
-  const line = L.ROAD.line.slice(1);
-  const pave = band(line, L.PAVEMENT.from, L.PAVEMENT.to);
-  for (const q of pave) add(q.map(([x, z]) => [Math.min(x, L.PAVEMENT.x1), z]), 'asphalt', tints.pavement);
+  // The pavement: on the line from the junction (its first point PAVEMENT.start along the west
+  // leg) to x1, then over the kerb's S to the wall.
+  const P = L.PAVEMENT;
+  const [W0, W1] = L.ROAD.line;
+  const t = (P.start - W1[0]) / (W0[0] - W1[0]);
+  const line = [[W1[0] + (W0[0] - W1[0]) * t, W1[1] + (W0[1] - W1[1]) * t], ...L.ROAD.line.slice(1)];
+  const A = L.APRON;
+  const [c0, c1] = A.curve;
+  const zEnd = L.wallZAt(c1);
+  line[line.length - 1] = [P.x1, line.at(-1)[1]];
+  const quads = band(line, P.from, P.to);
+  // (Over the S: from its start, past its middle, to its end at the wall's next bend.)
+  const bend = L.NORTH.wall.find(([x]) => x > P.x1);
+  quads.push([[P.x1, A.kerb], [c0 + (c1 - c0) / 2, A.kerb], [c1, A.z0], [c1, zEnd], bend, [P.x1, L.wallZAt(P.x1)]]);
+  for (const q of quads) {
+    const before = out.length;
+    add(q, 'asphalt', tints.pavement);
+    pavement.push(...out.slice(before).map((h) => h.outline));
+  }
+  const cutPave = [...road, ...pavement];
   for (const p of L.PLOTS_N) {
     const v = L.villaOf(p);
     const [d0, d1] = p.drive;
-    add([[d0, L.wallZAt(d0)], [d1, L.wallZAt(d1)], [d1, v.front], [d0, v.front]], 'cobbles', tints.cobbles);
+    add([[d0, L.wallZAt(d0 + 0.01)], [d1, L.wallZAt(d1 - 0.01)], [d1, v.front], [d0, v.front]], 'cobbles', tints.cobbles, 1, cutPave);
   }
   add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', tints.path);
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', tints.drive);
@@ -426,25 +435,30 @@ function hardSurfaces(L, road, tints) {
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', tints.floor, 0.4);
   add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', tints.drive);
   add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', tints.patio);
-  add(rectOf(L.TURN.x + 800, L.EAST_GARAGE.cx - L.EAST_GARAGE.d / 2, L.EAST_GARAGE.cz - L.EAST_GARAGE.w / 2, L.EAST_GARAGE.cz + L.EAST_GARAGE.w / 2), 'asphalt', tints.drive);
+  const C = L.FORECOURT;
+  add(rectOf(C.x0, C.x1, C.z0, C.z1), 'asphalt', tints.drive);
   const F = frame(L.NORTH_WEST);
-  const D = L.NORTH_WEST_DRIVE;
-  add([[D.u0, D.w0], [D.u1, D.w0], [D.u1, D.w1], [D.u0, D.w1]].map(([u, w]) => {
+  add(L.northWestDrive().map(([u, w]) => {
     const p = F.at(u, 0, w);
     return [p[0], p[2]];
-  }), 'cobbles', tints.flags);
-  const P = L.FOOTPATH;
+  }), 'cobbles', tints.flags, 1, cutPave);
+  const FP = L.FOOTPATH;
   const fp = (t, s) => {
     const p = L.footpathAt(t, s);
     return [p.x, p.z];
   };
-  add([fp(P.from, P.half), fp(P.from, -P.half), fp(P.len, -P.half), fp(P.len, P.half)], 'asphalt', tints.footpath);
+  add([fp(FP.from, FP.half), fp(FP.from, -FP.half), fp(FP.len, -FP.half), fp(FP.len, FP.half)], 'asphalt', tints.footpath);
+  // The footway: from the forecourt down behind the east kerb to the footpath's east edge.
+  const W = L.FOOTWAY;
+  const [ex, ez] = fp(0, -FP.half);
+  const along = (x) => ez + ((x - ex) * FP.dir[1]) / FP.dir[0];
+  add([[W.x0, C.z1], [W.x1, C.z1], [W.x1, along(W.x1)], [W.x0, along(W.x0)]], 'asphalt', tints.footpath);
   return out;
 }
 
-// The ground: the road and the turning area at 0 (asphalt), the hard surfaces and the lawn at
-// GROUND (the lawn drawn as tiles with the road, the hard surfaces and the terraces cut out),
-// drawn over GROUND_RECT and solid where Jonas can be (inside the boundary's box).
+// The ground: the road and the apron at 0 (asphalt), the hard surfaces and the lawn at GROUND
+// (the lawn drawn as tiles with the road, the hard surfaces and the terraces cut out), drawn over
+// GROUND_RECT and solid where Jonas can be (inside the boundary's box).
 function ground(kit, L, road) {
   const { asphalt, grass, solids } = kit;
   const tints = kit.look === 'real' ? REAL_GROUND : TINT;
@@ -466,14 +480,9 @@ function ground(kit, L, road) {
     kit[mat].poly(at(outline, G), { facing: UP, shade: outline.map(([x, z]) => swath(x, z)) });
     if (solid(outline)) solids.face(at(outline, G), UP, 'stone');
   }
-  // The lawn, tile by tile, round everything else; the terraces' plots are cut out too (their
-  // blocks stand there).
-  const holes = [...road, ...hard.map((h) => h.outline)];
-  for (const p of L.PLOTS_N) {
-    let front = 0;
-    for (let x = p.x0; x <= p.x1; x += 100) front = Math.max(front, -L.wallZAt(x));
-    holes.push(rectOf(p.x0, p.x1, L.NORTH.backZ, -front));
-  }
+  // The lawn, tile by tile, round everything else; the terraces' blocks, their steps and their
+  // back gardens' ramp are cut out too (they stand there).
+  const holes = [...road, ...hard.map((h) => h.outline), ...terraceHoles(L)];
   const T = GROUND_RECT;
   for (let x = T.x0; x < T.x1; x += T.tile) {
     for (let z = T.z0; z < T.z1; z += T.tile) {
@@ -496,17 +505,21 @@ function lawnTint(L, piece) {
 // The kerbs: along every edge of the road's pieces that is the road's edge (plan.js kerbRuns:
 // clipped exactly where another piece begins, so no stub or gap where two meet), a granite face
 // from the road up to GROUND and a strip along its top; none in front of the drives (the
-// asphalt runs on up into them: a bevel from the road to the drive's edge) or along the dad's
-// corner bed (its field stones edge the asphalt: its soil's face up to the bed's top, lane/
-// props.js dadsGarden lays the stones along it).
-function kerbs(kit, L, road) {
-  const { blocks, asphalt, cobbles } = kit;
+// asphalt runs on up into them: a bevel from the road to the drive's edge), along the south edge
+// (the asphalt's edge bevelled up to the lawns) or along the dad's corner bed (its field stones
+// edge the asphalt: its soil's face up to the bed's top, lane/props.js dadsGarden lays the
+// stones along it).
+function kerbs(kit, L, road, all = kit) {
+  const { blocks, cobbles } = kit;
   const G = L.GROUND;
   for (const { p, q, n: [nx, nz], kind } of kerbRuns(L, road)) {
-    if (kind === 'drop') {
-      // (At a drive the asphalt runs on up into it: a bevel from the road to its edge.)
+    if (kind === 'drop' || kind === 'edge') {
+      // (At a drive the asphalt runs on up into it, and along the south edge up to the lawn: a
+      // bevel from the road to its edge; the south edge's in both looks, the road's own
+      // asphalt: `all`, the kit drawing everything.)
       const D = 22;
-      asphalt.color(TINT.drive);
+      const asphalt = kind === 'edge' ? all.asphalt : kit.asphalt;
+      asphalt.color(kind === 'drop' ? TINT.drive : all.look === 'real' ? REAL_GROUND.road : TINT.road);
       asphalt.poly([[p[0] - nx * D, 0.4, p[1] - nz * D], [q[0] - nx * D, 0.4, q[1] - nz * D], [q[0], G, q[1]], [p[0], G, p[1]]], { facing: [-nx, 1, -nz], shade: 0.95 });
       continue;
     }
@@ -523,42 +536,39 @@ function kerbs(kit, L, road) {
 
 // ---------------------------------------------------------------- the terraces
 
+// The terraces' blocks (per plot, west to east: plan.js terraceSpans, each its front from (a, za)
+// to (b, zb), back to the gardens' flat's end flatZAt; behind the drive the villa's front, behind
+// the steps their ramp's top) and the plots' back gardens' ramps, as the lawn's holes too.
+function terraceBlocks(L) {
+  return terraceSpans(L).map(({ plot, spans }) => {
+    const stepsZ = L.wallZAt(plot.steps[0]) - L.STEPS.run;
+    const front = L.villaOf(plot).front;
+    const blocks = spans.map(({ a, b, za, zb, kind }) => (kind === 'wall' ? { a, b, za, zb, notch: false } : { a, b, za: kind === 'steps' ? stepsZ : front, zb: kind === 'steps' ? stepsZ : front, notch: true, kind, wa: za, wb: zb }));
+    return { plot, blocks, stepsZ };
+  });
+}
+function terraceHoles(L) {
+  const holes = [];
+  for (const { plot: p, blocks } of terraceBlocks(L)) {
+    for (const { a, b, za, zb, notch, kind, wa, wb } of blocks) {
+      holes.push([[a, za], [b, zb], [b, L.flatZAt(b)], [a, L.flatZAt(a)]]);
+      // (The steps' ramp up to their block: no lawn under it.)
+      if (notch && kind === 'steps') holes.push([[a, wa], [b, wb], [b, za], [a, za]]);
+    }
+    holes.push([[p.x0, L.flatZAt(p.x0)], [p.x1, L.flatZAt(p.x1)], [p.x1, L.backZAt(p.x1)], [p.x0, L.backZAt(p.x0)]]);
+  }
+  return holes;
+}
+
 // The villas' gardens up the hill: per plot, convex blocks from under the ground up to the
 // terrace (their tops grass, their fronts split-face blocks under a paler coping), each with a
-// straight front (along the turning area, ARC_STEP long), cut by the steps (a ramp collider,
-// drawn steps, a railing on their drive side) and the drive notch; where two blocks' fronts
-// differ (a notch's sides, the wall's jog at the turning area) the deeper one's neighbour shows
-// its side; behind them the back gardens' ramp up to the forest's edge.
+// straight front (the wall's line cut where it bends), cut by the steps (a ramp collider, drawn
+// steps, a railing on their drive side) and the drive notch; where two blocks' fronts differ (a
+// notch's sides, the wall's jogs) the deeper one's neighbour shows its side; behind them the back
+// gardens' ramp up to the forest's edge.
 function terraces(kit, L) {
-  const { NORTH: N, STEPS: S } = L;
-  for (const p of L.PLOTS_N) {
-    const v = L.villaOf(p);
-    const [s0, s1] = p.steps;
-    const [d0, d1] = p.drive;
-    const stepsZ = L.wallZAt(s0) - S.run;
-    const spans = [
-      [p.x0, s0, null],
-      [s0, s1, stepsZ],
-      [s1, d0, null],
-      [d0, d1, v.front],
-      [d1, p.x1, null],
-    ];
-    const blocks = [];
-    for (const [xa, xb, notchZ] of spans) {
-      // Cut where the wall's line bends round the turning area, and where it jogs back.
-      const cuts = [xa, xb];
-      const bend = L.PAVEMENT.x1;
-      if (notchZ === null) {
-        for (let x = Math.max(xa, bend) + ARC_STEP; x < xb; x += ARC_STEP) cuts.push(x);
-        if (xa < bend && xb > bend) cuts.push(bend);
-      }
-      cuts.sort((a, b) => a - b);
-      for (let i = 0; i + 1 < cuts.length; i++) {
-        const [a, b] = [cuts[i], cuts[i + 1]];
-        if (b - a < 1) continue;
-        blocks.push({ a, b, za: notchZ ?? L.wallZAt(a + 0.01), zb: notchZ ?? L.wallZAt(b), notch: notchZ !== null });
-      }
-    }
+  const N = L.NORTH;
+  for (const { plot: p, blocks, stepsZ } of terraceBlocks(L)) {
     for (const b of blocks) block(kit, L, b);
     // The sides where neighbouring fronts differ: the one nearer the street shows its side.
     for (let i = 0; i + 1 < blocks.length; i++) {
@@ -568,17 +578,21 @@ function terraces(kit, L) {
       else side(kit, L, next.a, prev.zb, next.za, -1);
     }
     // The plots' open ends (west of the first, east of the last).
-    if (p === L.PLOTS_N[0]) side(kit, L, p.x0, N.flatZ, blocks[0].za, -1);
-    if (p === L.PLOTS_N.at(-1)) side(kit, L, p.x1, N.flatZ, blocks.at(-1).zb, 1);
+    if (p === L.PLOTS_N[0]) side(kit, L, p.x0, L.flatZAt(p.x0), blocks[0].za, -1);
+    if (p === L.PLOTS_N.at(-1)) side(kit, L, p.x1, L.flatZAt(p.x1), blocks.at(-1).zb, 1);
     steps(kit, L, p, stepsZ);
-    // The back gardens' ramp up to the forest's edge: one wedge across the plot.
+    // The back gardens' ramp up to the forest's edge: one wedge across the plot (its flat end and
+    // its top follow the forest's sloping line: still planar).
     const [x0, x1] = [p.x0, p.x1];
+    const [f0, f1, b0, b1] = [L.flatZAt(x0), L.flatZAt(x1), L.backZAt(x0), L.backZAt(x1)];
+    const rise = N.backTop - N.top;
+    const up = [-rise * N.slope, N.ramp, rise];
     const faces = [
-      [[[x0, N.top, N.flatZ], [x1, N.top, N.flatZ], [x1, N.backTop, N.backZ], [x0, N.backTop, N.backZ]], [0, 1, (N.backTop - N.top) / (N.flatZ - N.backZ)], 'grass'],
-      [[[x0, -100, N.backZ], [x1, -100, N.backZ], [x1, N.backTop, N.backZ], [x0, N.backTop, N.backZ]], [0, 0, -1], 'stone'],
-      [[[x0, -100, N.flatZ], [x0, N.top, N.flatZ], [x0, N.backTop, N.backZ], [x0, -100, N.backZ]], [-1, 0, 0], 'stone'],
-      [[[x1, -100, N.flatZ], [x1, N.top, N.flatZ], [x1, N.backTop, N.backZ], [x1, -100, N.backZ]], [1, 0, 0], 'stone'],
-      [[[x0, -100, N.flatZ], [x1, -100, N.flatZ], [x1, N.top, N.flatZ], [x0, N.top, N.flatZ]], [0, 0, 1], 'stone'],
+      [[[x0, N.top, f0], [x1, N.top, f1], [x1, N.backTop, b1], [x0, N.backTop, b0]], up, 'grass'],
+      [[[x0, -100, b0], [x1, -100, b1], [x1, N.backTop, b1], [x0, N.backTop, b0]], [N.slope, 0, -1], 'stone'],
+      [[[x0, -100, f0], [x0, N.top, f0], [x0, N.backTop, b0], [x0, -100, b0]], [-1, 0, 0], 'stone'],
+      [[[x1, -100, f1], [x1, N.top, f1], [x1, N.backTop, b1], [x1, -100, b1]], [1, 0, 0], 'stone'],
+      [[[x0, -100, f0], [x1, -100, f1], [x1, N.top, f1], [x0, N.top, f0]], [-N.slope, 0, 1], 'stone'],
     ];
     for (const [f, facing, terrain] of faces) kit.solids.face(f, facing, terrain);
     kit.grass.color(TINT.backLawn);
@@ -589,16 +603,16 @@ function terraces(kit, L) {
   }
 }
 
-// One terrace block from x a to b, its front from (a, za) to (b, zb), back to NORTH.flatZ, from
+// One terrace block from x a to b, its front from (a, za) to (b, zb), back to the flat's end, from
 // under the ground up to the terrace: its top (grass) and, unless it stands behind a notch (the
 // villa's front or the steps' ramp hides it there), its front (blocks under a paler coping);
 // solid (its sides and back too).
 function block(kit, L, { a, b, za, zb, notch }) {
   const { grass, blocks, solids } = kit;
   const top = L.NORTH.top;
-  const back = L.NORTH.flatZ;
+  const [ba, bb] = [L.flatZAt(a), L.flatZAt(b)];
   const y0 = -100;
-  const footprint = [[a, za], [b, zb], [b, back], [a, back]];
+  const footprint = [[a, za], [b, zb], [b, bb], [a, ba]];
   grass.color(TINT.lawn);
   grass.poly(at(footprint, top), { facing: UP });
   solids.face(at(footprint, top), UP, 'grass');
@@ -614,9 +628,9 @@ function block(kit, L, { a, b, za, zb, notch }) {
     blocks.poly([[a, top + 1, za], [b, top + 1, zb], [b + ix, top + 1, zb + iz], [a + ix, top + 1, za + iz]], { facing: UP, shade: 1.04 });
   }
   solids.face(front(y0, top), out, 'stone');
-  solids.face([[a, y0, za], [a, y0, back], [a, top, back], [a, top, za]], [-1, 0, 0], 'stone');
-  solids.face([[b, y0, zb], [b, y0, back], [b, top, back], [b, top, zb]], [1, 0, 0], 'stone');
-  solids.face([[a, y0, back], [b, y0, back], [b, top, back], [a, top, back]], [0, 0, -1], 'stone');
+  solids.face([[a, y0, za], [a, y0, ba], [a, top, ba], [a, top, za]], [-1, 0, 0], 'stone');
+  solids.face([[b, y0, zb], [b, y0, bb], [b, top, bb], [b, top, zb]], [1, 0, 0], 'stone');
+  solids.face([[a, y0, ba], [b, y0, bb], [b, top, bb], [a, top, ba]], [L.NORTH.slope, 0, -1], 'stone');
 }
 
 // A terrace block's side showing at x between z0 and z1 (blocks), facing `s` along x.
@@ -631,7 +645,7 @@ function steps(kit, L, p, stepsZ) {
   const { blocks, paint, solids } = kit;
   const { STEPS: S, GROUND: G, NORTH: N } = L;
   const [x0, x1] = p.steps;
-  const z0 = L.wallZAt(x0);
+  const z0 = L.wallZAt(x0 + 0.01);
   const top = N.top;
   const wedge = [
     [[x0, G, z0], [x1, G, z0], [x1, top, stepsZ], [x0, top, stepsZ]],
@@ -652,40 +666,44 @@ function steps(kit, L, p, stepsZ) {
   }
   // The first step's riser from the street.
   blocks.poly([[x0, G, z0], [x1, G, z0], [x1, G + step, z0 - tread / 2], [x0, G + step, z0 - tread / 2]], { facing: [0, 0.3, 1], shade: 0.9 });
-  // The railing: posts and a handrail up the drive side.
+  // The railing: posts and a handrail up the drive's side (the steps' west side when the drive is
+  // west of them).
   paint.color(TINT.railing);
   const rail = S.rail;
+  const r = p.drive[1] <= x0 ? x0 + 16 : x1;
   for (const k of [0, 0.5, 1]) {
     const z = z0 - 10 - (S.run - 20) * k;
     const y = G + (top - G) * Math.min(1, (z0 - z) / S.run);
-    paint.box(x1 - 14, x1 - 6, y, y + rail, z - 4, z + 4, { bottom: false });
+    paint.box(r - 14, r - 6, y, y + rail, z - 4, z + 4, { bottom: false });
   }
   const yA = G + rail;
   const yB = top + rail;
   paint.solid([
-    [[x1 - 16, yA, z0 - 10], [x1 - 4, yA, z0 - 10], [x1 - 4, yA + 8, z0 - 10], [x1 - 16, yA + 8, z0 - 10]],
-    [[x1 - 16, yB, stepsZ + 10], [x1 - 4, yB, stepsZ + 10], [x1 - 4, yB + 8, stepsZ + 10], [x1 - 16, yB + 8, stepsZ + 10]],
-    [[x1 - 16, yA + 8, z0 - 10], [x1 - 4, yA + 8, z0 - 10], [x1 - 4, yB + 8, stepsZ + 10], [x1 - 16, yB + 8, stepsZ + 10]],
-    [[x1 - 16, yA, z0 - 10], [x1 - 4, yA, z0 - 10], [x1 - 4, yB, stepsZ + 10], [x1 - 16, yB, stepsZ + 10]],
-    [[x1 - 16, yA, z0 - 10], [x1 - 16, yA + 8, z0 - 10], [x1 - 16, yB + 8, stepsZ + 10], [x1 - 16, yB, stepsZ + 10]],
-    [[x1 - 4, yA, z0 - 10], [x1 - 4, yA + 8, z0 - 10], [x1 - 4, yB + 8, stepsZ + 10], [x1 - 4, yB, stepsZ + 10]],
+    [[r - 16, yA, z0 - 10], [r - 4, yA, z0 - 10], [r - 4, yA + 8, z0 - 10], [r - 16, yA + 8, z0 - 10]],
+    [[r - 16, yB, stepsZ + 10], [r - 4, yB, stepsZ + 10], [r - 4, yB + 8, stepsZ + 10], [r - 16, yB + 8, stepsZ + 10]],
+    [[r - 16, yA + 8, z0 - 10], [r - 4, yA + 8, z0 - 10], [r - 4, yB + 8, stepsZ + 10], [r - 16, yB + 8, stepsZ + 10]],
+    [[r - 16, yA, z0 - 10], [r - 4, yA, z0 - 10], [r - 4, yB, stepsZ + 10], [r - 16, yB, stepsZ + 10]],
+    [[r - 16, yA, z0 - 10], [r - 16, yA + 8, z0 - 10], [r - 16, yB + 8, stepsZ + 10], [r - 16, yB, stepsZ + 10]],
+    [[r - 4, yA, z0 - 10], [r - 4, yA + 8, z0 - 10], [r - 4, yB + 8, stepsZ + 10], [r - 4, yB, stepsZ + 10]],
   ]);
 }
 
 // ---------------------------------------------------------------- outside the boundary
 
-// The forest's bank behind the back gardens: from their back edge up to NORTH.bankTop over
-// BANK.depth, on beyond and then up again far out into the fog to its crest (and west of the
-// plots, up from the lawn behind the north-west villa); its firs are props.js's.
+// The forest's bank behind the back gardens: from their back edge (backZAt, sloping) up to
+// NORTH.bankTop over NORTH.bank, on beyond and then up again far out into the fog to its crest
+// (and west of the plots, up from the lawn behind the north-west villa and its wing); its firs
+// are props.js's.
 function bank(kit, L) {
   const { grass } = kit;
   const N = L.NORTH;
+  const x0 = L.PLOTS_N[0].x0;
   const strips = [
-    { from: [-9600, -2200], to: [-6400, -4000], foot: L.GROUND },
-    { from: [-6400, -4000], to: [L.PLOTS_N[0].x0, N.backZ], foot: L.GROUND },
-    { from: [L.PLOTS_N[0].x0, N.backZ], to: [GROUND_RECT.x1, N.backZ], foot: N.backTop },
+    { from: [-12900, -3000], to: [-10500, -4900], foot: L.GROUND },
+    { from: [-10500, -4900], to: [x0, L.backZAt(x0)], foot: L.GROUND },
+    { from: [x0, L.backZAt(x0)], to: [GROUND_RECT.x1, L.backZAt(GROUND_RECT.x1)], foot: N.backTop },
   ];
-  const rowsOf = (foot) => [[0, foot], [BANK.depth * 0.5, foot + (N.bankTop - foot) * 0.75], [BANK.depth, N.bankTop], [BANK.depth + BANK.beyond, N.bankTop + BANK.far], [BANK.depth + BANK.beyond + BANK.out, N.bankTop + BANK.crest]];
+  const rowsOf = (foot) => [[0, foot], [N.bank * 0.5, foot + (N.bankTop - foot) * 0.75], [N.bank, N.bankTop], [N.bank + BANK.beyond, N.bankTop + BANK.far], [N.bank + BANK.beyond + BANK.out, N.bankTop + BANK.crest]];
   // A band of quads between two edges (a(r), b(r): the points r rows out) facing out along n.
   const band = (a, b, rows, n) => {
     for (let r = 0; r + 1 < rows.length; r++) {

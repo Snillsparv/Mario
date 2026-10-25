@@ -39,22 +39,12 @@ const LEAF_COLOURS = [[0.55, 0.38, 0.07], [0.48, 0.2, 0.05], [0.3, 0.16, 0.06], 
 const RED_LEAVES = [[0.42, 0.08, 0.04], [0.32, 0.05, 0.03], [0.48, 0.2, 0.05]];
 export const SHARE = Object.freeze({ high: 1, mid: 0.6, low: 0.25 });
 const STEP = 8; // along the kerbs
+const KERB_LEAVES = 0.72; // (the leaves' drifts along them: W2's 1.3 plan has longer kerbs, as many leaves as before)
 const GRIT = { high: 24, mid: 48, low: 96 }; // the grit's pieces along them, per tier
 
 // The street name sign: on the verge on the lane's north side, just in from the junction, its
 // plate along the lane.
-export const STREET_SIGN = Object.freeze({ x: -8030, z: 1415, yaw: Math.atan2(0.82, -0.573), top: 250, plate: [112, 26] });
-
-// Inside a polygon ([x, z] points, any shape: crossings).
-function within(poly, x, z) {
-  let c = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, zi] = poly[i];
-    const [xj, zj] = poly[j];
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
-  }
-  return c;
-}
+export const STREET_SIGN = Object.freeze({ x: -10834, z: 1583, yaw: Math.atan2(0.834, -0.553), top: 250, plate: [112, 26] });
 
 export function clutter(kit, L, ground) {
   const R = makeRng(4243);
@@ -130,7 +120,7 @@ export function clutter(kit, L, ground) {
   };
 
   // ---------------------------------------------------------------- along the kerbs
-  const road = roadPieces(L, { round: true });
+  const road = roadPieces(L);
   const G = L.GROUND;
   for (const piece of road) {
     const ns = normals(piece);
@@ -163,7 +153,7 @@ export function clutter(kit, L, ground) {
         // (Not where this edge runs inside another piece, or within 15 of one: the junction, the
         // turning area's mouth, the sliver where the straight meets it; nor near the course's
         // bounds: the fog, the fences out there.)
-        if (road.some((o) => o !== piece && inside(o, x + n[0] * 15, z + n[1] * 15)) || ![[0, 0], [150, 0], [-150, 0], [0, 150], [0, -150]].every(([dx, dz]) => within(L.BOUNDS, x + dx, z + dz))) {
+        if (road.some((o) => o !== piece && inside(o, x + n[0] * 15, z + n[1] * 15)) || ![[0, 0], [150, 0], [-150, 0], [0, 150], [0, -150]].every(([dx, dz]) => L.inBounds(x + dx, z + dz))) {
           flushGrit(x, z, 0);
           continue;
         }
@@ -177,7 +167,7 @@ export function clutter(kit, L, ground) {
         // Leaves: drifts along the kerb (a slow wave of density), most at its foot, a few strays
         // out on the road and on the verge behind it.
         const drift = Math.max(0, Math.sin(phase + k * 0.021) * 0.7 + Math.sin(phase * 1.7 + k * 0.053) * 0.5);
-        const count = share * (drift * 5.5 + 0.4);
+        const count = share * KERB_LEAVES * (drift * 5.5 + 0.4);
         const many = Math.floor(count + R()); // (rounded at random: on average `count`)
         for (let c = 0; c < many; c++) {
           const d = (piece.length > 8 ? 20 : 8) + Math.pow(R(), 2.2) * 62; // (the turning area drawn round, its colliders' 16-gon up to 11 inside it)
@@ -271,8 +261,8 @@ export function clutter(kit, L, ground) {
   if (!low) {
     const n = Math.round(380 * share);
     for (let i = 0; i < n; i++) {
-      const x = -6000 + R() * 12000;
-      const z = -3000 + R() * 6200;
+      const x = -8000 + R() * 16000;
+      const z = -4000 + R() * 8200;
       const h = lawnAt(x, z);
       if (h === null) continue;
       const dandelion = R() < 0.55;

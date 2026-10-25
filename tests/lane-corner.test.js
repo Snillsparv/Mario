@@ -19,6 +19,8 @@ import { buildLane } from '../src/world/lane/build.js';
 import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { kerbRuns, roadPieces, inside, bedStones } from '../src/world/lane/real/plan.js';
 import { SIGN_TEXT, GLYPHS, signFace } from '../src/world/lane/real/sign.js';
+import { kerbs as realKerbs } from '../src/world/lane/real/garden.js';
+import { Geo } from '../src/world/lane/real/geo.js';
 
 const O = AREA_DEFS.lane.origin;
 const area = buildArea(new THREE.Scene(), AREA_DEFS.lane);
@@ -30,10 +32,11 @@ const positions = (name) => classic.object3D.getObjectByName(name).geometry.attr
 const floorAt = (x, z, y = 400) => col.findFloor(x + O.x, y + O.y, z + O.z);
 
 test('the kerbs: exactly where the road meets the lawn or the pavement (never inside another piece of road, no stub across it), closed at every corner, none at the drives, none along the dad\'s corner bed', () => {
-  for (const round of [false, true]) {
-    const road = roadPieces(lane, { round });
+  {
+    // (One outline for both looks since W2: the apron's convex pieces, no rounded turning circle.)
+    const road = roadPieces(lane);
     const runs = kerbRuns(lane, road);
-    const label = round ? 'drawn round' : 'the colliders\' 16-gon';
+    const label = 'the road';
     // Never inside another piece: its middle and both ends, a hair out from the edge.
     for (const { p, q, n } of runs) {
       for (const t of [0.02, 0.5, 0.98]) {
@@ -50,25 +53,48 @@ test('the kerbs: exactly where the road meets the lawn or the pavement (never in
     // No kerb across the straight's end (the old stub: the edge where the straight met the
     // turning area, with lawn between them).
     const end = lane.ROAD.line[lane.ROAD.line.length - 1][0];
-    assert.ok(!runs.some((r) => Math.abs(r.p[0] - end) < 1 && Math.abs(r.q[0] - end) < 1), `${label}: no kerb across the straight's end`);
+    const across = runs.filter((r) => Math.abs(r.p[0] - end) < 1 && Math.abs(r.q[0] - end) < 1);
+    assert.ok(!across.some((r) => Math.min(r.p[1], r.q[1]) < lane.SOUTH_EDGE - 1), `${label}: no kerb across the straight's end`);
+    // (Past the south edge the same line is the dad's drive's east side on the apron: dropped.)
+    assert.ok(across.length && across.every((r) => r.kind === 'drop'), `${label}: the drive's side on the apron dropped`);
     // The dad's drive's mouth: no kerb, the asphalt runs up into it; along the bed, no kerb.
-    const along = (kind, x0, x1) => runs.filter((r) => r.kind === kind && Math.abs(r.p[1] - lane.ROAD.half) < 1 && Math.abs(r.q[1] - lane.ROAD.half) < 1).reduce((s, r) => s + Math.max(0, Math.min(x1, Math.max(r.p[0], r.q[0])) - Math.max(x0, Math.min(r.p[0], r.q[0]))), 0);
+    const edge = (r) => Math.abs(r.p[1] - lane.SOUTH_EDGE) < 1 && Math.abs(r.q[1] - lane.SOUTH_EDGE) < 1;
+    const along = (kind, x0, x1) => runs.filter((r) => r.kind === kind && edge(r)).reduce((s, r) => s + Math.max(0, Math.min(x1, Math.max(r.p[0], r.q[0])) - Math.max(x0, Math.min(r.p[0], r.q[0]))), 0);
     const D = lane.DAD_DRIVE;
     assert.ok(Math.abs(along('drop', D.x0, D.x1) - (D.x1 - D.x0)) < 1, `${label}: the drive's mouth all dropped`);
     assert.ok(Math.abs(along('bed', BED.x1 - BED.rx, BED.x1) - BED.rx) < 1, `${label}: the bed's street edge, no kerb`);
     assert.equal(along('kerb', BED.x1 - BED.rx + 1, D.x1 - 1), 0, `${label}: no granite kerb from the bed to the drive's east edge`);
+    // (W2: the photos' south edge has no kerb at all: a bevelled asphalt edge, the lawns and drives
+    // a step up behind it; the granite kerb only along the north edge and round the apron.)
+    assert.ok(runs.filter(edge).length >= 3 && runs.filter(edge).every((r) => r.kind !== 'kerb'), `${label}: no kerb along the straight's south edge`);
+    assert.ok(runs.some((r) => r.kind === 'kerb' && Math.abs(r.p[1] - (lane.ROAD.line.at(-1)[1] - lane.ROAD.half)) < 1), `${label}: the north edge kerbed`);
   }
 });
 
-test('the straight runs on into the turning area: asphalt and a floor at 0 where the old lawn notch was, between it and the dad\'s drive', () => {
-  for (const [x, z] of [[2450, 300], [2520, 420], [2580, 440], [2420, 100]]) {
+test('the realistic look\'s kerb stones and the drives\' bevels face up (W2: the apron\'s pieces run the other way round; a face wound down was culled, a hole showing the sky)', () => {
+  const kit = { granite: new Geo(), core: new Geo(), patch: new Geo() };
+  realKerbs(kit, lane);
+  for (const name of ['granite', 'patch']) {
+    const p = kit[name].pos;
+    assert.ok(p.length > 0, name);
+    for (let i = 0; i < p.length; i += 9) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = p.slice(i, i + 9);
+      const n = [(by - ay) * (cz - az) - (bz - az) * (cy - ay), (bz - az) * (cx - ax) - (bx - ax) * (cz - az), (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)];
+      assert.ok(n[1] >= -1e-6 * Math.hypot(...n), `${name}: a face wound down at ${ax.toFixed(0)}, ${az.toFixed(0)}`);
+    }
+  }
+});
+
+test('the straight runs on into the turning area: asphalt and a floor at 0 across the apron\'s open west side, beside the dad\'s drive\'s mouth', () => {
+  const A = lane.APRON;
+  for (const [x, z] of [[A.x0 - 66, lane.SOUTH_EDGE - 40], [A.x0 + 34, A.kerb + 20], [A.x0 - 6, 0], [A.x0 + 234, lane.SOUTH_EDGE + 60]]) {
     assert.equal(lane.groundHeight(x, z), 0, `the road at ${x}, ${z}`);
     assert.ok(roadPieces(lane).some((o) => inside(o, x, z)), `drawn asphalt at ${x}, ${z}`);
     const f = floorAt(x, z, 100);
     assert.ok(f.surface && Math.abs(f.y - O.y) < 0.5, `a floor at 0 at ${x}, ${z} (${(f.y - O.y).toFixed(1)})`);
   }
-  // And the lawn east of the drive still a step up behind its kerb.
-  const f = floorAt(2560, 520, 100);
+  // And south_2's lawn behind the apron's south edge still a step up.
+  const f = floorAt(A.x0 + 234, A.z1 + 120, 100);
   assert.ok(Math.abs(f.y - O.y - GROUND) < 0.5, `the neighbour's lawn at ${GROUND}`);
 });
 

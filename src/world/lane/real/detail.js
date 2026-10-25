@@ -37,7 +37,7 @@
 import { Geo } from './geo.js';
 import { mailbox, kerbs, roadDecals, bedStones, turnSign } from './garden.js';
 import { plants, firGeometry, firInstances, FIR_SHAPES } from './foliage.js';
-import { chainHouse } from './house.js';
+import { chainHouse, TILE_SEG } from './house.js';
 import { cars, carOf, carClusters } from './cars.js';
 import { grassClump, lawnMask } from './grass.js';
 import { lampposts, flagpoles, fences, bins } from './street.js';
@@ -116,7 +116,11 @@ export function buildLaneDetail(L, tier = 'high') {
   flagpoles(kit, L);
   fences(kit, L);
   plants(kit, L);
-  for (const h of L.HOUSES) if (h.kit === 'chain') chainHouse(kit, L, h, { tiled: L.LANE_REAL.tiles.includes(h.id) });
+  // (Tile courses: on high the dad's and his neighbours' roofs, the neighbours' rolls at mid's
+  // segments; on mid the dad's only: LANE_REAL.tiles, tilesMid.)
+  const R = L.LANE_REAL;
+  const fine = (id) => R.tilesMid.includes(id);
+  for (const h of L.HOUSES) if (h.kit === 'chain') chainHouse(kit, L, h, { tiled: (tier === 'mid' ? R.tilesMid : R.tiles).includes(h.id), seg: fine(h.id) ? TILE_SEG[tier] : Math.min(TILE_SEG[tier], TILE_SEG.mid) });
   villaHouses(kit['glass@north'] ? { ...kit, glass: kit['glass@north'] } : kit, L);
   garageDoors(kit, L);
   hipTrim(kit, L);

@@ -21,6 +21,7 @@
 
 import { frameOf, fbox, lamp } from './house.js';
 import { makeRng } from '../../../core/math.js';
+import { terraceSpans } from './plan.js';
 
 const CHAIN = { overhang: 60, thick: 18, plinth: 135, win: { w: 150, sill: 170, h: 130 }, door: { w: 116, h: 215 } };
 const BLACK = 0x161718;
@@ -355,16 +356,16 @@ const norm3 = (a) => {
 };
 
 // The terraces' walls' coping (lane/build.js terraces: their fronts along the wall's line but at
-// the drives' notches and the steps): stones 60 long standing 4 proud of the face, 1.5 over the
+// the drives' notches and the steps: plan.js terraceSpans): stones 60 long standing 4 proud of the face, 1.5 over the
 // top Jonas walks on, joints between them.
 function coping({ granite }, L) {
   const top = L.NORTH.top;
-  for (const p of L.PLOTS_N) {
-    const spans = [[p.x0, p.steps[0]], [p.steps[1], p.drive[0]], [p.drive[1], p.x1]];
-    for (const [xa, xb] of spans) {
+  for (const { spans } of terraceSpans(L)) {
+    for (const { a: xa, b: xb, kind } of spans) {
+      if (kind !== 'wall') continue;
       for (let x = xa; x < xb - 1; x += 60) {
         const x1 = Math.min(xb, x + 59.2);
-        const [za, zb] = [L.wallZAt(x + 0.01), L.wallZAt(x1)];
+        const [za, zb] = [L.wallZAt(x + 0.01), L.wallZAt(x1 - 0.01)];
         // Its front (toward the street, +z), its top, its ends.
         granite.color(0xcfcbc2, 0.9 + 0.12 * Math.abs(Math.sin(x * 0.37)));
         const F = (xx, zz, y) => [xx, y, zz];

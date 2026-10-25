@@ -25,8 +25,13 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as lane from '../src/world/lane/layout.js';
 
 const skip = !process.env.E2E && 'browser test: set E2E=1 to run';
+// The dad's front windows' middles (x = cx - u: his frame faces the street), west to east, and
+// the boards' middle between two of them (W2: from the layout, his west end moved).
+const DAD_WIN = lane.DAD.windows.map((u) => lane.DAD.cx - u).sort((a, b) => a - b);
+const between = (a, b) => (DAD_WIN[a] + DAD_WIN[b]) / 2;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let server;
 let browser;
@@ -301,15 +306,15 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     const mode = await page.evaluate(() => window.__game.view.describeMode());
     t.diagnostic(`mode: ${mode}; built in ${JSON.stringify(await page.evaluate(() => window.__game.areas.real.ms.lane))} ms`);
     assert.match(mode, /^real 960x540 msaa4 high$/);
-    // The arrival: the zenith blue, the wall Falu red (between the first windows west of the door,
+    // The arrival: the zenith blue, the wall Falu red (between the 2nd and 3rd windows from the west,
     // and east of the door, where the realistic look's lower camera sees past the mailbox: the
     // mean of a patch, the boards' grooves and the grain evened out), the panes of three windows
     // lit (the probe's reflections over a dim room), never black.
     const [zenith] = await page.evaluate(() => window.__pixelsOn([[0.5, 0.98]]));
     assert.ok(blue(zenith), `the zenith ${zenith}`);
-    const wall = await page.evaluate(() => window.__patchAt([[-730, 250, 1329], [-440, 250, 1329], [150, 250, 1329], [250, 250, 1329]]));
+    const wall = await page.evaluate((x) => window.__patchAt([[x, 250, 1329], [150, 250, 1329], [250, 250, 1329]]), between(1, 2));
     for (const p of wall) assert.ok(p && p[0] > 2 * p[1] && p[0] > 2 * p[2], `Falu red: ${p}`);
-    for (const x of [-880, -580, 400]) {
+    for (const x of [DAD_WIN[0], DAD_WIN[1], DAD_WIN[3]]) {
       const pane = [];
       for (const dx of [-50, 0, 50]) for (const y of [205, 255, 305]) pane.push([x + dx, y, 1326]);
       const px = await page.evaluate((pts) => window.__pixelsAt(pts), pane);
@@ -388,14 +393,16 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     // Jonas's shirt red: the
     // same view realistic and classic (G).
     // (On the turning area, the trampoline's sign beyond him, the camera behind him.)
-    const sign = await page.evaluate(() => {
+    // (W2: 522 in front of the trampoline's sign, looking at it along 2.47, from the layout.)
+    const TS = lane.SIGNS.find((x) => x.id === 'trampoline');
+    const sign = await page.evaluate(([x, z]) => {
       const g = window.__game;
-      g.player.teleport(4456 - 60000, 40, -740, 2.47);
+      g.player.teleport(x - 60000, 40, z, 2.47);
       g.player.setAction('idle');
       g.camera.reset(g.player);
       g.step(15);
       return g.areas.current.def.layout.SIGNS.find((x) => x.id === 'trampoline');
-    });
+    }, [TS.x - 522 * Math.sin(2.47), TS.z - 522 * Math.cos(2.47)]);
     // Two points on the board's face either side of the writing (local x ±76, 125 up).
     const boardAt = [-76, 76].map((u) => [sign.x + Math.cos(sign.yaw) * u + Math.sin(sign.yaw) * 21, 22 + 125, sign.z - Math.sin(sign.yaw) * u + Math.cos(sign.yaw) * 21]);
     const shirtAt = () =>
@@ -603,7 +610,7 @@ test('?tier=mid within its budgets at the five views; ?tier=low draws straight t
       assert.match(mode, /^real 960x540 direct low$/);
       const [zenith] = await page.evaluate(() => window.__pixelsOn([[0.5, 0.98]]));
       assert.ok(blue(zenith), `the zenith ${zenith}`);
-      const wall = await page.evaluate(() => window.__patchAt([[-730, 300, 1329], [150, 300, 1329], [250, 300, 1329]]));
+      const wall = await page.evaluate((x) => window.__patchAt([[x, 300, 1329], [150, 300, 1329], [250, 300, 1329]]), between(1, 2));
       for (const p of wall) assert.ok(p && p[0] > 2 * p[1], `Falu red: ${p}`);
       // The low tier's budgets (a phone): no grass blades, no tile courses, fewer casters.
       await countViews(page, t, { calls: 100, triangles: 220000, programs: 18, textureBytes: 20 * 1024 * 1024 });

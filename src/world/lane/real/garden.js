@@ -5,9 +5,10 @@
 //
 //   mailbox(kit, L)     // kit: detail.js's Geo per material (boards, paint, metal, enamel, bird,
 //                       // gloss, granite, patch)
-//   kerbs(kit, L)       // granite kerb stones along every edge of the road (the turning area
-//                       // drawn round: plan.js roadPieces, kerbRuns), none at the drives
-//                       // (an asphalt bevel up into them) or along the dad's corner bed
+//   kerbs(kit, L)       // granite kerb stones along the road's north edge and round the
+//                       // apron (plan.js roadPieces, kerbRuns), none at the drives (an asphalt
+//                       // bevel up into them), along the south edge (the asphalt's bevelled
+//                       // edge up to the lawns) or along the dad's corner bed
 //   roadDecals(kit, L)  // mended patches, a sealed crack, manhole and drain covers
 //   bedStones(kit, L)   // the corner bed's field stones (where the classic ones lie)
 //   turnSign(kit, L)    // the turning area's sign at the bed's corner (its face: sign.js)
@@ -149,10 +150,15 @@ const KERB = { stone: 150, joint: 0.8, chamfer: 3, lift: 1.5 };
 // The kerbs (lane/build.js kerbs: the same runs, plan.js kerbRuns): along each run of the
 // road's edge, granite stones about KERB.stone long with a joint between them, a chamfered
 // arris and a top KERB.w deep; at the drives none: the asphalt runs on up into them (a bevel);
-// along the dad's corner bed none (its soil's dark face, the field stones over it: bedStones).
+// along the south edge none (the road's asphalt bevelled up to the lawn: lane/build.js kerbs
+// draws it in both looks); along the dad's corner bed none (its soil's dark face, the field
+// stones over it: bedStones).
 export function kerbs({ granite, core, patch }, L) {
   const G = L.GROUND;
-  const stone = (p, q, n, drop) => {
+  const stone = (p0, q0, n, drop) => {
+    // (Its faces wound for a run with the road on its left; the apron's pieces run the other way:
+    // turned round.)
+    const [p, q] = (q0[0] - p0[0]) * n[1] - (q0[1] - p0[1]) * n[0] < 0 ? [q0, p0] : [p0, q0];
     const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     const count = Math.max(1, Math.round(len / KERB.stone));
     const top = G + (drop ? 0.3 : KERB.lift);
@@ -173,16 +179,22 @@ export function kerbs({ granite, core, patch }, L) {
       granite.quad(at(b, w, -2), at(b, 0, -2), at(b, 0, top), at(b, w, top), { shade: 0.6 });
     }
   };
-  for (const { p, q, n, kind } of kerbRuns(L, roadPieces(L, { round: true }))) {
+  for (const { p, q, n, kind } of kerbRuns(L, roadPieces(L))) {
     if (kind === 'kerb') {
       stone(p, q, n, false);
       continue;
     }
+    if (kind === 'edge') continue; // (the south edge's bevel: the road's own, lane/build.js kerbs)
     if (kind === 'drop') {
       // (At a drive the asphalt runs on up into it: a bevel from the road to its edge.)
       patch.color(0x7c7a74, 1.12);
       const o = (t, d, y) => [t[0] - n[0] * d, y, t[1] - n[1] * d];
-      patch.quad(o(q, 22, 0.4), o(p, 22, 0.4), o(p, 0, G), o(q, 0, G), { uvs: [o(q, 22, 0), o(p, 22, 0), o(p, 0, 0), o(q, 0, 0)].map((v) => [v[0], v[2]]) });
+      // (Wound to face up whichever way the run goes: W2's drive side along the apron runs
+      // against the street's.)
+      let Q = [o(q, 22, 0.4), o(p, 22, 0.4), o(p, 0, G), o(q, 0, G)];
+      const [a, b, c] = Q;
+      if ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) < 0) Q = [Q[1], Q[0], Q[3], Q[2]];
+      patch.quad(Q[0], Q[1], Q[2], Q[3], { uvs: Q.map((v) => [v[0], v[2]]) });
       continue;
     }
     // The bed's soil face at the asphalt's edge (the stones sit along it).
@@ -222,8 +234,9 @@ export function roadDecals({ patch, paint, metal }, L) {
     }
   }
   // Drain grates along the kerbs: bars across a dark slot.
-  for (const [gx, s] of [[-1200, 1], [600, -1], [-3000, 1], [2200, -1]]) {
-    const gz = s * (L.ROAD.half - 30);
+  // (Off the drives' mouths; z from the straight's centreline.)
+  for (const [gx, s] of [[-1900, 1], [1150, -1], [-3000, 1], [2200, -1]]) {
+    const gz = L.ROAD.line.at(-1)[1] + s * (L.ROAD.half - 30);
     paint.rgb(0.01, 0.01, 0.01);
     paint.quad([gx + 40, 0.7, gz - 20], [gx - 40, 0.7, gz - 20], [gx - 40, 0.7, gz + 20], [gx + 40, 0.7, gz + 20]);
     metal.color(0x2a2826);

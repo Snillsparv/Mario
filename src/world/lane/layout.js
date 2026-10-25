@@ -11,10 +11,11 @@
 // out to the next street; the junction at the west end with its lamppost, big trees and a
 // motorhome on the first villa's drive. Nothing here hurts: no critters, no water.
 // Everything here is in the course's own local frame, the street frame: 1 unit = 1 cm (the
-// street is drawn at 1.5 times its real size), +x along the lane's long straight toward the
-// turning area, +z across it toward the dad's side, -z up the hill toward the forest, the road
-// at y 0. world/areas.js places it at its origin (world = local + origin); world/area.js shifts
-// these anchors into world coordinates.
+// street is drawn at about 1.5 times its real size: its heights exactly, its plan close to it
+// since W2, PLAN_K below), +x along the lane's long straight toward the turning area, +z
+// across it toward the dad's side, -z up the hill toward the forest, the road at y 0.
+// world/areas.js places it at its origin (world = local + origin); world/area.js shifts these
+// anchors into world coordinates.
 //
 //                               -Z (uphill: the forest)
 //        ┌──────────────── forest bank, firs ──────────────────────┐
@@ -37,41 +38,80 @@
 
 // ---------------------------------------------------------------- scale and heights
 
-// Units per real metre (the aerial's 0.13 m a pixel is 19.5 units).
+// Units per real metre of the heights (the houses, the steps, every climb rest on them).
 export const SCALE = 150;
-// The road is flat at 0 (the real lane climbs a little eastward: dropped); kerb tops, the north
-// pavement and the south lawns at GROUND; the north gardens' terraces at TERRACE.
+// The plan (W2): the aerial's readings (its 19.5 units a pixel, which is ~0.156 m, not 0.13)
+// stretched by PLAN_K about the dad's north-east front corner (the aerial's (1600, 1220) is the
+// game's (1600, 1330)), the heights kept: so the aerial, the photos taken against true lengths
+// and those against the game's heights agree within ~5 %. plan(x, z) maps one reading.
+export const PLAN_K = 1.3;
+export const plan = (x, z) => [Math.round(1600 + PLAN_K * (x - 1600)), Math.round(1330 + PLAN_K * (z - 1220))];
+// The road is flat at 0 (the real lane climbs a little eastward: dropped); the north pavement,
+// the drives and the lawns at GROUND (a step walked up without a jump); the north gardens'
+// terraces at TERRACE.
 export const GROUND = 22;
 export const TERRACE = 150;
 
 // ---------------------------------------------------------------- the street
 
 // The carriageway: `half` either side of its centreline polyline (the west leg from the
-// junction, a bend of three short segments, the long straight), mitred at its joints; the
-// straight runs on into the turning area, its south-east corner inside it (the 16-gon's and the
-// round one's edge cross its south edge at x ~2604: the asphalt runs on into the dad's drive
-// with no lawn left between them, and no stub of kerb across the road).
+// junction, the bend round an arc of r ~1930, the long straight at z -90), mitred at its
+// joints; the straight ends at the turning area's apron (APRON.x0), its south-east corner at the
+// dad's drive's east edge. North of it the kerb (z -520) and the pavement to the terraces' wall
+// (z -760); south of it no kerb (a bevelled asphalt edge, z 340), the lawns and drives a step up.
 export const ROAD = {
-  half: 450,
-  line: [[-8640, 2550], [-5600, 425], [-5150, 150], [-4750, 25], [-4400, 0], [2620, 0]],
-  beyond: 2200, // drawn on past the junction into the fog (out of bounds)
+  half: 430,
+  line: [[-11712, 3179], [-7263, 230], [-7018, 92], [-6755, -8], [-6481, -69], [-6200, -90], [2766, -90]],
+  beyond: 2860, // drawn on past the junction into the fog (out of bounds)
 };
-// The turning area at the east end: an asphalt disc of `sides`.
-export const TURN = { x: 3500, z: -250, r: 1150, sides: 16 };
+// The road's south edge along the straight (the lawns' and drives' front edge).
+export const SOUTH_EDGE = ROAD.line.at(-1)[1] + ROAD.half;
+// The turning area at the east end (the aerial's and the photos' apron): a rectangle from the
+// straight's end (x0) to its east kerb (x1, in front of the double garage's forecourt), from its
+// north edge (z0, in front of north_5's bed wall and the forecourts) to its south edge (z1,
+// south_2's gravel); its west side open to the straight and the dad's drive; the straight's
+// north kerb (`kerb`) runs on to curve[0], then curves out (an S) to the north edge at curve[1];
+// its south-east corner rounded (se: toward the footpath's mouth), its south-west a little (sw).
+// `ring`: the coins' ring on its asphalt. Its convex pieces: APRON.pieces (roadPieces' and
+// groundHeight's): the rounded rectangle up to the kerb's line, and a quad under each piece of
+// the S and of the north edge.
+export const APRON = { x0: 2766, x1: 5190, z0: -880, z1: 1180, kerb: -520, curve: [4380, 4900], se: 400, sw: 150, ring: { x: 4050, z: 190, r: 600 } };
+APRON.pieces = (() => {
+  const A = APRON;
+  const arc = (cx, cz, r, a0, a1, n) => Array.from({ length: n + 1 }, (_, i) => {
+    const a = a0 + ((a1 - a0) * i) / n;
+    return [Math.round(cx + r * Math.cos(a)), Math.round(cz + r * Math.sin(a))];
+  });
+  const [c0, c1] = A.curve;
+  // (The body's top edge leaves the kerb's line where the S starts, under the S's quads.)
+  const body = [[A.x0, A.kerb], [c0, A.kerb], [A.x1, A.kerb + 100], ...arc(A.x1 - A.se, A.z1 - A.se, A.se, 0, Math.PI / 2, 8), ...arc(A.x0 + A.sw, A.z1 - A.sw, A.sw, Math.PI / 2, Math.PI, 4)];
+  const kerb = Array.from({ length: 9 }, (_, i) => {
+    const t = i / 8;
+    return [c0 + (c1 - c0) * t, Math.round(A.kerb + (A.z0 - A.kerb) * t * t * (3 - 2 * t))];
+  }).concat([[A.x1, A.z0]]);
+  const below = A.kerb + 100;
+  const quads = [];
+  for (let i = 0; i + 1 < kerb.length; i++) quads.push([kerb[i], kerb[i + 1], [kerb[i + 1][0], below], [kerb[i][0], below]]);
+  return [body, ...quads];
+})();
+export const inApron = (x, z) => x >= APRON.x0 && x <= APRON.x1 && z >= APRON.z0 && z <= APRON.z1 && APRON.pieces.some((p) => inPolygon(p, x, z));
 // The side road leaving the west leg at the junction (drawn only: its mouth is closed by the
 // boundary).
-export const SIDE_ROAD = { x: -7950, z: 2190, dir: [0.574, 0.819], half: 400, len: 1800 };
-// Granite kerbs along the road's edges, a step of `h` (walked up without a jump), broken by
-// every drive.
+export const SIDE_ROAD = { x: -10641, z: 2469, dir: [0.578, 0.816], half: 400, len: 2340 };
+// Granite kerbs along the road's north edge and round the apron, a step of `h` (walked up
+// without a jump), broken by every drive; along the south edge none.
 export const KERB = { h: GROUND, w: 30 };
-// The north pavement (asphalt, a shade lighter) along the straight and on round the bend:
-// from `from` to `to` off the centreline, on its north side.
-export const PAVEMENT = { from: 450, to: 700, x1: TURN.x - TURN.r };
-// The footpath out of the turning area to the next street: `half` wide either side of its line
-// from its mouth (x, z) along dir (drawn from `from`, inside the turning area's rim); the play
-// space ends at a low wooden barrier `barrier` along it, and the path runs on (drawn only) to
-// `len`.
-export const FOOTPATH = { x: 4700, z: 350, dir: [0.574, 0.819], half: 225, from: -300, len: 2600, barrier: 1300 };
+// The north pavement (asphalt, a shade lighter) along the west leg from the junction (`from`
+// along it), the bend and the straight, `from`..`to` off the centreline, up to x1; on from there
+// it narrows over the kerb's S to the terraces' wall (lane/build.js hardSurfaces).
+export const PAVEMENT = { from: 430, to: 670, start: -11300, x1: 4420 };
+// The footpath out of the turning area's south-east corner to the next street: `half` wide
+// either side of its line from its mouth (x, z) along dir (drawn from `from`, inside the apron:
+// the apron's asphalt cuts it), the footway behind the apron's east kerb (FOOTWAY: x0..x1) turning
+// into it; the play space ends at a low wooden barrier `barrier` along it, and the path runs on
+// (drawn only) to `len`.
+export const FOOTPATH = { x: 5695, z: 1109, dir: [0.595, 0.804], half: 240, from: -1100, len: 3400, barrier: 1700 };
+export const FOOTWAY = { x0: APRON.x1, x1: APRON.x1 + 210 };
 // A point `t` along the footpath and `s` across it (s > 0: its west side).
 export function footpathAt(t, s = 0) {
   const [dx, dz] = FOOTPATH.dir;
@@ -81,26 +121,44 @@ export function footpathAt(t, s = 0) {
 // ---------------------------------------------------------------- the north side (uphill)
 
 // The villas' gardens are terraces behind a retaining wall of split-face grey blocks: from the
-// pavement (wallZ) the wall rises to `top`; the gardens are flat back to flatZ, then rise 1 in 4
-// to backTop at backZ (the forest's edge). Along the turning area the wall follows an arc of
-// arcR round its middle, then runs on east at eastZ. Behind the gardens the forest bank rises
-// (drawn only) to bankTop at bankZ.
-export const NORTH = { wallZ: -700, top: TERRACE, flatZ: -3400, backZ: -4000, backTop: 300, arcR: 1400, eastZ: -1300, bankZ: -5200, bankTop: 1500 };
+// pavement the wall (its face on the polyline `wall`, x and z: back behind the motorhome at the
+// first villa's west end, straight along the pavement, then
+// out along the apron's north edge in front of north_5's bed, then back behind the double
+// garage's forecourt) rises to `top`; the gardens are flat back to flatZAt(x) (a line ~200..300
+// behind the villas' backs: the forest's edge slopes away eastward), then rise 1 in 4 over `ramp`
+// to backTop at backZAt(x), the forest's edge. Behind the gardens the forest bank rises (drawn
+// only) to bankTop over `bank`.
+export const NORTH = {
+  wallZ: -760,
+  wall: [[-1e5, -1100], [-7300, -1100], [-7300, -760], [4420, -760], [4700, -910], [5190, -910], [5190, -1179], [1e5, -1179]],
+  top: TERRACE,
+  flat0: -4564, // flatZAt(0)
+  slope: -0.0394, // (the line's dz per unit x)
+  ramp: 600,
+  backTop: 300,
+  bank: 1200,
+  bankTop: 1500,
+};
+export const flatZAt = (x) => NORTH.flat0 + NORTH.slope * x;
+export const backZAt = (x) => flatZAt(x) - NORTH.ramp;
 
-// The wall's line (z) at x: straight along the pavement, round the turning area, then east.
+// The wall's line (z) at x: NORTH.wall, linearly between its points; at a jog (two points at one
+// x) the west side's.
 export function wallZAt(x) {
-  if (x <= PAVEMENT.x1) return NORTH.wallZ;
-  const dx = x - TURN.x;
-  const r = NORTH.arcR;
-  if (dx >= r) return NORTH.eastZ;
-  const arc = TURN.z - Math.sqrt(r * r - dx * dx);
-  return dx < 0 ? arc : Math.min(arc, NORTH.eastZ);
+  const W = NORTH.wall;
+  for (let i = 0; i + 1 < W.length; i++) {
+    const [ax, az] = W[i];
+    const [bx, bz] = W[i + 1];
+    if (x <= bx && bx > ax) return az + ((bz - az) * (Math.max(x, ax) - ax)) / (bx - ax);
+  }
+  return W.at(-1)[1];
 }
 
-// The villas' plots, west to east: x0..x1; `drive` the notch cut into the garden at street level
-// (cobbled, block walls either side) from the wall back to the villa's garage door; `steps` up
-// from the street beside it to the terrace (a not-slippery ramp collider under the drawn steps,
-// a railing on the drive's side), `run` deep.
+// The villas' plots, west to east: x0..x1 (between the villas' middles); `drive` the notch cut
+// into the garden at street level (cobbled, block walls either side) from the wall back to the
+// villa's east block (its garage door), the east block's width or less; `steps` up from the
+// street beside it on its east side to the terrace (a not-slippery ramp collider under the drawn
+// steps, a railing on the drive's side), `run` deep.
 export const STEPS = { run: 260, n: 5, rail: 90 };
 // The steps' floor at z (on their ramp from the street up to the terrace).
 export function stepsY(plot, z) {
@@ -108,27 +166,30 @@ export function stepsY(plot, z) {
   return GROUND + (TERRACE - GROUND) * Math.max(0, Math.min(1, k));
 }
 export const PLOTS_N = [
-  { id: 'north_1', x0: -5700, x1: -3670, drive: [-4780, -4100], steps: [-5250, -5030] },
-  { id: 'north_2', x0: -3670, x1: -1125, drive: [-2390, -1710], steps: [-2850, -2630] },
-  { id: 'north_3', x0: -1125, x1: 1485, drive: [310, 990], steps: [0, 220] },
-  { id: 'north_4', x0: 1485, x1: 3980, drive: [2730, 3410], steps: [1600, 1820] },
-  { id: 'north_5', x0: 3980, x1: 6400, drive: [5200, 5880], steps: [4880, 5100] },
+  { id: 'north_1', x0: -8150, x1: -5261, drive: [-6620, -5810], steps: [-5810, -5590] },
+  { id: 'north_2', x0: -5261, x1: -2022, drive: [-3650, -2544], steps: [-2530, -2310] },
+  { id: 'north_3', x0: -2022, x1: 1328, drive: [-402, 828], steps: [850, 1070] },
+  { id: 'north_4', x0: 1328, x1: 4655, drive: [2936, 4142], steps: [4180, 4400] },
+  { id: 'north_5', x0: 4655, x1: 7900, drive: [6196, 6579], steps: [4900, 5120] },
 ];
 
 // The split-level villas (houses.js villa()): a white rendered lower floor with the garage door
 // at drive level, a red-brown brick upper floor, a hipped roof of pan tiles with wide eaves.
-// All VILLA.w across x by VILLA.d, their front (toward the street, +z) at `front`; `garage` the
-// garage door's middle (u, from the front's middle); bay windows and arched windows on the
-// upper floor (u); `brick` and `roof` their tints.
-export const VILLA = { w: 1800, d: 1500, y0: GROUND, render: 412, eave: 822, pitch: 27, overhang: 110, garage: { w: 520, h: 250 } };
-VILLA.ridge = VILLA.eave + (VILLA.d / 2) * Math.tan((VILLA.pitch * Math.PI) / 180);
-const villa = (id, cx, front, garage, extras) => ({
+// Each villa two blocks with their own hips (the aerial's L-shaped roofs): its east block (the
+// garage's, forward, the villa's id) and its west block (`<id>_west`, set back), both from the
+// villa's back; their fronts (toward the street, +z) at `front`; `garage` the garage door's
+// middle (u, from the front's middle; north_5's east block has none: its doors at the drive's
+// end); bay windows and arched windows on the upper floor (u);
+// `sides` the faces with a window (not where the other block stands); `brick` and `roof` their
+// tints; a balcony's middle along its block's west face (u).
+export const VILLA = { y0: GROUND, render: 412, eave: 822, pitch: 27, overhang: 110, garage: { w: 520, h: 250 } };
+const villa = (id, x0, x1, back, front, extras) => ({
   id,
   kit: 'villa',
-  cx,
-  cz: front - VILLA.d / 2,
-  w: VILLA.w,
-  d: VILLA.d,
+  cx: (x0 + x1) / 2,
+  cz: (back + front) / 2,
+  w: x1 - x0,
+  d: front - back,
   yaw: 0,
   y0: VILLA.y0,
   render: VILLA.render,
@@ -136,31 +197,43 @@ const villa = (id, cx, front, garage, extras) => ({
   pitch: VILLA.pitch,
   overhang: VILLA.overhang,
   front,
-  garage,
   ...extras,
 });
-export const VILLAS = [
-  villa('north_1', -4890, -1600, 450, { bays: [-300], windows: [450, -650], brick: 0xac6036, roof: 0x2e2c2c }),
-  villa('north_2', -2450, -1650, 400, { arches: [-450], bays: [350], door: -150, brick: 0xa05832, roof: 0x2e2c2c }),
-  villa('north_3', 200, -1650, 450, { arches: [-450], bays: [200], balcony: true, brick: 0xa45c34, roof: 0x4a3a32 }),
-  villa('north_4', 2770, -1720, 300, { bays: [-350], windows: [350], brick: 0xa85a32, roof: 0x4a3a32 }),
-  villa('north_5', 5190, -1930, 420, { arches: [-450], bays: [400], door: -250, doorTint: 0x6a4a32, brick: 0xae6236, roof: 0x4a3a32 }),
+// A villa's two blocks from its aerial readings: x west, the step, east; z back, the west
+// front, the east front.
+const villaPair = (id, [xw, xs, xe, zb, zw, ze], east, west) => {
+  const [x0, z0] = plan(xw, zb);
+  const [x1, z1] = plan(xs, zw);
+  const [x2, z2] = plan(xe, ze);
+  return [villa(id, x1, x2, z0, z2, { sides: ['back', 'right'], ...east }), villa(`${id}_west`, x0, x1, z0, z1, { sides: ['back', 'left'], brick: east.brick, roof: east.roof, ...west })];
+};
+const PAIRS = [
+  villaPair('north_1', [-5829, -5016, -4080, -2912, -1935, -1180], { garage: 200, bays: [70], arches: [-400], door: -400, brick: 0xac6036, roof: 0x2e2c2c }, { windows: [-250, 250] }),
+  villaPair('north_2', [-3275, -2462, -1588, -2934, -2033, -1313], { garage: 265, bays: [265], arches: [-370], door: -260, brick: 0xa05832, roof: 0x2e2c2c }, { windows: [-200, 250] }),
+  villaPair('north_3', [-785, 60, 1006, -2980, -1979, -1209], { garage: 250, bays: [150], arches: [-400], door: -420, balcony: 500, brick: 0xa45c34, roof: 0x4a3a32 }, { windows: [0] }),
+  villaPair('north_4', [1776, 2628, 3555, -3050, -2075, -1302], { garage: 300, bays: [300], windows: [-350], door: -300, brick: 0xa85a32, roof: 0x4a3a32 }, { windows: [-200, 250] }),
+  villaPair('north_5', [4345, 5135, 6095, -3312, -2382, -1620], { bays: [250], arches: [-430], door: -432, doorTint: 0x6a4a32, brick: 0xae6236, roof: 0x4a3a32 }, { windows: [-200, 200] }),
 ];
+// The plots' villas (their east blocks) first, in the plots' order, then the west blocks.
+export const VILLAS = [...PAIRS.map((p) => p[0]), ...PAIRS.map((p) => p[1])];
 
 // ---------------------------------------------------------------- the west end
 
 // The first villa up the hill (north_west): white render to its eaves, a light grey hipped roof
 // with two roof windows, a double garage facing the west leg (its front: yaw, as the house kit
-// turns it: local +w looks (sin yaw, cos yaw)), and a low wing behind it; a flagstone drive in
-// front of it running on east to the motorhome.
+// turns it: local +w looks (sin yaw, cos yaw)), and a low wing behind it (its east wall flush
+// with the house's); a flagstone drive in front of it out to the pavement (NORTH_WEST_DRIVE, in
+// its frame: u along the front, w out toward the road; lane/build.js cuts it at the pavement).
 const WEST_YAW = Math.atan2(0.574, 0.819);
+const NW_U = [Math.cos(WEST_YAW), -Math.sin(WEST_YAW)];
+const NW_W = [Math.sin(WEST_YAW), Math.cos(WEST_YAW)];
 export const NORTH_WEST = {
   id: 'north_west',
   kit: 'villa',
-  cx: -6770,
-  cz: -865,
-  w: 1650,
-  d: 1650,
+  cx: -9448,
+  cz: -1245,
+  w: 1900,
+  d: 1860,
   yaw: WEST_YAW,
   y0: GROUND,
   render: 462,
@@ -168,20 +241,27 @@ export const NORTH_WEST = {
   pitch: 25,
   overhang: 90,
   garage: 0,
-  garages: [-400, 400],
-  roofWindows: [-350, 350],
+  garages: [-450, 450],
+  roofWindows: [-400, 400],
   roof: 0xa4a6a8,
 };
 // Its wing, behind it (north), lower.
-export const NORTH_WEST_WING = { id: 'north_west_wing', kit: 'villa', cx: -6770 - 0.574 * 1475, cz: -865 - 0.819 * 1475, w: 1300, d: 1300, yaw: WEST_YAW, y0: GROUND, render: 412, eave: 412, pitch: 15, overhang: 90, roof: 0xa4a6a8 };
-// The flagstone drive in front of it (in its frame: u along the front, w out toward the road).
-export const NORTH_WEST_DRIVE = { u0: -825, u1: 1250, w0: 825, w1: 1275 };
-// The motorhome on the drive (a white box with a dark window band on four dark wheels), in front
-// of the villa's east half (at (300, 1045) in its frame: clear of its front, of the road and of
-// the first terrace's corner): l along its frame's u (along the road), w across it, h tall;
-// solid to its roof (a coin spot, reached by a double jump and a grab of its edge; a running
-// jump from the drive falls short: its top stands more than 160 over that jump's peak).
-export const MOTORHOME = { cx: -5924, cz: -181, yaw: WEST_YAW, l: 930, w: 360, h: 500 };
+const NW_WING = { w: 1580, d: 1500 };
+const nwWing = (du, dw) => [NORTH_WEST.cx + NW_U[0] * du + NW_W[0] * dw, NORTH_WEST.cz + NW_U[1] * du + NW_W[1] * dw];
+export const NORTH_WEST_WING = { id: 'north_west_wing', kit: 'villa', cx: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[0], cz: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[1], w: NW_WING.w, d: NW_WING.d, yaw: WEST_YAW, y0: GROUND, render: 412, eave: 412, pitch: 15, overhang: 90, roof: 0xa4a6a8 };
+export const NORTH_WEST_DRIVE = { u0: -950, u1: 1500, w0: NORTH_WEST.d / 2, w1: 1900, cut: [1075, 1250] };
+// Its outline (convex, in the house's frame): its east end's back corner cut off along the
+// first terrace's wall.
+export const northWestDrive = () => {
+  const D = NORTH_WEST_DRIVE;
+  return [[D.u0, D.w0], [D.cut[0], D.w0], [D.u1, D.cut[1]], [D.u1, D.w1], [D.u0, D.w1]];
+};
+// The motorhome on the drive (a white box with a dark window band on four dark wheels),
+// lengthwise on the drive's east part beside the garage: l along its frame's u (along the road),
+// w across it, h tall; solid to its roof (a coin spot, reached by a double jump and a grab of its
+// edge; a running jump from the drive falls short: its top stands more than 160 over that
+// jump's peak).
+export const MOTORHOME = { cx: -7841, cz: -527, yaw: WEST_YAW, l: 1090, w: 390, h: 500 };
 
 // Falu red as the photos have it (W1): a cool, deep red (hue ~2 deg), the blue close to the green,
 // so it stays red in the house's shade instead of turning brown.
@@ -189,30 +269,29 @@ const FALU = 0x7a2422;
 
 // The corner house south of the west leg (south_west): red boards over white brick, a black
 // gable roof, a glazed veranda on its west gable (veranda: along u past the gable, flat roof at
-// `top`); a brown picket fence along its street side and a two-rail fence toward the junction.
+// `top`; the photos' veranda is the house's west of the side road: W8), a back wing behind its
+// east part; a brown picket fence along its street side.
 const pitchRidge = (eave, d, deg) => Math.round(eave + (d / 2) * Math.tan((deg * Math.PI) / 180));
 export const SOUTH_WEST = {
   id: 'south_west',
   kit: 'chain',
-  cx: -5475,
-  cz: 2375,
-  w: 2100,
-  d: 1300,
+  cx: -7809,
+  cz: 2530,
+  w: 2536,
+  d: 1568,
   yaw: Math.PI + WEST_YAW,
   y0: GROUND,
   eave: 412,
-  ridge: pitchRidge(412, 1300, 20),
+  ridge: pitchRidge(412, 1568, 20),
   boards: FALU,
   roof: 0x2c2c2e,
-  door: -300,
-  windows: [-750, 150, 600],
+  door: -360,
+  windows: [-900, 180, 720],
   veranda: { depth: 450, top: 352 },
 };
+export const SOUTH_WEST_WING = { id: 'south_west_wing', kit: 'chain', cx: -6743, cz: 3237, w: 1574, d: 813, yaw: Math.PI + WEST_YAW, y0: GROUND, eave: 412, ridge: pitchRidge(412, 813, 20), boards: FALU, roof: 0x2c2c2e, windows: [-400, 400] };
 // Fences (FENCES): [u0, w0, u1, w1] in a house's frame, `h` high; their colliders are slabs.
-export const FENCES = [
-  { house: 'south_west', kind: 'picket', from: [1500, 950], to: [-450, 950], h: 110 },
-  { house: 'south_west', kind: 'rail', from: [1560, 950], to: [1560, -650], h: 90 },
-];
+export const FENCES = [{ house: 'south_west', kind: 'picket', from: [1700, 1090], to: [-550, 1090], h: 110 }];
 
 // ---------------------------------------------------------------- the dad's side (south)
 
@@ -238,9 +317,10 @@ const uS = (x0, x1, x) => (x0 + x1) / 2 - x;
 
 // The dad's house (south_dad): red boards, the black front door (DOOR: its middle x, width,
 // height; face at z0) in a white frame, six windows, the white brick gable ends with red boards
-// in their triangles, black pan tiles.
-export const DAD = chain('south_dad', -1100, 1600, 1330, 2605, { boards: FALU, roof: 0x262628 });
-DAD.x0 = -1100;
+// in their triangles, black pan tiles. (W2: its west wall in to x0 -860, the aerial's and the
+// photos' length once both are scaled; its depth and wings are W3's.)
+export const DAD = chain('south_dad', -860, 1600, 1330, 2605, { boards: FALU, roof: 0x262628 });
+DAD.x0 = -860;
 DAD.x1 = 1600;
 DAD.z0 = 1330;
 DAD.z1 = 2605;
@@ -248,16 +328,16 @@ DAD.floor = GROUND;
 DAD.ridgeZ = DAD.cz;
 DAD.door = { x: 0, w: 150, h: 315, faceZ: DAD.z0, vestibule: 120 };
 DAD.door.u = uS(DAD.x0, DAD.x1, DAD.door.x);
-DAD.windows = [-880, -580, -300, 400, 800, 1200].map((x) => uS(DAD.x0, DAD.x1, x));
+DAD.windows = [-700, -520, -300, 400, 800, 1200].map((x) => uS(DAD.x0, DAD.x1, x));
 DAD.gableEnds = true; // white brick to the eaves at both ends
 DAD.charger = { x: DAD.x1, z: 1500 };
 
-// Its neighbours along the chain, west to east: the yellow house (south_1) and the flat-roofed
-// link between it and the dad's; the carport between the dad's and the yellow house to the east
-// (south_2, which faces the turning area with a wing behind it).
-export const SOUTH_1 = chain('south_1', -3500, -1550, 1330, 2580, { boards: 0xd8b65e, roof: 0x2a2a2c, door: uS(-3500, -1550, -2300), windows: [-3250, -2900, -2600, -2000, -1750].map((x) => uS(-3500, -1550, x)), gableEnds: true });
-export const LINK = { id: 'link', x0: -1550, x1: -1100, z0: 1330, z1: 2400, top: 370, slab: 25, boards: 0xd8b65e };
-export const CARPORT = { id: 'carport', x0: 1600, x1: 2500, z0: 1800, z1: 2650, top: 370, slab: 25, back: 0xd8b65e };
+// Its neighbours along the chain, west to east: the yellow house (south_1, forward of the dad's)
+// and the flat-roofed link between it and the dad's (set back); the carport between the dad's
+// and the yellow house to the east (south_2, set back, its wing behind its east end).
+export const SOUTH_1 = chain('south_1', -4040, -1430, 905, 2090, { boards: 0xd8b65e, roof: 0x2a2a2c, door: uS(-4040, -1430, -2434), windows: [-3706, -3236, -2834, -2033, -1699].map((x) => uS(-4040, -1430, x)), gableEnds: true });
+export const LINK = { id: 'link', x0: SOUTH_1.cx + SOUTH_1.w / 2, x1: DAD.x0, z0: 1425, z1: 2830, top: 370, slab: 25, boards: 0xd8b65e };
+export const CARPORT = { id: 'carport', x0: 1600, x1: 2766, z0: 1800, z1: 2650, top: 370, slab: 25, back: 0xd8b65e };
 // The store room under the carport's roof (the garage row in the photos; objects/laneBoss/
 // LaneGarage.js breaks its doors): its door wall under the roof's front edge (`wall`: its face
 // toward the drive, `thick` deep, up to the slab's underside `under`), a deep dark fascia hanging
@@ -282,7 +362,7 @@ export const GARAGE = {
   lining: 10,
   tints: [0x3e2c24, FALU, CARPORT.back], // dark brown, the house's Falu red, yellow
   inside: 0x5e4e3e, // the lining's bare boards
-  fixed: [[1600, 1720, 0], [1870, 2010, 0], [2155, 2190, 1], [2470, 2500, 2]],
+  fixed: [[1600, 1720, 0], [1870, 2010, 0], [2155, 2190, 1], [2470, CARPORT.x1, 2]],
   leaves: [
     { x0: 1720, x1: 1870, tint: 0, hinge: -1, handle: 1 },
     { x0: 2010, x1: 2155, tint: 1, hinge: 1, handle: 1 },
@@ -293,12 +373,13 @@ export const GARAGE = {
   props: [[1990, 2190, 2560, 2630], [2230, 2480, 2575, 2630], [2400, 2480, 2380, 2460], [2405, 2485, 2470, 2550], [1640, 1770, 2420, 2590], [1612, 1650, 2030, 2290], [1612, 1640, 1985, 2020]],
   propTop: GROUND + 218,
 };
-export const SOUTH_2 = chain('south_2', 2500, 4150, 1450, 2650, { boards: 0xd8b65e, roof: 0x3a302c, door: uS(2500, 4150, 3500), windows: [2800, 3150, 3850].map((x) => uS(2500, 4150, x)), gableEnds: true });
-// Its wing behind it (ridge along z: turned a quarter, its front toward +x).
-export const SOUTH_2_WING = { ...chain('south_2_wing', 3400, 4150, 2650, 3350, { boards: 0xd8b65e, roof: 0x3a302c }), w: 700, d: 750, yaw: Math.PI / 2, ridge: pitchRidge(CHAIN.eave, 750, CHAIN.pitch), windows: [0] };
+export const SOUTH_2 = chain('south_2', 2770, 5410, 1980, 3080, { boards: 0xd8b65e, roof: 0x3a302c, door: uS(2770, 5410, 4370), windows: [3250, 3810, 4930].map((x) => uS(2770, 5410, x)), gableEnds: true });
+// Its east wing behind it (ridge along z: turned a quarter, its front toward +x; the west one is
+// W5's).
+export const SOUTH_2_WING = { ...chain('south_2_wing', 4668, 5435, SOUTH_2.cz + SOUTH_2.d / 2, 3858, { boards: 0xd8b65e, roof: 0x3a302c }), w: 3858 - 3080, d: 5435 - 4668, yaw: Math.PI / 2, ridge: pitchRidge(CHAIN.eave, 5435 - 4668, CHAIN.pitch), windows: [0] };
 
-// The dad's front garden: the grass-paver path from the kerb to the door, the corner bed (BED:
-// the photos' low bed of red-leaved ground cover where his drive meets the street, edged with
+// The dad's front garden: the grass-paver path from the road's edge to the door, the corner bed
+// (BED: the photos' low bed of red-leaved ground cover where his drive meets the street, edged with
 // round field stones right at the asphalt's edge (no kerb there), red leaves fallen in it, the
 // red-leaf tree in it: a small ornamental tree, its trunk a climbable pole, its crown about as
 // high as the house's eaves; the turning area's sign at its corner: TURN_SIGN), the rhododendron
@@ -306,11 +387,11 @@ export const SOUTH_2_WING = { ...chain('south_2_wing', 3400, 4150, 2650, 3350, {
 // to the carport; the two wheelie bins against the house's east gable (BINS: their middles; BIN:
 // the body's size, its lid's top at `top`) by the car charger (DAD.charger); behind the house a
 // patio of grey slabs. The link's own short drive in front of its garage door.
-export const DAD_PATH = { x0: -90, x1: 90, z0: 450, z1: DAD.z0 };
+export const DAD_PATH = { x0: -90, x1: 90, z0: SOUTH_EDGE, z1: DAD.z0 };
 // The bed: a quarter of an ellipse round the corner (x1, z0) where the street's edge meets the
 // drive's, `rx` along the street and `rz` along the drive, its soil `raise` over the lawn (under
 // the knee: walked onto from the road), `stones` field stones along its edges.
-export const BED = { x1: DAD.x1, z0: ROAD.half, rx: 1000, rz: 750, raise: 6, stones: 30 };
+export const BED = { x1: DAD.x1, z0: SOUTH_EDGE, rx: 1000, rz: 750, raise: 6, stones: 30 };
 // Its outline (convex): the corner, then along the drive and round the arc to the street.
 export function bedOutline(n = 12) {
   const { x1, z0, rx, rz } = BED;
@@ -326,11 +407,11 @@ export const RED_TREE = { x: 1050, z: 850, y0: GROUND, y1: 442, radius: 30, trun
 // at y0), "Vänd-" over "plats" on it in black and under them the round no-parking sign (a blue
 // disc in a red ring, one red stripe); world/lane/real/sign.js lays its face out.
 export const TURN_SIGN = { x: BED.x1 - 52, z: BED.z0 + 55, yaw: -Math.PI / 2, top: 376, r: 4.5, collider: 9, plate: { w: 72, h: 112, y0: 258 } };
-export const RHODODENDRON = { x: -960, z: 1180, r: 260, h: 300 };
+export const RHODODENDRON = { x: DAD.x0 + 140, z: 1180, r: 260, h: 300 };
 export const POT = { x: -165, z: 1290 };
-export const DAD_DRIVE = { x0: DAD.x1, x1: CARPORT.x1, z0: 450, z1: CARPORT.z0 };
-export const LINK_DRIVE = { x0: LINK.x0, x1: LINK.x1, z0: 450, z1: LINK.z0 };
-export const PATIO = { x0: -900, x1: 0, z0: DAD.z1, z1: 3100 };
+export const DAD_DRIVE = { x0: DAD.x1, x1: CARPORT.x1, z0: SOUTH_EDGE, z1: CARPORT.z0 };
+export const LINK_DRIVE = { x0: LINK.x0, x1: LINK.x1, z0: SOUTH_EDGE, z1: LINK.z0 };
+export const PATIO = { x0: DAD.x0 + 200, x1: 0, z0: DAD.z1, z1: 3100 };
 export const BIN = { x: 110, z: 90, h: 160, top: GROUND + 160 };
 export const BINS = [{ x: 1665, z: 1600 }, { x: 1665, z: 1710 }];
 // The bins move (objects/laneBoss/LaneBins.js, once the lane's lazy chunk is in): pushed by
@@ -346,84 +427,88 @@ export const MOVABLE_BINS = BINS.map((b, i) => ({ id: `bin_${i}`, x: b.x, y: GRO
 
 // ---------------------------------------------------------------- the east end
 
-// A double garage at the turning area (east_garage: white render, a white vertical-board gable
-// toward the turning area, two dark panel doors in it) in front of a one-and-a-half storey house
-// (east_house, drawn and solid, mostly out of reach).
-export const EAST_GARAGE = { id: 'east_garage', kit: 'garage', cx: 5775, cz: -375, w: 1050, d: 1050, yaw: -Math.PI / 2, y0: GROUND, eave: 412, ridge: pitchRidge(412, 1050, 35), doors: [-260, 260] };
-export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: 7100, cz: 50, w: 1700, d: 1600, yaw: -Math.PI / 2, y0: GROUND, eave: 522, ridge: pitchRidge(522, 1600, 40), boards: 0xd8b65e, roof: 0x2c2c2e, door: 0, windows: [-550, 550], plinth: 135 };
+// A double garage behind its forecourt east of the turning area (east_garage: white render, a
+// white vertical-board gable toward the apron, two dark panel doors in it; its ridge along x) in
+// front of a one-and-a-half storey house (east_house, drawn and solid, mostly out of reach).
+export const EAST_GARAGE = { id: 'east_garage', kit: 'garage', cx: (6579 + 7853) / 2, cz: (-1179 - 113) / 2, w: 1066, d: 1274, yaw: -Math.PI / 2, y0: GROUND, eave: 412, ridge: pitchRidge(412, 1066, 35), doors: [-260, 260] };
+export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: (8022 + 9699) / 2, cz: (-906 + 1473) / 2, w: 2379, d: 1677, yaw: -Math.PI / 2, y0: GROUND, eave: 522, ridge: pitchRidge(522, 1677, 40), boards: 0xd8b65e, roof: 0x2c2c2e, door: 0, windows: [-770, 770], plinth: 135 };
+// The forecourt in front of the double garage (asphalt at GROUND, from the apron's east kerb to
+// the garage's doors, as wide as the garage) and north_5's drive on from its north-west corner.
+export const FORECOURT = { x0: APRON.x1, x1: EAST_GARAGE.cx - EAST_GARAGE.d / 2, z0: EAST_GARAGE.cz - EAST_GARAGE.w / 2, z1: EAST_GARAGE.cz + EAST_GARAGE.w / 2 };
 
 // Every house as houses.js builds it.
-export const HOUSES = [...VILLAS, NORTH_WEST, NORTH_WEST_WING, SOUTH_WEST, SOUTH_1, DAD, SOUTH_2, SOUTH_2_WING, EAST_GARAGE, EAST_HOUSE];
+export const HOUSES = [...VILLAS, NORTH_WEST, NORTH_WEST_WING, SOUTH_WEST, SOUTH_WEST_WING, SOUTH_1, DAD, SOUTH_2, SOUTH_2_WING, EAST_GARAGE, EAST_HOUSE];
 
 // ---------------------------------------------------------------- hedges, trees, street furniture
 
 // Hedges (solid leafy boxes, their tops walkable): [x0, x1, z0, z1, y0, top].
 export const HEDGES = [
-  { x0: -3500, x1: -1600, z0: 560, z1: 720, y0: GROUND, top: 187 }, // south_1's front
-  { x0: 2550, x1: 4100, z0: 1180, z1: 1330, y0: GROUND, top: 187 }, // south_2's front, along the turning area
-  { x0: -3800, x1: 4800, z0: 3450, z1: 3650, y0: GROUND, top: 242 }, // the south back hedges
-  { x0: 6400, x1: 6600, z0: -1300, z1: -900, y0: GROUND, top: 202 }, // between north_5 and the east house
-  { x0: -1100, x1: -170, z0: -900, z1: -820, y0: TERRACE, top: 230 }, // north_3's low box hedge
+  { x0: SOUTH_1.cx - SOUTH_1.w / 2, x1: LINK.x0, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 130, y0: GROUND, top: 187 }, // south_1's front, at the asphalt's edge
+  { x0: -5400, x1: 5800, z0: 4100, z1: 4300, y0: GROUND, top: 242 }, // the south back hedges
+  { x0: 7950, x1: 8150, z0: -1600, z1: -1000, y0: GROUND, top: 202 }, // between north_5 and the east house
+  { x0: -1300, x1: -500, z0: -960, z1: -880, y0: TERRACE, top: 230 }, // north_3's low box hedge
 ];
-// Thuja columns (8-sided, tapering; solid): at north_1's drive mouth and the north_1 / north_2
-// corner.
-export const THUJA = { r: 80, h: 520 };
+// Thuja columns (8-sided, tapering; solid): a tall group on north_1's terrace along its drive's
+// west side, behind the wall.
+export const THUJA = { r: 70, h: 900 };
 export const THUJAS = [
-  { x: -4860, z: -820 },
-  { x: -4020, z: -820 },
-  { x: -3780, z: -880 },
-  { x: -3620, z: -900 },
-  { x: -3460, z: -880 },
+  { x: -6750, z: -900 },
+  { x: -6690, z: -975 },
+  { x: -6745, z: -1050 },
+  { x: -6685, z: -1120 },
+  { x: -6740, z: -1190 },
 ];
-// Big broad-leaved trees at the junction (trunks solid): r the canopy's radius, h its top.
+// Big broad-leaved trees off the junction, at the forest's edge north-west of the curve (outside
+// the play space: drawn only, no collider): r the canopy's radius, h its top.
 export const TREES = [
-  { x: -8500, z: 300, r: 750, h: 1900 },
-  { x: -7700, z: -900, r: 650, h: 1700 },
-  { x: -9500, z: -1600, r: 800, h: 2000 },
+  { x: -12570, z: 1760, r: 750, h: 1900 },
+  { x: -13910, z: -1820, r: 800, h: 2000 },
 ];
 // The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` firs and
-// `birches` birches over the band), and the ring of trees drawn round the outside of the
-// boundary (EDGE_FOREST: `count` firs `from`..`to` outside it), so the camera never looks out on
-// nothing.
-export const FOREST = { count: 34, birches: 10, x0: -7000, x1: 7500, z0: -4300, z1: -5600, seed: 0x5ba77 };
-export const EDGE_FOREST = { count: 70, from: 900, to: 2200, seed: 0x5ba78 };
+// `birches` birches over the band x0..x1, from z0 + slope x back to z1 + slope x: following the
+// gardens' sloping back edge), and the ring of trees drawn round the outside of the boundary
+// (EDGE_FOREST: `count` firs `from`..`to` outside it), so the camera never looks out on nothing.
+export const FOREST = { count: 34, birches: 10, x0: -9600, x1: 9300, z0: NORTH.flat0 - 150, z1: NORTH.flat0 - 1850, slope: NORTH.slope, seed: 0x5ba77 };
+export const EDGE_FOREST = { count: 70, from: 900, to: 2600, seed: 0x5ba78 };
 
-// Lampposts (grey, an arm and a flat lamp head), every one a climbable pole (POLES; no collider
-// of its own but the pole's trunk) up to its very top (a handstand on its cap): the arm leaves
-// the post `root` under the top and rises out to the lamp head (clear of him as he climbs past
-// it on his side of the post and stands on the cap), out along its yaw over the street.
+// Lampposts (grey, an arm and a flat lamp head) where the photos have them, every one a climbable
+// pole (POLES; no collider of its own but the pole's trunk) up to its very top (a handstand on its
+// cap): the arm leaves the post `root` under the top and rises out to the lamp head (clear of him
+// as he climbs past it on his side of the post and stands on the cap), out along its yaw over the
+// street: L1 at the junction (the west leg's pavement's back edge), L2 at the bend's east end,
+// L3 east of north_2's drive, L5 by north_4, L7 down the footpath.
 export const LAMP = { r: 14, top: 1050, arm: 150, root: 60, collider: 30 };
 export const LAMPS = [
-  { id: 'L1', x: -8120, z: 1590, yaw: 1.97 },
-  { id: 'L2', x: -5350, z: -300, yaw: 0 },
-  { id: 'L3', x: -2900, z: -590, yaw: 0 },
-  { id: 'L4', x: -300, z: -590, yaw: 0 },
-  { id: 'L5', x: 2000, z: -590, yaw: 0 },
-  { id: 'L6', x: 2600, z: -1240, yaw: 0.74 },
-  { id: 'L7', ...footpathAt(200, 330), yaw: -2.2 },
+  { id: 'L1', x: -11070, z: 1630, yaw: 1.95 },
+  { id: 'L2', x: -6145, z: -570, yaw: 0 },
+  { id: 'L3', x: -2250, z: -720, yaw: 0 },
+  { id: 'L5', x: 2200, z: -720, yaw: 0 },
+  { id: 'L7', ...footpathAt(800, 300), yaw: -2.2 },
 ];
-// White flagpoles with a gold knob (climbable), each flying its `flag`: north_2's the blue and
-// yellow cross flag (FLAG: len along the wind by h), the others long blue and yellow pennants
-// (PENNANT), all streaming before the same light breeze (WIND: the way they stream, the waves
-// running down them: amp at the tip, k per unit along, speed per second).
-export const FLAGPOLE = { r: 14, top: 1350 };
+// White flagpoles with a gold knob (climbable) where the real ones stand, each flying a long
+// blue and yellow pennant (PENNANT, drooping), all before the same light breeze (WIND: the way
+// they stream, the waves running down them: amp at the tip, k per unit along, speed per second;
+// a pole's `limp` scales its waves): F1 behind north_2's bed (taller, its pennant limp), F2 in the
+// east house's front garden, F3 behind the corner house's back wing; `h` the pole's height.
+export const FLAGPOLE = { r: 14, h: 1200 };
 export const FLAGPOLES = [
-  { id: 'F1', x: -2900, z: -1150, y0: TERRACE, flag: 'flag' },
-  { id: 'F2', x: 5100, z: 350, y0: GROUND, flag: 'pennant' },
-  { id: 'F3', x: -7700, z: 100, y0: GROUND, flag: 'pennant' },
+  { id: 'F1', x: -4070, z: -1420, y0: TERRACE, h: 1460, flag: 'pennant', limp: 0.15 },
+  { id: 'F2', x: 7120, z: 840, y0: GROUND, h: 1200, flag: 'pennant' },
+  { id: 'F3', x: -6650, z: 3800, y0: GROUND, h: 1100, flag: 'pennant' },
 ];
 export const FLAG = { len: 300, h: 188 };
-export const PENNANT = { len: 520, h: 64, droop: 70 };
-export const WIND = { dir: [0.96, 0.28], amp: 34, k: 0.012, speed: 4.2 };
+export const PENNANT = { len: 520, h: 64, droop: 310 };
+export const WIND = { dir: [-0.97, 0.24], amp: 34, k: 0.012, speed: 4.2 };
 // The dad's mailbox by the street: a black house-shaped box on a post (body 90 x 70, 130 high,
 // on a post `post` high, a 30-degree roof to `ridge`), facing the street; it is a sign of its own.
 export const MAILBOX = { x: 230, z: 640, yaw: Math.PI, post: 110, body: [90, 70, 130] };
 MAILBOX.eaves = GROUND + MAILBOX.post + MAILBOX.body[2];
 MAILBOX.ridge = MAILBOX.eaves + 30;
 // The grey electrical cabinet on a white brick pillar by the footpath, and the blue round
-// pedestrian sign on its grey post on the footpath's west side; the low barrier across it.
+// pedestrian sign on its grey post at the footpath's mouth, its west side; the low barrier
+// across it.
 export const CABINET = footpathAt(60, 520);
-export const PATH_SIGN = footpathAt(520, 320);
+export const PATH_SIGN = footpathAt(100, 300);
 
 // ---------------------------------------------------------------- cars, the hoop, the trampoline
 
@@ -433,8 +518,8 @@ export const PATH_SIGN = footpathAt(520, 320);
 // at the roof, wheels of radius `wheel`) at (x, z), its nose toward yaw (0: +z), in its colour.
 // Solid (the body and the cabin): a hop onto a bonnet, a grab of a roof's edge. The dad's two
 // stand side by side before the carport, noses out (the bins and the way up to them clear on
-// their west); the west neighbour's at the link; on the villas' drives (not north_4's: its
-// coins) and at the double garage, noses in.
+// their west); the west neighbour's at the link; on the villas' drives (north_4's the van: its
+// coins on its forecourt's west part; north_5's none) and at the double garage, noses in.
 export const CAR_KINDS = {
   suv: { l: 660, w: 270, belt: 140, roof: 250, hood: 175, screen: 95, tail: 25, tailTop: 55, wheel: 58 },
   cross: { l: 630, w: 265, belt: 130, roof: 235, hood: 165, screen: 110, tail: 35, tailTop: 95, wheel: 55 },
@@ -443,6 +528,11 @@ export const CAR_KINDS = {
   van: { l: 700, w: 285, belt: 135, roof: 290, hood: 70, screen: 90, tail: 10, tailTop: 20, wheel: 55 },
 };
 const parked = (kind, x, noseZ, yaw, tint) => ({ kind, x, z: noseZ - Math.cos(yaw) * (CAR_KINDS[kind].l / 2), yaw, tint });
+// A villa's garage door's middle (x) and its east block's front (z).
+const garageAt = (id) => {
+  const v = VILLAS.find((h) => h.id === id);
+  return { x: v.cx + v.garage, front: v.front };
+};
 export const CARS = [
   // The dad's compact electric crossover (photos: nearest his gable): a lookalike of his own car,
   // no badge, no plate; the 'cross' kind's body (its collider unchanged), drawn in its own style
@@ -451,12 +541,13 @@ export const CARS = [
   // blue, so there it is a touch bluer (`classicTint`).
   { ...parked('cross', 1900, 1760 - CAR_KINDS.cross.l, Math.PI, 0x627d93), id: 'dad_ev', style: 'ev', classicTint: 0x5884a6 },
   parked('suv', 2300, 1760 - CAR_KINDS.suv.l, Math.PI, 0x2c3a52),
-  parked('cross', -1360, 1300, 0, 0xeeeee8),
-  parked('hatch', -4440, -1560, Math.PI, 0xb6babe),
-  parked('cross', -2050, -1610, Math.PI, 0x45484c),
-  parked('hatch', 650, -1610, Math.PI, 0x1f2124),
-  parked('van', 5480, -1890, Math.PI, 0x24272b),
-  { kind: 'estate', x: 5245 - CAR_KINDS.estate.l / 2, z: -115, yaw: Math.PI / 2, tint: 0x8e9296 },
+  parked('cross', (LINK.x0 + LINK.x1) / 2, LINK.z0 - 30, 0, 0xeeeee8),
+  parked('hatch', garageAt('north_1').x, garageAt('north_1').front + 40, Math.PI, 0xb6babe),
+  parked('cross', garageAt('north_2').x, garageAt('north_2').front + 40, Math.PI, 0x45484c),
+  parked('hatch', garageAt('north_3').x, garageAt('north_3').front + 40, Math.PI, 0x1f2124),
+  // north_4's van, nose in beside its garage door (the hoop's perch from its roof: HOOP).
+  parked('van', garageAt('north_4').x - 130, garageAt('north_4').front + 40, Math.PI, 0x24272b),
+  { kind: 'estate', x: FORECOURT.x1 - 5 - CAR_KINDS.estate.l / 2, z: EAST_GARAGE.cz + 260, yaw: Math.PI / 2, tint: 0x8e9296 },
 ];
 
 // STOMPWATT, the lane's boss (objects/laneBoss/LaneBoss.js, in the lane's lazy chunk): the dad's
@@ -477,25 +568,25 @@ export const LANE_BOSS = {
   wake: { r: 520, dwell: 20, level: 60 },
   notice: 900,
   arena: { x: 2050, z: 700, r: 1350 },
-  walk: [[800, 3300, -400, 350], [1720, 2040, 980, 1660], [1690, 3300, 350, 980]],
+  walk: [[800, 3300, -480, 255], [1720, 2040, 980, 1660], [1690, 3300, 255, 980]],
   charge: { x: 1790, z: 1290, yaw: -0.75 },
   prepark: { x: 1900, z: 1145 },
   star: { x: 1900, y: GROUND + 320, z: 1000 },
   easy: false, // (the easier fight for the youngest: objects/laneBoss/tuning.js FIGHT.EASY)
 };
 
-// The basketball hoop on north_5's front wall west of its garage door, a children's one: a black
-// post `out` in front of the wall, a white board (w by h, its foot at `board` up, at the top of
-// the rendered floor) on an arm to the wall, an orange ring of `ring` radius at `rim` up; the
-// board and its arm are one solid block from the wall (a perch: a double jump from the drive
-// grabs its edge, a hop from the van's roof lands on it).
-export const HOOP = { x: 5270, z: VILLAS[4].front, out: 70, board: GROUND + 390, w: 130, h: 110, rim: GROUND + 400, ring: 32 };
+// The basketball hoop on north_4's front wall west of its garage door (W2: the photos' hoop
+// house), a children's one: a black post `out` in front of the wall, a white board (w by h, its
+// foot at `board` up, at the top of the rendered floor) on an arm to the wall, an orange ring of
+// `ring` radius at `rim` up; the board and its arm are one solid block from the wall (a perch: a
+// double jump from the forecourt grabs its edge, a hop from the van's roof lands on it).
+export const HOOP = { x: garageAt('north_4').x - 340, z: garageAt('north_4').front, out: 70, board: GROUND + 390, w: 130, h: 110, rim: GROUND + 400, ring: 32 };
 
 // The trampoline in north_5's front garden (objects/Trampoline.js bounces Jonas off its mat:
 // within r of its middle, his feet coming down at y, its top), drawn by props.js: a dark mat in a
 // padded blue ring on six legs, solid from the terrace up to its top. The secret 1-up floats
 // high over it: only a bounce with the jump button held (BOUNCE_HELD_VY) rises to it.
-export const TRAMPOLINE = { x: 4580, y: TERRACE + 90, z: -1650, r: 250, vy: 50, legs: 6 };
+export const TRAMPOLINE = { x: 5380, y: TERRACE + 90, z: -2300, r: 250, vy: 50, legs: 6 };
 export const TRAMPOLINES = [TRAMPOLINE];
 export const ONE_UP = { x: TRAMPOLINE.x, y: 1020, z: TRAMPOLINE.z };
 
@@ -504,38 +595,39 @@ export const ONE_UP = { x: TRAMPOLINE.x, y: 1020, z: TRAMPOLINE.z };
 // A tree or two in the gardens (drawn by props.js, their trunks solid): an apple tree on
 // north_4's terrace, a birch behind the corner house, a red-leaved shrub by the double garage.
 export const GARDEN_TREES = [
-  { kind: 'apple', x: 2200, z: -1250, r: 480, h: 850 },
-  { kind: 'birch', x: -4050, z: 2780, r: 380, h: 1500 },
-  { kind: 'shrub', x: 5450, z: 330, r: 160, h: 260 },
+  { kind: 'apple', x: 2185, z: -2011, r: 480, h: 850 },
+  { kind: 'birch', x: -5550, z: 3300, r: 380, h: 1500 },
+  { kind: 'shrub', x: 6750, z: 120, r: 160, h: 260 },
 ];
 // Flower beds on the terraces (cosmos: tufts of leaves with pink and white flowers): north_3's
 // behind its box hedge, north_4's along its wall.
 export const FLOWER_BEDS = [
-  { x0: -1000, x1: -300, z0: -1350, z1: -1050, n: 14, seed: 41 },
-  { x0: 1880, x1: 2300, z0: -900, z1: -780, n: 7, seed: 43 },
+  { x0: -1200, x1: -500, z0: -1400, z1: -1100, n: 14, seed: 41 },
+  { x0: 1700, x1: 2400, z0: -960, z1: -840, n: 7, seed: 43 },
 ];
 // TV antennas on the chain houses' ridges (x along each ridge; drawn only).
 export const ANTENNAS = [
   { house: 'south_1', x: -2900 },
-  { house: 'south_dad', x: -900 },
+  { house: 'south_dad', x: -600 },
   { house: 'south_2', x: 3800 },
 ];
 // Two houses down the side road in the fog (drawn only, out of bounds): `t` along it, `s`
-// across it (s > 0 its west side).
+// across it (s > 0 its west side; the first's near end clear of the west leg drawn on past the
+// junction, which crosses the side road's west side at t ~0).
 export const SIDE_BLOCKS = [
-  { t: 900, s: 1100, w: 1600, d: 1100, tint: 0xece6d8 },
-  { t: 2300, s: 1150, w: 1500, d: 1100, tint: 0xd8b65e },
+  { t: 1500, s: 1430, w: 1600, d: 1100, tint: 0xece6d8 },
+  { t: 3350, s: 1500, w: 1500, d: 1100, tint: 0xd8b65e },
 ];
 
 // Butterflies over the dad's lawn and north_3's flower beds (ObjectManager), and small brown
 // birds (BIRD_TINT) circling over the forest.
 export const BUTTERFLY_SPOTS = [
   { x: 500, z: 900 },
-  { x: -650, z: -1200 },
+  { x: -850, z: -1250 },
 ];
 export const BIRD_CIRCLES = [
-  { x: -2500, z: -5200, y: 2600, radius: 1300 },
-  { x: 3000, z: -5600, y: 2900, radius: 1100 },
+  { x: -3200, z: -6600, y: 2600, radius: 1300 },
+  { x: 3800, z: -7100, y: 2900, radius: 1100 },
 ];
 export const BIRD_TINT = 0x5a5048;
 
@@ -543,36 +635,47 @@ export const BIRD_TINT = 0x5a5048;
 
 // The play space: invisible walls (y -200 .. BOUNDS_TOP, facing in) along this polygon (clockwise
 // seen from above, from the north-west), each a little inside a drawn edge (the forest bank, the
-// hedges, the barrier, the trees round the outside) the camera cannot see over.
+// hedges, the barrier, the trees round the outside) the camera cannot see over: north of the
+// gardens just onto the ramp up to the forest's edge; round the east house; across the
+// footpath at its barrier; along the back hedges; round the corner house's garden, across the
+// side road's mouth and the west leg past the junction.
 export const BOUNDS_TOP = 4500;
+const barrier = (s) => {
+  const p = footpathAt(FOOTPATH.barrier, s);
+  return [Math.round(p.x), Math.round(p.z)];
+};
+const northBound = (x) => [x, Math.round(flatZAt(x) - 60)];
 export const BOUNDS = [
-  [-9000, 1300],
-  [-8300, -2600],
-  [-6000, -3700],
-  [6600, -4000],
-  [7900, -1500],
-  [8000, 1300],
-  [footpathAt(FOOTPATH.barrier, -FOOTPATH.half - 60).x, footpathAt(FOOTPATH.barrier, -FOOTPATH.half - 60).z],
-  [footpathAt(FOOTPATH.barrier, FOOTPATH.half + 60).x, footpathAt(FOOTPATH.barrier, FOOTPATH.half + 60).z],
-  [4600, 1600],
-  [4800, 3500],
-  [-3800, 3550],
-  [-5300, 3600],
-  [-7300, 3400],
-  [-7800, 2700],
-  [-9000, 2600],
+  [-11900, -3300],
+  [-10300, -4300],
+  northBound(-8150),
+  northBound(7950),
+  [9850, -1400],
+  [9850, 1650],
+  barrier(-FOOTPATH.half - 60),
+  barrier(FOOTPATH.half + 60),
+  [5700, 2400],
+  [5850, 4200],
+  [-5400, 4200],
+  [-6100, 4450],
+  [-8500, 4450],
+  [-9002, 4126],
+  [-9984, 2739],
+  [-10700, 3300],
+  [-11900, 3950],
 ];
 
-// Whether (x, z) lies inside the boundary (even-odd).
-export function inBounds(x, z) {
+// Whether (x, z) lies inside a polygon (even-odd: any shape); inBounds: inside the boundary.
+export function inPolygon(poly, x, z) {
   let inside = false;
-  for (let i = 0, j = BOUNDS.length - 1; i < BOUNDS.length; j = i++) {
-    const [xi, zi] = BOUNDS[i];
-    const [xj, zj] = BOUNDS[j];
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i];
+    const [xj, zj] = poly[j];
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
   }
   return inside;
 }
+export const inBounds = (x, z) => inPolygon(BOUNDS, x, z);
 
 // ---------------------------------------------------------------- heights
 
@@ -598,29 +701,32 @@ export function roadDistance(x, z, line = ROAD.line) {
 }
 
 // The ground as the course stands on it (not the houses, hedges or props): the road and the
-// turning area at 0, the north terraces (over their back gardens' ramp), the drive notches and
-// everything else at GROUND, and outside the boundary to the north the forest bank (drawn).
+// turning area's apron at 0, the north terraces (over their back gardens' ramp), the drive
+// notches and everything else at GROUND, and outside the boundary to the north the forest bank
+// (drawn).
 export function groundHeight(x, z) {
-  if (roadDistance(x, z) <= ROAD.half || Math.hypot(x - TURN.x, z - TURN.z) <= TURN.r) return 0;
+  if (roadDistance(x, z) <= ROAD.half || inApron(x, z)) return 0;
   return offRoadHeight(x, z);
 }
-// The ground off the road and the turning area (groundHeight's, for a caller that knows the
-// point is off them: the realistic look's lawn mask).
+// The ground off the road and the apron (groundHeight's, for a caller that knows the point is
+// off them: the realistic look's lawn mask).
 export function offRoadHeight(x, z) {
   const plot = PLOTS_N.find((p) => x >= p.x0 && x <= p.x1);
   if (plot && z < wallZAt(x)) {
     const inDrive = x >= plot.drive[0] && x <= plot.drive[1] && z > villaOf(plot).front;
     if (inDrive) return GROUND;
-    if (z >= NORTH.flatZ) return NORTH.top;
-    if (z >= NORTH.backZ) return NORTH.top + ((NORTH.flatZ - z) / (NORTH.flatZ - NORTH.backZ)) * (NORTH.backTop - NORTH.top);
-    return bankHeight(z, NORTH.backTop);
+    const flat = flatZAt(x);
+    if (z >= flat) return NORTH.top;
+    if (z >= flat - NORTH.ramp) return NORTH.top + ((flat - z) / NORTH.ramp) * (NORTH.backTop - NORTH.top);
+    return bankHeight(x, z, NORTH.backTop);
   }
-  if (z < NORTH.backZ && x > PLOTS_N[0].x0) return bankHeight(z, NORTH.backTop);
+  if (z < backZAt(x) && x > PLOTS_N[0].x0) return bankHeight(x, z, NORTH.backTop);
   return GROUND;
 }
-// The forest bank behind the back gardens, rising from `foot` at NORTH.backZ to bankTop.
-export function bankHeight(z, foot) {
-  const k = Math.max(0, Math.min(1, (NORTH.backZ - z) / (NORTH.backZ - NORTH.bankZ)));
+// The forest bank behind the back gardens, rising from `foot` at backZAt(x) to bankTop over
+// NORTH.bank.
+export function bankHeight(x, z, foot) {
+  const k = Math.max(0, Math.min(1, (backZAt(x) - z) / NORTH.bank));
   return foot + (NORTH.bankTop - foot) * k * (2 - k);
 }
 export const villaOf = (plot) => VILLAS.find((v) => v.id === plot.id);
@@ -656,7 +762,9 @@ const DEG = Math.PI / 180;
 //                share of the near shadow camera's depth, -4e-4 over the old 16000)
 //   probe        the reflection probe's place: over the road in front of the dad's house
 //   tiles        the houses whose roofs are real tile courses (world/lane/real/house.js: the dad's
-//                and his neighbours', close to play; the rest the tile set's normal map)
+//                and his neighbours', close to play, the neighbours' rolls a little plainer; the
+//                rest the tile set's normal map); tilesMid: on the mid tier only these (W2: the
+//                plan's longer neighbours would cost mid ~50k triangles)
 //   atmosphere   the actors' look meanwhile (view.setAtmosphere): the golden sun (1, 0.48,
 //                0.19) x 2.9 along LANE_SUN (W1; no brighter: Jonas's red shirt, his back to the
 //                low sun, would burn out pink), a neutral sky and ground hemisphere, the classic
@@ -691,7 +799,8 @@ export const LANE_REAL = Object.freeze({
   haze: 2.5e-5,
   shadow: Object.freeze({ radius: 2.5, bias: -6.4, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
-  tiles: Object.freeze(['south_1', 'south_dad', 'south_2', 'south_2_wing']),
+  tiles: Object.freeze(['south_1', 'south_dad', 'south_2']),
+  tilesMid: Object.freeze(['south_dad']),
   atmosphere: Object.freeze({ fog: 0xd0d8e0, near: 3000, far: 45000, sun: 0xffb878, sunIntensity: 2.9, sunDir: LANE_SUN, sky: 0xe2e2e0, ground: 0x5a5850, ambientIntensity: 0.9 }),
   post: Object.freeze({
     ao: Object.freeze({ radius: 110, intensity: 2.6, bias: 0.12, maxPx: 90, fade: Object.freeze([4500, 9000]) }),
@@ -752,33 +861,39 @@ export const STAR = { id: 'lane_star', x: -250, y: DAD.ridge + 180, z: DAD.ridge
 // ---------------------------------------------------------------- coins, signs, poles
 
 // 55 coins, each at its floor + 60: down the path to the door, on the mailbox's roof, along the
-// street both ways, round the turning area, along two wall tops and up north_3's steps, up
-// north_4's drive, up the side yard between north_2 and north_3, on the motorhome's roof, along
+// street both ways, round the turning area's apron, along two wall tops (north_2's west of its
+// drive, north_3's in front of its west block) and up north_3's steps, across north_4's forecourt
+// west of the van, up the side yard between north_2 and north_3, on the motorhome's roof, along
 // south_1's hedge, round the junction's lamppost, on the footpath, over the bins, on the
 // carport's roof, up the roof's south-west slope, and a row of five across the store room behind
 // the garage doors (GARAGE).
 const above = (y) => y + 60;
 const roofAt = (z) => DAD.ridge - Math.abs(z - DAD.ridgeZ) * Math.tan((CHAIN.pitch * Math.PI) / 180);
 const motorhome = (along) => ({ x: MOTORHOME.cx + Math.cos(MOTORHOME.yaw) * along, y: above(GROUND + MOTORHOME.h), z: MOTORHOME.cz - Math.sin(MOTORHOME.yaw) * along });
+const STREET_Z = ROAD.line.at(-1)[1];
+const wallTop = (x) => ({ x, y: above(TERRACE), z: wallZAt(x) - 50 });
+const upSteps = (plot, d) => {
+  const z = wallZAt(plot.steps[0]) - d;
+  return { x: (plot.steps[0] + plot.steps[1]) / 2, y: above(stepsY(plot, z)), z };
+};
 export const COINS = [
   ...[1080, 880, 680].map((z) => ({ x: 0, y: above(GROUND), z })),
   { x: MAILBOX.x, y: above(MAILBOX.ridge), z: MAILBOX.z },
-  ...[-900, -1500, -2100, -2700, -3300].map((x) => ({ x, y: above(0), z: 0 })),
-  ...[700, 1300, 1900].map((x) => ({ x, y: above(0), z: 0 })),
+  ...[-900, -1500, -2100, -2700, -3300].map((x) => ({ x, y: above(0), z: STREET_Z })),
+  ...[700, 1300, 1900].map((x) => ({ x, y: above(0), z: STREET_Z })),
   ...Array.from({ length: 7 }, (_, k) => {
     const a = (k / 7) * Math.PI * 2;
-    return { x: TURN.x + 650 * Math.sin(a), y: above(0), z: TURN.z + 650 * Math.cos(a) };
+    const R = APRON.ring;
+    return { x: R.x + R.r * Math.sin(a), y: above(0), z: R.z + R.r * Math.cos(a) };
   }),
-  ...[-3450, -3200, -2950].map((x) => ({ x, y: above(TERRACE), z: -750 })),
-  ...[-800, -550, -300].map((x) => ({ x, y: above(TERRACE), z: -750 })),
-  ...[-760, -880, -1000].map((z) => ({ x: 110, y: above(stepsY(PLOTS_N[2], z)), z })),
-  ...[-1400, -1520, -1640].map((z) => ({ x: 3070, y: above(GROUND), z })),
-  ...[-1900, -2300, -2700].map((z) => ({ x: -1125, y: above(TERRACE), z })),
+  ...[-4600, -4350, -4100].map(wallTop),
+  ...[-1200, -950, -700].map(wallTop),
+  ...[60, 180, 300].map((d) => upSteps(PLOTS_N[2], d)),
+  ...[-1300, -1450, -1600].map((z) => ({ x: PLOTS_N[3].drive[0] + 220, y: above(GROUND), z })),
+  ...[-1900, -2300, -2700].map((z) => ({ x: PLOTS_N[1].x1, y: above(TERRACE), z })),
   ...[-300, 0, 300].map(motorhome),
-  ...[-3200, -2700, -2200].map((x) => ({ x, y: above(HEDGES[0].top), z: 640 })),
-  { x: -8370, y: above(GROUND), z: 1590 },
-  { x: -7995, y: above(GROUND), z: 1373 },
-  { x: -7995, y: above(GROUND), z: 1807 },
+  ...[0.2, 0.45, 0.7].map((k) => ({ x: Math.round(HEDGES[0].x0 + (HEDGES[0].x1 - HEDGES[0].x0) * k), y: above(HEDGES[0].top), z: (HEDGES[0].z0 + HEDGES[0].z1) / 2 })),
+  ...[[-250, 0], [125, -217], [125, 217]].map(([dx, dz]) => ({ x: LAMPS[0].x + dx, y: above(GROUND), z: LAMPS[0].z + dz })),
   { ...footpathAt(500), y: above(GROUND) },
   { x: BINS[0].x, y: above(BIN.top), z: BINS[0].z },
   ...[2000, 2200, 2400].map((z) => ({ x: 1750, y: above(CARPORT.top), z })),
@@ -789,8 +904,8 @@ export const COINS = [
 
 // Signs: the dad's mailbox (post: false, the mailbox is the sign: no signpost drawn, its own
 // collider within the sign's box), read from the street; the corner sign at the junction facing
-// up the lane; the footpath's beside the blue sign, facing the turning area; the trampoline's at
-// the turning area's rim below north_5's steps.
+// up the lane; the footpath's beside the blue sign, facing the turning area; the trampoline's on
+// the pavement's end short of north_5's steps.
 export const SIGNS = [
   {
     id: 'sparrow_mailbox',
@@ -803,9 +918,9 @@ export const SIGNS = [
   },
   {
     id: 'lane_corner',
-    x: -7800,
+    x: LAMPS[0].x + 416,
     y: GROUND,
-    z: 1250,
+    z: LAMPS[0].z - 442,
     yaw: Math.PI - 1.17,
     pages: ['Sparrow Lane', 'Villas up the hill, the forest at the top and a turning area at the far end.', 'Every garden has something to find!'],
   },
@@ -818,39 +933,37 @@ export const SIGNS = [
   },
   {
     id: 'trampoline',
-    x: 4780,
+    x: 4450,
     y: GROUND,
-    z: -1150,
+    z: -680,
     yaw: -0.96,
     pages: ['Up the steps: a trampoline!', 'Jump onto it and keep the jump button held to bounce sky high.'],
   },
 ];
 
 // Climbable poles (CollisionWorld.addPole), each with the side the camera swings round to
-// (camYaw) while he holds it: the junction's lamppost (looking along the west leg), the turning
-// area's (at the dad's roof), the three flagpoles and the red-leaf tree (the roof ahead); then
-// (the dad: "I want to climb ALL the lampposts") the other five lampposts, each side across its
-// arm (he climbs past its root on his own side of the post), the camera along the street (the
-// bend's looking west to the junction, the straight's three looking east up the lane) or by the
-// double garage (the footpath's). Falls from a pole count from its foot.
+// (camYaw) while he holds it: the junction's lamppost (looking along the west leg), the three
+// flagpoles and the red-leaf tree (the roof ahead); then (the dad: "I want to climb ALL the
+// lampposts") the other four lampposts, each side across its arm (he climbs past its root on his
+// own side of the post), the camera along the street (the bend's looking west to the junction,
+// the straight's two looking east up the lane) or by the double garage (the footpath's). Falls
+// from a pole count from its foot.
 const lampPole = (id, camYaw) => {
   const l = LAMPS.find((p) => p.id === id);
   return { x: l.x, z: l.z, y0: GROUND, y1: LAMP.top, radius: 20, camYaw };
 };
 const flagPole = (id, camYaw) => {
   const f = FLAGPOLES.find((p) => p.id === id);
-  return { x: f.x, z: f.z, y0: f.y0, y1: f.y0 + 1200, radius: 20, camYaw };
+  return { x: f.x, z: f.z, y0: f.y0, y1: f.y0 + (f.h ?? FLAGPOLE.h), radius: 20, camYaw };
 };
 export const POLES = [
   lampPole('L1', -1.17),
-  lampPole('L6', 2.42),
   flagPole('F1', -2.39),
   flagPole('F2', 1.5),
-  flagPole('F3', -1.54),
+  flagPole('F3', Math.PI / 2),
   { x: RED_TREE.x, z: RED_TREE.z, y0: RED_TREE.y0, y1: RED_TREE.y1, radius: RED_TREE.radius, camYaw: Math.PI },
   lampPole('L2', Math.PI / 2),
   lampPole('L3', -Math.PI / 2),
-  lampPole('L4', -Math.PI / 2),
   lampPole('L5', -Math.PI / 2),
   lampPole('L7', 2.51),
 ];

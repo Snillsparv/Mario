@@ -9,10 +9,10 @@
 //   buildProps(kit, layout), propsSteps(kit, layout) (a few builders a step: lane/build.js laneSteps)
 //   waveFlags(geometry, layout) -> update(time)   // lane-cloth's flags waving in the breeze
 //
-// Grey lampposts with a bent arm and a flat lamp head; white flagpoles with a gold knob, flying
-// north_2's blue and yellow cross flag and two long pennants (kit.cloth); the two wheelie bins
+// Grey lampposts with a bent arm and a flat lamp head; white flagpoles with a gold knob, each
+// flying a long blue and yellow pennant (kit.cloth; a cross flag where a pole's flag is 'flag'); the two wheelie bins
 // against the dad's east gable by his car charger; hedges (leafy boxes, a soft crown along their
-// tops) and thuja columns; the big broad-leaved trees at the junction, an apple tree on north_4's
+// tops) and thuja columns; the big broad-leaved trees off the junction, an apple tree on north_4's
 // terrace, a birch behind the corner house, a red-leaved shrub by the double garage; the dad's
 // garden: the corner bed (field stones, red leaves fallen in it) with the small red-leaved
 // tree (several stems, a round crown of several reds about as high as the eaves), the
@@ -21,7 +21,7 @@
 // it is the welcome sign); the turning area's sign at the corner bed (a yellow plate, "Vänd-"
 // over "plats", a no-parking sign: world/lane/real/sign.js lays its face out); the cars on the
 // drives (generic, plate-less: a body, a glass cabin under a roof, four wheels, lights);
-// north_5's basketball hoop and the trampoline in its front
+// north_4's basketball hoop and the trampoline in north_5's front
 // garden; the motorhome (its cab's windscreen and lights, a door, a stripe, the ladder up its
 // back); flower beds on the terraces; TV antennas on the chain houses' ridges; the corner
 // house's picket and rail fences; by the footpath its grey cabinet, the blue round sign (a white
@@ -229,7 +229,7 @@ function flagpole(kit, layout, f) {
   const { paint } = kit.drawn('posts');
   const { FLAGPOLE: F, WIND } = layout;
   const { x, z, y0 } = f;
-  const top = y0 + 1200;
+  const top = y0 + (f.h ?? F.h);
   paint.color(TINT.flag);
   paint.lathe(x, z, [[F.r + 26, y0 - 10], [F.r + 26, y0 + 30], [F.r, y0 + 40], [F.r - 4, top], [0, top]], 8, { flat: true });
   paint.color(TINT.gold);
@@ -276,7 +276,7 @@ export function waveFlags(geo, { FLAGPOLES, FLAGPOLE, WIND }) {
     const k = near.indexOf(Math.min(...near));
     const f = FLAGPOLES[k];
     const u = Math.max(0, (x - f.x) * dx + (z - f.z) * dz - FLAGPOLE.r);
-    reach[i] = (WIND.amp * u) / FLAG_REACH;
+    reach[i] = ((f.limp ?? 1) * WIND.amp * u) / FLAG_REACH;
     phase[i] = WIND.k * u + k * 2.1;
   }
   return (time) => {
@@ -387,7 +387,8 @@ function canopy(kit, x, z, y0, y1, r, tint, seed, n = 4, leaves = kit.leaves) {
   leaves.shade = null;
 }
 
-// A big broad-leaved tree at the junction: a stout trunk (solid) under a lumpy canopy.
+// A big broad-leaved tree off the junction: a stout trunk (solid where Jonas can reach it) under
+// a lumpy canopy.
 function broadTree(kit, layout, t) {
   const drawn = kit.drawn('plants');
   const { wood, solids } = drawn;
@@ -396,7 +397,7 @@ function broadTree(kit, layout, t) {
   wood.color(TINT.trunk);
   wood.lathe(t.x, t.z, [[60, y0 - 10], [45, y0 + 120], [38, trunkTop], [0, trunkTop]], 7, { flat: true });
   canopy(drawn, t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, TINT.canopy, Math.round(t.x * 7 + t.z));
-  solids.solid(prismPolys(t.x, t.z, 45, 8, y0 - 10, trunkTop), 'wood');
+  if (layout.inBounds(t.x, t.z)) solids.solid(prismPolys(t.x, t.z, 45, 8, y0 - 10, trunkTop), 'wood');
 }
 
 // A garden tree (GARDEN_TREES): the apple tree (a short trunk under a broad canopy hung with red
@@ -879,7 +880,7 @@ const boxAt = (f, u, y, w, a, b, d) => {
   return [p[0] - a, p[0] + a, p[1] - b, p[1] + b, p[2] - d, p[2] + d];
 };
 
-// North_5's basketball hoop: a black post standing against its wall, a white board (an orange
+// North_4's basketball hoop: a black post standing against its wall, a white board (an orange
 // square over the ring) held out on a dark arm, the orange ring and a white net hanging from it.
 // The post and the board with its arm are solid (the board's top a perch; nothing under the
 // board's front stops a jump at it).

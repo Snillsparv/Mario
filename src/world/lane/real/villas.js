@@ -78,7 +78,7 @@ function surround(g, f, pts, width, w0, depth) {
 }
 
 // A window standing proud of the wall (no opening: where a garage door's frame would cross it).
-function proudWindow({ paint, glass, core, enamel }, f, u, W, arched) {
+function proudWindow({ paint, glass, core, enamel, tier }, f, u, W, arched) {
   const hw = W.w / 2;
   const pts = outline(u, W.sill, hw, W.h, arched);
   core.rgb(0.1, 0.09, 0.08);
@@ -87,7 +87,7 @@ function proudWindow({ paint, glass, core, enamel }, f, u, W, arched) {
   fan(glass, f, pts, 1.2);
   paint.color(WHITE);
   surround(paint, f, pts, W.frame, 0, 5);
-  sashes(paint, f, u, W, arched, 3);
+  if (tier !== 'low') sashes(paint, f, u, W, arched, 3);
   sill(enamel, f, u, W);
 }
 
@@ -180,15 +180,18 @@ function lining(g, f, pts, w0, w1) {
 // REVEAL deep, the frame and the sashes in it, the glass (the reflection probe's street) over a
 // dim room, a stone sill.
 const REVEAL = 12;
-function windowIn({ paint, glass, core, enamel }, f, u, W, arched) {
+// (On low the frame inside the reveal and the sashes left out: a casing round plain glass.)
+function windowIn({ paint, glass, core, enamel, tier }, f, u, W, arched) {
   const pts = outline(u, W.sill, W.w / 2, W.h, arched);
   paint.color(WHITE);
   surround(paint, f, pts, W.frame, 0, 4);
   paint.color(WHITE, 0.82);
   lining(paint, f, pts, 0, -REVEAL);
-  paint.color(WHITE);
-  surround(paint, f, shrink(pts, 7), 7, -REVEAL, 3);
-  sashes(paint, f, u, W, arched, -REVEAL + 3);
+  if (tier !== 'low') {
+    paint.color(WHITE);
+    surround(paint, f, shrink(pts, 7), 7, -REVEAL, 3);
+    sashes(paint, f, u, W, arched, -REVEAL + 3);
+  }
   glass.color(0x9aa4a8);
   fan(glass, f, pts, -REVEAL - 1);
   room(core, f, pts, -REVEAL - 2);
@@ -275,11 +278,11 @@ function frontDoor({ paint, metal, granite, trim }, f, u, v, tint) {
 // The balcony on a gable (the classic railing box's place and size: solid, its top walkable): a
 // slab, a frame of dark posts and rails round dark glass panes, a capping on top; and (not on
 // low) two boxes of geraniums hung outside its front rail.
-function balcony(kit, f, v0) {
+function balcony(kit, f, v0, u = 0) {
   const { paint, glass, metal } = kit;
-  const [u0, u1, w1, top] = [-300, 300, 150, v0 + 100];
+  const [u0, u1, w1, top] = [u - 300, u + 300, 150, v0 + 100];
   if (kit.tier !== 'low') {
-    for (const [a, b] of [[-250, -95], [95, 250]]) {
+    for (const [a, b] of [[u - 250, u - 95], [u + 95, u + 250]]) {
       metal.color(0x303234);
       fbox(metal, f, a, b, top - 26, top - 5, w1 + 4, w1 + 20);
       kit.core.rgb(0.05, 0.035, 0.02);
@@ -291,7 +294,7 @@ function balcony(kit, f, v0) {
   fbox(paint, f, u0, u1, v0, v0 + 14, 0, w1, 'k');
   metal.color(0x2a2c2e);
   fbox(metal, f, u0 - 3, u1 + 3, top - 6, top, -2, w1 + 3, 'kb');
-  for (const u of [u0, -100, 100, u1]) fbox(metal, f, u - 4, u + 4, v0 + 14, top - 6, w1 - 8, w1, 'ktb');
+  for (const p of [u0, u - 100, u + 100, u1]) fbox(metal, f, p - 4, p + 4, v0 + 14, top - 6, w1 - 8, w1, 'ktb');
   for (const s of [-1, 1]) fbox(metal, f, s < 0 ? u0 : u1 - 8, s < 0 ? u0 + 8 : u1, v0 + 14, top - 6, 0, w1 - 8, 'ktb');
   glass.color(0x5a6670);
   const pane = (a, b, c, d) => glass.quad(a, b, c, d);
@@ -316,7 +319,7 @@ function villaHouse(kit, L, h) {
   if (renderTop < wallH) {
     for (const u of h.windows ?? []) faces.front.push([u, WIN, false]);
     for (const u of h.arches ?? []) faces.front.push([u, WIN, true]);
-    for (const name of ['back', 'left', 'right']) faces[name].push([0, WIN, false]);
+    for (const name of h.sides ?? ['back', 'left', 'right']) faces[name].push([0, WIN, false]);
   } else {
     const W = { ...WIN, sill: wallH - 230 };
     for (const u of [-550, 0, 550]) faces.front.push([u, W, false]);
@@ -350,7 +353,7 @@ function villaHouse(kit, L, h) {
   const front = F.face('front').f;
   for (const u of h.bays ?? []) bay(kit, front, u, WIN);
   if (door) frontDoor(kit, front, door.u, door.v, h.doorTint ?? 0xe8e4dc);
-  if (h.balcony) balcony(kit, F.face('left').f, renderTop + 140);
+  if (h.balcony !== undefined) balcony(kit, F.face('left').f, renderTop + 140, h.balcony);
 }
 
 export function villaHouses(kit, L) {
@@ -383,7 +386,7 @@ export function garageDoors({ paint, metal }, L) {
   }
 }
 
-export function hipTrim({ metal, tiles }, L) {
+export function hipTrim({ metal, tiles, tier }, L) {
   for (const h of L.HOUSES) {
     if (h.kit !== 'villa') continue;
     const F = frameOf(h);
@@ -407,7 +410,7 @@ export function hipTrim({ metal, tiles }, L) {
       const out = norm([c[0] - mid[0], 0, c[2] - mid[2]]);
       const at = (s) => add(add(s, mul(out, 10)), [0, -16, 0]);
       metal.tube(at(sub(p, mul(e, 6))), at(add(q, mul(e, 6))), 9, 9, 6, { a0: 0, arc: Math.PI });
-      metal.tube(at(sub(p, mul(e, 6))), at(add(q, mul(e, 6))), 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true });
+      if (tier !== 'low') metal.tube(at(sub(p, mul(e, 6))), at(add(q, mul(e, 6))), 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true }); // (its inside, not on low)
     }
     for (const s of [-1, 1]) {
       const wall = F.at(s * (a - 20), 0, b + 7);

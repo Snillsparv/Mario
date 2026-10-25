@@ -7,9 +7,9 @@
 //                         // trim, lamp, tail, metal, contact; a cluster's own carPaint@k and
 //                         // carGlass@k where the kit has them: each cluster's paint and glass
 //                         // reflect its own probe)
-//   carClusters(L) -> [{ cars, at }]   // the parked cars in clusters (the dad's drive, the west
-//                         // link, the north drives, the east end: cars on the same side of the
-//                         // street within CLUSTER of another of theirs), each with its
+//   carClusters(L) -> [{ cars, at }]   // the parked cars in four clusters (clusterOf: the
+//                         // dad's drive, the west link, the north drives, the east end), each
+//                         // with its
 //                         // reflection probe's place (world/lane local:
 //                         // over the cluster's middle, a little over its roofs)
 //   carFrame(L, c) -> { y0, R, axles, at(u, y, w) }   // a car's ground, wheel radius, axles
@@ -70,7 +70,12 @@ const WHEEL = 0.9; // the wheels to the bodies' scale (the classic ones are a si
 // crossover's wheel is ~0.7 of its bonnet's height across)
 const SQUASH = 1.2; // the tyre's flattening under the car's weight (its patch on the drive)
 const ARCH = 7; // the arch's clearance round the tyre
-const CLUSTER = 2800; // cars nearer than this to another of a cluster's share its probe
+// A car's probe cluster (W2: by place, not by distance: on the 1.3 plan no one distance keeps
+// the four compact; a cluster spanning the street drew its cars in more views and shadows):
+// the dad's drive, the link's (the dad's side west of it), the north drives (north_4's van
+// with them: in view wherever they are), the east end (the estate on the double garage's
+// forecourt).
+const clusterOf = (L, c) => (c.z > 0 ? (c.x >= L.DAD_DRIVE.x0 ? 0 : 1) : c.x < L.FORECOURT.x0 ? 2 : 3);
 const PROBE_OVER = 40; // a cluster's probe this far over its highest roof
 
 const TYRE = [0.026, 0.026, 0.028];
@@ -95,15 +100,9 @@ export function carFrame(L, c) {
 }
 
 export function carClusters(L) {
-  // Single linkage: a car joins the cluster of any car nearer than CLUSTER.
-  const of = L.CARS.map((_, i) => i);
-  const root = (i) => (of[i] === i ? i : (of[i] = root(of[i])));
-  L.CARS.forEach((a, i) => L.CARS.forEach((b, j) => {
-    if (j > i && a.z > 0 === b.z > 0 && Math.hypot(a.x - b.x, a.z - b.z) < CLUSTER) of[root(j)] = root(i);
-  }));
   const groups = new Map();
-  L.CARS.forEach((_, i) => {
-    const r = root(i);
+  L.CARS.forEach((c, i) => {
+    const r = clusterOf(L, c);
     if (!groups.has(r)) groups.set(r, []);
     groups.get(r).push(i);
   });
@@ -152,7 +151,9 @@ function car(kit, L, c, probe) {
   const K = L.CAR_KINDS[c.kind];
   const S = STYLE[c.style ?? c.kind];
   const EV = !!S.ev;
-  const D = LOD[kit.tier] ?? LOD.high;
+  // (On high the cars across the street, on the north drives, at mid's detail: W2, the plan's
+  // lever for the north side's cars, the van now on north_4's drive in more views.)
+  const D = LOD[kit.tier === 'high' && c.z < 0 ? 'mid' : kit.tier] ?? LOD.high;
   const { y0, R, axles, at: W0, fw, ac } = carFrame(L, c);
   const paint = kit[`carPaint@${probe}`] ?? kit.carPaint;
   const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;

@@ -158,7 +158,7 @@ export function cabinet({ steel, metal }, L) {
 export function treeLine(L, tier) {
   const R = makeRng(0x5ba79);
   const count = tier === 'low' ? 60 : 110;
-  const [cx, cz] = [-800, -200];
+  const [cx, cz] = [-1050, -200];
   const matrices = new Float32Array(count * 16);
   const colors = new Float32Array(count * 3);
   let n = 0;

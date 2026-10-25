@@ -154,21 +154,23 @@ function villa(kit, h) {
     for (const u of h.windows ?? []) villaWindow(glazed, front, u, W, false);
     for (const u of h.arches ?? []) villaWindow(glazed, front, u, W, true);
     for (const u of h.bays ?? []) bayWindow(walls, front, u, W);
-    // A window or two on the back and the sides.
-    for (const name of ['back', 'left', 'right']) villaWindow(glazed, F.face(name).frame, 0, W, false);
+    // A window on the back and the sides (`sides`: not where the villa's other block stands).
+    for (const name of h.sides ?? ['back', 'left', 'right']) villaWindow(glazed, F.face(name).frame, 0, W, false);
   } else {
     // Rendered to the eaves (the west end's): a row of windows over the garage doors.
     for (const u of [-550, 0, 550]) villaWindow(glazed, front, u, { ...W, sill: wallH - 230 }, false);
     for (const name of ['left', 'right']) villaWindow(glazed, F.face(name).frame, 0, { ...W, sill: wallH - 230 }, false);
   }
-  if (h.balcony) {
-    // A dark railing box on the left (west) gable at the upper floor, solid (its floor more than
-    // 300 over the side yard: no low ceiling for the camera).
+  if (h.balcony !== undefined) {
+    // A dark railing box on the left (west) gable at the upper floor, its middle `balcony` along
+    // the face (toward the front), solid (its floor more than 300 over the side yard: no low
+    // ceiling for the camera).
     const { frame: f } = F.face('left');
     const v0 = renderTop + 140;
+    const u = h.balcony;
     paint.color(TINT.railing);
-    paint.solid(localBoxPolys(f, -300, 300, v0, v0 + 100, 0, 150, { bottom: true }), { faceShade: (n) => (n[1] < -0.5 ? 0.5 : 1) });
-    kit.solids.solid(localBoxPolys(f, -300, 300, v0, v0 + 100, -10, 150, { bottom: true }), 'stone');
+    paint.solid(localBoxPolys(f, u - 300, u + 300, v0, v0 + 100, 0, 150, { bottom: true }), { faceShade: (n) => (n[1] < -0.5 ? 0.5 : 1) });
+    kit.solids.solid(localBoxPolys(f, u - 300, u + 300, v0, v0 + 100, -10, 150, { bottom: true }), 'stone');
   }
   hipRoof(kit, F, h, ridge, tan);
   for (const u of h.roofWindows ?? []) {

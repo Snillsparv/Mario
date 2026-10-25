@@ -3,22 +3,20 @@
 // round it) and by the realistic look's worker (world/lane/real/garden.js: its granite kerbs
 // along the very same edges).
 //
-//   roadPieces(L, { round }?) -> [outline]   // the carriageway (on past the junction into the
-//                                            // fog), the turning area, the side road; round: the
-//                                            // turning area drawn round (TURN_ROUND sides at the
-//                                            // mean of the collider's 16-gon's radii, so it
-//                                            // strays at most ~11 from it) instead of its 16-gon
+//   roadPieces(L) -> [outline]               // the carriageway (on past the junction into the
+//                                            // fog), the turning area's apron (APRON.pieces:
+//                                            // its rounded rectangle and the quads under its
+//                                            // north kerb's S), the side road
 //   band(line, from, to) -> [quad]           // a band along a polyline (below)
 //   normals(outline) -> [[nx, nz]]           // each edge's outward unit normal (convex, either
 //                                            // winding)
 //   inside(outline, x, z) -> boolean         // inside a convex outline (either winding)
 //   polyArea(outline) -> signed area         // positive counter-clockwise (x right, z up)
 //   kerbRuns(L, road) -> [{ p, q, n, kind }] // the kerbs (below)
+//   terraceSpans(L) -> [{ plot, spans }]     // the terraces' fronts (below)
 //   bedStones(L) -> [{ x, y, z, s, k, a, pink }]   // the dad's corner bed's field stones (below)
 
 import { makeRng } from '../../../core/math.js';
-
-export const TURN_ROUND = 64;
 
 export function polyArea(poly) {
   let a = 0;
@@ -76,15 +74,9 @@ export function band(line, from, to) {
   return quads;
 }
 
-export function roadPieces({ ROAD, ROAD_DRAWN, TURN, SIDE_ROAD: S }, { round = false } = {}) {
+export function roadPieces({ ROAD, ROAD_DRAWN, APRON, SIDE_ROAD: S }) {
   const pieces = band(ROAD_DRAWN, -ROAD.half, ROAD.half);
-  const sides = round ? TURN_ROUND : TURN.sides;
-  const r = round ? (TURN.r * (1 + Math.cos(Math.PI / TURN.sides))) / 2 : TURN.r;
-  const disc = Array.from({ length: sides }, (_, i) => {
-    const a = ((i + 0.5) / sides) * Math.PI * 2;
-    return [TURN.x + Math.sin(a) * r, TURN.z + Math.cos(a) * r];
-  });
-  pieces.push(disc);
+  pieces.push(...APRON.pieces);
   const [dx, dz] = S.dir;
   const end = [S.x + dx * S.len, S.z + dz * S.len];
   pieces.push(...band([[S.x - dx * 300, S.z - dz * 300], end], -S.half, S.half));
@@ -95,19 +87,25 @@ export function roadPieces({ ROAD, ROAD_DRAWN, TURN, SIDE_ROAD: S }, { round = f
 // every edge of every piece clipped exactly to where it is the road's edge (outside every other
 // piece, a hair out from it: no stub of kerb into the road where two pieces meet, no gap at a
 // corner), then split where a drive's or the dad's bed's span begins or ends: { p, q, n (the
-// edge's outward normal), kind: 'kerb' (granite), 'drop' (dropped flush at a drive) or 'bed' (no
-// kerb: the dad's corner bed's field stones edge the asphalt) }.
+// edge's outward normal), kind: 'kerb' (granite: the north side and round the apron's north and
+// east), 'drop' (dropped flush at a drive or the double garage's forecourt), 'bed' (no kerb: the
+// dad's corner bed's field stones edge the asphalt) or 'edge' (no kerb: along the whole south
+// side, the edges facing south, the asphalt's bevelled edge up to the lawns) }.
 const KERB_SPANS = (L) => [
   { x0: L.DAD_DRIVE.x0, x1: L.DAD_DRIVE.x1, south: true, kind: 'drop' },
   { x0: L.LINK_DRIVE.x0, x1: L.LINK_DRIVE.x1, south: true, kind: 'drop' },
   ...L.PLOTS_N.map((p) => ({ x0: p.drive[0], x1: p.drive[1], south: false, kind: 'drop' })),
-  { x0: L.TURN.x + 800, x1: L.TURN.x + 2000, z0: -900, z1: 150, kind: 'drop' },
+  { x0: L.FORECOURT.x0 - 10, x1: L.FORECOURT.x0 + 10, z0: L.FORECOURT.z0, z1: L.FORECOURT.z1, kind: 'drop' },
   { x0: L.BED.x1 - L.BED.rx, x1: L.BED.x1, south: true, kind: 'bed' },
+  // (The apron's south-west corner rounds onto south_2's lawn: its edge, like the south edge's.)
+  { x0: L.APRON.x0, x1: L.APRON.x0 + L.APRON.sw, z0: L.APRON.z1 - L.APRON.sw, z1: L.APRON.z1, kind: 'edge' },
 ];
+// The edges facing south (an outward normal's z over this) have no kerb.
+const SOUTH_FACING = 0.5;
 
 export function kerbRuns(L, road) {
   const spans = KERB_SPANS(L);
-  const kindAt = (x, z) => spans.find((d) => x >= d.x0 && x <= d.x1 && (d.z0 !== undefined ? z >= d.z0 && z <= d.z1 : d.south === z > 0))?.kind ?? 'kerb';
+  const kindAt = (x, z, n) => spans.find((d) => x >= d.x0 && x <= d.x1 && (d.z0 !== undefined ? z >= d.z0 && z <= d.z1 : d.south === z > 0 && Math.abs(z) < 2000))?.kind ?? (n[1] > SOUTH_FACING ? 'edge' : 'kerb');
   const cuts = [...new Set(spans.flatMap((d) => (d.z0 !== undefined ? [d.z0, d.z1] : [])).concat(0))];
   const xs = [...new Set(spans.flatMap((d) => [d.x0, d.x1]))];
   const runs = [];
@@ -155,7 +153,7 @@ export function kerbRuns(L, road) {
         for (let k = 0; k + 1 < marks.length; k++) {
           const [u0, u1] = [marks[k], marks[k + 1]];
           if (u1 - u0 < 1e-9) continue;
-          const kind = kindAt(...at((u0 + u1) / 2));
+          const kind = kindAt(...at((u0 + u1) / 2), n);
           if (run && run.kind === kind) run.u1 = u1;
           else {
             if (run) runs.push(run);
@@ -168,6 +166,34 @@ export function kerbRuns(L, road) {
     });
   }
   return runs.map(({ p, q, n, kind }) => ({ p, q, n, kind }));
+}
+
+// The terraces' fronts (both builds: lane/build.js terraces and the lawn's holes, the realistic
+// coping, hardware.js): per plot (west to east), its front from x0 to x1 cut where the wall's line
+// bends (NORTH.wall's points) and at its steps and its drive: { plot, spans: [{ a, b, za, zb,
+// kind }] }, kind 'wall' (its front on the wall's line, za at a and zb at b), 'steps' or 'drive'
+// (za, zb: the wall's line at their ends).
+export function terraceSpans(L) {
+  const bends = L.NORTH.wall.map(([x]) => x);
+  return L.PLOTS_N.map((plot) => {
+    const cuts = [[...plot.steps, 'steps'], [...plot.drive, 'drive']].sort((p, q) => p[0] - q[0]);
+    const spans = [];
+    const span = (a, b, kind) => {
+      if (b - a >= 1) spans.push({ a, b, za: L.wallZAt(a + 0.01), zb: L.wallZAt(b - 0.01), kind });
+    };
+    const wall = (a, b) => {
+      const xs = [a, ...bends.filter((x) => x > a && x < b), b];
+      for (let i = 0; i + 1 < xs.length; i++) span(xs[i], xs[i + 1], 'wall');
+    };
+    let x = plot.x0;
+    for (const [a, b, kind] of cuts) {
+      wall(x, a);
+      span(a, b, kind);
+      x = b;
+    }
+    wall(x, plot.x1);
+    return { plot, spans };
+  });
 }
 
 // The dad's corner bed's field stones (both looks draw them here: lane/props.js dadsGarden,

@@ -3,8 +3,9 @@
 // (world/lane/real/detail.js) in place of everything lane/houses.js chain() draws for them (its
 // collider stays the classic one: one convex solid to the eaves and the gable roof).
 //
-//   chainHouse(kit, L, h, { tiled })   // kit: detail.js's Geo per material; tiled: its roof in
-//                                      // real tile courses (else the normal-mapped tile set)
+//   chainHouse(kit, L, h, { tiled, seg })   // kit: detail.js's Geo per material; tiled: its roof in
+//                                      // real tile courses (else the normal-mapped tile set),
+//                                      // seg segments a roll (TILE_SEG's tier's by default)
 //   tileCourses(g, e0, e1, up, len, seg)   // pan tile courses on one roof slope (below)
 //   frameOf(h) -> { at(u, y, w), dir(du, dy, dw), face(name) -> { f, half } }   // a house's own
 //                                      // frame (lane/houses.js frame): f a wall frame
@@ -85,6 +86,9 @@ const ROOF = { overhang: 60, thick: 18, fascia: 22 };
 const TILE = { COURSE: 54, WAVE: 45, NOSE: 3.2, ROLL: 5.5, LAP: 6, SINK: 7.2 };
 const TOP_GAP = 10;
 export const TILE_SEG = { high: 5, mid: 4, low: 0 };
+// A ridge tile's length (W2: ~33 cm at the street's 1.5, the 1.3 plan's longer ridges as many
+// joints as before).
+const RIDGE_TILE = 50;
 
 export function wallWear(L, f, top, len = 1) {
   const y0 = f.at(0, 0, 0)[1];
@@ -125,7 +129,7 @@ function band(g, f, u0, u1, v0, v1, w, holes, wear = null) {
   g.wearAt = null;
 }
 
-export function chainHouse(kit, L, h, { tiled = false } = {}) {
+export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] ?? 0 } = {}) {
   const F = frameOf(h);
   const y0 = h.y0 ?? 22;
   const wallH = h.eave - y0;
@@ -188,7 +192,7 @@ export function chainHouse(kit, L, h, { tiled = false } = {}) {
   }
   if (dad) windowAt(kit, front, side, { bars, mullion: false, curtains: false });
   else if (typeof h.door === 'number') doorAt(kit, front, h.door);
-  gableRoof(kit, F, h, tiled);
+  gableRoof(kit, F, h, tiled, seg);
 }
 
 // A window in the opening o of wall frame f (its glass 10 in, the casing proud).
@@ -335,14 +339,13 @@ export function tileCourses(g, e0, e1, up, len, seg) {
 // The gable roof along u (lane/houses.js gableRoof's shape): its slopes (tile courses over a
 // flat shadow stand-in, or the tile set), soffits, fascias, gutters and downpipes, barge boards
 // and verge rolls, the ridge cap.
-function gableRoof(kit, F, h, tiled) {
+function gableRoof(kit, F, h, tiled, seg) {
   const o = h.overhang ?? ROOF.overhang;
   const [A, B] = [h.w / 2, h.d / 2];
   const tan = (h.ridge - h.eave) / B;
   const lo = h.eave - o * tan;
   const y0 = h.y0 ?? 22;
   const T = ROOF.thick;
-  const seg = TILE_SEG[kit.tier] ?? 0;
   for (const s of [-1, 1]) {
     const edge = s * (B + o);
     const out = F.dir(0, 0, s);
@@ -407,9 +410,9 @@ function gableRoof(kit, F, h, tiled) {
   kit.tiles.color(h.roof, 0.9);
   const [ra, rb] = [F.at(-A - o - 4, h.ridge - 10, 0), F.at(A + o + 4, h.ridge - 10, 0)];
   kit.tiles.tube(ra, rb, 12, 12, 8, { a0: Math.PI, arc: Math.PI, caps: true });
-  // The ridge tiles' joints: thin dark rings every 40.
+  // The ridge tiles' joints: thin dark rings every RIDGE_TILE.
   const run = Math.hypot(...sub(rb, ra));
   const ex = norm(sub(rb, ra));
   kit.paint.color(0x0a0a0a);
-  for (let x = 40; x < run; x += 40) kit.paint.tube(add(ra, mul(ex, x)), add(ra, mul(ex, x + 2)), 12.4, 12.4, 8, { a0: Math.PI, arc: Math.PI });
+  for (let x = RIDGE_TILE; x < run; x += RIDGE_TILE) kit.paint.tube(add(ra, mul(ex, x)), add(ra, mul(ex, x + 2)), 12.4, 12.4, 8, { a0: Math.PI, arc: Math.PI });
 }

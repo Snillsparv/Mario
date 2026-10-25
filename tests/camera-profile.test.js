@@ -66,8 +66,11 @@ function hash(numbers) {
 
 // The poses the controller gave before profiles existed (650da15), per place. (The lane's re-pinned
 // in the R fixes, deliberately: its run jumps at the lamppost L4, a solid prism then, a climbable
-// pole since every lamppost is one, and grabs it; with L4 left solid it still gives 82c6f121.)
-const PINNED = { grounds: 'b3b1beef', hall: '3c74e247', lane: 'e6eee5ff' };
+// pole since every lamppost is one, and grabs it; with L4 left solid it still gives 82c6f121.
+// Re-pinned again in W2, deliberately: the lane's plan drawn 1.3 times larger to the aerial's
+// scale, its run from the dad's door crosses other ground; the controller is unchanged, the
+// grounds' and the hall's pins hold.)
+const PINNED = { grounds: 'b3b1beef', hall: '3c74e247', lane: '7263d9be' };
 
 test('without a profile the controller reads cameraConfig: the scripted runs on the grounds, in the hall and in the lane give the poses pinned before profiles existed', () => {
   for (const name of Object.keys(PLACES)) {

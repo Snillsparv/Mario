@@ -59,8 +59,8 @@ export function lampposts({ steel, paint, gloss }, L) {
 
 export function flagpoles({ steel, paint, gloss }, L) {
   const F = L.FLAGPOLE;
-  for (const { x, z, y0 } of L.FLAGPOLES) {
-    const top = y0 + 1200;
+  for (const { x, z, y0, h } of L.FLAGPOLES) {
+    const top = y0 + (h ?? F.h);
     paint.color(WHITE);
     lathe(paint, x, z, [[F.r + 22, y0 - 10], [F.r + 22, y0 + 40], [F.r + 8, y0 + 50], [F.r, y0 + 60], [F.r - 5, top], [F.r - 5.5, top + 2], [0, top + 3]], 16);
     gloss.color(GOLD);
@@ -80,7 +80,8 @@ export function flagpoles({ steel, paint, gloss }, L) {
   }
 }
 
-export function fences({ boards }, L) {
+// (On low the pickets on the street side of the rails only, without their narrow ends.)
+export function fences({ boards, tier }, L) {
   const y0 = L.GROUND;
   for (const { house, kind, from, to, h } of L.FENCES) {
     const F = frameOf(L.HOUSES.find((o) => o.id === house));
@@ -91,7 +92,7 @@ export function fences({ boards }, L) {
     const n = [-d[2], 0, d[0]];
     const along = (t, s, y) => [a[0] + d[0] * t + n[0] * s, y, a[2] + d[2] * t + n[2] * s];
     // A box along the fence from t0 to t1, s0 to s1 across it, y0 to y1.
-    const piece = (t0, t1, s0, s1, ya, yb, pointed = false) => {
+    const piece = (t0, t1, s0, s1, ya, yb, pointed = false, ends = true) => {
       const c = (t, s, y) => along(t, s, y);
       const tm = (t0 + t1) / 2;
       const peak = pointed ? yb + (t1 - t0) * 0.6 : yb;
@@ -105,8 +106,10 @@ export function fences({ boards }, L) {
           else boards.tri(tri[1], tri[0], tri[2]);
         }
       }
-      boards.quad(c(t0, s0, ya), c(t0, s1, ya), c(t0, s1, yb), c(t0, s0, yb), { shade: 0.8 });
-      boards.quad(c(t1, s1, ya), c(t1, s0, ya), c(t1, s0, yb), c(t1, s1, yb), { shade: 0.8 });
+      if (ends) {
+        boards.quad(c(t0, s0, ya), c(t0, s1, ya), c(t0, s1, yb), c(t0, s0, yb), { shade: 0.8 });
+        boards.quad(c(t1, s1, ya), c(t1, s0, ya), c(t1, s0, yb), c(t1, s1, yb), { shade: 0.8 });
+      }
       if (pointed) {
         boards.quad(c(t0, s1, yb), c(tm, s1, peak), c(tm, s0, peak), c(t0, s0, yb));
         boards.quad(c(tm, s1, peak), c(t1, s1, yb), c(t1, s0, yb), c(tm, s0, peak));
@@ -118,8 +121,10 @@ export function fences({ boards }, L) {
     for (let t = 0; t <= len + 1; t += 200) piece(Math.min(t, len) - 6, Math.min(t, len) + 6, -6, 6, y0 - 5, y0 + h + 4);
     if (kind === 'picket') {
       // Pickets 8 wide with 10 between, either side of the rails.
+      // (s < 0: the side away from the house, its street side.)
+      const low = tier === 'low';
       for (let t = 4; t + 8 < len; t += 18) {
-        for (const s of [-1, 1]) piece(t, t + 8, s > 0 ? 4 : -6.5, s > 0 ? 6.5 : -4, y0 + 2, y0 + h - 6, true);
+        for (const s of low ? [-1] : [-1, 1]) piece(t, t + 8, s > 0 ? 4 : -6.5, s > 0 ? 6.5 : -4, y0 + 2, y0 + h - 6, true, !low);
       }
     }
   }
