@@ -518,10 +518,10 @@ test('?area=lane: Sparrow Lane, its card and sky, its draw calls from the arriva
     const built = await page.evaluate(() => window.__game.areas.buildMs.lane);
     // From the arrival and four views over the course (with everything in: the cars, the flags,
     // the trampoline, the birds and butterflies): fewer than 55 draw calls each. (Since W2 from
-    // the layout's anchors: the carport's roof; on the apron 200 in from the straight's end,
+    // the layout's anchors: the garage row's roof (W4); on the apron 200 in from the straight's end,
     // looking east over it; in the bend's middle, looking along it to the west leg; on the west
     // leg 1200 short of the side road's mouth, looking at the junction and L1.)
-    const views = { arrival: null, roof: [1750, 370, 2300, -Math.PI / 2], ...laneViews() };
+    const views = { arrival: null, roof: [1750, lane.CARPORT.top, lane.CARPORT.z0 + 140, -Math.PI / 2], ...laneViews() };
     for (const [name, at] of Object.entries(views)) {
       if (at) {
         await page.evaluate(([x, y, z, yaw]) => {

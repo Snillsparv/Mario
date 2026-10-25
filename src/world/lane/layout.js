@@ -343,7 +343,9 @@ DAD.brick = { front: [[uS(DAD.x0, DAD.x1, DAD.x1), uS(DAD.x0, DAD.x1, 1330)], [u
 DAD.gableEnds = true; // white brick to the eaves at both ends
 DAD.pipes = { front: [-1, 1], back: [] }; // (the back eave's run into the wings)
 DAD.eaveLip = 20; // (its roof is steeper than a ledge's top: lane/houses.js chain())
-DAD.charger = { x: DAD.x1, z: 1500 };
+// The car charger on the east gable near its back corner (W4: under the gable's lamp, as photos
+// 36/37 have it), and the round black bulkhead lamps on the two gables facing the drive (GABLE_LAMPS).
+DAD.charger = { x: DAD.x1, z: 2125 };
 // The landing in front of the door: concrete, `top` over the lawn (a step he walks up), a row
 // of cobbles along its front edge; the blue glazed pot on its east end.
 export const LANDING = { x0: 895, x1: 1150, z0: 1190, z1: DAD.z0, top: GROUND + DAD.door.sill };
@@ -370,44 +372,50 @@ export const DAD_WINGS = [
 ];
 
 // Its neighbours along the chain, west to east: the yellow house (south_1, forward of the dad's)
-// and the flat-roofed link between it and the dad's (set back); the carport between the dad's
+// and the flat-roofed link between it and the dad's (set back); the garage row between the dad's
 // and the yellow house to the east (south_2, set back, its wing behind its east end).
 export const SOUTH_1 = chain('south_1', -4040, -1430, 905, 2090, { boards: 0xd8b65e, roof: 0x2a2a2c, door: uS(-4040, -1430, -2434), windows: [-3706, -3236, -2834, -2033, -1699].map((x) => uS(-4040, -1430, x)), gableEnds: true });
 export const LINK = { id: 'link', x0: SOUTH_1.cx + SOUTH_1.w / 2, x1: DAD.x0, z0: 1425, z1: 2830, top: 370, slab: 25, boards: 0xd8b65e };
-export const CARPORT = { id: 'carport', x0: 1600, x1: 2766, z0: 1800, z1: 2650, top: 370, slab: 25, back: 0xd8b65e };
-// The store room under the carport's roof (the garage row in the photos; objects/laneBoss/
-// LaneGarage.js breaks its doors): its door wall under the roof's front edge (`wall`: its face
-// toward the drive, `thick` deep, up to the slab's underside `under`), a deep dark fascia hanging
-// from the roof's edge down to `fascia`, the room behind the wall back to the carport's back wall
-// (lined with bare boards `inside`, `lining` in from the gables). Along the wall, west (the dad's
-// gable) to east (south_2's): `fixed` boards [x0, x1, tint index] and the four leaves (`leaves`:
-// x0..x1, tint index, `hinge` side -1 west / +1 east, `handle`, `sign`; each `door` high, its
-// collider named garage_0 .. garage_3 in this order): a dark brown door, the red door (seen
-// between the two cars from the drive), the dark brown double doors (a small blank sign high on
-// the left leaf seen from the drive), and the grey downpipe (`pipe`: its x) down the red strip.
-// Inside, along the walls, the room's things' boxes (`props`: x0, x1, z0, z1, each solid up to
-// `propTop`, walls only: never a floor under the low ceiling): a workbench under a tool board,
-// steel shelves, winter tyres, moving boxes, a lawn mower, a bike, garden tools (in this order:
-// world/lane/garage.js ROOM draws them, with the fluorescent tube and the 1-up's place); five
-// coins (COINS).
+// The garage row between the dad's east wing and south_2 (W4: as photos 33-37 have it): a flat
+// roof from his gable's back corner (z0, the fascia's face, level with his back wall) back over
+// the store room, `top` just under his east wing's eave (its roof meets the wing's), no open bay:
+// the door wall right behind the fascia. (Its id stays the carport's.)
+export const CARPORT = { id: 'carport', x0: 1600, x1: 2766, z0: DAD.z1, z1: 3000, top: 392, slab: 25, back: 0xd8b65e };
+// The store room under the garage row's roof (objects/laneBoss/LaneGarage.js breaks its doors):
+// its door wall just behind the roof's front edge (`wall`: its face toward the drive, `thick`
+// deep, up to the slab's underside `under`), a thin dark fascia board along the roof's edge down
+// to `fascia` (the doors' tops), the room behind the wall back to the row's back wall (lined with
+// bare boards `inside`, `lining` in from the gables). Along the wall, west (the dad's wing) to east
+// (south_2's gable), as photos 36/37 have them: `fixed` boards [x0, x1, tint index] and the four
+// leaves (`leaves`: x0..x1, tint index, `hinge` side -1 west / +1 east, `handle`, `sign`; each
+// `door` high, its collider named garage_0 .. garage_3 in this order): a wide dark brown door
+// (behind the dad's car, the climber over the board west of it), the red door (between the two
+// cars from the drive), the red strip with the grey downpipe (`pipe`: its x), the dark brown
+// double doors (behind the SUV, a small blank sign high on the east leaf) and the yellow end
+// panel by south_2. Inside, along the walls, the room's things' boxes (`props`: x0, x1, z0, z1,
+// each solid up to `propTop`, walls only: never a floor under the low ceiling): a workbench under
+// a tool board, steel shelves, winter tyres, moving boxes, a lawn mower, a bike, garden tools (in
+// this order: world/lane/garage.js ROOM draws them, with the fluorescent tube and the 1-up's
+// place); five coins (COINS).
+const ROOM_Z = 350; // (W4: the room moved back with its wall, everything in it with it)
 export const GARAGE = {
-  wall: 1950,
+  wall: CARPORT.z0 + 40,
   thick: 20,
-  door: GROUND + 280,
+  door: GROUND + 318,
   under: CARPORT.top - CARPORT.slab,
-  fascia: GROUND + 258,
+  fascia: GROUND + 318,
   lining: 10,
   tints: [0x3e2c24, FALU, CARPORT.back], // dark brown, the house's Falu red, yellow
   inside: 0x5e4e3e, // the lining's bare boards
-  fixed: [[1600, 1720, 0], [1870, 2010, 0], [2155, 2190, 1], [2470, CARPORT.x1, 2]],
+  fixed: [[1600, 1712, 0], [2187, 2242, 1], [2606, CARPORT.x1, 2]],
   leaves: [
-    { x0: 1720, x1: 1870, tint: 0, hinge: -1, handle: 1 },
-    { x0: 2010, x1: 2155, tint: 1, hinge: 1, handle: 1 },
-    { x0: 2190, x1: 2330, tint: 0, hinge: -1 },
-    { x0: 2330, x1: 2470, tint: 0, hinge: 1, handle: 1, sign: 1 },
+    { x0: 1712, x1: 2030, tint: 0, hinge: -1, handle: 1 },
+    { x0: 2030, x1: 2187, tint: 1, hinge: 1, handle: 1 },
+    { x0: 2242, x1: 2424, tint: 0, hinge: -1 },
+    { x0: 2424, x1: 2606, tint: 0, hinge: 1, handle: 1, sign: 1 },
   ],
-  pipe: 2166,
-  props: [[1990, 2190, 2560, 2630], [2230, 2480, 2575, 2630], [2400, 2480, 2380, 2460], [2405, 2485, 2470, 2550], [1640, 1770, 2420, 2590], [1612, 1650, 2030, 2290], [1612, 1640, 1985, 2020]],
+  pipe: 2196,
+  props: [[1990, 2190, 2560, 2630], [2230, 2480, 2575, 2630], [2400, 2480, 2380, 2460], [2405, 2485, 2470, 2550], [1640, 1770, 2420, 2590], [1612, 1650, 2030, 2290], [1612, 1640, 1985, 2020]].map(([x0, x1, z0, z1]) => [x0, x1, z0 + ROOM_Z, z1 + ROOM_Z]),
   propTop: GROUND + 218,
 };
 export const SOUTH_2 = chain('south_2', 2770, 5410, 1980, 3080, { boards: 0xd8b65e, roof: 0x3a302c, door: uS(2770, 5410, 4370), windows: [3250, 3810, 4930].map((x) => uS(2770, 5410, x)), gableEnds: true });
@@ -424,10 +432,12 @@ export const SOUTH_2_WING = { ...chain('south_2_wing', 4668, 5435, SOUTH_2.cz + 
 // middle, its trunk a climbable pole; the turning area's sign at its corner by the asphalt:
 // TURN_SIGN), the ivy mound over the white pier at the house's north-east corner (IVY: drawn
 // only), the rhododendron out from the west pier, the blue pot on the landing; his drive
-// (asphalt) east of the house to the carport; the two wheelie bins against the house's east gable
-// (BINS: their middles; BIN: the body's size, its lid's top at `top`) by the car charger
-// (DAD.charger); behind the house between the wings a patio of grey slabs. The link's own short
-// drive in front of its garage door.
+// (asphalt, DAD_DRIVE) east of the house from the street to the garage row's doors, gable to
+// south_2 (its west edge bending out round the ivy: DRIVE_NOTCH); the two big wheelie bins against
+// the front of the house's east gable (BINS: their middles; BIN: the body's size, its lid's top at
+// `top`), the car charger near the gable's back corner (DAD.charger) under its lamp (GABLE_LAMPS),
+// a climber up the corner (CLIMBER: drawn only); behind the house between the wings a patio of
+// grey slabs. The link's own short drive in front of its garage door.
 export const DAD_PATH = { x0: 885, x1: 1125, z0: SOUTH_EDGE, z1: LANDING.z0 };
 // The bed: a rectangle x0..x1 from the street's edge (z0) back to z1, its back corners rounded
 // (r), its soil `raise` over the lawn (under the knee: walked onto from the road), field stones
@@ -468,19 +478,48 @@ export const IVY = { x: 1520, z: 1205, rx: 210, rz: 130, h: 420 };
 export const ROSE = { x: 745, z: 525, r: 70, h: 250 };
 export const POT = { x: 1118, z: 1292 };
 export const DAD_DRIVE = { x0: DAD.x1, x1: CARPORT.x1, z0: SOUTH_EDGE, z1: CARPORT.z0 };
+// The drive's west edge bends out round the ivy mound at the house's corner: lawn x0..x1 over
+// z0..z1, its corners cut by `cut` (lane/build.js hardSurfaces: the drive's convex pieces).
+export const DRIVE_NOTCH = { x0: DAD.x1, x1: 1750, z0: 1030, z1: 1230, cut: 40 };
+// The drive's asphalt as convex pieces: east of the notch the whole length, west of it in front
+// of and behind the lawn.
+export const drivePieces = () => {
+  const { x0, x1, z0, z1 } = DAD_DRIVE;
+  const N = DRIVE_NOTCH;
+  return [
+    [[N.x1, z0], [x1, z0], [x1, z1], [N.x1, z1], [N.x1, N.z1], [N.x1, N.z0]], // (its west edge's corners: no T-joint)
+    [[x0, z0], [N.x1, z0], [N.x1, N.z0], [x0, N.z0 - N.cut]],
+    [[x0, N.z1 + N.cut], [N.x1, N.z1], [N.x1, z1], [x0, z1]],
+  ];
+};
 export const LINK_DRIVE = { x0: LINK.x0, x1: LINK.x1, z0: SOUTH_EDGE, z1: LINK.z0 };
 export const PATIO = { x0: DAD_WINGS[0].cx + DAD_WINGS[0].d / 2 + 20, x1: DAD_WINGS[1].cx - DAD_WINGS[1].d / 2 - 20, z0: DAD.z1, z1: 3250 };
-export const BIN = { x: 110, z: 90, h: 160, top: GROUND + 160 };
-export const BINS = [{ x: 1665, z: 1600 }, { x: 1665, z: 1710 }];
+// The bins (W4: the photos' four-compartment ones, a little bigger than the old, their lids split
+// front and back, the handle and the wheels toward the street), their homes against the gable's
+// front clear of the hose reel (W3's: z <= 1447) and the charger.
+export const BIN = { x: 120, z: 105, h: 165, top: GROUND + 165 };
+export const BINS = [{ x: 1680, z: 1548 }, { x: 1680, z: 1656 }]; // (their street faces at ~1495 and ~1603: photo 37's wheels)
 // The bins move (objects/laneBoss/LaneBins.js, once the lane's lazy chunk is in): pushed by
-// walking into them, grabbed with the attack button and pulled, kept on the dad's drive and the
-// strip under the carport's front edge (BIN_LEASH: the box a bin's middle stays in; never the
-// road, a lawn, a roof or the store room: its back stops 110 short of the door wall, so a bin
-// never stands in a doorway), and home again on every arrival, lost life and new game, or by themselves when left. Each
-// movable bin: its home (BINS), its floor, its size (the handle and the wheels on +x), its
-// collider's name (lane/props.js: the static build's box, named) and its leash. (Only the dad's
-// two stand on the street: the photos show none by the other drives.)
-export const BIN_LEASH = { x0: DAD_DRIVE.x0 + 4 + BIN.x / 2, x1: DAD_DRIVE.x1 - 4 - BIN.x / 2, z0: DAD_DRIVE.z0 + 10 + BIN.z / 2, z1: GARAGE.wall - 110 - BIN.z / 2 };
+// walking into them, grabbed with the attack button and pulled, kept on the dad's drive (BIN_LEASH:
+// the box a bin's middle stays in, 20 off the gable (its charger and cable stand out of it); never
+// the road, a lawn, a roof or the store room: its back stops 110 short of the door wall, so a bin
+// never stands in a doorway; pushed back along the gable to the garage row it is the star climb's
+// step up onto its roof), and home again on every arrival, lost life and new game, or by
+// themselves when left. Each movable bin: its home (BINS), its floor, its size, its collider's name
+// (lane/props.js: the static build's box, named) and its leash. (Only the dad's two stand on the
+// street: the photos show none by the other drives.)
+export const BIN_LEASH = { x0: DAD_DRIVE.x0 + 20 + BIN.x / 2, x1: DAD_DRIVE.x1 - 4 - BIN.x / 2, z0: DAD_DRIVE.z0 + 10 + BIN.z / 2, z1: GARAGE.wall - 110 - BIN.z / 2 };
+// The round black bulkhead lamps (a ribbed cage over a pale glass) on the two gables facing the
+// drive near the garage row: the dad's (x: its wall, out +x) and south_2's (out -x); y their
+// middles.
+export const GABLE_LAMPS = [{ x: DAD.x1, y: 350, z: 2140, out: 1 }, { x: 2770, y: 360, z: 2140, out: -1 }];
+// The climber up the gable's back corner and over the fascia's west end (drawn only): x0..x1
+// out from the wall, z0..z1 along it, up to `top`.
+export const CLIMBER = { x0: DAD.x1, x1: DAD.x1 + 100, z0: 2195, z1: 2275, top: 400 };
+// The slim steel flue (a rain cap on it) on the east wing's drive-side slope near its back end,
+// seen over the garage row's fascia from the drive (photos 36/37): drawn only, its foot on the
+// slope at (x, z), `h` over the slope.
+export const FLUE = { x: 1460, z: 3245, r: 11, cap: 19, h: 265 };
 export const MOVABLE_BINS = BINS.map((b, i) => ({ id: `bin_${i}`, x: b.x, y: GROUND, z: b.z, w: BIN.x, d: BIN.z, h: BIN.h, leash: BIN_LEASH }));
 
 // ---------------------------------------------------------------- the east end
@@ -525,9 +564,13 @@ export const TREES = [
 // The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` firs and
 // `birches` birches over the band x0..x1, from z0 + slope x back to z1 + slope x: following the
 // gardens' sloping back edge), and the ring of trees drawn round the outside of the boundary
-// (EDGE_FOREST: `count` firs `from`..`to` outside it), so the camera never looks out on nothing.
+// (EDGE_FOREST: `count` firs `from`..`to` outside it), so the camera never looks out on nothing;
+// none in `clear` (x0..x1 beyond z0: W4, the sky the photos show over the garage row and the
+// dad's roof from his drive; its seeded spots are skipped, the others stay where they were),
+// only the columnar tree there far behind (COLUMN_TREES: drawn only, out of bounds).
 export const FOREST = { count: 34, birches: 10, x0: -9600, x1: 9300, z0: NORTH.flat0 - 150, z1: NORTH.flat0 - 1850, slope: NORTH.slope, seed: 0x5ba77 };
-export const EDGE_FOREST = { count: 70, from: 900, to: 2600, seed: 0x5ba78 };
+export const EDGE_FOREST = { count: 70, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 } };
+export const COLUMN_TREES = [{ x: 1700, z: 4600, r: 120, h: 1300 }];
 
 // Lampposts (grey, an arm and a flat lamp head) where the photos have them, every one a climbable
 // pole (POLES; no collider of its own but the pole's trunk) up to its very top (a handstand on its
@@ -576,9 +619,12 @@ export const PATH_SIGN = footpathAt(100, 300);
 // windscreen `screen` deep, the cabin's back `tail` in from the rear at its foot and `tailTop`
 // at the roof, wheels of radius `wheel`) at (x, z), its nose toward yaw (0: +z), in its colour.
 // Solid (the body and the cabin): a hop onto a bonnet, a grab of a roof's edge. The dad's two
-// stand side by side before the carport, noses out (the bins and the way up to them clear on
-// their west); the west neighbour's at the link; on the villas' drives (north_4's the van: its
-// coins on its forecourt's west part; north_5's none) and at the double garage, noses in.
+// stand side by side deep on his drive up to the garage row's doors (W4, as photos 33-37 have
+// them: the drive's front half empty), the electric one nose out, the SUV nose in, the red door
+// and its strip between them, a strip one Jonas wide behind them along the doors (CAR_GAP); the
+// west neighbour's at the link; on the villas'
+// drives (north_4's the van: its coins on its forecourt's west part; north_5's none) and at the
+// double garage, noses in.
 export const CAR_KINDS = {
   suv: { l: 660, w: 270, belt: 140, roof: 250, hood: 175, screen: 95, tail: 25, tailTop: 55, wheel: 58 },
   cross: { l: 630, w: 265, belt: 130, roof: 235, hood: 165, screen: 110, tail: 35, tailTop: 95, wheel: 55 },
@@ -587,6 +633,7 @@ export const CAR_KINDS = {
   van: { l: 700, w: 285, belt: 135, roof: 290, hood: 70, screen: 90, tail: 10, tailTop: 20, wheel: 55 },
 };
 const parked = (kind, x, noseZ, yaw, tint) => ({ kind, x, z: noseZ - Math.cos(yaw) * (CAR_KINDS[kind].l / 2), yaw, tint });
+export const CAR_GAP = 2 * 50 + 10; // (the dad's cars off the garage doors: Jonas's width and a little)
 // A villa's garage door's middle (x) and its east block's front (z).
 const garageAt = (id) => {
   const v = VILLAS.find((h) => h.id === id);
@@ -598,8 +645,11 @@ export const CARS = [
   // (lane/props.js, world/lane/real/cars.js STYLE.ev), and drawn last (hideable: part.hide). Its
   // tint a soft, greyish steel blue in the realistic look; the classic look's warm bake greys a
   // blue, so there it is a touch bluer (`classicTint`).
-  { ...parked('cross', 1900, 1760 - CAR_KINDS.cross.l, Math.PI, 0x627d93), id: 'dad_ev', style: 'ev', classicTint: 0x5884a6 },
-  parked('suv', 2300, 1760 - CAR_KINDS.suv.l, Math.PI, 0x2c3a52),
+  // (W4: its tail and the SUV's nose CAR_GAP short of the doors: a clean strip one Jonas wide
+  // behind them, so every door is reached and walked through; the photos' 0.3 .. 0.6 m left
+  // squeeze gaps by the bumpers' slopes. The gap between them on the red door and its strip.)
+  { ...parked('cross', 1975, GARAGE.wall - CAR_GAP - CAR_KINDS.cross.l, Math.PI, 0x627d93), id: 'dad_ev', style: 'ev', classicTint: 0x5884a6 },
+  parked('suv', 2445, GARAGE.wall - CAR_GAP, 0, 0x3a4c66),
   parked('cross', (LINK.x0 + LINK.x1) / 2, LINK.z0 - 30, 0, 0xeeeee8),
   parked('hatch', garageAt('north_1').x, garageAt('north_1').front + 40, Math.PI, 0xb6babe),
   parked('cross', garageAt('north_2').x, garageAt('north_2').front + 40, Math.PI, 0x45484c),
@@ -615,22 +665,26 @@ export const CARS = [
 // of its ground) for `dwell` ticks, or touching it), never while he is up on the bins, the carport
 // or a roof; from `notice` its T lights blink at him. The fight (objects/laneBoss/fight.js): its
 // `arena` (Jonas within r + 200 of its middle is in the fight), the ground it may walk on (`walk`:
-// its middle stays in these boxes, [x0, x1, z0, z1]: the street, the drive between the dad's
-// gable and the SUV (the second: the drive's mouth is its foot) and the drive's mouth and the
-// lawn's front east of it, never behind the cars, under the carport, in a garden or over the dad's
-// corner bed and its sign), where it kneels to charge (`charge`: at the wall charger, DAD.charger,
-// facing it, its back to the open drive), where it folds back into the car once beaten
-// (`prepark`, then reversing into its slot) and where its reward star hovers (`star`, in front
-// of the car: a small jump reaches it).
+// its middle stays in these boxes, [x0, x1, z0, z1]: the street; its own slot between the bins'
+// strip by the gable and the SUV, short of the garage row (the second: the narrow part's foot is
+// the drive's "mouth" it walks in by); the drive's empty front half (W4: the cars parked deep)
+// short of the bins at home, and the apron's west end by it; never behind the cars, at the garage
+// doors, in a garden or over the dad's corner bed and its sign), where it kneels to charge
+// (`charge`: at the wall charger,
+// DAD.charger, facing it, its back to the open drive), where it folds back into the car once
+// beaten (`prepark`, then reversing into its slot) and where its reward star hovers (`star`, in
+// front of the car: a small jump reaches it).
+const EV = CARS[0];
+const EV_NOSE = EV.z - CAR_KINDS[EV.kind].l / 2;
 export const LANE_BOSS = {
   car: 'dad_ev',
   wake: { r: 520, dwell: 20, level: 60 },
   notice: 900,
-  arena: { x: 2050, z: 700, r: 1350 },
-  walk: [[800, 3300, -480, 255], [1720, 2040, 980, 1660], [1690, 3300, 255, 980]],
-  charge: { x: 1790, z: 1290, yaw: -0.75 },
-  prepark: { x: 1900, z: 1145 },
-  star: { x: 1900, y: GROUND + 320, z: 1000 },
+  arena: { x: 2050, z: 850, r: 1350 },
+  walk: [[800, 3300, -480, 255], [1860, 2170, 1330, 2000], [1690, 2640, 255, 1330], [2640, 3300, 255, 980]],
+  charge: { x: 1860, z: 1800, yaw: -0.675 }, // (W4: in its own slot, its feet clear of the bins at home, its back to the drive's open front)
+  prepark: { x: EV.x, z: EV.z - 300 },
+  star: { x: EV.x, y: GROUND + 320, z: EV_NOSE - 130 },
   easy: false, // (the easier fight for the youngest: objects/laneBoss/tuning.js FIGHT.EASY)
 };
 
@@ -958,10 +1012,10 @@ export const COINS = [
   ...[[-250, 0], [125, -217], [125, 217]].map(([dx, dz]) => ({ x: LAMPS[0].x + dx, y: above(GROUND), z: LAMPS[0].z + dz })),
   { ...footpathAt(500), y: above(GROUND) },
   { x: BINS[0].x, y: above(BIN.top), z: BINS[0].z },
-  ...[2000, 2200, 2400].map((z) => ({ x: 1750, y: above(CARPORT.top), z })),
+  ...[140, 340, 540].map((d) => ({ x: 1750, y: above(CARPORT.top), z: CARPORT.z0 + d })),
   { x: 1420, y: above(wingAt(DAD_WINGS[1], 1420)), z: 2450 },
   { x: DAD_WINGS[1].cx, y: above(roofAt(1850)), z: 1850 },
-  ...[1800, 1950, 2085, 2250, 2380].map((x) => ({ x, y: above(GROUND), z: 2250 })),
+  ...[1800, 1950, 2085, 2250, 2380].map((x) => ({ x, y: above(GROUND), z: GARAGE.wall + 300 })),
 ];
 
 // Signs: the dad's mailbox (post: false, the mailbox is the sign: no signpost drawn, its own
@@ -976,7 +1030,7 @@ export const SIGNS = [
     z: MAILBOX.z,
     yaw: MAILBOX.yaw,
     post: false,
-    pages: ['SPARROW LANE', 'Welcome home, Jonas! A little blue sparrow keeps watch over the mailbox.', 'Something is twinkling up on the roof... Try the bins by the carport!'],
+    pages: ['SPARROW LANE', 'Welcome home, Jonas! A little blue sparrow keeps watch over the mailbox.', 'Something is twinkling up on the roof... Try pushing a bin back to the garages!'],
   },
   {
     id: 'lane_corner',

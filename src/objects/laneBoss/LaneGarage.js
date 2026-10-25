@@ -34,7 +34,8 @@
 // takes 1 (B, B smashes it), anything else 2 (at once); a leaf takes at most one hit in GAP ticks;
 // cracked, it rattles CRACK ticks AMP to and fro (drawn only) and its board nearest the hit stays
 // ASKEW radians about its foot (and LEAN out toward him); smashed, its boards fly (the launch in
-// _smash), under gravity GRAV, kept in IN or OUT (their middles' boxes, local), rebounding BOUNCE
+// _smash), under gravity GRAV, kept in the room or in front of the doors (inBox, outBox: their
+// middles' boxes, local, from layout.GARAGE and CARPORT), rebounding BOUNCE
 // off the floor; under REST (or after AIR ticks) one lies down, turning face up FLAT a tick and
 // settling EASE a tick, its slide fading SLIDE; LIE ticks later it shrinks away over SHRINK. A
 // smashed leaf's collider waits at PARK; a leaf comes back only with him out of the room and
@@ -77,8 +78,6 @@ const AIR = 40;
 const FLAT = 0.3;
 const EASE = 0.35;
 const SLIDE = 0.6;
-const IN = { x0: 1615, x1: 2485, z0: 1945, z1: 2620 };
-const OUT = { x0: 1610, x1: 2490, z0: 1770, z1: 1960 };
 const SLAM = 0.3;
 const RANGE = 700;
 const RATTLE = 12;
@@ -105,6 +104,10 @@ export class LaneGarage {
     this.floor = layout.GROUND + o.y;
     // The room's inside (world), less a margin.
     this.room = { x0: C.x0 + 15 + o.x, x1: C.x1 - 15 + o.x, z0: G.wall + G.thick + 15 + o.z, z1: C.z1 - 35 + o.z, top: this.floor + 200 };
+    // The boards' boxes (local): IN the room, OUT the strip in front of the doors (W4: the cars
+    // stand layout.CAR_GAP, 110, off them).
+    this.inBox = { x0: C.x0 + 15, x1: C.x1 - 15, z0: G.wall - 5, z1: C.z1 - 30 };
+    this.outBox = { x0: C.x0 + 10, x1: C.x1 - 10, z0: G.wall - 90, z1: G.wall + 10 };
     const named = area.objectsLayout.NAMED;
     this.leaves = G.leaves.map((l, k) => ({ k, x0: l.x0 + o.x, x1: l.x1 + o.x, y0: this.floor, y1: G.door + o.y, z0: G.wall + o.z, z1: G.wall + G.thick + o.z, tint: l.tint, hp: HP, gap: 0, broken: false, pending: false, rattle: 0, amp: 0, askew: -1, ...named[`garage_${k}`] }));
     const classic = area.parts.find((p) => p.garage);
@@ -114,7 +117,7 @@ export class LaneGarage {
       at: p.at, // its middle (local: the meshes' frame)
       state: 0,
       t: 0,
-      box: IN,
+      box: this.inBox,
       x: 0, // its middle's offset from rest (local), its turn, its scale; last tick's
       y: 0,
       z: 0,
@@ -247,7 +250,7 @@ export class LaneGarage {
       const n = near > 0 ? near : 0;
       p.state = 1;
       p.t = 0;
-      p.box = out > 0 ? IN : OUT;
+      p.box = out > 0 ? this.inBox : this.outBox;
       p.vx = dx * 0.04 + (rng() - 0.5) * 3;
       p.vy = 4 + rng() * 5 + n * 3;
       p.vz = out * (3 + n * 5 + rng() * 2);

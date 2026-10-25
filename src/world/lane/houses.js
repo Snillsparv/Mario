@@ -37,7 +37,7 @@
 //
 // Colliders: each house one convex solid, its walls and its roof (to the eaves, then the hip or
 // gable up to the ridge); the drawn overhangs have none. The link a solid block to its flat roof
-// (stone), the carport its roof slab, its deep fascia, its store room's door wall (each leaf
+// (stone), the garage row its roof slab, its fascia, its store room's door wall (each leaf
 // named), lining filler, back wall and props (wood; the roofs' tops are walkable).
 
 import { archContour, localBoxPolys, wallFrame } from '../castle/geom.js';
@@ -286,10 +286,11 @@ export function link(kit, L) {
   solids.box(L.x0, L.x1, y0, L.top, L.z0, L.z1, 'stone');
 }
 
-// The carport between the dad's and south_2 (C: layout.CARPORT) and the store room under it
-// (G: layout.GARAGE): the roof slab over the drive's end, a deep dark fascia hanging from its
-// front edge (a wall under the whole lip: Jonas grabs the edge anywhere along it), and the door
-// wall under the roof's edge: its fixed boards and the lintels over the openings (their faces
+// The garage row between the dad's and south_2 (C: layout.CARPORT) and the store room under it
+// (G: layout.GARAGE): the roof slab from the dad's gable's back corner, a thin dark fascia board
+// along its front edge down to the doors' tops (a wall under the whole lip: Jonas grabs the edge
+// anywhere along it), and the door wall just behind it (W4: no open bay): its fixed boards and
+// the lintels over the openings (their faces
 // toward the drive in their tints, toward the room in the lining's), a frame round each opening,
 // the grey downpipe, the four leaves (five boards each with their ledges and hardware: each board
 // a piece the lane's chunk throws, objects/laneBoss/LaneGarage.js; kit.garage.pieces records each
@@ -351,9 +352,9 @@ export function carport(kit, C, G) {
       if (l.handle && i === 4 - hinge) paint.box(hx - 4, hx + 4, 147, 177, z0 - 6, z0 + 1);
       if (l.sign && i === 4) {
         paint.color(0xb03a2a);
-        paint.box(l.x1 - 50, l.x1 - 8, 228, 262, z0 - 2, z0 + 1);
+        paint.box(l.x1 - 50, l.x1 - 8, door - 74, door - 40, z0 - 2, z0 + 1);
         paint.color(0xf0dca0);
-        paint.box(l.x1 - 47, l.x1 - 11, 231, 259, z0 - 3, z0 - 2);
+        paint.box(l.x1 - 47, l.x1 - 11, door - 71, door - 43, z0 - 3, z0 - 2);
       }
       if (mark(paint) > p) parts.push({ b: 'paint', start: p, count: mark(paint) - p });
       pieces.push({ leaf: k, at: [(a + b) / 2, (y0 + door) / 2, z0 + 3], parts });

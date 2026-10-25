@@ -1631,7 +1631,7 @@ test("Sparrow Lane's boss through the area switch (its chunk attached by hand): 
   const collider = () => JSON.stringify(area.named.dad_ev.surfaces.map((s) => [s.a, s.b, s.c, s.d]));
   const rest = collider();
   const car = lane.CARS[0];
-  g.place(car.x + LN.x, lane.GROUND + LN.y, 1000 + LN.z, 0);
+  g.place(car.x + LN.x, lane.GROUND + LN.y, car.z - lane.CAR_KINDS[car.kind].l / 2 - 130 + LN.z, 0); // (W4: by its nose, the car parked deep)
   assert.ok(g.until(() => boss.state === 'stand', 400) < 400, 'up for the fight');
   assert.notEqual(collider(), rest, 'the car\'s collider parked');
   bins._moveTo(bins.list[0], bins.list[0].x + 300, bins.list[0].z - 400);
@@ -1653,7 +1653,7 @@ test("Sparrow Lane's boss through the area switch (its chunk attached by hand): 
   assert.equal(g.areas.phase, null, 'no star exit');
   assert.equal(g.areas.name, 'lane');
   // GAME OVER mid-fight: main's order (the grounds back, then the resets).
-  g.place(car.x + LN.x, lane.GROUND + LN.y, 1000 + LN.z, 0);
+  g.place(car.x + LN.x, lane.GROUND + LN.y, car.z - lane.CAR_KINDS[car.kind].l / 2 - 130 + LN.z, 0); // (W4: by its nose, the car parked deep)
   boss.introDone = true;
   g.until(() => boss.state === 'stand', 300);
   boss.hits = 2;

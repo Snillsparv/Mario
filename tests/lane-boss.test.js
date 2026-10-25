@@ -324,7 +324,7 @@ test('touching the car wakes it at once (his feet against its side, his punch); 
   // Never: on a bin, the carport, the dad's roof, the car's roof; reading; blinking; a dialog.
   const never = [
     ['on a bin', () => hero(lane.BINS[0].x, lane.BINS[0].z, N, { y: lane.BIN.top })],
-    ['on the carport', () => hero(1900, 2000, N, { y: lane.CARPORT.top })],
+    ['on the carport', () => hero(1900, lane.CARPORT.z0 + 200, N, { y: lane.CARPORT.top })],
     ['on the car', () => hero(CAR.x, CAR.z, N, { y: GROUND + K.roof })],
     ['on its bonnet', () => hero(CAR.x, CAR.z - 200, N, { y: GROUND + K.belt })],
   ];

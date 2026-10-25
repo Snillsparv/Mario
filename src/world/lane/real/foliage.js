@@ -4,7 +4,8 @@
 //
 //   plants(kit, L)          // the hedges, the thujas, the junction's trees, the garden trees
 //                           // (apple, birch, shrub), the dad's red-leaf tree, the rhododendron,
-//                           // the pot by the door, the flower beds, the forest's birches; kit:
+//                           // the pot by the door, the flower beds, the forest's birches, the
+//                           // climber at the gable's back corner, the columnar tree; kit:
 //                           // detail.js's Geo per material (foliage, core, bark, birch, paint,
 //                           // enamel)
 //   boxPlants(kit, spots, seed)   // a balcony box's leafy tufts and geraniums (villas.js)
@@ -27,7 +28,7 @@
 import { makeRng } from '../../../core/math.js';
 import { Geo, add, mul, sub, dot, cross, norm } from './geo.js';
 import { forestSpots } from './spots.js';
-import { redTreeStems, redTreeCrown, ivyMasses } from './plan.js';
+import { redTreeStems, redTreeCrown, ivyMasses, climberMasses } from './plan.js';
 
 // The leaf atlas's cells (texgen/sets.js LEAF_CELLS: each half the atlas a side).
 const CELL = { rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] };
@@ -197,6 +198,50 @@ export function plants(kit, L) {
   for (const b of L.FLOWER_BEDS) flowerBed(kit, R, L, b);
   // The forest's birches.
   for (const t of forestSpots(L).birches) birch(kit, R, t.x, t.z, t.base, t.h, t.r, t.seed);
+  // (W4: their own streams, the others' kept.)
+  climber(kit, L);
+  for (const t of L.COLUMN_TREES ?? []) column(kit, L, t);
+}
+
+// The climber up the dad's gable's back corner and over the garage row's west end (CLIMBER, W4):
+// small dark evergreen leaves, a little lighter where the low sun catches them; cards per tier.
+const CLIMBER_CARDS = { high: 330, mid: 200, low: 50 };
+function climber(kit, L) {
+  const S = makeRng(9311);
+  const n = CLIMBER_CARDS[kit.tier] ?? CLIMBER_CARDS.high;
+  const k = CLUSTERS[kit.tier] ?? 1;
+  const tints = [[0.22, 0.25, 0.14], [0.17, 0.2, 0.11], [0.3, 0.34, 0.18], [0.26, 0.3, 0.13]];
+  const masses = climberMasses(L);
+  const total = masses.reduce((a, m) => a + m.r[0] * m.r[1] + m.r[2] * m.r[1], 0);
+  for (const m of masses) shell(kit, S, { c: m.c, r: m.r, count: Math.round((n * (m.r[0] + m.r[2]) * m.r[1]) / total / k), size: 30, cell: CELL.rhodo, tints, below: -0.9, sway: 1, outside: masses.filter((o) => o !== m), coreK: 0.75 });
+}
+
+// The columnar tree far behind the garage row (COLUMN_TREES, W4: out of bounds): a narrow
+// conifer column (a thuja's cards on a taller, rounder profile), its top a little yellower.
+function column(kit, L, { x, z, r, h }) {
+  const S = makeRng(9377);
+  const y0 = L.groundHeight(x, z);
+  const prof = [[r * 0.5, 0], [r * 0.85, h * 0.15], [r, h * 0.45], [r * 0.85, h * 0.75], [r * 0.45, h * 0.94], [0, h]];
+  const radius = (y) => {
+    for (let i = 0; i + 1 < prof.length; i++) {
+      const [[ra, ya], [rb, yb]] = [prof[i], prof[i + 1]];
+      if (y <= yb) return ra + ((rb - ra) * (y - ya)) / (yb - ya);
+    }
+    return 0;
+  };
+  const count = kit.tier === 'low' ? 90 : 180;
+  for (let i = 0; i < count; i++) {
+    const y = h * Math.pow(S(), 0.8) * 0.97;
+    const a = S() * Math.PI * 2;
+    const rr = radius(y) * (0.85 + 0.2 * S());
+    const d = norm([Math.sin(a), 0.25 + (y / h) * 0.5, Math.cos(a)]);
+    const t = y / h;
+    const k = (0.65 + 0.45 * t) * (0.85 + 0.3 * S());
+    kit.foliage.rgb((0.55 + 0.25 * t * t) * k, (0.6 + 0.12 * t * t) * k, 0.28 * k);
+    cluster(kit.foliage, S, [x + Math.sin(a) * rr, y0 + y, z + Math.cos(a) * rr], d, 70 * (0.8 + 0.4 * S()), CELL.hedge, 2);
+  }
+  kit.core.rgb(...CORE.green);
+  kit.core.loft(prof.slice(0, 5).map(([pr, py]) => ring(x, y0 + py, z, pr * 0.7, 8)), { capEnd: true });
 }
 
 // A ring of `sides` points round (x, z) at y, radius r (counter-clockwise seen from below:

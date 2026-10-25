@@ -16,7 +16,8 @@
 //   Wheel Swipe   (`swipe_tell`, `swipe`): its right fist drawn back, an arc in front of it; the
 //                 fist sweeps the arc low: he jumps it or steps back out.
 // After its set its battery runs low (`low`): it walks to the charger (`walk` to LANE_BOSS.
-// charge), kneels facing it, its back to the open drive (`kneel`), plugs in (`plug`: the cable
+// charge; held short of it, a bin pinned in its way, where it stands), kneels facing it, its back
+// to the open drive (`kneel`), plugs in (`plug`: the cable
 // from the charger to the port on its chest, the charger's light blue) and its battery bay's
 // hatch on its lower back swings open on three glowing cells: the window (`open`, the phase's
 // window long). Any of his attacks on the cells is a hit (`zapped`, then `dizzy`: a power
@@ -126,6 +127,7 @@ export const FIGHT_METHODS = {
     this.walkKind = '';
     this.best = Infinity;
     this.stall = 0;
+    this.kneelHere = false; // (blocked short of the charger: kneeling where it stood)
     this.shoved = false;
     this.plugged = false;
     this.wait = 0;
@@ -346,6 +348,7 @@ export const FIGHT_METHODS = {
     this.best = Infinity;
     this.stall = 0;
     this.turning = false;
+    this.kneelHere = false;
   },
 
   // Walking: into range for its attack, to the charger, home, or (beaten) to the front of its slot.
@@ -384,9 +387,10 @@ export const FIGHT_METHODS = {
         return;
       }
       const C = this.chargeAt;
-      if (!this.walking && this.t > 1 && this._at(C.x, C.z)) {
+      const c = this.cur;
+      if (!this.walking && this.t > 1 && (this.kneelHere || this._at(C.x, C.z))) {
         // (There: it turns to the charger, then kneels.)
-        if (this._face(C.yaw, 0.02)) {
+        if (this._face(this.kneelHere ? Math.atan2(this.chargerFrom.x - c.x, this.chargerFrom.z - c.z) : C.yaw, 0.02)) {
           this._set('kneel');
           this.goal = POSE.kneel;
         }
@@ -394,8 +398,13 @@ export const FIGHT_METHODS = {
       }
       this.goal = POSE.lowbat;
       this.eyes = true;
-      this.cur.blinkL = this.cur.blinkR = 0.35;
+      c.blinkL = c.blinkR = 0.35;
       if (this._walkVia(C.x, C.z, P.walk * 0.85)) this.walking = false;
+      // (Held short of it, a bin pinned in its way: it kneels where it stands, facing the charger.)
+      else if (this._stalled((C.x - c.x) * (C.x - c.x) + (C.z - c.z) * (C.z - c.z))) {
+        this.walking = false;
+        this.kneelHere = true;
+      }
       return;
     }
     if (mode === 'prepark') {
@@ -423,11 +432,12 @@ export const FIGHT_METHODS = {
   },
 
   // Walking to a goal on the dad's drive (between his gable and the SUV): from the street by way
-  // of the drive's mouth (it never squeezes past the SUV's or the hedge's corners).
+  // of the drive's mouth (it never squeezes past the SUV's or the bins' corners); already past
+  // the mouth (W4: the charger's spot at the narrow part's west edge), straight to it.
   _walkVia(gx, gz, speed) {
     const m = this.mouth;
     const c = this.cur;
-    if (gz > m.z + 20 && (c.x < m.x0 || c.x > m.x1) && c.z < gz) {
+    if (gz > m.z + 20 && (c.x < m.x0 || c.x > m.x1) && c.z < gz && c.z < m.z + 20) {
       this._walk(m.x, m.z, speed);
       return false;
     }

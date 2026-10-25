@@ -57,6 +57,14 @@ async function open(query) {
     // (Test helpers: Jonas placed at a local point facing `yaw`, the camera behind him; every
     // leaf whole with him away.)
     const o = g.areas.current.def.origin;
+    // (W4: the places from the layout: the dad's cars parked deep, a strip one Jonas wide behind
+    // them along the doors; __D: a leaf's middle, the strip's z, the gap between the cars, the
+    // dad's car's nose, the room's coin row.)
+    const L = await import('/src/world/lane/layout.js');
+    const G = L.GARAGE;
+    const [EV, SUV] = L.CARS;
+    const hw = (c) => L.CAR_KINDS[c.kind].w / 2;
+    window.__D = { mid: (k) => (G.leaves[k].x0 + G.leaves[k].x1) / 2, SZ: G.wall - 55, gap: (EV.x + hw(EV) + SUV.x - hw(SUV)) / 2, gapWest: EV.x + hw(EV) + 54, ev: EV.x, nose: EV.z - L.CAR_KINDS[EV.kind].l / 2, wall: G.wall, row: G.wall + 300, oneUp: (await import('/src/world/lane/garage.js')).ROOM.oneUp, room: { x0: L.CARPORT.x0, x1: L.CARPORT.x1, z0: G.wall + G.thick, z1: L.CARPORT.z1, under: G.under } };
     window.__put = (x, z, yaw = 0) => {
       g.player.teleport(x + o.x, 22 + o.y, z + o.z, yaw);
       g.player.setAction('idle');
@@ -137,11 +145,12 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         const shown = () => garage.shown.meshes[0].pos.array;
         const rows = [];
         const run = window.__run;
+        const D = window.__D;
         const ATTACKS = [
-          ['jab and cross', 0, 1795, 1855, (i) => ({ B: i === 0 || i === 6 }), 16],
-          ['combo', 1, 2082, 1855, (i) => ({ B: i % 7 === 0 && i < 21 }), 30],
-          ['jump kick', 2, 2260, 1855, (i) => ({ A: i < 4, B: i === 4 }), 34],
-          ['pound', 3, 2400, 1860, (i) => ({ A: i < 9, Z: i === 9 }), 50],
+          ['jab and cross', 0, D.mid(0), D.SZ, (i) => ({ B: i === 0 || i === 6 }), 16],
+          ['combo', 1, D.mid(1), D.SZ, (i) => ({ B: i % 7 === 0 && i < 21 }), 30],
+          ['jump kick', 2, D.mid(2), D.SZ, (i) => ({ A: i < 4, B: i === 4 }), 34],
+          ['pound', 3, D.mid(3), D.SZ, (i) => ({ A: i < 9, Z: i === 9 }), 50],
         ];
         for (const [name, k, x, z, input, n] of ATTACKS) {
           window.__mend();
@@ -153,10 +162,11 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
           run(n, input);
           rows.push({ name, broken: garage.leaves[k].broken, moved: Array.from(shown().slice(at, at + 30)).some((v, j) => Math.abs(v - before[j]) > 1), sfx: window.__sfx.filter((s) => s.startsWith('door')), sparks: window.__clods > sparks });
         }
-        // The dive and its belly slide, running through the gap between the cars at the red door.
-        for (const [name, diveZ] of [['dive', 1650], ['belly slide', 1300]]) {
+        // The dive and its belly slide, running up the gap between the cars (along the dad's car's
+        // side) at the red door.
+        for (const [name, diveZ] of [['dive', D.wall - 300], ['belly slide', D.wall - 650]]) {
           window.__mend();
-          window.__put(2099, 300, 0);
+          window.__put(D.gapWest, 300, 0);
           const on = window.__steer(0);
           g.step(80, on, () => g.player.pos.z - g.areas.current.def.origin.z >= diveZ);
           g.step(1, { stickX: on.stickX, stickY: on.stickY, B: true });
@@ -182,35 +192,39 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         const g = window.__game;
         const { garage } = await g.laneBoss;
         const o = g.areas.current.def.origin;
+        const D = window.__D;
         window.__mend();
         // (The dive's slide may have taken the 1-up already: back, as a new game brings it.)
         garage.gem.reset();
-        window.__put(2082, 1855, 0);
-        window.__run(34, (i) => ({ A: i < 4, B: i === 4 }));
+        // (From the strip behind the cars: B, B, not a jump kick: so close to the fascia a jump
+        // grabs the row's edge.)
+        window.__put(D.mid(1), D.SZ, 0);
+        window.__run(16, (i) => ({ B: i === 0 || i === 6 }));
         const coins0 = g.player.coins;
         const lives0 = g.state.lives;
         g.step(60, {}, () => false);
-        window.__goto(2085, 2250);
+        window.__goto(D.mid(1), D.row);
         const cam = g.camera.pos;
         const inRoom = { x: cam.x - o.x, y: cam.y - o.y, z: cam.z - o.z, w: garage.camera.w };
-        for (const [x, z] of [[2380, 2250], [1800, 2250], [2090, 2400], [2090, 2525]]) window.__goto(x, z);
+        for (const [x, z] of [[2380, D.row], [1800, D.row], [D.oneUp.x, D.oneUp.z - 185], [D.oneUp.x, D.oneUp.z - 60]]) window.__goto(x, z);
         const got = { coins: g.player.coins - coins0, lives: g.state.lives - lives0 };
-        for (const [x, z] of [[2085, 2200], [2085, 1850], [2099, 1500]]) window.__goto(x, z);
+        for (const [x, z] of [[D.mid(1), D.wall + 100], [D.mid(1), D.SZ], [D.gap, D.SZ], [D.gap, 1500]]) window.__goto(x, z);
         g.step(20);
-        const out = { z: g.camera.pos.z - o.z, w: garage.camera.w, at: g.player.pos.z - o.z };
+        const out = { z: g.camera.pos.z - o.z, w: garage.camera.w, at: g.player.pos.z - o.z, wall: D.wall, room: D.room };
         return { inRoom, got, out };
       });
       t.diagnostic(JSON.stringify(walk));
+      const room = walk.out.room;
       assert.equal(walk.inRoom.w, 1, 'the room camera in');
-      assert.ok(walk.inRoom.x > 1640 && walk.inRoom.x < 2460 && walk.inRoom.z > 1990 && walk.inRoom.z < 2610 && walk.inRoom.y < 345, `the camera in the room: ${JSON.stringify(walk.inRoom)}`);
+      assert.ok(walk.inRoom.x > room.x0 + 40 && walk.inRoom.x < room.x1 - 40 && walk.inRoom.z > room.z0 + 20 && walk.inRoom.z < room.z1 - 20 && walk.inRoom.y < room.under, `the camera in the room: ${JSON.stringify(walk.inRoom)}`);
       assert.ok(walk.got.coins >= 3, `coins on the HUD's count: ${walk.got.coins}`);
       assert.equal(walk.got.lives, 1, 'the 1-up: a life');
-      assert.ok(walk.out.at < 1950 && walk.out.w === 0 && walk.out.z < 1950, `out, the follow camera on the drive: ${JSON.stringify(walk.out)}`);
+      assert.ok(walk.out.at < walk.out.wall - 350 && walk.out.w === 0 && walk.out.z < walk.out.wall - 350, `out, the follow camera on the drive: ${JSON.stringify(walk.out)}`);
       // Through the dad's front door to the hall and back: whole again.
       const back = await page.evaluate(async () => {
         const g = window.__game;
         const { garage } = await g.laneBoss;
-        window.__put(2260, 1855, 0);
+        window.__put(window.__D.mid(2), window.__D.SZ, 0);
         window.__run(34, (i) => ({ A: i < 4, B: i === 4 }));
         const broken = garage.leaves.filter((l) => l.broken).length;
         g.enterArea('hall');
@@ -226,7 +240,7 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
           const g = window.__game;
           const { garage } = await g.laneBoss;
           window.__mend();
-          window.__put(2082, 1855, 0);
+          window.__put(window.__D.mid(1), window.__D.SZ, 0);
           window.__run(9, (i) => ({ A: i < 4, B: i === 4 }));
           g.areas.setClassic(true);
           g.step(1);
@@ -284,7 +298,7 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         g.step(4);
         out.fly = frame();
         garage._smash(garage.leaves[3], (garage.leaves[3].x0 + garage.leaves[3].x1) / 2, 1, 0);
-        window.__put(2085, 2250, Math.PI);
+        window.__put(2085, window.__D.wall + 350, Math.PI);
         g.step(40);
         out.inside = { ...frame(), gem: garage.gem.mesh.visible, w: garage.camera.w };
         window.__mend();
@@ -305,7 +319,7 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         boss.enter();
         boss.armed = true;
         garage._smash(garage.leaves[1], 2082 + o.x, 1, 0);
-        window.__put(1900, 1000, 0);
+        window.__put(window.__D.ev, window.__D.nose - 130, 0);
         g.step(400, {}, () => boss.state === 'stand');
         let at = -1;
         let cur = null;

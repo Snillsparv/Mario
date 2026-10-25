@@ -829,8 +829,12 @@ function car(kit, L, c, probe) {
     const y = y0 + 0.35;
     const us = [-hw - 16, -hw + 10, -hw * 0.45, 0, hw * 0.45, hw - 10, hw + 16];
     const wsC = [-hl - 18, -hl + 14, -hl * 0.55, 0, hl * 0.55, hl - 14, hl + 18];
-    // (The dad's car's darker, and dark on out under its nose: it sits on the drive.)
-    const [core, dark] = EV ? [22, 0.3] : [36, 0.42];
+    // (The dad's car's darker, and dark on out under its nose: it sits on the drive. W4: the
+    // SUV beside it too, parked deep nose in: its tail toward the street, the drive under it
+    // as dark as photos 36 and 37 have it.)
+    const D0 = L.DAD_DRIVE;
+    const onDrive = c.x > D0.x0 && c.x < D0.x1 && c.z > D0.z0 && c.z < D0.z1;
+    const [core, dark] = EV || onDrive ? [22, 0.3] : [36, 0.42];
     const k = (u, w) => {
       const du = Math.max(0, Math.abs(u) - (hw - 26)) / 42;
       const dw = Math.max(0, Math.abs(w) - (hl - core)) / 54;

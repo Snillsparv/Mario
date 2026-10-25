@@ -136,33 +136,36 @@ export function bins({ paint, tyre, steel }, L) {
   const [x, z, G, top] = [0, 0, 0, BIN.h]; // (in the bin's own frame: its foot's middle)
   {
     // The body: rounded sections from its foot (narrower) to its rim.
-    paint.color(0x2c302c);
+    paint.color(0x1c2834); // (W4: the photos' near-black blue-grey, under the warm evening light)
     const sec = (y, k, r = 10) => {
       const pts = [];
       for (const [cx, cz, a0] of [[hx * k - r, -hz * k + r, -Math.PI / 2], [hx * k - r, hz * k - r, 0], [-hx * k + r, hz * k - r, Math.PI / 2], [-hx * k + r, -hz * k + r, Math.PI]]) {
         for (let i = 0; i <= 3; i++) {
           const a = a0 + (i / 3) * (Math.PI / 2);
-          pts.push([x - 3 + cx + Math.cos(a) * r, y, z + cz + Math.sin(a) * r]);
+          pts.push([x + cx + Math.cos(a) * r, y, z + 3 + cz + Math.sin(a) * r]);
         }
       }
       return pts.reverse();
     };
     paint.loft([sec(G + 2, 0.86), sec(G + 30, 0.9), sec(top - 14, 1), sec(top - 10, 1.03), sec(top - 9, 0.99)]);
-    // The lid over the rim, a little wider, its front lip.
-    paint.color(0x2c302c, 1.08);
+    // The lid over the rim, a little wider, its front lip; split front and back (W4: the
+    // photos' four-compartment bins): a dark seam across its middle.
+    paint.color(0x1c2834, 1.08);
     paint.loft([sec(top - 12, 1.06, 12), sec(top - 1, 1.06, 12), sec(top, 1.02, 12), sec(top + 0.5, 0.1, 2)]);
-    // The hinge bar and the handle along the back, two wheels.
-    const back = x + hx + 2;
+    paint.color(0x121412);
+    paint.box(-hx * 1.06 - 1, hx * 1.06 + 1, top - 12, top + 0.8, z - 2, z + 2, { skip: 'b' });
+    // The hinge bar and the handle along the back (toward the street: -z), two wheels.
+    const back = z - hz - 2;
     paint.color(0x222622);
-    paint.tube([back, top - 6, z - hz + 8], [back, top - 6, z + hz - 8], 4, 4, 8, { caps: true });
-    paint.tube([back + 6, top - 26, z - hz + 14], [back + 6, top - 26, z + hz - 14], 3.5, 3.5, 8, { caps: true });
+    paint.tube([x - hx + 8, top - 6, back], [x + hx - 8, top - 6, back], 4, 4, 8, { caps: true });
+    paint.tube([x - hx + 14, top - 26, back - 6], [x + hx - 14, top - 26, back - 6], 3.5, 3.5, 8, { caps: true });
     for (const s of [-1, 1]) {
-      const wz = z + s * (hz - 10);
+      const wx = x + s * (hx - 12);
       tyre.rgb(0.03, 0.03, 0.03); // (each colour set just before it draws: the movers' kit has
       // one builder for all three)
-      tyre.tube([back - 6, G + 13, wz - s * 4], [back - 6, G + 13, wz + s * 6], 13, 13, 12, { caps: true });
+      tyre.tube([wx - s * 4, G + 13, back + 6], [wx + s * 6, G + 13, back + 6], 13, 13, 12, { caps: true });
       steel.color(0x6a6e70);
-      steel.tube([back - 6, G + 13, wz - s * 10], [back - 6, G + 13, wz + s * 8], 2.5, 2.5, 6);
+      steel.tube([wx - s * 10, G + 13, back + 6], [wx + s * 8, G + 13, back + 6], 2.5, 2.5, 6);
     }
   }
 }

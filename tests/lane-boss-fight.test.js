@@ -41,9 +41,11 @@ const { GROUND, LANE_BOSS } = lane;
 const CAR = lane.CARS.find((c) => c.id === LANE_BOSS.car);
 const K = lane.CAR_KINDS[CAR.kind];
 const N = Math.PI;
+// (W4: in front of the car's nose, within its wake's reach: the car parked deep by the doors.)
+const NEAR_Z = CAR.z - K.l / 2 - 130;
 
 // Jonas at a local point with the lane's objects and the chunk attached.
-function hero(x = CAR.x, z = 1000, yaw = 0) {
+function hero(x = CAR.x, z = NEAR_Z, yaw = 0) {
   const events = new Events();
   const log = [];
   for (const name of ['laneBoss', 'bossDefeated', 'starCollected', 'hurt']) events.on(name, (e) => log.push({ name, ...e }));
@@ -456,7 +458,7 @@ test('the third hit: it short-circuits, walks off to the front of its slot, fold
   assert.deepEqual(order, ['shortout', 'walk', 'unmorph', 'reverse', 'settle', 'tame']);
   assert.ok(h.sounds.includes('ev_reverse'), 'reversing beeps');
   assert.equal(colliderNow(), COLLIDER, 'its collider back exactly');
-  // Its star: rising in front of the car to (1900, 342, 1000).
+  // Its star: rising in front of the car (LANE_BOSS.star).
   h.run(80);
   const star = h.boss.star.star;
   assert.equal(star.active, true);
@@ -504,7 +506,7 @@ test('a lost life mid-fight: it goes home with its hits kept (its collider back,
   assert.equal(h.boss.cur.lights, 2);
   assert.ok(h.om.bins.list.every((b) => b.x === b.home.x && b.z === b.home.z), 'the bins home');
   // Back near it: a quick wake, the fight at phase 2.
-  h.put(CAR.x, 1000, GROUND, 0);
+  h.put(CAR.x, NEAR_Z, GROUND, 0);
   h.until('stand', 200);
   assert.equal(h.boss._phase(), FIGHT.PHASES[1]);
   // An arrival mid-fight: parked at once, nothing left out (marker, cable, wave).
@@ -544,6 +546,36 @@ test('a bin in its way is shoved aside with a clatter (never into him) and goes 
   h.p.loseLife();
   h.until('parked', 800);
   assert.ok(b.x === b.home.x && b.z === b.home.z, 'home');
+});
+
+// (W4: its charge spot in its own slot by the gable's strip; a bin it cannot shove, pinned where
+// its feet would stand there, holds it short: it must never stall.)
+test('held short of its charger by a bin it cannot shove, it kneels where it stands facing the charger and its window opens', () => {
+  const h = hero();
+  h.up();
+  const bins = h.om.bins;
+  const b = bins.list[0];
+  const C = LANE_BOSS.charge;
+  bins._moveTo(b, C.x - 60 + O.x, C.z + O.z);
+  bins.shove = () => false; // (pinned: never moves)
+  h.boss.setIndex = 99;
+  for (let i = 0; i < 900 && h.boss.state !== 'open'; i++) {
+    h.put(2700, 600, GROUND, 0);
+    h.tick();
+  }
+  assert.equal(h.boss.state, 'open', 'its window open');
+  assert.equal(h.boss.kneelHere, true, 'knelt where it stood');
+  const c = h.boss.cur;
+  assert.ok(Math.hypot(c.x - O.x - C.x, c.z - O.z - C.z) < 300, `near its spot: ${Math.round(c.x - O.x)}, ${Math.round(c.z - O.z)}`);
+  const want = Math.atan2(h.boss.chargerFrom.x - c.x, h.boss.chargerFrom.z - c.z);
+  assert.ok(Math.abs(Math.atan2(Math.sin(c.yaw - want), Math.cos(c.yaw - want))) < 0.05, 'facing the charger');
+  // (Free again, the bins home: the lane's collision world is shared by the tests that follow.)
+  delete bins.shove;
+  h.p.loseLife();
+  h.until('parked', 800);
+  bins.sendHome();
+  h.tick();
+  assert.ok(bins.list.every((x) => x.x === x.home.x && x.z === x.home.z), 'the bins home');
 });
 
 test('a scripted fight (jumping waves, sidestepping dashes, backing off swipes, punching the cells) wins in three rounds losing at most 3 wedges; never in a solid: its feet 20 clear of every wall and its middle on its walking ground all the way; deterministic', () => {

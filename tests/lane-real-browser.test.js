@@ -379,28 +379,31 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     assert.ok(g2.ground, 'the weathering\'s ground map');
     assert.ok(g2.contact, 'the cars\' contact shadows');
     assert.deepEqual(g2.paints, [true, true, true, true], 'each cluster\'s paint on its probe');
-    // Under the dad's dark car's nose (local 2300, 1430; its nose at z 1100), seen low from the
-    // street: the drive darker under it (its contact shadow, the occlusion) than in front of it.
-    const beside = await page.evaluate(() => {
+    // Under the dad's dark SUV's tail (W4: parked deep, nose in: its tail toward the street), seen
+    // low from the street: the drive darker under it (its contact shadow, the occlusion) than in
+    // front of it.
+    const suv = lane.CARS[1];
+    const rear = suv.z - lane.CAR_KINDS[suv.kind].l / 2;
+    const beside = await page.evaluate(([sx, rear]) => {
       const g = window.__game;
       const v = g.view;
       const cam = v.camera;
       const o = g.areas.current.def.origin;
       g.step(1);
-      cam.position.set(2300 + o.x, 60 + o.y, 700 + o.z);
-      cam.lookAt(2300 + o.x, 40 + o.y, 1430 + o.z);
+      cam.position.set(sx + o.x, 60 + o.y, rear - 400 + o.z);
+      cam.lookAt(sx + o.x, 40 + o.y, rear + 330 + o.z);
       cam.updateProjectionMatrix();
       cam.updateMatrixWorld();
       v.render();
       const gl = v.renderer.getContext();
       const px = new Uint8Array(4 * 49);
       const p = cam.position.clone();
-      return [[2300, 23, 1150], [2300, 23, 990]].map(([x, y, z]) => {
+      return [[sx, 23, rear + 50], [sx, 23, rear - 110]].map(([x, y, z]) => {
         p.set(x + o.x, y + o.y, z + o.z).project(cam);
         gl.readPixels(Math.floor((p.x * 0.5 + 0.5) * gl.drawingBufferWidth) - 3, Math.floor((p.y * 0.5 + 0.5) * gl.drawingBufferHeight) - 3, 7, 7, gl.RGBA, gl.UNSIGNED_BYTE, px);
         return [0, 1, 2].map((c) => Math.round(px.filter((_, i) => i % 4 === c).reduce((a, q) => a + q, 0) / 49));
       });
-    });
+    }, [suv.x, rear]);
     t.diagnostic(`under the car and in front of it: ${JSON.stringify(beside)}`);
     assert.ok(lum(beside[0]) < lum(beside[1]) * 0.85, `the drive darker under the car: ${beside}`);
     // The signs as the classic look draws them (unlit, turned back through the tone mapping),

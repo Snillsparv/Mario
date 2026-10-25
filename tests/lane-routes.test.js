@@ -32,6 +32,8 @@ import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { ObjectManager } from '../src/objects/ObjectManager.js';
 import { Events } from '../src/core/events.js';
 import { MAX_HEALTH } from '../src/player/physics/tuning.js';
+import { PLAYER_RADIUS } from '../src/core/constants.js';
+import { ROOM } from '../src/world/lane/garage.js';
 
 const O = AREA_DEFS.lane.origin;
 const area = buildArea(new THREE.Scene(), AREA_DEFS.lane);
@@ -99,36 +101,34 @@ const roofOver = (x, z) => {
   return ys.length ? Math.max(...ys) : null;
 };
 
-test("the star climb: from the drive onto a bin, onto the carport (the stick part way or all the way), a hop west onto the east wing's roof (or over the gable's back corner onto the main roof's back slope) anywhere along the carport's back half, up along the wing's ridge onto the main roof and along its ridge to the star", () => {
+test("the star climb (W4: the garage row's roof from the gable's back corner, just under the east wing's eave): from the drive onto a bin at home (its coin); up onto the row's roof by its edge (a standing jump in the gap between the cars grabs it: a bin pushed back to it, lane-bins, or the cars, below, are the other ways); walking west from it he walks up onto the east wing's roof anywhere along the row; up along the wing's ridge onto the main roof and along its ridge to the star", () => {
   // Onto the bin from the drive.
-  const a = hero(lane.BINS[0].x, GROUND, 1300, S);
-  a.walk([[lane.BINS[0].x, 1450]], 0.5);
+  const face = lane.BINS[0].z - lane.BIN.z / 2;
+  const a = hero(lane.BINS[0].x, GROUND, face - 250, S);
+  a.walk([[lane.BINS[0].x, face - 105]], 0.5);
   jump(a, S, { push: 0.5, after: 0 });
   a.rest();
   assert.ok(Math.abs(a.at().y - lane.BIN.top) < 1 && a.p.grounded, `on the bin: ${JSON.stringify(a.at())}`);
   assert.equal(a.coins(), 1, "the bins' coin");
-  // From the bin onto the carport's roof, with the stick part way or all the way.
-  for (const push of [0.6, 1]) {
-    const h = hero(lane.BINS[1].x, lane.BIN.top, lane.BINS[1].z - 40, S);
-    h.rest(2);
-    jump(h, S, { push, after: 0 });
-    h.rest();
-    const q = h.at();
-    assert.ok(Math.abs(q.y - lane.CARPORT.top) < 1 && q.z > lane.CARPORT.z0, `stick ${push}: on the carport ${JSON.stringify(q)}`);
-  }
-  // Walking west into the gable or the wing's wall gets him nowhere; a hop lands on a roof
-  // anywhere along the carport's back half (W3: the east wing's from the gable's back corner on).
-  for (const z of [2100, 2200, 2400, 2560]) {
+  // Up by the row's edge from the gap between the cars: the grab, then A climbs.
+  const [ev, suv] = lane.CARS.slice(0, 2);
+  const gap = (ev.x + lane.CAR_KINDS[ev.kind].w / 2 + suv.x - lane.CAR_KINDS[suv.kind].w / 2) / 2;
+  const g = hero(gap, GROUND, lane.CARPORT.z0 - 110, S);
+  g.rest(2);
+  for (let t = 0; t < 40 && g.p.action !== 'ledge_hang'; t++) g.tick({ stickY: 1, A: t < 15 }, S);
+  assert.equal(g.p.action, 'ledge_hang', 'hanging from the row\'s edge');
+  g.rest(6);
+  g.tick({ A: true }, S);
+  g.rest(40);
+  assert.ok(Math.abs(g.at().y - lane.CARPORT.top) < 1 && g.at().z > lane.CARPORT.z0 && g.p.grounded, `up on the row's roof: ${JSON.stringify(g.at())}`);
+  // Walking west from the row's roof anywhere along it he walks up onto the east wing's roof.
+  for (const d of [60, 250, 450, 650]) {
+    const z = lane.CARPORT.z0 + d;
     const w = hero(1800, lane.CARPORT.top, z, W);
     for (let t = 0; t < 40; t++) w.tick({ stickY: 1 }, W);
-    assert.ok(Math.abs(w.at().y - lane.CARPORT.top) < 1 && w.at().x > DAD.x1, `z ${z}: walked into the wall, still on the carport ${JSON.stringify(w.at())}`);
-    const h = hero(1800, lane.CARPORT.top, z, W);
-    for (let t = 0; t < 4; t++) h.tick({ stickY: 1 }, W);
-    jump(h, W, { after: 0 });
-    h.rest();
-    const q = h.at();
+    const q = w.at();
     const roof = roofOver(q.x, q.z);
-    assert.ok(q.x < DAD.x1 - 100 && roof !== null && Math.abs(q.y - roof) < 6 && h.p.grounded, `z ${z}: hopped onto a roof ${JSON.stringify(q)} (roof ${roof?.toFixed(0)})`);
+    assert.ok(q.x < DAD.x1 - 100 && roof !== null && Math.abs(q.y - roof) < 6 && w.p.grounded, `z ${z}: walked up onto a roof ${JSON.stringify(q)} (roof ${roof?.toFixed(0)})`);
   }
   // Up the wing's slope to its ridge, along it onto the main roof (its valleys) and along the
   // ridge to the star.
@@ -409,8 +409,8 @@ test("the hoop's board, a perch: a hop from the van's roof toward it lands on it
   }
 });
 
-test("the dad's cars: from the drive a hop onto the blue car's bonnet, another onto its roof and one more from there onto the carport's (a way up besides the bins)", () => {
-  const ev = lane.CARS[0];
+test("the dad's cars (W4: parked deep against the garage row, the SUV nose in): from the drive a hop onto the blue car's bonnet, another onto its roof and one more from there onto the row's roof; onto the SUV's roof from its tail and from its front end up onto the row's roof (by its edge: ways up besides the bins)", () => {
+  const [ev, suv] = lane.CARS.slice(0, 2);
   const K = lane.CAR_KINDS[ev.kind];
   const nose = ev.z - K.l / 2;
   const h = hero(ev.x, GROUND, nose - 180, S);
@@ -424,34 +424,70 @@ test("the dad's cars: from the drive a hop onto the blue car's bonnet, another o
   h.walk([[ev.x, ev.z + 180]], 0.4);
   jump(h, S, { push: 0.6, after: 0 });
   h.rest();
-  assert.ok(Math.abs(h.at().y - lane.CARPORT.top) < 1 && h.at().z > lane.CARPORT.z0, `on the carport: ${JSON.stringify(h.at())}`);
+  assert.ok(Math.abs(h.at().y - lane.CARPORT.top) < 1 && h.at().z > lane.CARPORT.z0, `on the row's roof: ${JSON.stringify(h.at())}`);
+  // The SUV, nose in: its boot toward the street.
+  const Q = lane.CAR_KINDS[suv.kind];
+  const rear = suv.z - Q.l / 2;
+  const s = hero(suv.x, GROUND, rear - 180, S);
+  s.rest(2);
+  // (Its boot is short: the hop lands on its roof, or on the boot and one more onto the roof.)
+  jump(s, S, { after: 0 });
+  s.rest();
+  if (Math.abs(s.at().y - GROUND - Q.belt) < 1) {
+    jump(s, S, { push: 0.6, after: 0 });
+    s.rest();
+  }
+  assert.ok(Math.abs(s.at().y - GROUND - Q.roof) < 1 && s.p.grounded, `on its roof: ${JSON.stringify(s.at())}`);
+  // From its roof's front end a jump at the row's edge (onto its bonnet first if short), its
+  // ledge grabbed and climbed.
+  s.walk([[suv.x, suv.z + Q.l / 2 - Q.hood - Q.screen - 20]], 0.4);
+  s.rest(10);
+  for (let k = 0; k < 3 && !(Math.abs(s.at().y - lane.CARPORT.top) < 1 && s.p.grounded); k++) {
+    for (let t = 0; t < 60 && s.p.action !== 'ledge_hang' && !(s.p.grounded && t > 2); t++) s.tick({ stickY: 1, A: t < 15 }, S);
+    if (s.p.action === 'ledge_hang') {
+      s.rest(6);
+      s.tick({ A: true }, S);
+    }
+    s.rest(40);
+  }
+  assert.ok(Math.abs(s.at().y - lane.CARPORT.top) < 1 && s.at().z > lane.CARPORT.z0, `on the row's roof from the SUV: ${JSON.stringify(s.at())}`);
 });
 
-test('D1, the garage: from the street through the gap between the cars to the red door, B, B smashes it, in to the room\'s five coins and its 1-up, and out between the cars again; the double doors with one ground pound in the strip at their middle', async () => {
+test('D1, the garage: from the street up the gap between the cars to the red door, B, B smashes it, in round the dad\'s car\'s tail to the room\'s five coins and its 1-up, and out between the cars again; a ground pound in the gap smashes the red door and the double doors\' west leaf', async () => {
   const chunk = await import('../src/objects/laneBoss/index.js');
-  const h = hero(2099, 0, 300, S);
+  // (W4: the cars parked deep, CAR_GAP 110 off the doors: the gap between them faces the red door's
+  // east part and its strip; he goes in round the dad's car's tail.)
+  const G = lane.GARAGE;
+  const [ev, suv] = lane.CARS.slice(0, 2);
+  const hw = (c) => lane.CAR_KINDS[c.kind].w / 2;
+  const R4 = PLAYER_RADIUS + 4;
+  const [gx0, gx1] = [ev.x + hw(ev) + R4, suv.x - hw(suv) - R4];
+  const red = G.leaves[1];
+  const inX = red.x1 - R4 - 2;
+  const row = G.wall + 300;
+  const h = hero(gx0, 0, 300, S);
   h.om.attachLane(chunk, area);
   h.om.laneBoss.armed = false;
   const g = h.om.garage;
   try {
-    h.walk([[2099, 1500], [2085, 1850]], 0.6);
+    h.walk([[gx0, 1300], [gx0, G.wall - 55]], 0.6);
     h.rest(5);
     for (let t = 0; t < 14; t++) h.tick({ B: t === 0 || t === 6 }, S);
     assert.ok(g.leaves[1].broken, 'the red door smashed');
-    h.walk([[2085, 2250], [1800, 2250], [2380, 2250], [2090, 2470]], 0.6);
-    h.walk([[2090, 2560]], 0.4, 30);
+    h.walk([[inX, G.wall - 10], [inX, row], [1760, row], [2420, row], [ROOM.oneUp.x, ROOM.oneUp.z - 115]], 0.6);
+    h.walk([[ROOM.oneUp.x, ROOM.oneUp.z - 25]], 0.4, 30);
     assert.equal(h.coins(), 5, 'the room\'s five coins');
     assert.equal(h.log.filter((e) => e.name === 'oneUp').length, 1, 'its 1-up');
-    h.walk([[2085, 2100], [2085, 1850], [2099, 1500], [2099, 300]], 0.6);
+    h.walk([[inX, row], [inX, G.wall - 10], [gx0, G.wall - 55], [gx0, 1300], [gx0, 300]], 0.6);
     assert.ok(h.at().z < 400, `out to the street: ${JSON.stringify(h.at())}`);
     assert.equal(h.coins(), 5);
-    // The double doors: one pound at their middle, from the strip.
+    // One pound in the gap: the red door and the double doors' west leaf.
     g.enter({ pos: { x: 1e7, y: 0, z: 1e7 } });
-    h.p.teleport(2330 + O.x, GROUND + O.y, lane.GARAGE.wall - 90 + O.z, S);
+    h.p.teleport((gx0 + gx1) / 2 + O.x, GROUND + O.y, G.wall - 55 + O.z, S);
     h.p.setAction('idle');
     h.rest(3);
     for (let t = 0; t < 50; t++) h.tick({ A: t < 9, Z: t === 9 }, S);
-    assert.ok(g.leaves[2].broken && g.leaves[3].broken, 'both leaves');
+    assert.ok(g.leaves[1].broken && g.leaves[2].broken, 'both leaves');
   } finally {
     g.enter({ pos: { x: 1e7, y: 0, z: 1e7 } });
   }

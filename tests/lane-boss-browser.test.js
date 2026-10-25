@@ -104,7 +104,10 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         const g = window.__game;
         const { boss } = await g.laneBoss;
         const o = g.areas.current.def.origin;
-        g.player.teleport(1900 + o.x, 22 + o.y, 1000 + o.z, 0);
+        const L = await import('/src/world/lane/layout.js');
+        const CAR = L.CARS[0]; // (W4: the dad's car parked deep by the doors: in front of its nose)
+        const NOSE = CAR.z - L.CAR_KINDS[CAR.kind].l / 2;
+        g.player.teleport(CAR.x + o.x, 22 + o.y, NOSE - 130 + o.z, 0);
         g.player.setAction('idle');
         g.camera.reset(g.player);
         let n = 0;
@@ -185,7 +188,10 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         const { policy } = await import('/tests/helpers/laneBossPolicy.js');
         const { FIGHT } = await import('/src/objects/laneBoss/tuning.js');
         const o = g.areas.current.def.origin;
-        g.player.teleport(1900 + o.x, 22 + o.y, 900 + o.z, 0);
+        const L = await import('/src/world/lane/layout.js');
+        const CAR = L.CARS[0]; // (W4: the dad's car parked deep by the doors: in front of its nose)
+        const NOSE = CAR.z - L.CAR_KINDS[CAR.kind].l / 2;
+        g.player.teleport(CAR.x + o.x, 22 + o.y, NOSE - 230 + o.z, 0);
         g.player.setAction('idle');
         g.camera.reset(g.player);
         let at = -1;
@@ -242,12 +248,14 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         const g = window.__game;
         const { boss } = await g.laneBoss;
         const o = g.areas.current.def.origin;
-        g.player.teleport(1900 + o.x, 22 + o.y, -1400 + o.z, 0);
+        const L = await import('/src/world/lane/layout.js');
+        const CAR = L.CARS[0]; // (W4: the dad's car parked deep by the doors: in front of its nose)
+        g.player.teleport(CAR.x + o.x, 22 + o.y, -1400 + o.z, 0);
         g.player.setAction('idle');
         let n = 0;
         for (; n < 900 && boss.state !== 'parked'; n += 10) g.step(10);
-        const roof = g.areas.current.collision.findFloor(1900 + o.x, 1000, 1445 + o.z).y - o.y;
-        g.player.teleport(1900 + o.x, 300 + o.y, 1445 + o.z, 0);
+        const roof = g.areas.current.collision.findFloor(CAR.x + o.x, 1000, CAR.z + o.z).y - o.y;
+        g.player.teleport(CAR.x + o.x, 300 + o.y, CAR.z + o.z, 0);
         g.player.setAction('idle');
         g.step(20);
         return { n, state: boss.state, roof, stands: g.player.pos.y - o.y, shown: boss.shown, drawn: boss.hides.every((h) => h.mesh.geometry.drawRange.count === Infinity) };
@@ -297,7 +305,10 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         g.events.on('laneBoss', (e) => window.__fight.log.push(e.phase));
         g.events.on('starCollected', (e) => window.__fight.log.push(e.boss ? 'star' : 'lane-star'));
         const o = g.areas.current.def.origin;
-        g.player.teleport(1900 + o.x, 22 + o.y, 1000 + o.z, 0);
+        const L = await import('/src/world/lane/layout.js');
+        const CAR = L.CARS[0]; // (W4: the dad's car parked deep by the doors: in front of its nose)
+        const NOSE = CAR.z - L.CAR_KINDS[CAR.kind].l / 2;
+        g.player.teleport(CAR.x + o.x, 22 + o.y, NOSE - 130 + o.z, 0);
         g.player.setAction('idle');
         g.camera.reset(g.player);
         g.step(400, {}, () => boss.state === 'stand');
@@ -350,9 +361,11 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         let n = 0;
         for (; n < 3000 && !F.log.includes('star'); n += 60) g.step(60, F.pol, () => F.log.includes('star'));
         const o = g.areas.current.def.origin;
-        const roof = g.areas.current.collision.findFloor(1900 + o.x, 1000, 1445 + o.z).y - o.y;
+        const L = await import('/src/world/lane/layout.js');
+        const CAR = L.CARS[0]; // (W4: the dad's car parked deep by the doors: in front of its nose)
+        const roof = g.areas.current.collision.findFloor(CAR.x + o.x, 1000, CAR.z + o.z).y - o.y;
         g.step(120);
-        g.player.teleport(1900 + o.x, 300 + o.y, 1445 + o.z, 0);
+        g.player.teleport(CAR.x + o.x, 300 + o.y, CAR.z + o.z, 0);
         g.player.setAction('idle');
         g.step(20);
         return { n, state: F.boss.state, beaten: F.boss.beaten, stars: g.player.stars - F.stars, lives: g.state.lives - F.lives, hurts: F.hurts, log: F.log, area: g.area, warp: g.areas.warp?.kind ?? null, roof, stands: g.player.pos.y - o.y };

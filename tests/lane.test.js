@@ -375,7 +375,7 @@ test('the farthest leaps, long jumps at full speed in 16 directions off the dad\
   assert.deepEqual(out, []);
 });
 
-test('the dad\'s house (W3): its shallow main body, eaves at 412, its 32-degree roof up to the ridge at 703 over z 1795 (raycast down at 7 points on each slope), the two wings behind it, their ridges along z running into its back slope at the valleys; the carport\'s roof at 370 with 300 or more over its floor; no floor anywhere under a ceiling lower than 300', () => {
+test('the dad\'s house (W3): its shallow main body, eaves at 412, its 32-degree roof up to the ridge at 703 over z 1795 (raycast down at 7 points on each slope), the two wings behind it, their ridges along z running into its back slope at the valleys; the garage row\'s roof at 392 with 300 or more over the store room\'s floor under it; no floor anywhere under a ceiling lower than 300', () => {
   assert.deepEqual([DAD.x0, DAD.x1, DAD.z0, DAD.z1, DAD.eave, Math.round(DAD.ridge), DAD.ridgeZ, DAD.pitch], [-860, 1600, 1330, 2260, 412, 703, 1795, 32]);
   const tan = (DAD.ridge - DAD.eave) / (DAD.d / 2);
   assert.ok(Math.abs(Math.atan(tan) * (180 / Math.PI) - 32) < 0.2, 'its pitch');
@@ -415,8 +415,10 @@ test('the dad\'s house (W3): its shallow main body, eaves at 412, its 32-degree 
   const front = col.raycast(world(250, 200, 900), { x: 0, y: 0, z: 1 }, 1000, { floors: false, ceilings: false });
   assert.ok(front && Math.abs(front.point.z - O.z - DAD.z0) < 1, `the front wall at ${front && front.point.z - O.z}`);
   const C = lane.CARPORT;
-  assert.equal(col.findFloor(2000 + O.x, 600, 2200 + O.z).y - O.y, C.top);
-  const ceil = col.findCeil(2000 + O.x, GROUND + 10, 2200 + O.z).y - O.y;
+  // (W4: the row's roof from the gable's back corner; the room behind the door wall under it.)
+  const roomZ = (lane.GARAGE.wall + C.z1) / 2;
+  assert.equal(col.findFloor(2000 + O.x, 600, roomZ + O.z).y - O.y, C.top);
+  const ceil = col.findCeil(2000 + O.x, GROUND + 10, roomZ + O.z).y - O.y;
   assert.ok(ceil - GROUND >= 300 && ceil < C.top, `the store room under the carport: ${ceil - GROUND}`);
   // Every floor he can stand on (not too steep) has 300 or more over it, all over the course.
   const low = [];
@@ -574,7 +576,7 @@ for (const [label, prof] of CAMERAS) {
       if (trapped > 35) out.push(`yard ${x}: trapped ${trapped} ticks (occluded ${occluded})`);
     }
     // C-button swings round him in the yards, under the carport and on the roof, facing 8 ways.
-    const spots = [...yards.map((x, k) => [x, lane.TERRACE, [-2400, -2600, -2200, -2500][k]]), [2050, GROUND, 2300], [0, DAD.ridge - 40, 1860]];
+    const spots = [...yards.map((x, k) => [x, lane.TERRACE, [-2400, -2600, -2200, -2500][k]]), [2050, GROUND, lane.GARAGE.wall + 350], [0, DAD.ridge - 40, 1860]];
     for (const [x, y, z] of spots) {
       for (let k = 0; k < 8; k++) {
         const { p, ctl } = hero(x, y, z, (k / 8) * Math.PI * 2);

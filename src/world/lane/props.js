@@ -10,8 +10,8 @@
 //   waveFlags(geometry, layout) -> update(time)   // lane-cloth's flags waving in the breeze
 //
 // Grey lampposts with a bent arm and a flat lamp head; white flagpoles with a gold knob, each
-// flying a long blue and yellow pennant (kit.cloth; a cross flag where a pole's flag is 'flag'); the two wheelie bins
-// against the dad's east gable by his car charger; hedges (leafy boxes, a soft crown along their
+// flying a long blue and yellow pennant (kit.cloth; a cross flag where a pole's flag is 'flag'); the two big
+// wheelie bins against the front of the dad's east gable; hedges (leafy boxes, a soft crown along their
 // tops) and thuja columns; the big broad-leaved trees off the junction, an apple tree on north_4's
 // terrace, a birch behind the corner house, a red-leaved shrub by the double garage; the dad's
 // garden: the red-leaf bed (field stones along all four edges, russet leaves fallen in it) with
@@ -53,7 +53,7 @@ import { makeRng } from '../../core/math.js';
 import { fir } from '../courseKit.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
-import { bedStones, redTreeStems, redTreeCrown, ivyMasses } from './real/plan.js';
+import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses } from './real/plan.js';
 import { signFace } from './real/sign.js';
 
 const TINT = {
@@ -64,7 +64,7 @@ const TINT = {
   gold: 0xe8b84a,
   blue: 0x1e5aa8, // the flags' blue and yellow
   yellow: 0xf6c81c,
-  bin: 0x2c302c,
+  bin: 0x1d2839, // (the photos' near-black blue-grey: W4)
   hedge: 0x9a9040, // (over the green leaf texture: an olive, W1)
   thuja: 0x5e5a30,
   rhodo: 0x34522a,
@@ -75,6 +75,11 @@ const TINT = {
   bark: 0xe8e4da,
   redLeaf: [0x7a3236, 0x5a2a2a, 0x6e3a40, 0xa05a38], // the red-leaf tree's tones (purple-reds, browns: W3)
   ivy: 0x3a4a22,
+  climber: 0x333a22, // (the gable's back corner's: W4)
+  flue: 0x9a9ea0, // the east wing's galvanised flue
+  lampBody: 0x1c1e20, // the gables' bulkhead lamps
+  lampGlass: 0xd8d4c4,
+  column: 0x4a5428, // the columnar tree far behind the garage row
   rose: 0xa8a848,
   stake: 0x2a2a2a,
   landing: 0x4c4b4c, // (dark grey concrete, as the photos have it: W3 fix)
@@ -151,6 +156,7 @@ export function* propsSteps(kit, layout) {
   yield;
   for (const t of layout.TREES) broadTree(kit, layout, t);
   for (const t of layout.GARDEN_TREES) gardenTree(kit, layout, t);
+  for (const t of layout.COLUMN_TREES ?? []) columnTree(kit, layout, t);
   yield;
   dadsGarden(kit, layout);
   turnSign(kit, layout);
@@ -306,9 +312,10 @@ export function waveFlags(geo, { FLAGPOLES, FLAGPOLE, WIND }) {
   };
 }
 
-// A wheelie bin: a dark body, its lid a little wider on top, two wheels at its back (+x); solid
-// to its lid's top. The bins move (objects/laneBoss/LaneBins.js), so the first one is drawn once
-// in its own frame (origin at its foot's middle, +x the handle side) into the movers' kit
+// A wheelie bin (W4: the photos' big four-compartment kind): a dark body, its lid a little wider
+// on top and split front and back, the handle and two wheels at its back toward the street (-z);
+// solid to its lid's top. The bins move (objects/laneBoss/LaneBins.js), so the first one is drawn
+// once in its own frame (origin at its foot's middle, -z the handle side) into the movers' kit
 // (kit.mover('bins'): lane/build.js draws it once per bin, instanced, each at home until moved);
 // each one's collider is named (bin_0, bin_1: LaneBins moves it in place).
 function bin(kit, layout, { x, z }, i) {
@@ -318,10 +325,11 @@ function bin(kit, layout, { x, z }, i) {
     const paint = kit.drawn('bins').mover('bins');
     const h = BIN.top - GROUND;
     paint.color(TINT.bin);
-    paint.box(-hx, hx - 6, 0, h - 10, -hz + 4, hz - 4, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
-    paint.box(-hx - 4, hx, h - 10, h, -hz, hz, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+    paint.box(-hx + 4, hx - 4, 0, h - 10, -hz + 6, hz, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+    for (const [z0, z1] of [[-hz - 4, -1.5], [1.5, hz]]) paint.box(-hx, hx, h - 10, h, z0, z1, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
     paint.color(0x111111);
-    for (const s of [-1, 1]) paint.box(hx - 16, hx + 6, 0, 26, s * (hz - 18) - 8, s * (hz - 18) + 8);
+    paint.box(-hx + 16, hx - 16, h - 30, h - 22, -hz - 10, -hz - 4);
+    for (const s of [-1, 1]) paint.box(s * (hx - 20) - 8, s * (hx - 20) + 8, 0, 26, -hz - 6, -hz + 16);
   }
   kit.solids.named(`bin_${i}`).box(x - hx, x + hx, GROUND, BIN.top, z - hz, z + hz, 'stone');
 }
@@ -364,6 +372,17 @@ function thuja(kit, layout, { x, z }) {
   leaves.lathe(x, z, [[r * 0.8, y0 - 6], [r, y0 + h * 0.3], [r * 0.82, y0 + h * 0.7], [r * 0.3, y0 + h * 0.94], [0, y0 + h]], 8, { a0: x * 0.01 });
   leaves.shade = null;
   solids.solid(frustum(x, z, r * 0.85, r * 0.85 - h * 0.85 * THUJA_LEAN, 8, y0 - 6, y0 + h * 0.85), 'grass');
+}
+
+// A columnar tree far behind the garage row (COLUMN_TREES, out of bounds: drawn only): a tall
+// narrow eight-sided column, rounded at its top, its top a little yellower.
+function columnTree(kit, layout, { x, z, r, h }) {
+  const { leaves } = kit.drawn('plants');
+  const y0 = layout.groundHeight(x, z);
+  leaves.color(TINT.column);
+  leaves.shade = (px, y) => 0.7 + 0.45 * Math.min(1, (y - y0) / h);
+  leaves.lathe(x, z, [[r * 0.5, y0], [r * 0.85, y0 + h * 0.15], [r, y0 + h * 0.45], [r * 0.85, y0 + h * 0.75], [r * 0.45, y0 + h * 0.94], [0, y0 + h]], 8, { a0: 0.4 });
+  leaves.shade = null;
 }
 
 // A closed regular frustum round (cx, cz): radius r0 at y0 up to r1 at y1, a flat top.
@@ -594,6 +613,41 @@ function dadsGarden(kit, layout) {
   paint.color(TINT.chargerLight);
   paint.poly(Array.from({ length: 8 }, (_, k) => [C2.x + 14.6, GROUND + 196 + Math.cos((k / 8) * Math.PI * 2) * 6, C2.z + Math.sin((k / 8) * Math.PI * 2) * 6]), { facing: [1, 0, 0] });
   chargerCable(kit.mover('charger_cable'), C2, GROUND);
+  // The gables' bulkhead lamps over the drive (both looks), the climber up the gable's back corner
+  // (drawn only: the realistic look's are cards), the steel flue on the east wing's slope.
+  for (const l of layout.GABLE_LAMPS) gableLamp(paint, l);
+  leaves.color(TINT.climber);
+  leaves.shade = (x, y) => 0.6 + 0.4 * Math.min(1, (y - GROUND) / (layout.CLIMBER.top - GROUND));
+  // (Each mass a row of round blobs along its longer side: a sheet, not a ball through the wall.)
+  climberMasses(layout).forEach(({ c, r }, i) => {
+    const [ax, az] = r[0] >= r[2] ? [1, 0] : [0, 1];
+    const [lo, hi] = [Math.min(r[0], r[2]) + 6, Math.max(r[0], r[2])];
+    const n = Math.max(1, Math.round(hi / lo));
+    for (let k = 0; k < n; k++) {
+      const t = n === 1 ? 0 : (k / (n - 1)) * 2 - 1;
+      blob(leaves, c[0] + ax * t * (hi - lo), c[2] + az * t * (hi - lo), c[1], lo, r[1], i * 1.7 + k, 5);
+    }
+  });
+  leaves.shade = null;
+  const Fl = layout.FLUE;
+  const W = layout.DAD_WINGS[1];
+  const foot = W.ridge - (Math.abs(Fl.x - W.cx) * (W.ridge - W.eave)) / (W.d / 2);
+  const cap = foot + Fl.h;
+  paint.color(TINT.flue);
+  paint.lathe(Fl.x, Fl.z, [[Fl.r, foot - 24], [Fl.r, cap - 12], [Fl.cap, cap - 12], [Fl.cap, cap - 6], [Fl.cap * 0.5, cap + 4], [0, cap + 6]], 8);
+}
+
+// A round black bulkhead lamp on a wall (GABLE_LAMPS): a ring standing 9 out of the wall round a
+// pale glass, two bars of its cage across it.
+function gableLamp(b, { x, y, z, out }) {
+  const f = wallFrame([x, 0, z], [out, 0, 0]);
+  const ring = (r) => Array.from({ length: 10 }, (_, i) => [Math.sin((i / 10) * Math.PI * 2) * r, y + Math.cos((i / 10) * Math.PI * 2) * r]);
+  b.color(TINT.lampBody);
+  b.moulding(f, ring(11), ring(16), 9, { closed: true });
+  b.color(TINT.lampGlass);
+  b.panel(f, ring(11), 6);
+  b.color(TINT.lampBody);
+  for (const dv of [-4.5, 4.5]) b.panel(f, [[-11, y + dv - 1.2], [11, y + dv - 1.2], [11, y + dv + 1.2], [-11, y + dv + 1.2]], 7);
 }
 
 // The charger's cable: a square tube 4 wide from the box's underside, sagging in a loop to its

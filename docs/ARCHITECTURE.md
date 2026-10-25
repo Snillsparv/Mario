@@ -1577,7 +1577,7 @@ own black front door onto the grass-paver path of his long red house; the course
 over the ridge of his roof, in view from the first second. Up the hill across the street stand
 split-level villas behind grey block walls, along his side long low chain houses linked by flat
 roofs; a turning area at the east end, the junction at the west. Cars stand on the drives (his
-own two by the carport), flags fly over the gardens, a little blue sparrow stands on his
+own two deep by the garage row), flags fly over the gardens, a little blue sparrow stands on his
 mailbox, and in a garden up the hill a trampoline throws him up toward a secret 1-up. Nothing
 here hurts but the dad's car, woken: no critters, no water, no death floor (the car stands up
 into a robot when he comes near it and fights him on the drive: "STOMPWATT" below). Its
@@ -1702,12 +1702,14 @@ trees' leaves).
   only); south_west a glazed veranda on its west gable (the photos' veranda is the house's west
   of the side road: W8) and a brown picket fence (`FENCES`, slabs) along its street side. The
   **link** (south_1 … the dad's, x −1430 … −860, a block to its flat roof at 370) and the
-  **carport** (`CARPORT`, the dad's … the apron's west edge, x 1600 … 2766: its roof slab 345 …
-  370, its deep dark fascia hanging to 280 along its front edge (a wall under the whole lip: the
-  edge grabbed anywhere along it), and under it, 150 behind the edge, the **store room's door
-  wall** with the four garage doors as in the photos (`GARAGE`, D1: see "The garage doors"
-  below), the room behind it back to the old back wall (880 × 660, 323 high, a concrete floor;
-  wood underfoot), no posts).
+  **garage row** (`CARPORT`, its id kept: W4, as photos 33-37 have it, from the dad's gable's
+  back corner (z 2260, level with his back wall) back to z 3000, x 1600 … 2766 between his east
+  wing and south_2: its roof slab 367 … 392, just under the wing's eave (its rim 393: walking west
+  off the row's roof he walks up onto the wing's slope), a thin dark fascia board 340 … 396 along
+  its front edge (a wall under the whole lip: the edge grabbed anywhere along it), and 40 behind
+  it, no open bay, the **store room's door wall** with the four garage doors in the photos' order
+  and widths (`GARAGE`, D1: see "The garage doors" below), the room behind it back to the row's
+  back wall (1146 × 660, 345 high, a concrete floor; wood underfoot), no posts).
   **east_garage** (a double garage
   facing the turning area across its forecourt: white render, a white board gable, two dark panel
   doors, a white brick pier) in front of east_house (x 8022 … 9699, its eaves at 522). Each house is one convex collider (its walls and its hipped or
@@ -1755,11 +1757,19 @@ trees' leaves).
   (`IVY`, `real/plan.js ivyMasses`, drawn only), the rhododendron out from the west pier
   (`RHODODENDRON`: rx 210 along the street, rz 330, 330 high, under the gutter with the west pier
   showing over it; solid, an eight-sided elliptic
-  prism a little inside it); the two wheelie bins against the east gable (`BINS`, solid to 182:
-  they move, see "The bins" below) under the car charger (`DAD.charger`: a dark box, a round
-  green status light on its face, its cable hanging in a loop from its underside to the plug in
-  a holster below: the cable a mover of its own, `part.movers.charger_cable`, so the boss can
-  hide it later); his drive runs on under the carport, his two cars on it (see "Props").
+  prism a little inside it); the two wheelie bins against the front of the east gable (`BINS`,
+  W4: the photos' four-compartment ones, 120 × 105, solid to 187, near-black blue-grey, their lids
+  split, handles and wheels toward the street: they move, see "The bins" below); near the gable's
+  back corner the car charger (`DAD.charger`, z 2125: a dark box, a round green status light on
+  its face, its cable hanging in a loop from its underside to the plug in a holster below: the
+  cable a mover of its own, `part.movers.charger_cable`, so the boss can hide it later) under the
+  gable's round black bulkhead lamp (`GABLE_LAMPS`: the dad's and south_2's facing the drive,
+  drawn in both looks' paint) and a climber up the back corner over the fascia's west end
+  (`CLIMBER`, `real/plan.js climberMasses`, drawn only); on the east wing's drive-side slope near
+  its back end a slim steel flue with a rain cap (`FLUE`, drawn only: seen over the fascia from
+  the drive). His drive (`DAD_DRIVE`, `drivePieces`: one asphalt plane gable to south_2 from the
+  street to the doors, its west edge bending out round the ivy, `DRIVE_NOTCH`; the photos' cool
+  blue-grey, `dadDrive`, in both looks), his two cars on it deep by the doors (see "Props").
 * **Props** (`props.js`): lampposts L1, L2, L3, L5 and L7 (W2: where the photos have them: L1 at
   the junction, three along the pavement, L7 on the footpath; L4 and L6, which they do not show,
   gone; grey, a flat head out on an arm that leaves the post `LAMP.root` 60 under its cap and
@@ -1801,9 +1811,13 @@ trees' leaves).
   estate and a van: a body up to the belt with its nose and boot rounded off, a glass cabin
   narrowing up to a roof in the body's colour with a pillar down each side, four wheels, pale
   headlights and red tail lights, a soft shadow under it; solid, the body and the cabin each
-  convex: a hop onto a bonnet, a grab of a roof's edge. The dad's dark blue SUV and blue
-  crossover side by side before the carport, noses out, the way to the bins clear on their
-  west (the crossover a lookalike of his own car: "The dad's car" below); the west neighbour's white one at the link; a silver hatchback, a dark grey crossover, a
+  convex: a hop onto a bonnet, a grab of a roof's edge. The dad's slate-blue SUV and blue
+  crossover side by side deep on his drive by the garage row (W4: the drive's front half empty),
+  the crossover nose out (x 1975), the SUV nose in (x 2445), the red door and its strip in the
+  gap between them; their ends `CAR_GAP` (110) off the doors: a clean strip one Jonas wide
+  behind them, so every door is reached and walked through (the photos' 0.3 … 0.6 m left
+  squeeze gaps by the bumpers' slopes) (the crossover a lookalike of his own car: "The dad's car"
+  below); the west neighbour's white one at the link; a silver hatchback, a dark grey crossover, a
   black hatchback noses in on north_1's, north_2's and north_3's drives, a black van on north_4's
   (the photos' hoop house; its coins up the drive west of the van); a grey estate on the double
   garage's forecourt), north_4's **basketball hoop** (`HOOP`, on its front wall west of its
@@ -1814,9 +1828,12 @@ trees' leaves).
   sides, a ladder up its back), the footpath's cabinet, the blue sign (a white walking figure
   on it) and its barrier, the forest's firs and birches on the bank (`FOREST`, 34 firs,
   skerries/props.js `fir()`, and 10 birches, white bark ringed dark under yellowing canopies)
-  and a ring of firs round the outside of the boundary (`EDGE_FOREST`, 70), drawn only, so the
-  camera never looks out on nothing, and two houses down the side road in the fog
-  (`SIDE_BLOCKS`, drawn only).
+  and a ring of firs round the outside of the boundary (`EDGE_FOREST`, 70 seeded spots), drawn
+  only, so the camera never looks out on nothing; none in its `clear` sector south of the dad's
+  side (W4: x −1100 … 5000 beyond z 4300, the sky the photos show over the garage row and his roof
+  from the drive; those spots drawn and dropped, the others where they were, as in the realistic
+  look's far tree line), only one columnar tree far behind the garage row (`COLUMN_TREES`, out of
+  bounds, drawn only); and two houses down the side road in the fog (`SIDE_BLOCKS`, drawn only).
 * **The trampoline and the 1-up** (`TRAMPOLINE`, `TRAMPOLINES`, `ONE_UP`): in north_5's front
   garden on the terrace (x 5380, z −2300): a dark mat in a padded blue ring on six legs, r 250,
   solid from the terrace up to its top at 240 (`props.js`); its spring is
@@ -1839,13 +1856,15 @@ trees' leaves).
   the pause screen's leave (`def.leave`, `def.starExit`); `card: true`. `PROBE_Y` 4400 (over
   every roof). `waterLevelAt` is `NO_WATER` everywhere.
 * **The star climb** (`STAR`: `lane_star` at (300, 883, 1795), 180 over the ridge, placed; W3:
-  west of the door, clear of the red-leaf tree's crown, in the arrival's picture): from the
-  drive onto a bin, onto the carport's roof, a hop west lands on the east wing's roof (or, from
-  the carport's front part by the gable's back corner, over it onto the main roof's back slope)
-  anywhere along the carport's back half (walking into the gable or the wing's wall gets him
-  nowhere), up the wing's slope to its ridge and along it onto the main roof (the valleys' apex:
-  no step), up to the ridge (the carport's edge is also grabbed anywhere along its deep fascia,
-  D1: a standing jump from the strip behind the cars hangs from it); or a standing jump within
+  west of the door, clear of the red-leaf tree's crown, in the arrival's picture): up onto the
+  garage row's roof (W4: the bins stand at the gable's front, ~550 short of it now: a bin pushed
+  back along the gable to its leash's back edge, hopped onto and on up onto the row; or the
+  dad's cars, the blue crossover's bonnet, roof and a hop onto the row, the SUV's roof from its
+  tail and a jump at the row's edge from its front end; or a standing jump in the gap between
+  the cars or from the strip behind them grabs the row's edge, its fascia a wall under the whole
+  lip), walking west off the row's roof up onto the east wing's slope anywhere along it (its eave
+  just over the row's roof), up the wing's slope to its ridge and along it onto the main roof (the
+  valleys' apex: no step), up to the ridge; or a standing jump within
   100 of the front wall grabs the eave (its lip); or the red-leaf tree's handstand and a flip
   toward the house with the stick held 8 … 24 ticks (let go at once he lands in the garden).
   Every fall from the dad's roofs is harmless.
@@ -1856,8 +1875,8 @@ trees' leaves).
   block, up north_3's steps, up north_4's drive west of the van, up the side yard between
   north_2 and north_3, on the
   motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
-  the bins, on the carport's roof, on the east wing's slope and the main roof's back slope (W3), and five in a row across the
-  store room behind the garage doors (D1). The 1-ups: over the trampoline, and the store room's
+  the bins, on the garage row's roof, on the east wing's slope and the main roof's back slope (W3), and five in a row across the
+  store room behind the garage doors (D1; W4: 300 in from the doors' face, moved back with them). The 1-ups: over the trampoline, and the store room's
   over its workbench (the lane's chunk's: "The garage doors"); no red coins.
 * **Signs** (`SIGNS`): `sparrow_mailbox` (`post: false`: the mailbox is the sign, no signpost is
   drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
@@ -1926,21 +1945,24 @@ trees' leaves).
   `bin_hold`), the stick drags it along his facing, the bin following after his tick at the grip
   distance (its collider parked while held, back where it stands when he lets go; where it may
   not go he is held back); pulled, the drawn bin tips 15 degrees toward him onto its wheels. At
-  home they are boxed in (the gable 10 behind them, each other, the car 48 in front): only a
-  pull from an end gets one out. **Leashed** to his drive and the strip under the carport's front
-  edge (never the road, the lawns, a roof or the store room: `BIN_LEASH.z1 = GARAGE.wall - 110 -
-  BIN.z / 2`, a bin's back 110 short of the door wall, so it never stands in a doorway); 182 high,
+  home (W4) they stand one behind the other against the gable's front (20 off it, the charger's
+  box and cable standing out of the wall nearer its back corner), the first one's street end
+  free: the one behind is pushed back along the gable once the first is pulled out of the line
+  (no chain pushes). **Leashed** to his drive (never the road, the lawns, a roof or the store
+  room: `BIN_LEASH.z1 = GARAGE.wall - 110 - BIN.z / 2`, a bin's back 110 short of the door wall,
+  so it never stands in a doorway or the strip behind the cars; `x0` 20 off the gable); 187 high,
   they never shut him in (a jump clears them). **Never
-  a softlock** (the star climb's first step is a bin at home): home at once on every arrival
+  a softlock** (a bin at home is still a step up: onto it from the drive): home at once on every arrival
   (`objects.enter`), lost life (the 'spawn' edge) and new game (`reset`); and by themselves: one
   left alone 12 s (`HOME_WAIT`) more than 40 from home, with Jonas 700 away, trundles home at 5 a
   tick (along x then z, or z then x, whichever is free); still not home 300 ticks later (the
-  other bin home before it, say) it is put home where the camera does not look. The climb also
-  works from a bin pushed under the carport's front edge, and never needs the bins (the eave, the
-  tree's flip, the car's bonnet and roof). Their colliders are the static build's boxes, named
+  other bin home before it, say) it is put home where the camera does not look. The star climb
+  takes one pushed back to its leash's back edge anywhere along the garage row (the gable's
+  strip, the gap between the cars, beside the SUV), and never needs the bins (the eave, the
+  tree's flip, the cars, the row's edge from the gap). Their colliders are the static build's boxes, named
   `bin_0`, `bin_1`, covered over their leash (`CollisionWorld.cover`) and moved in place
   (`moveSurfaces`); idle, they cost no collision query. Drawn as movers in both looks: one bin in
-  its own frame (origin at its foot's middle, +x the handle side) instanced twice (classic
+  its own frame (origin at its foot's middle, −z the handle side: W4, toward the street) instanced twice (classic
   `lane-bins` in render's baked material; realistic `lane-detail-bins` from the worker, casting),
   bounds over the whole leash; `LaneBins` writes both looks' instances (G shows the right pose at
   once). Without the chunk (offline, a 404, node tests that do not attach it) the bins stand
@@ -1959,13 +1981,14 @@ trees' leaves).
 * **The garage doors** (D1: the dad's "fix the garage doors like in the real picture, but you
   should be able to kick them to pieces easily"; `GARAGE` in `layout.js`, drawn and made solid by
   `houses.js carport` in main, broken by `objects/laneBoss/LaneGarage.js` in the lane's lazy
-  chunk). **The wall** (photos 36, 37 and the street's view: the garage row under the flat roof's
-  deep dark fascia), its face at z 1950 under the roof's edge, 20 thick, up to the slab's
-  underside (345), west (the dad's gable) to east (south_2's): dark brown boards, a dark brown
-  door, dark brown boards, the **red door** (seen between the two cars from the drive's mouth, as
-  in photo 37), a red strip with a grey downpipe, the dark brown **double doors** (a small blank
-  sign high on the left leaf seen from the drive: a red rim round a pale plate, nothing on it), a
-  yellow strip. Each leaf 140 … 150 wide, 280 high under a 43 lintel, five vertical boards with a
+  chunk). **The wall** (photos 33-37: the garage row's doors right behind its thin dark fascia,
+  W4), its face at z 2300, 40 behind the roof's edge, 20 thick, up to the slab's underside
+  (367), west (the dad's east wing) to east (south_2's gable), in the photos' order and widths:
+  dark brown boards (the climber over them), a wide dark brown door (behind the dad's car), the
+  **red door** and a red strip with a grey downpipe (between the two cars from the drive's mouth,
+  as in photo 37), the dark brown **double doors** (behind the SUV; a small blank sign high on
+  the east leaf: a red rim round a pale plate, nothing on it), the yellow end panel. Each leaf 157
+  … 318 wide, 318 high up to the fascia's foot under a 27 lintel, five vertical boards with a
   groove between, two ledges behind, strap hinges on the hinge side, a black handle (not on the
   passive double door); dark frame strips round each opening. Drawn by the classic builders for
   **both looks** (boards in `kit.boards`, the hardware in `kit.paint`: classic `lane-boards` /
@@ -1975,21 +1998,23 @@ trees' leaves).
   leaf in order; each look's own ranges). The fixed spans and lintels are boxes in the boards
   (their drive faces in their tints, the room's and the reveals in the lining's), walls only;
   each leaf's collider a named box (`garage_0` … `garage_3`, `SolidBuilder.named`), walls only;
-  the deep fascia a wall from 280 to the roof's top (at 300 his air probes slipped under it and
-  the carport's hang failed); the props' colliders boxes to `propTop` 240, walls only (nothing to
-  stand on under the low ceiling; his feet reach 185 at most in there). **The store room**: 880 ×
-  660 × 323 under the slab, its walls lined with bare dark boards 10 in from the gables (the
+  the fascia a wall from 340 to the roof's top (D1 hung it to 280 because his air probes slipped
+  under it into the open bay; W4: no bay, the door wall 40 behind it, and the hang from 340
+  passes `hero-scale`); the props' colliders boxes to `propTop` 240, walls only (nothing to
+  stand on under the low ceiling; his feet reach 207 at most in there). **The store room**: 1146
+  × 660 × 345 under the slab, everything in it 350 further back with its wall (W4), its walls lined with bare dark boards 10 in from the gables (the
   realistic look's proud brick stays behind them), a filler closing the slit at the dad's back
   corner, the old back wall's outside face, a concrete floor (the drive's surface split at the
   wall: the floor `TINT.floor`, shade 0.4) and the soffit darker over it (0.3). **Breaking**: any
   attack (`player.getAttack()`: the jab and the cross take 1 of the leaf's 2, anything else 2) on a
   whole leaf's box, at most once per 8 ticks: the jab **cracks** it (it rattles 10 ticks, its board
   nearest the hit stays askew 0.06 rad about its foot, leaning out toward him; splinters;
-  `door_crack`); the cross, the combo's kick, a jump kick, a ground pound (both double doors from
-  their middle), a dive through the gap between the cars at full speed or its belly slide, flying
+  `door_crack`); the cross, the combo's kick, a jump kick (so close to the fascia the jump then
+  grabs the row's edge), a ground pound (the red door and the double doors' west leaf from the
+  gap between the cars), a dive up the gap at full speed or its belly slide, flying
   or the cannon's shot **smash** it at once: its collider parked under the world (`moveSurfaces`,
   dy only: no `cover`), its five boards thrown away from him (into the room from the drive, out
-  into the strip from inside), tumbling under gravity, kept in the room's or the strip's box,
+  into the strip behind the cars from inside), tumbling under gravity, kept in the room's or the strip's box (`inBox`, `outBox`, from the layout),
   bouncing once, lying down face up along where they point, sliding to a stop, shrinking away 2.5
   s later with a puff (all gone ~95 ticks after the smash); `door_smash` (a thump and a crunch,
   splinters ticking off, three plank tocks), three bursts of splinters in the leaf's wood colour,
@@ -2015,7 +2040,7 @@ trees' leaves).
   chunk's own `OneUp`, shown while a leaf is broken, not while STOMPWATT fights him outside the
   room; once a game). **The room camera** (`objects/laneBoss/garageCam.js`): while his feet are in
   the room it sits in it on a circle of 330 round the room's middle, on the far side from him,
-  300 high (45 under the slab, 60 over the props' colliders), in front of the bench and the
+  300 high (67 under the slab, 60 over the props' colliders), in front of the bench and the
   shelves, looking at his chest; it blends in over 6 ticks, or cuts in when a wall stands between
   the follow camera and it; out again it blends out over 8, or cuts back with the follow camera
   set on the drive's side of him; the C buttons turn its circle; first person untouched; the
@@ -2086,17 +2111,20 @@ trees' leaves).
   both looks at the bed's corner facing west, its post solid and no pole, the robot's walking
   ground clear of it; the lettering only through `sign.js` and no canvas text in the lane's
   sources; every lamppost a pole to its cap, its side across its arm, nothing drawn over its
-  cap); `tests/lane-routes.test.js` (scripted input: the star climb (W3: over the east wing), the
+  cap); `tests/lane-routes.test.js` (scripted input: the star climb (W3: over the east wing; W4:
+  up by the garage row's edge from the gap between the cars, then walking up onto the wing), the
   front eave (its lip, at three places along the front), the red-leaf tree's flip (and let go at
   once, down in the garden), and the routes round the street, each collecting exactly its coins; the
   trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
   and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
-  perch from the van's roof, the dad's cars as steps up to the carport); `tests/lane-bins.test.js`
+  perch from the van's roof, the dad's cars as steps up to the garage row: the crossover's
+  bonnet and roof, the SUV's roof from its tail and its front end); `tests/lane-bins.test.js`
   (the bins with the chunk attached and the real Player: their moved colliders exact, pushes,
   grabs from each side and the refusals, dragging, blocked, every way of letting go, home on
   arrival, lost life, new game and by themselves, both looks' instances, the star climb from
-  them at home and from one under the carport's edge (D1: its deep fascia a wall under the whole
-  lip), idle costing nothing; B4 the feel: running
+  them: onto one at home, the other pushed back along the gable to the garage row once the first
+  is pulled out of the line, and from one at its leash's back edge anywhere along the row (W4),
+  idle costing nothing; B4 the feel: running
   at one a quick B punches it, rocking, clacking, staying put; held it grabs, never the press that
   let go; standing or pushing a press grabs at once; rolling it rumbles, stopping it clacks; a
   pound beside it rocks it harder); `tests/player-bin.test.js` (the grab's conditions, the mittens on the face at full size and at
@@ -2104,11 +2132,12 @@ trees' leaves).
   and the push, both looks' instances, walked into, home again); `tests/lane-boss.test.js` and
   `tests/lane-boss-fight.test.js`, `tests/lane-boss-browser.test.js` (STOMPWATT: see there);
   `tests/lane-garage.test.js` (D1, the chunk attached, the real Player: the wall tiled west to
-  east, the red door between the cars from the drive, the coins and the 1-up inside, the bins and
-  STOMPWATT short of the wall; each leaf's collider named, parked when smashed (its neighbours
-  untouched), back exactly; walls only; the piece table in both looks; every attack on every
-  leaf (the jab cracks, the cross and the rest smash, a pound at the double doors' middle both, a
-  dive through the gap between the cars and its belly slide, flying and the cannon's shot stubbed,
+  east, the red door and its strip in the gap between the cars from the drive (W4), the strip
+  behind the cars, the coins and the 1-up inside, the bins and STOMPWATT short of the wall; each
+  leaf's collider named, parked when smashed (its neighbours untouched), back exactly; walls
+  only; the piece table in both looks; every attack on every leaf from the strip behind the cars
+  (the jab cracks, the cross and the rest smash, a pound in the gap the red door and the double
+  doors' west leaf, a dive up the gap and its belly slide, flying and the cannon's shot stubbed,
   one hit per 8 ticks, walking into one nothing); the smash's sound, splinters, kick, the room
   opened; the boards in their boxes, lying flat, gone; both looks written alike, deterministic;
   walking in through each doorway, the five coins, the 1-up once; nothing taken through a shut
@@ -2294,10 +2323,12 @@ skinning classes).
     radius 380) on the ground in front, locking 10 ticks before; the fist sweeps the arc from its
     right to its left in 8 ticks, low: it hurts him where it passes with his feet under 90 over
     its floor: **jump it** (or step back out of the arc).
-  It walks only on its walking ground (`LANE_BOSS.walk`: the street, the dad's drive between his
-  gable and the SUV, reached by its mouth, and the drive's mouth and the apron's west part east
-  of it (W2: the apron where south_2's lawn front was): never behind the cars, under the
-  carport, in a garden or over the dad's corner bed and its sign's post, 140 off it (W2: the
+  It walks only on its walking ground (`LANE_BOSS.walk`: the street; W4, the cars parked deep:
+  its own slot between the bins' strip by the gable and the SUV, short of the garage row,
+  reached by its mouth (it goes by the mouth only from in front of it: past it, straight on);
+  the drive's empty front half short of the bins at home, and the apron's west part east of it
+  (W2: the apron where south_2's lawn front was): never behind the cars, at the doors, in a
+  garden or over the dad's corner bed and its sign's post, 140 off it (W2: the
   street's box to z 255, the sign 110 nearer the street with its south edge); R fixes: the boxes before took it over the bed, where the post
   held it fast in a corner and the scripted fight lost its third round), its feet a circle of 120 against the
   walls (findWalls at 40 and 200 up, sliding along them), its feet on the ground (a height grid
@@ -2305,9 +2336,11 @@ skinning classes).
   (`LaneBins.shove`: it slides off 12 a tick with a clatter, short of walls and of him; the bins
   it shoved go home once it parks).
 * **Low battery and the window**: after its set its eyes flicker and dim, three descending
-  beeps (`low`, 30 ticks slumped), then it walks to `LANE_BOSS.charge` (1790, 1290) by the
-  charger, faces it (yaw -0.75: **its back to the open drive and the street**, where Jonas and
-  the camera have room), kneels (`kneel`, 20), plugs in (`plug`, 12: its own cable,
+  beeps (`low`, 30 ticks slumped), then it walks to `LANE_BOSS.charge` (1860, 1800: W4, in its
+  own slot, 420 off the charger near the gable's back corner, its feet clear of the bins at
+  home; held short of it by a bin pinned in its way it kneels where it stands, `kneelHere`),
+  faces the charger (yaw −0.675: **its back to the drive's open front and the street**, where
+  Jonas and the camera have room), kneels (`kneel`, 20), plugs in (`plug`, 12: its own cable,
   `markers.js Cable`, from the charger's box out to the port on its left chest, the charger's
   light blue, the charger's own hanging cable (B1's mover, in both looks) hidden;
   `'laneBoss' { phase: 'charging' }`), and its battery bay's hatch swings open on the glowing
@@ -2332,7 +2365,7 @@ skinning classes).
   settles (its collider back) and stays a car, **tame**, until a new game (`tame`: it blinks
   hello now and then with a happy double chirp; it never wakes). Its **reward star**
   (`BossStar`, its own instance, `boss: true`, hovering `over` 320) spirals up in front of the
-  car to (1900, 342, 1000): a small jump reaches it; `player.collectStar()` (his count, the
+  car (`LANE_BOSS.star`, 130 in front of its nose, (1975, 342, 1430)): a small jump reaches it; `player.collectStar()` (his count, the
   HUD's), `'starCollected' { boss: true }` (no star exit: AreaSwitch ignores boss stars), once a
   game; GAME OVER (`reset()`) takes it back off his count.
 * **Fairness** (for the dad's children; each row tested with the real Player,
@@ -2434,7 +2467,8 @@ skinning classes).
   amber flashes); `tests/lane-boss-fight.test.js` (the attack sets, tells, locks and markers per phase; R1-R8
   with the real Player; each of his attacks on the cells; the zap, the coins, the next phase;
   the window running out; the defeat, the reverse, tame, the star once and taken back; a lost
-  life, an arrival and GAME OVER mid-fight; the bins shoved; a scripted fight won, never in a
+  life, an arrival and GAME OVER mid-fight; the bins shoved (W4: held short of its charger by a
+  bin it cannot shove, it kneels where it stands); a scripted fight won, never in a
   solid, deterministic; the fight camera; the overlays; the hot paths; B4: the eyes' moods, the
   rocking, the short circuit's big sparks, the easier fight following `LANE_BOSS.easy`);
   `tests/audio-engine.test.js` (its music's slot); `tests/lane-boss-browser.test.js` (E2E:
@@ -2960,10 +2994,14 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   their own seeded streams), the rhododendron down to the ground (three lumps along it, dark), the
   ivy mound (`ivyMasses`: two lumps along the pier, one round the corner, a sheet up the wall to
   the gutter; 900 cards on high, 520 mid, 100 low), the rose on its stakes (yellow-green, a few
-  hips; none on low), the pot plant on the landing, the flower beds; dark cores where a real bush
+  hips; none on low), the pot plant on the landing, the flower beds, the climber at the gable's
+  back corner (W4: `climberMasses`, small dark leaves; 330 cards on high, 200 mid, 50 low, its own
+  stream), the columnar tree far behind the garage row (a thuja's cards on a taller column, 180
+  clusters, 90 on low); dark cores where a real bush
   is dense; bark trunks and limbs. The forest's **firs** are one spruce (`firGeometry`) instanced where
   `spots.js forestSpots` plants them (the classic forest draws its cones from the same list),
-  plus a far tree line where the ground ends in the haze (`extras.js treeLine`, casting none).
+  plus a far tree line where the ground ends in the haze (`extras.js treeLine`, casting none;
+  neither in `EDGE_FOREST.clear`, W4).
   Since the R fixes each whorl is a dense **skirt**: an opaque drooping star of five branch tips
   (`fir-core`, the twig set's texture tiled on it, a twig a branch, its stem out along it; dark
   under it) reaching ~0.6 of the branches' reach and hanging over the whorl below (its droop
@@ -3016,7 +3054,9 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   for them). Under
   each car a **contact shadow** (`contact`: `materials.js contactMaterial`, the colour drawn under
   it multiplied by the vertex colour, darkest under its middle and round each tyre's patch,
-  after the opaque scene, no depth written): the car sits on its drive. Lacquered paint
+  after the opaque scene, no depth written): the car sits on its drive (the dad's two, W4,
+  darker and dark further out toward their ends: the SUV parked nose in shows the street its
+  tail, and photos 36 and 37 have the drive under it nearly black). Lacquered paint
   (`plainMaterial({ clearcoat })`: three's clearcoat lobe switched on in the standard material,
   `USE_CLEARCOAT`, without the physical material's class), dark opaque glass with ior 2's F0;
   each cluster's (`carClusters`, by place: `clusterOf`, the dad's drive, the west link, the

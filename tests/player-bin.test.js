@@ -70,12 +70,12 @@ test('B punches as ever away from a bin, and beside one he does not face; it gra
     return h.p.action;
   };
   assert.equal(press(1200, 900, 0), 'punch', 'on the lawn');
-  assert.equal(press(BINS[0].x, 1480, Math.PI), 'punch', 'beside a bin, his back to it');
-  assert.equal(press(BINS[0].x, 1480, 0), 'bin_hold', 'facing it in reach');
+  assert.equal(press(BINS[0].x, BINS[0].z - BIN.z / 2 - 75, Math.PI), 'punch', 'beside a bin, his back to it');
+  assert.equal(press(BINS[0].x, BINS[0].z - BIN.z / 2 - 75, 0), 'bin_hold', 'facing it in reach');
 });
 
 test('holding, pushing and pulling, his mittens are on the bin\'s face (its tipped face as he pulls), at his full size and at the realistic look\'s 0.85, his boots on the floor', () => {
-  const h = hero(BINS[0].x, 1480, 0);
+  const h = hero(BINS[0].x, BINS[0].z - BIN.z / 2 - 75, 0);
   h.tick();
   h.tick({ B: true });
   const b = h.om.bins.list[0];
@@ -101,7 +101,7 @@ test('holding, pushing and pulling, his mittens are on the bin\'s face (its tipp
 });
 
 test('the scale pivot holding a bin: its face under his mittens, on the floor', () => {
-  const h = hero(BINS[0].x, 1480, 0);
+  const h = hero(BINS[0].x, BINS[0].z - BIN.z / 2 - 75, 0);
   h.tick();
   h.tick({ B: true });
   const out = heroPivot('bin_hold', h.p, h.p.pos, { x: 0, y: 0, z: 0 });

@@ -55,7 +55,10 @@ export function forestSpots(L) {
     const x = p[0] + (q[0] - p[0]) * t + nx * out;
     const z = p[1] + (q[1] - p[1]) * t + nz * out;
     if (L.inBounds(x, z) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 300 || (x > F.x0 && z < band(x, 0))) continue;
-    fir(x, z, er);
+    // (In the clear sector the spot is drawn and dropped: the ring's others keep their places.)
+    const c = E.clear;
+    if (c && x > c.x0 && x < c.x1 && z > c.z0) size(FIR_SIZE, er), er();
+    else fir(x, z, er);
     i++;
   }
   return { firs, birches };

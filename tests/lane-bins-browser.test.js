@@ -9,6 +9,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as lane from '../src/world/lane/layout.js';
 
 const skip = !process.env.E2E && 'browser test: set E2E=1 to run';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,7 +49,9 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         return { bins: lane?.bins?.list.length ?? 0 };
       });
       assert.deepEqual(attached, { bins: 2 });
-      const r = await page.evaluate(async () => {
+      // (W4: the first bin's home and its half depth: it stands against the gable's front.)
+      const H = { x: lane.BINS[0].x, z: lane.BINS[0].z, hd: lane.BIN.z / 2 };
+      const r = await page.evaluate(async (H) => {
         const g = window.__game;
         const { bins } = await g.laneBoss;
         const area = g.areas.current;
@@ -62,7 +65,7 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         };
         const meshes = () => [area.parts[0].movers.bins, area.real?.movers?.bins].filter(Boolean);
         const drawnZ = () => meshes().map((m) => m.instanceMatrix.array[14]);
-        g.player.teleport(1665 + o.x, 22 + o.y, 1480 + o.z, 0);
+        g.player.teleport(H.x + o.x, 22 + o.y, H.z - H.hd - 75 + o.z, 0);
         g.player.setAction('idle');
         g.step(3);
         // The touch controller's B (a tap: down for a tick, then released).
@@ -80,7 +83,7 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         g.step(2);
         const let_go = g.player.action;
         // Walked into from the north: pushed south a little.
-        g.player.teleport(1665 + o.x, 22 + o.y, b.z - 45 - 120, 0);
+        g.player.teleport(H.x + o.x, 22 + o.y, b.z - H.hd - 120, 0);
         g.player.setAction('idle');
         const z0 = b.z;
         g.step(40, toward(0));
@@ -90,16 +93,16 @@ for (const [label, query] of [['classic', '&look=classic'], ['high', '&tier=high
         g.player.setAction('idle');
         g.step(700);
         return { grabbed, pulled, pushed, let_go, walkedInto, home: local(), drawnHome: drawnZ(), fps: g.view.describeMode() };
-      });
+      }, H);
       assert.equal(r.grabbed, 'bin_hold', 'the touch B grabs it');
-      assert.ok(r.pulled.z < 1600 - 300 && r.pulled.x === 1665 && r.pulled.anim === 'bin_pull', `pulled out: ${JSON.stringify(r.pulled)}`);
+      assert.ok(r.pulled.z < H.z - 300 && r.pulled.x === H.x && r.pulled.anim === 'bin_pull', `pulled out: ${JSON.stringify(r.pulled)}`);
       for (const z of r.pulled.drawn) assert.ok(Math.abs(z - r.pulled.z) < 2, `drawn where it is, tipped toward him (${r.pulled.drawn})`);
       assert.equal(r.pulled.drawn.length, label === 'classic' ? 1 : 2, 'both looks\' meshes posed');
       assert.ok(r.pushed.z > r.pulled.z + 50, 'pushed back');
       assert.equal(r.let_go, 'idle');
       assert.ok(r.walkedInto > 60, `walked into, it slid (${r.walkedInto})`);
-      assert.deepEqual({ x: r.home.x, z: r.home.z }, { x: 1665, z: 1600 }, 'home again');
-      for (const z of r.drawnHome) assert.ok(Math.abs(z - 1600) < 1e-3, 'drawn at home');
+      assert.deepEqual({ x: r.home.x, z: r.home.z }, { x: H.x, z: H.z }, 'home again');
+      for (const z of r.drawnHome) assert.ok(Math.abs(z - H.z) < 1e-3, 'drawn at home');
       assert.deepEqual(errors, []);
     } finally {
       await page.close();

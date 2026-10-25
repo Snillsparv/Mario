@@ -90,6 +90,7 @@ const TINT = {
   road: 0x76746f,
   pavement: 0x8a8780,
   drive: 0x7c7a74,
+  dadDrive: 0x7f8a9c, // (the dad's drive: the photos' cool blue-grey in the evening shade, W4)
   footpath: 0x84827c,
   kerb: 0xb8b2a8,
   bedEdge: 0x4e3c30, // (the dad's corner bed's soil, at the asphalt's edge)
@@ -108,7 +109,7 @@ const TINT = {
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
-const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, footpath: 0xeae4dc, floor: 0xcfcdc6 };
+const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6 };
 
 const UP = [0, 1, 0];
 // Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
@@ -430,8 +431,8 @@ function hardSurfaces(L, road, tints) {
     add([[d0, L.wallZAt(d0 + 0.01)], [d1, L.wallZAt(d1 - 0.01)], [d1, v.front], [d0, v.front]], 'cobbles', tints.cobbles, 1, cutPave);
   }
   add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', tints.path);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z0, L.DAD_DRIVE.z1), 'asphalt', tints.drive);
-  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.GARAGE.wall), 'asphalt', tints.drive, CARPORT_SHADE);
+  for (const piece of L.drivePieces()) add(piece, 'asphalt', tints.dadDrive);
+  add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.DAD_DRIVE.z1, L.GARAGE.wall), 'asphalt', tints.dadDrive, CARPORT_SHADE);
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', tints.floor, 0.4);
   add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', tints.drive);
   add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', tints.patio);

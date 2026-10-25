@@ -7,8 +7,9 @@
 // 6, the bin following at the grip distance, its collider parked while held and back after;
 // blocked, he is held back), every way of letting go, home (at once on an arrival, a lost life
 // and a new game; by itself left alone with him away, the stuck one put home unseen), both looks'
-// instances written alike, the star climb from the movable bins (at home, and from one pushed
-// under the carport's front edge), and the hot paths' guard.
+// instances written alike, the star climb from the movable bins (onto one at home; W4: one pushed
+// back along the gable to the garage row, and from one at its leash's back edge anywhere along
+// the row), and the hot paths' guard.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -32,6 +33,9 @@ const E = Math.PI / 2;
 const W = -Math.PI / 2;
 const N = Math.PI;
 const S = 0;
+// (W4: the bins' homes against the gable's front, one behind the other: in front of bin_0's
+// north face, a little off it.)
+const NORTH_OF = BINS[0].z - HD - 75;
 
 // Jonas at a local point with the course's objects and the chunk attached (the bins home first).
 function hero(x, z, yaw, { y = GROUND } = {}) {
@@ -92,7 +96,7 @@ test('the bins\' colliders are the static build\'s, named, and moved in place st
   }
   h.bins.sendHome();
   assert.equal(b.x - O.x, BINS[0].x);
-  assert.equal(topAt(BINS[0].x, BINS[0].z), BIN.top, 'home again: its top at 182');
+  assert.equal(topAt(BINS[0].x, BINS[0].z), BIN.top, 'home again: its top at 192');
 });
 
 test('pushing: walking into a bin slides it 6 a tick along the pushed face\'s axis, away from him (his push anim), stopped by the leash and the other bin, and back along its slot', () => {
@@ -113,13 +117,12 @@ test('pushing: walking into a bin slides it 6 a tick along the pushed face\'s ax
   assert.ok(Math.abs(h.bin(0).x - lane.BIN_LEASH.x1) <= BINS_TUNING.PUSH, `stopped at the leash's edge (${h.bin(0).x})`);
   assert.equal(h.p.anim, 'push', 'pushing against it');
   // At home: pushed south from the north end, into the other bin (it does not move it on).
-  const g = hero(BINS[0].x, 1480, S);
+  const g = hero(BINS[0].x, NORTH_OF, S);
   for (let t = 0; t < 60; t++) g.tick({ stickY: 1 }, S);
   const gap = BINS[1].z - HD - (g.bin(0).z + HD);
   assert.ok(gap >= 0 && gap < 2 * BINS_TUNING.PUSH + BINS_TUNING.FIT * 2 + 1, `up to the other bin (${gap.toFixed(1)} apart)`);
   assert.deepEqual(g.bin(1), BINS[1], 'which stays');
-  // Pushed back south into its slot between the gable and the car (out of it, there is no room
-  // beside it for him: only its ends): it slides back home along it.
+  // Pushed back south along the gable: it slides back home along it (up to the other bin).
   const w = hero(BINS[0].x, 1100, S);
   w.put(0, BINS[0].x, 1300);
   for (let t = 0; t < 80; t++) w.tick({ stickY: 1 }, S);
@@ -158,7 +161,7 @@ test('the grab: B next to a bin from any side squares him up to its face at the 
 });
 
 test('dragging: the stick along his facing pulls (and pushes) the bin at 6 a tick, following at the grip distance, its collider parked while held and back where it stands after', () => {
-  const h = hero(BINS[0].x, 1480, S);
+  const h = hero(BINS[0].x, NORTH_OF, S);
   h.tick();
   h.tick({ B: true }, S);
   assert.equal(h.p.action, 'bin_hold');
@@ -189,7 +192,7 @@ test('dragging: the stick along his facing pulls (and pushes) the bin at 6 a tic
 });
 
 test('blocked: the held bin pushed into the other bin goes no further and holds him back; pulled back it follows again', () => {
-  const h = hero(BINS[0].x, 1480, S);
+  const h = hero(BINS[0].x, NORTH_OF, S);
   h.tick();
   h.tick({ B: true }, S);
   for (let t = 0; t < 30; t++) h.tick({ stickY: 1 }, S);
@@ -203,7 +206,7 @@ test('blocked: the held bin pushed into the other bin goes no further and holds 
 
 test('every way of letting go: B, Z, A (a jump), a stick held across, a hurt, the bin sent home', () => {
   const grab = () => {
-    const h = hero(BINS[0].x, 1480, S);
+    const h = hero(BINS[0].x, NORTH_OF, S);
     h.tick();
     h.tick({ B: true }, S);
     for (let t = 0; t < 6; t++) h.tick({ stickY: -1 }, S);
@@ -254,7 +257,7 @@ test('home: at once on an arrival, a lost life and a new game; by itself left al
   h.om.reset();
   assert.deepEqual([h.bin(0), h.bin(1)], BINS, 'a new game');
   // By themselves: both pulled out north (bin_1 can only get home before bin_0 does).
-  const g = hero(BINS[0].x, 1480, S);
+  const g = hero(BINS[0].x, NORTH_OF, S);
   g.tick();
   g.tick({ B: true }, S);
   for (let t = 0; t < 60; t++) g.tick({ stickY: -1 }, S);
@@ -278,7 +281,7 @@ test('home: at once on an arrival, a lost life and a new game; by itself left al
 });
 
 test('both looks\' bin instances are written alike as a bin moves and tips (and a look attached later gets the bins as they stand)', () => {
-  const h = hero(BINS[0].x, 1480, S);
+  const h = hero(BINS[0].x, NORTH_OF, S);
   const classic = area.parts[0].movers.bins;
   assert.ok(classic.isInstancedMesh && h.bins.meshes.includes(classic));
   h.tick();
@@ -299,31 +302,52 @@ test('both looks\' bin instances are written alike as a bin moves and tips (and 
   assert.ok(Math.abs(p.z - (h.bin(0).z - HD * (1 - Math.cos(h.bins.list[0].tip)))) < 1 && a.elements[5] < 0.99, 'there, tipped');
 });
 
-test('the star climb from the movable bins: onto a bin at home (its coin), from the other onto the carport; and from a bin pushed under the carport\'s front edge', () => {
+test('the star climb from the movable bins: onto a bin at home (its coin); the other pushed back along the gable to the garage row (the first pulled out of its way), onto it and on onto the row\'s roof; and from a bin at its leash\'s back edge anywhere along the row (the gable\'s strip, the gap between the cars, the strip east of the SUV)', () => {
   const jump = (h, yaw, push = 1) => {
     h.tick({ stickY: push }, yaw);
     h.tick({ stickY: push, A: true }, yaw);
     for (let t = 0; t < 90 && !(h.p.grounded && t > 2); t++) h.tick({ stickY: push, A: true }, yaw);
     for (let t = 0; t < 20; t++) h.tick({}, yaw);
   };
-  const a = hero(BINS[0].x, 1300, S);
-  for (let t = 0; t < 400 && a.at().z < 1450 - 40; t++) a.tick({ stickY: 0.5 }, S);
+  const face = BINS[0].z - HD;
+  const a = hero(BINS[0].x, face - 300, S);
+  for (let t = 0; t < 400 && a.at().z < face - 145; t++) a.tick({ stickY: 0.5 }, S);
   jump(a, S, 0.5);
   assert.ok(Math.abs(a.at().y - BIN.top) < 1 && a.p.grounded && a.log.length === 1, `on the bin, its coin: ${JSON.stringify(a.at())}`);
   assert.deepEqual(a.bin(0), BINS[0], 'it did not move');
-  const b = hero(BINS[1].x, BINS[1].z - 40, S, { y: BIN.top });
+  // The front one pulled out of the line (north, then let go), round it, the other pushed back
+  // along the gable to its leash's back edge, onto it and on up onto the row's roof.
+  const L = lane.BIN_LEASH;
+  const b = hero(BINS[0].x, NORTH_OF, S);
   b.tick();
+  b.tick({ B: true }, S);
+  for (let t = 0; t < 30; t++) b.tick({ stickY: -1 }, S);
+  b.tick({ B: true }, S);
+  b.tick();
+  const walk = (h, pts, speed = 0.7) => {
+    for (const [x, z] of pts) for (let t = 0; t < 200 && Math.hypot(x - h.at().x, z - h.at().z) > 20; t++) h.tick({ stickY: speed }, Math.atan2(x - h.at().x, z - h.at().z));
+  };
+  walk(b, [[BINS[0].x + 230, b.at().z], [BINS[0].x + 230, BINS[1].z - HD - 90], [BINS[1].x, BINS[1].z - HD - 70]]);
+  for (let t = 0; t < 160 && b.bin(1).z < L.z1 - 1; t++) b.tick({ stickY: 1 }, S);
+  assert.ok(Math.abs(b.bin(1).z - L.z1) <= BINS_TUNING.PUSH && b.bin(1).x === BINS[1].x, `pushed back to the leash's edge: ${JSON.stringify(b.bin(1))}`);
+  walk(b, [[BINS[1].x + 120, L.z1 - HD - 200], [BINS[1].x, L.z1 - HD - 300]]);
+  for (let t = 0; t < 400 && b.at().z < L.z1 - HD - 145; t++) b.tick({ stickY: 0.5 }, S);
+  jump(b, S, 0.5);
+  assert.ok(Math.abs(b.at().y - BIN.top) < 1 && b.p.grounded, `on it: ${JSON.stringify(b.at())}`);
   jump(b, S);
-  assert.ok(Math.abs(b.at().y - lane.CARPORT.top) < 1, `onto the carport ${JSON.stringify(b.at())}`);
-  // A bin pushed under the carport's front edge anywhere along it (between its posts).
-  for (const x of [1760, 2250]) {
-    const c = hero(x, lane.CARPORT.z0 - HD - 30, S, { y: BIN.top });
-    c.put(1, x, lane.CARPORT.z0 - HD + 15);
-    c.p.teleport(x + O.x, BIN.top + O.y, lane.CARPORT.z0 - HD - 20 + O.z, S);
+  assert.ok(Math.abs(b.at().y - lane.CARPORT.top) < 1, `onto the row's roof ${JSON.stringify(b.at())}`);
+  // From a bin at the leash's back edge anywhere along the row it stands (W4: the cars parked
+  // deep: in the gable's strip, the gap between the cars, the strip east of the SUV).
+  const [ev, suv] = lane.CARS.slice(0, 2);
+  const hw = (c) => lane.CAR_KINDS[c.kind].w / 2;
+  for (const x of [L.x0, (ev.x + hw(ev) + suv.x - hw(suv)) / 2, suv.x + hw(suv) + HW + 10]) {
+    const c = hero(x, L.z1 - 40, S, { y: BIN.top });
+    c.put(1, x, L.z1);
+    c.p.teleport(x + O.x, BIN.top + O.y, L.z1 - 40 + O.z, S);
     c.tick();
     assert.ok(Math.abs(c.at().y - BIN.top) < 1, 'on its top');
     jump(c, S);
-    assert.ok(Math.abs(c.at().y - lane.CARPORT.top) < 1, `x ${x}: onto the carport ${JSON.stringify(c.at())}`);
+    assert.ok(Math.abs(c.at().y - lane.CARPORT.top) < 1, `x ${x}: onto the row's roof ${JSON.stringify(c.at())}`);
   }
 });
 

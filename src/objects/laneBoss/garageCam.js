@@ -1,5 +1,5 @@
-// The store room's camera (LaneGarage.js: the room behind the garage doors is 880 x 660 and only
-// 323 high, too small for the follow camera's 1000-odd distance): while Jonas's feet are in the
+// The store room's camera (LaneGarage.js: the room behind the garage doors is 1146 x 660 and only
+// 345 high, too small for the follow camera's 1000-odd distance): while Jonas's feet are in the
 // room it sits inside it, on a circle round the room's middle on the far side from him, high
 // under the ceiling, looking at his chest; it blends over the follow camera's pose (as
 // STOMPWATT's does: CameraController runs the orbit underneath and calls the overlay after its
@@ -20,7 +20,7 @@
 //   laneOverlay(...cams) -> { update(cam, hero), reset(), moveYaw }   the overlays run in order
 //
 // Numbers (module constants): R the circle's radius round the middle, Y its height over the floor
-// (45 under the slab, 60 over the props' colliders), BOX its reach from the middle in x and z
+// (67 under the slab, 60 over the props' colliders), BOX its reach from the middle in x and z
 // (inside the linings, in front of the bench and the shelves), TURN the most it turns toward its goal a tick, HOLD within this of the middle it holds
 // its angle, LOOK his chest over his feet, FOV wider than the look's, IN and OUT ticks to blend,
 // KEEP once in, his feet this far out of the room (into a doorway) still count as in.

@@ -14,12 +14,14 @@
 //   roomLight(x, y, z) -> 0.12 .. 1   the light at a point in the room (both looks paint it into
 //                  their vertex tints: no light object, see docs/ARCHITECTURE.md)
 
+// (W4: the room moved back 350 with its door wall, layout.GARAGE; the tube 14 under the higher
+// slab, the lintel at the taller doors' tops.)
 export const ROOM = {
   props: ['bench', 'shelves', 'tyres', 'boxes', 'mower', 'bike', 'tools'],
-  tube: { x0: 1950, x1: 2250, z: 2300, y: 331 },
-  oneUp: { x: 2090, y: 212, z: 2585 },
-  middle: { x: 2050, z: 2300 },
-  light: { base: 0.12, tube: 0.6, reach: 220, door: 0.28, from: 1970, depth: 450, lintel: 302 },
+  tube: { x0: 1950, x1: 2250, z: 2650, y: 353 },
+  oneUp: { x: 2090, y: 212, z: 2935 },
+  middle: { x: 2050, z: 2650 },
+  light: { base: 0.12, tube: 0.6, reach: 220, door: 0.28, from: 2320, depth: 450, lintel: 340 },
 };
 
 // base + tube * 1 / (1 + (d / reach)^2) (d: the distance to the tube) + door * (1 - the depth

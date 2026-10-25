@@ -162,14 +162,18 @@ export function treeLine(L, tier) {
   const matrices = new Float32Array(count * 16);
   const colors = new Float32Array(count * 3);
   let n = 0;
-  for (let tries = 0; n < count && tries < count * 4; tries++) {
+  const clear = L.EDGE_FOREST.clear;
+  for (let tries = 0, placed = 0; placed < count && tries < count * 4; tries++) {
     const a = R() * Math.PI * 2;
     const d = 11500 + R() * 4500;
     const [x, z] = [cx + Math.cos(a) * d * 1.15, cz + Math.sin(a) * d * 0.8];
     const [h, r, turn, t] = [1300 + R() * 900, 330 + R() * 160, R(), R()];
     // (Not on the road on into the fog, not up the forest's bank (it rises on past its heights),
-    // not off the lane's ground.)
+    // not off the lane's ground; none in the edge forest's clear sector, W4: the sky over the
+    // garage row from the dad's drive (its spots dropped, the others where they were).)
     if (L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 600 || z < -6000 || Math.abs(x) > 15500 || z > 9500) continue;
+    placed++;
+    if (clear && x > clear.x0 && x < clear.x1 && z > clear.z0) continue;
     const base = L.groundHeight(x, z) - 10;
     const [c, s] = [Math.cos(turn * Math.PI * 2), Math.sin(turn * Math.PI * 2)];
     matrices.set([c * r, 0, -s * r, 0, 0, h, 0, 0, s * r, 0, c * r, 0, x, base, z, 1], n * 16);

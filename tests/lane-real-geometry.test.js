@@ -212,7 +212,9 @@ test('the firs stand where the classic forest\'s cones stood, the classic build 
   assert.equal(low.firs.matrices.length / 16, firs.length);
   assert.deepEqual([...low.firs.matrices.slice(0, 16 * lane.FOREST.count)], [...high.firs.matrices].map((v) => v), 'the same places on every tier');
   assert.deepEqual([...low.firs.colors.slice(3 * lane.FOREST.count)], [...high.firs.edge.colors], 'each its own tint');
-  assert.ok(firs.length >= lane.FOREST.count + lane.EDGE_FOREST.count - 5, `${firs.length} firs`);
+  // (W4: none of the edge's in its clear sector over the garage row: their spots skipped.)
+  const C = lane.EDGE_FOREST.clear;
+  assert.ok(firs.length >= lane.FOREST.count + lane.EDGE_FOREST.count - 15 && firs.every((t) => !(t.x > C.x0 && t.x < C.x1 && t.z > C.z0)), `${firs.length} firs`);
   // The edge's spruce: more tiers, its lowest branches hanging lower, under 1.6 x the forest's.
   const count = (parts) => parts.find((p) => p.material === 'fir-leaves').buffers.position.length / 9;
   const lowest = (parts) => {

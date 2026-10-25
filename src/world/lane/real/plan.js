@@ -21,6 +21,7 @@
 //                                            // fork out to each end, w thick (both looks)
 //   redTreeCrown(T) -> [{ c, r }]            // its crown's blobs (middle, radii), sparse
 //   ivyMasses(L) -> [{ c, r }]               // the ivy mound's lumps (layout IVY)
+//   climberMasses(L) -> [{ c, r }]           // the climber up the gable's back corner (CLIMBER)
 //   chainFaces(h) -> [face]                  // a chain house's drawn faces (a wing's joined end
 //                                            // left out: lane/layout.js DAD_WINGS)
 //   brickSpans(h, face, half) -> [[u0, u1, brick?]]   // a face's spans, split at its brick
@@ -368,5 +369,20 @@ export function ivyMasses(L) {
     { c: [I.x + I.rx * 0.2, G + I.h * 0.46, I.z + 30], r: [I.rx * 0.6, I.h * 0.47, I.rz * 0.78] },
     { c: [L.DAD.x1 + 45, G + I.h * 0.42, L.DAD.z0 - 30], r: [I.rx * 0.38, I.h * 0.43, I.rz * 0.68] },
     { c: [I.x - I.rx * 0.15, G + I.h * 0.74, L.DAD.z0 - 22], r: [I.rx * 0.85, I.h * 0.25, 34] },
+  ];
+}
+
+// The climber at the dad's gable's back corner (CLIMBER, W4): a narrow sheet up the gable to the
+// corner, one up the garage row's west end (over the fixed board by the wall) and a tuft over the
+// fascia's west end (both looks: drawn only).
+export function climberMasses(L) {
+  const C = L.CLIMBER;
+  const G = L.GROUND;
+  const h = C.top - G;
+  const zf = L.CARPORT.z0; // (the fascia's face)
+  return [
+    { c: [C.x0 + 16, G + h * 0.5, (C.z0 + zf) / 2], r: [22, h * 0.5, (zf - C.z0) / 2 + 6] },
+    { c: [(C.x0 + C.x1) / 2 - 10, G + h * 0.42, zf + 14], r: [(C.x1 - C.x0) / 2 - 6, h * 0.42, 16] },
+    { c: [C.x0 + 40, C.top - 22, zf - 6], r: [48, 30, 18] },
   ];
 }
