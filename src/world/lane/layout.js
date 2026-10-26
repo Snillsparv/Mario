@@ -266,12 +266,14 @@ export const northWestDrive = () => {
   const [a, b, c, d] = D.west;
   return [[[D.u0, D.w0], [D.cut[0], D.w0], [D.u1, D.cut[1]], [D.u1, D.w1], [D.u0, D.w1]], [[a, c], [b, c], [b, d], [a, d]]];
 };
-// The motorhome on the drive (W8, photos 01-07: an integrated A-class, white, its cab toward the
-// bend, +u), lengthwise on the drive's east part: l along its frame's u (along the road), w
-// across it, h tall (2.9 m); solid to its roof (a coin spot, reached by a double jump and a grab
-// of its edge; a running jump from the drive falls short: its top stands more than 160 over that
-// jump's peak).
-export const MOTORHOME = { cx: -7841, cz: -527, yaw: WEST_YAW, l: 1090, w: 390, h: 400, tint: 0xeceae4 };
+// The motorhome on the drive (W8, photos 01-07: an integrated motorhome, white, its cab toward
+// the bend, +u), lengthwise on the drive's east part: l along its frame's u (along the road), w
+// across it, h tall (3.3 m with its roof's hatches); its cab's windscreen sloping from the roof's
+// edge `cab` back from its front down to its nose at `nose` over the ground. Solid to its roof
+// and down that slope (a coin spot, reached by a double jump and a grab of its edge; a single
+// running jump at full speed falls short of the edge: its top ~80 over that jump's peak, which
+// grabs an edge up to ~475).
+export const MOTORHOME = { cx: -7841, cz: -527, yaw: WEST_YAW, l: 1090, w: 390, h: 490, cab: 150, nose: 165, tint: 0xeceae4 };
 
 // Falu red as the photos have it (W1): a cool, deep red (hue ~2 deg), the blue close to the green,
 // so it stays red in the house's shade instead of turning brown.
@@ -300,6 +302,7 @@ export const SOUTH_WEST = {
   eave: 412,
   ridge: pitchRidge(412, 2536, 14),
   overhang: 55,
+  verges: 100, // (W8 fix: its verges deep over the gables, their white soffits seen under the black boards: photo 08)
   boards: FALU,
   roof: 0x2c2c2e,
   soffit: 0xeeece6,
@@ -694,9 +697,11 @@ export const MAILBOXES = [
 // a white render `pier` with a wallbox and its coiled cable; its ridge along x) in front of a
 // one-and-a-half storey house (east_house: white brick, a steep red-brown roof, a broad shed
 // dormer on its west slope (lane/facades.js DORMERS), white window frames, a black door; drawn
-// and solid, mostly out of reach). (`realRoof`: the realistic look's tint.)
-export const EAST_GARAGE = { id: 'east_garage', kit: 'garage', cx: (6579 + 7853) / 2, cz: (-1179 - 113) / 2, w: 1066, d: 1274, yaw: -Math.PI / 2, y0: GROUND, eave: 509, ridge: 735, overhang: 173, verges: 60, roof: 0x7a4c36, realRoof: 0x4a2c20, doors: [-232, 232], door: { w: 400, h: 346 }, pier: 31, pillars: [447, 533], beam: 409 };
-export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: (8022 + 9699) / 2, cz: (-906 + 1473) / 2, w: 2379, d: 1677, yaw: -Math.PI / 2, y0: GROUND, eave: 450, ridge: pitchRidge(450, 1677, 45), boards: 0xd8c08a, gableBoards: 0xe8e2d0, roof: 0x7a4c36, realRoof: 0x4a2c20, verge: 0xf0eee8, frame: 0xf2f0ea, gableEnds: true, brick: { front: [[-1e4, 1e4]], back: [[-1e4, 1e4]] }, door: -250, doorSize: { w: 110, h: 225 }, windows: [216, 616, 966], backWindows: [-500, 500], plinth: 135 };
+// and solid, mostly out of reach). (`realRoof`: the realistic look's tint, W8 fix: its tile set
+// lights a tint ~4-5x in linear terms, so this is the photos' dark red-brown, #4c3a30 at p30;
+// `soffit`: the garage's white soffits under its deep eaves.)
+export const EAST_GARAGE = { id: 'east_garage', kit: 'garage', cx: (6579 + 7853) / 2, cz: (-1179 - 113) / 2, w: 1066, d: 1274, yaw: -Math.PI / 2, y0: GROUND, eave: 509, ridge: 735, overhang: 173, verges: 60, soffit: 0xeeece6, roof: 0x7a4c36, realRoof: 0x26110a, doors: [-232, 232], door: { w: 400, h: 346 }, pier: 31, pillars: [447, 533], beam: 409 };
+export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: (8022 + 9699) / 2, cz: (-906 + 1473) / 2, w: 2379, d: 1677, yaw: -Math.PI / 2, y0: GROUND, eave: 450, ridge: pitchRidge(450, 1677, 45), boards: 0xd8c08a, gableBoards: 0xe8e2d0, roof: 0x7a4c36, realRoof: 0x26110a, verge: 0xf0eee8, frame: 0xf2f0ea, gableEnds: true, brick: { front: [[-1e4, 1e4]], back: [[-1e4, 1e4]] }, door: -250, doorSize: { w: 110, h: 225 }, windows: [216, 616, 966], backWindows: [-500, 500], plinth: 135 };
 // The forecourt in front of the double garage (from the apron's east kerb to the garage's
 // doors, as wide as the garage, at GROUND): its first strip asphalt (`setts`: where the setts
 // begin, the footway's east edge), then granite setts to the doors and down to its retaining
@@ -740,10 +745,11 @@ export const THUJAS = [
   { x: -6740, z: -1190 },
 ];
 // Big broad-leaved trees off the junction, at the forest's edge north-west of the curve (outside
-// the play space: drawn only, no collider): r the canopy's radius, h its top. (W8, photos 02, 03:
-// the first a big spreading broadleaf by the gravel path's foot, east of where it stood.)
+// the play space: drawn only, no collider): r the canopy's radius, h its top, `low` its crown's
+// foot (a share of h; else 0.32). (W8, photos 02, 03: the first a big spreading broadleaf by the
+// gravel path's foot, east of where it stood; W8 fix: its leaves down to the ground as theirs.)
 export const TREES = [
-  { x: -12200, z: 2000, r: 820, h: 1900 },
+  { x: -12200, z: 2000, r: 820, h: 1900, low: 0.06 },
   { x: -13910, z: -1820, r: 800, h: 2000 },
 ];
 // The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` firs and

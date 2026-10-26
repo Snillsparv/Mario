@@ -64,7 +64,6 @@ const TINT = {
 const WIN = { villa: { w: 220, sill: 520, h: 200, frame: 12 }, chain: { w: 150, sill: 170, h: 130, frame: 10 } };
 const BAY = { w: 420, out: 50, below: 30, above: 30 };
 const DOOR = { w: 110, h: 220, frame: 10 };
-const GARAGE = { w: 520, h: 250 };
 const ROOF_THICK = 18;
 const PLINTH_SHADE = (y0) => (x, y) => 0.84 + 0.16 * Math.min(1, (y - y0) / 260);
 
@@ -144,8 +143,7 @@ function villa(kit, h) {
   if (P) facade(kit, walls, glazed, h, F, P, wallH);
   else if (WEST_FRONTS[h.id]) westFront(kit, h, F, WEST_FRONTS[h.id], wallH);
   else {
-    // (The west end's, rendered to its eaves: its garage doors, a row of windows over them.)
-    for (const u of h.garages ?? []) garageDoor(kit.drawn('garageDoors').paint, front, u, GARAGE);
+    // (The west end's, rendered to its eaves: a row of windows on its front.)
     for (const u of [-550, 0, 550]) villaWindow(glazed, front, u, { ...W, sill: wallH - 230 }, false);
     for (const name of ['left', 'right']) villaWindow(glazed, F.face(name).frame, 0, { ...W, sill: wallH - 230 }, false);
   }
@@ -353,26 +351,31 @@ function chain(kit, h) {
       boards.panel(f, [[-half, wallH], [half, wallH], [0, h.ridge - y0]], 0, { shade: [0.84, 0.84, 0.95] });
     }
   }
-  // (W8: a gable's own panels, proud of its brick, and its windows: facades.js GABLES.)
-  for (const [name, G] of Object.entries(GABLES[h.id] ?? {})) {
+  // (A house out of the course, id-less, the realistic look draws nothing of: its windows plain
+  // panes in paint, opaque, no room behind them, each where its `panes` put it.)
+  const wk = h.id ? drawn : { ...drawn, glass: drawn.paint, look: '' };
+  // (W8: a gable's own panels, proud of its brick, and its windows: facades.js GABLES, or an
+  // id-less house's own `gables`.)
+  for (const [name, G] of Object.entries(GABLES[h.id] ?? h.gables ?? {})) {
     const { frame: f } = F.face(name);
     const holes = G.windows.map((o) => ({ u0: o.u - o.w / 2 - 10, u1: o.u + o.w / 2 + 10, v0: o.sill - 10, v1: o.sill + o.h + 10 }));
     for (const P of G.panels) {
       boards.color(P.tint);
-      band(boards, f, P.u0, P.u1, P.v0, P.v1, holes, { shade: [1, 1, 0.9, 0.9] }, 1);
+      // (W8 fix: a shiplap panel's boards across it, the plank texture turned, 25 a course, in a
+      // black frame: its edges and a flashing under it.)
+      const [o0, R] = [f.at(0, 0, 0), boards.repeat];
+      const uv = P.shiplap && ((p) => [((p[1] - o0[1]) * 3) / R, ((p[0] - o0[0]) * f.right[0] + (p[2] - o0[2]) * f.right[2]) / R]);
+      band(boards, f, P.u0, P.u1, P.v0, P.v1, holes, { shade: [1, 1, 0.9, 0.9], uv: uv || undefined }, 1);
       if (!P.shiplap) continue;
-      boards.color(P.tint, 0.72);
-      for (let v = P.v0 + 14; v < P.v1 - 4; v += 18) band(boards, f, P.u0, P.u1, v, v + 2.5, holes, {}, 1.4);
+      paint.color(TINT.frame);
+      for (const r of [rect(P.u0 - 7, P.v0 - 7, P.u0, P.v1), rect(P.u1, P.v0 - 7, P.u1 + 7, P.v1), rect(P.u0, P.v0 - 7, P.u1, P.v0)]) paint.panel(f, r, 2);
     }
-    for (const o of G.windows) chainWindow(drawn, f, o.u, o, null, h.frame);
+    for (const o of G.windows) chainWindow(wk, f, o.u, o, h.id ? 'bare' : 'far', h.frame);
   }
   // Windows and the door on the front; a row on the back (the front's, or its own); a house's
   // own windows (h.win: six lights) with their own kinds (h.panes: the kitchen's blinds, a
   // frosted one).
   const front = F.face('front').frame;
-  // (A house out of the course, id-less, the realistic look draws nothing of: its windows plain
-  // panes in paint, opaque, no room behind them, each where its `panes` put it.)
-  const wk = h.id ? drawn : { ...drawn, glass: drawn.paint, look: '' };
   for (const name of ['front', 'back']) for (const o of chainWindows(h, name, WIN.chain)) chainWindow(wk, F.face(name).frame, o.u, h.win || !h.id ? o : null, h.id ? o.kind : 'far', h.frame);
   if (typeof h.door === 'number') {
     // (A neighbour's own door, `doorSize`: black boards up to its head, a glazed side light in the
@@ -403,7 +406,7 @@ function chain(kit, h) {
     paint.color(TINT.white);
     paint.panel(front, rect(u - 5, 0, u + 5, wallH - 4), 4);
   }
-  if (h.veranda) veranda(kit, F, h);
+  if (h.veranda) veranda(drawn, F, h, wallH);
   gableRoof(drawn, F, h, 'u');
   kit.solids.solid(gablePolys(F, hw, hd, y0, h.eave, h.ridge, 'u'), 'stone');
   if (DORMERS[h.id]) dormer(drawn, kit.solids, F, h, dormerOf(h), y0);
@@ -674,7 +677,7 @@ function gableRoof(kit, F, h, axis) {
     roof.poly([P(-A - ov, lo, edge), P(rimEnd, lo, edge), P(ridgeEnd, h.ridge, 0), P(-A - ov, h.ridge, 0)], { facing: n, shade: [0.92, 0.92, 1.04, 1.04] });
     paint.color(h.soffit ?? TINT.soffit);
     const d = ROOF_THICK;
-    paint.poly([P(-A - ov, lo - d, edge), P(rimEnd, lo - d, edge), P(ridgeEnd, h.ridge - d, 0), P(-A - ov, h.ridge - d, 0)], { facing: [-n[0], -n[1], -n[2]], shade: 0.55 });
+    paint.poly([P(-A - ov, lo - d, edge), P(rimEnd, lo - d, edge), P(ridgeEnd, h.ridge - d, 0), P(-A - ov, h.ridge - d, 0)], { facing: [-n[0], -n[1], -n[2]], shade: h.soffit ? 0.8 : 0.55 }); // (a white soffit lighter: W8 fix)
     paint.color(h.verges ? TINT.white : TINT.fascia);
     const out = axis === 'u' ? F.dir(0, 0, s) : F.dir(s, 0, 0);
     const fd = h.verges ? 30 : d; // (the double garage's broad white fascias)
@@ -814,7 +817,7 @@ function chainWindow(kit, f, u, win = null, kind = null, frameTint = TINT.frame)
   if (kind === 'blinds') {
     // (The kitchen's venetian blinds: pale slats across it.)
     for (let v = W.sill + 8; v < W.sill + W.h - 4; v += 12) paint.panel(f, rect(u - hw, v, u + hw, v + 5), 2.5);
-  } else if (kind !== 'frosted') {
+  } else if (kind !== 'frosted' && kind !== 'bare') {
     paint.panel(f, rect(u - hw, W.sill, u - hw + 22, W.sill + W.h), 3);
     paint.panel(f, rect(u + hw - 22, W.sill, u + hw, W.sill + W.h), 3);
   }
@@ -847,31 +850,24 @@ function dormer(kit, solids, F, h, D, y0) {
   solids.solid([[a0, a1, b1, b0], [b0, b1, c1, c0], [a0, c0, c1, a1], [a0, b0, c0], [a1, c1, b1]], 'stone');
 }
 
-// The glazed veranda on the corner house's gable (its right face, +u): a box of panes in white
-// frames under a flat roof, solid.
-function veranda(kit, F, h) {
-  const { paint, glass, roof, solids } = kit;
+// The glazed veranda round a chain house's corner under its own roof (W8 fix: the veranda house's
+// north-west corner, photos 02, 03: its gable's end, +u, and its back's, -w): from the corner
+// `gable` along the gable and `side` along the back, a white board parapet `sill` high under a
+// white cap, the glazing over it to a white head under the soffit, white mullions and a transom,
+// a white post at the corner; opaque (no room behind it), drawn only.
+function veranda({ paint, boards }, F, h, wallH) {
   const V = h.veranda;
-  const y0 = h.y0 ?? 22;
-  const u0 = h.w / 2;
-  const u1 = u0 + V.depth;
-  const b = h.d / 2;
-  const corners = [F.at(u0, 0, b), F.at(u1, 0, b), F.at(u1, 0, -b), F.at(u0, 0, -b)];
-  const at = (p, y) => [p[0], y, p[2]];
-  for (let i = 0; i < 3; i++) {
-    const p = corners[i];
-    const q = corners[i + 1];
-    const out = [p[0] + q[0] - 2 * F.at(u0 + V.depth / 2, 0, 0)[0], 0, p[2] + q[2] - 2 * F.at(u0 + V.depth / 2, 0, 0)[2]];
+  const [hw, hd] = [h.w / 2, h.d / 2];
+  for (const [name, a, b] of [['right', hd - V.gable, hd], ['back', -hw, -hw + V.side]]) {
+    const f = F.face(name).frame;
+    boards.color(TINT.white);
+    boards.panel(f, rect(a, -4, b, V.sill), 2);
+    paint.color(0x2a2e30);
+    paint.panel(f, rect(a, V.sill, b, wallH - 20), 1.5);
     paint.color(TINT.white);
-    paint.poly([at(p, y0), at(q, y0), at(q, y0 + 90), at(p, y0 + 90)], { facing: out });
-    glass.color(TINT.glint);
-    glass.poly([at(p, y0 + 90), at(q, y0 + 90), at(q, V.top - 20), at(p, V.top - 20)], { facing: out, shade: [0.8, 0.8, 1.1, 1.1] });
-    paint.color(TINT.white);
-    paint.poly([at(p, V.top - 20), at(q, V.top - 20), at(q, V.top), at(p, V.top)], { facing: out });
+    for (const [v0, v1, w] of [[V.sill, V.sill + 9, 6], [wallH - 80, wallH - 73, 3], [wallH - 20, wallH, 3]]) paint.panel(f, rect(a, v0, b, v1), w);
+    const n = Math.round((b - a) / 110);
+    for (let i = 0; i <= n; i++) paint.panel(f, rect(a + ((b - a) * i) / n - 5, V.sill, a + ((b - a) * i) / n + 5, wallH - 20), 3);
   }
-  roof.color(TINT.felt);
-  roof.poly(corners.map((p) => at(p, V.top + 2)), { facing: [0, 1, 0] });
-  const top = corners.map((p) => at(p, V.top));
-  const bot = corners.map((p) => at(p, y0));
-  solids.solid([top, ...bot.map((p, i) => [p, bot[(i + 1) % 4], top[(i + 1) % 4], top[i]])], 'stone');
+  paint.solid(localBoxPolys(F.face('right').frame, hd - 9, hd + 9, -4, wallH, -9, 9));
 }

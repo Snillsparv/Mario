@@ -201,7 +201,7 @@ export function lawnMask(L) {
     const reach = Math.hypot(w, d) / 2 + pad + m;
     clear((x, z) => Math.abs((x - ox) * ux + (z - oz) * uz) < w / 2 + pad + m && Math.abs(-(x - ox) * uz + (z - oz) * ux) < d / 2 + pad + m, ox - reach, ox + reach, oz - reach, oz + reach);
   };
-  for (const h of L.HOUSES) footprint(h, h.w + (h.veranda ? 2 * h.veranda.depth : 0), h.d);
+  for (const h of L.HOUSES) footprint(h, h.w, h.d);
   for (const r of [L.LINK, L.CARPORT, L.DAD_PATH, L.DAD_DRIVE, L.LINK_DRIVE, L.PATIO]) rect(r, 10);
   rect(L.FORECOURT, 10);
   // (W8: the forecourt's setts on down to its wall, the wall and its pillar; the hedges along a

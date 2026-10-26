@@ -8,11 +8,10 @@
 //                             // granite: the gravel strips; paint: the lawns' flowers);
 //                             // ground: the lawn mask (grass.js lawnMask: where the lawns are,
 //                             // the ground's height)
-//   streetSign(kit, L)        // the street name sign at the junction: a grey post, a plate white
-//                             // with a black border, both faces blank (no name: the repository
-//                             // is public)
-//   STREET_SIGN               // its place (x, z), the way its plate faces (yaw), the post's top
-//                             // and the plate's size (tests)
+//   streetSign(kit, L)        // the street name sign on lamppost B: a plate white with a black
+//                             // border, both faces blank (no name: the repository is public)
+//   STREET_SIGN               // its place (x, z), the way its plate faces (yaw), the plate's top
+//                             // and its size (tests)
 //   SHARE = { high, mid, low } // the share of leaves and flowers per tier (no weeds, no flowers on
 //                             // low)
 //
@@ -31,6 +30,7 @@
 import { roadPieces, normals, inside, fenceEnds } from './plan.js';
 import { frameOf } from './house.js';
 import { makeRng } from '../../../core/math.js';
+import { FAR_LAMPS } from '../ends.js';
 
 const CELL = { hedge: [0.5, 0] }; // (the leaf atlas's hedge cell: the weeds' leafy cards)
 const UP = [[0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0]];
@@ -42,11 +42,11 @@ const STEP = 8; // along the kerbs
 const KERB_LEAVES = 0.72; // (the leaves' drifts along them: W2's 1.3 plan has longer kerbs, as many leaves as before)
 const GRIT = { high: 24, mid: 48, low: 96 }; // the grit's pieces along them, per tier
 
-// The street name sign: on the verge on the lane's north side, just in from the junction, its
-// plate along the lane.
-// (W8, photos 01, 02: clamped on lamppost B at the curve, ~500 up, no post of its own: `on` its
-// pole's middle.)
-export const STREET_SIGN = Object.freeze({ x: -13700, z: 4180, yaw: 0.885 + 2.4, top: 513, plate: [112, 26], on: true });
+// The street name sign (W8, photos 01, 02): clamped on lamppost B at the curve (lane/ends.js
+// FAR_LAMPS[0]: its place, its plate's height and the way it faces, as the classic plate), no post
+// of its own.
+const LB = FAR_LAMPS[0];
+export const STREET_SIGN = Object.freeze({ x: LB.x, z: LB.z, yaw: LB.yaw + 2.4, top: LB.plate + 13, plate: [112, 26] });
 
 export function clutter(kit, L, ground) {
   const R = makeRng(4243);
@@ -283,10 +283,7 @@ export function clutter(kit, L, ground) {
 export function streetSign({ steel, enamel, paint }, L) {
   const S = STREET_SIGN;
   const y0 = L.groundHeight(S.x, S.z);
-  // The post, a cap (none on a lamppost: `on`).
-  steel.color(0x8a8e92);
-  if (!S.on) steel.cyl('y', y0 - 6, y0 + S.top, S.x, S.z, 3.6, 8, { caps: true });
-  const k = S.on ? 15 : 0; // (in front of the lamppost's pole)
+  const k = 15; // (in front of the lamppost's pole)
   // The plate: a white enamel box (both faces blank) on the post's top, its edges black.
   const [w, h] = S.plate;
   const [ux, uz] = [Math.sin(S.yaw + Math.PI / 2), Math.cos(S.yaw + Math.PI / 2)]; // (along the plate)

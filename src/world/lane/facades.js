@@ -76,8 +76,9 @@ export const FACADES = {
 export const GABLES = {
   south_west: {
     left: {
-      panels: [{ u0: -1268, u1: -828, v0: -4, v1: 390, tint: 0xd8dad8 }, { u0: -358, u1: 200, v0: 150, v1: 390, tint: 0x8a2c28, shiplap: true }],
-      windows: [{ u: -1150, w: 170, h: 78, sill: 300, bars: 0 }, { u: -950, w: 170, h: 78, sill: 300, bars: 0 }, { u: -150, w: 250, h: 210, sill: 160, bars: 1 }],
+      // (W8 fix: the shiplap panel and its window 200 on toward the gable's west end, as photo 08.)
+      panels: [{ u0: -1268, u1: -828, v0: -4, v1: 390, tint: 0xd8dad8 }, { u0: -160, u1: 400, v0: 150, v1: 390, tint: 0x8a2c28, shiplap: true }],
+      windows: [{ u: -1150, w: 170, h: 78, sill: 300, bars: 0 }, { u: -950, w: 170, h: 78, sill: 300, bars: 0 }, { u: 120, w: 280, h: 200, sill: 160, bars: 1 }],
     },
   },
 };

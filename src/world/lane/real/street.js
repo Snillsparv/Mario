@@ -209,6 +209,32 @@ export function crazyPaving({ patch, tier }, L) {
   const y = L.GROUND + 0.8;
   const R = makeRng(0x5f1a9);
   const UP = [0, 1, 0];
+  // (W8 fix: cut at the pavement's back as the classic flags are, lane/build.js cutPave: each
+  // stone by the line PAVEMENT.to off the road's nearest segment, on its north side.)
+  const segs = L.ROAD.line.slice(1).map((b, i) => {
+    const a = L.ROAD.line[i];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    return { a, e: [(b[0] - a[0]) / l, (b[1] - a[1]) / l], l };
+  });
+  const off = (S, x, z) => (x - S.a[0]) * S.e[1] - (z - S.a[1]) * S.e[0]; // (north +)
+  const near = (x, z) => {
+    let best = null;
+    for (const S of segs) {
+      const t = Math.max(0, Math.min(S.l, (x - S.a[0]) * S.e[0] + (z - S.a[1]) * S.e[1]));
+      const d = Math.hypot(x - S.a[0] - S.e[0] * t, z - S.a[1] - S.e[1] * t);
+      if (!best || d < best.d) best = { S, d };
+    }
+    return best.S;
+  };
+  const pave = (cell) => {
+    const m = cell.reduce((q, p) => [q[0] + p[0] / cell.length, q[1] + p[1] / cell.length], [0, 0]);
+    const [cx, , cz] = F.at(m[0], 0, m[1]);
+    const S = near(cx, cz);
+    return cut(cell, ([u, w]) => {
+      const [x, , z] = F.at(u, 0, w);
+      return off(S, x, z) - L.PAVEMENT.to - J;
+    });
+  };
   for (const outline of L.northWestDrive()) {
     const us = outline.map((p) => p[0]);
     const ws = outline.map((p) => p[1]);
@@ -230,6 +256,7 @@ export function crazyPaving({ patch, tier }, L) {
         cell = cut(cell, (p) => -((p[0] - m[0]) * nx + (p[1] - m[1]) * nw) / l - J);
         if (cell.length < 3) break;
       }
+      if (cell.length >= 3) cell = pave(cell);
       if (cell.length < 3) continue;
       const c = cell.reduce((s, p) => [s[0] + p[0] / cell.length, s[1] + p[1] / cell.length], [0, 0]);
       const area = cell.reduce((s, p, i) => s + p[0] * cell[(i + 1) % cell.length][1] - cell[(i + 1) % cell.length][0] * p[1], 0) / 2;
@@ -239,7 +266,7 @@ export function crazyPaving({ patch, tier }, L) {
       const r = R();
       const v = 0.9 + R() * 0.2;
       const tint = r < 0.08 ? [1.2, 1.18, 1.14] : r < 0.11 ? [0.98, 0.8, 0.68] : r < 0.2 ? [0.68, 0.67, 0.66] : r < 0.4 ? [0.84, 0.87, 0.9] : [0.9, 0.88, 0.86];
-      patch.rgb(tint[0] * v, tint[1] * v, tint[2] * v);
+      patch.rgb(tint[0] * v * 0.84, tint[1] * v * 0.79, tint[2] * v * 0.75); // (W8 fix: darker and warmer, photo 07's #635c57)
       const C = F.at(c[0], y, c[1]);
       for (let i = 0; i < pts.length; i++) {
         let [p, q] = [pts[i], pts[(i + 1) % pts.length]];

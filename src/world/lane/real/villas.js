@@ -87,20 +87,6 @@ function surround(g, f, pts, width, w0, depth) {
   }
 }
 
-// A window standing proud of the wall (no opening: where a garage door's frame would cross it).
-function proudWindow({ paint, glass, core, enamel, tier }, f, u, W, arched) {
-  const hw = W.w / 2;
-  const pts = outline(u, W.sill, hw, W.h, arched);
-  core.rgb(0.1, 0.09, 0.08);
-  fan(core, f, pts, 0.4);
-  glass.color(0x9aa4a8);
-  fan(glass, f, pts, 1.2);
-  paint.color(WHITE);
-  surround(paint, f, pts, W.frame, 0, 5);
-  if (tier !== 'low') sashes(paint, f, u, W, arched, 3);
-  sill(enamel, f, u, W);
-}
-
 // The sashes in an opening: a mullion and a transom, depth w (3 deep, from w - 2).
 function sashes(paint, f, u, W, arched, w) {
   const hw = W.w / 2;
@@ -486,24 +472,22 @@ function programmed(kit, L, h, P) {
   if (h.balcony !== undefined) balcony(kit, F.face('left').f, renderTop + 140, h.balcony);
 }
 
-// The west end's villa (no program: rendered to its eaves): its windows over its garage doors
-// (those a garage door's frame would cross stand proud), one on each gable.
+// The west end's villa (no program: rendered to its eaves): a row of windows on its front, one on
+// each gable (north_west's own walls blank).
 function westVilla(kit, L, h) {
   const F = frameOf(h);
   const y0 = h.y0 ?? 22;
   const wallH = h.eave - y0;
-  const garages = (h.garages ?? []).map((u) => ({ u0: u - 274, u1: u + 274, v1: 264 }));
   const W = { ...WIN, sill: wallH - 230 };
   // (W8: north_west's walls blank: its doors, ribs, panels and porch lane/houses.js westFront's.)
   const faces = WEST_FRONTS[h.id] ? { front: [], back: [], left: [], right: [] } : { front: [-550, 0, 550], back: [], left: [0], right: [0] };
-  const proud = (u) => garages.some((g) => g.u0 < u + W.w / 2 + W.frame && g.u1 > u - W.w / 2 - W.frame && g.v1 > W.sill - W.frame);
   for (const name of ['front', 'back', 'left', 'right']) {
     const { f, half } = F.face(name);
     const us = faces[name];
-    const holes = us.filter((u) => !proud(u)).map((u) => ({ u0: u - W.w / 2, u1: u + W.w / 2, v0: W.sill, v1: W.sill + W.h }));
+    const holes = us.map((u) => ({ u0: u - W.w / 2, u1: u + W.w / 2, v0: W.sill, v1: W.sill + W.h }));
     kit.render.color(0xf8f8f4);
     wall(kit.render, f, -half, half, 0, wallH, holes, { L, eave: wallH });
-    for (const u of us) (proud(u) ? proudWindow : windowIn)(kit, f, u, W, false);
+    for (const u of us) windowIn(kit, f, u, W, false);
   }
 }
 
@@ -538,18 +522,16 @@ export function garageDoors({ paint, metal }, L) {
       }
       continue;
     }
-    const villa = h.kit === 'villa';
-    const doors = villa ? (h.garages ?? []) : h.kit === 'garage' ? h.doors : [];
-    if (!doors.length) continue;
+    if (h.kit !== 'garage') continue;
     // (W8: the double garage's tall anthracite doors, finely ribbed: photos 25, 29.)
-    const [w, ht, tint] = villa ? [520, 250, 0x5a6a72] : [h.door.w, h.door.h, 0x2c2e33];
-    const n = villa ? 4 : Math.round(ht / 23);
+    const [w, ht, tint] = [h.door.w, h.door.h, 0x2c2e33];
+    const n = Math.round(ht / 23);
     const f = frameOf(h).face('front').f;
-    for (const u of doors) {
+    for (const u of h.doors) {
       const [u0, u1] = [u - w / 2, u + w / 2];
       paint.color(WHITE);
-      surround(paint, f, [[u0, 0], [u1, 0], [u1, ht], [u0, ht]], villa ? 14 : 12, 0, 3);
-      // Four sections (the double garage's ribs), each a shallow panel bevelled top and bottom.
+      surround(paint, f, [[u0, 0], [u1, 0], [u1, ht], [u0, ht]], 12, 0, 3);
+      // Its ribs, each a shallow panel bevelled top and bottom.
       for (let k = 0; k < n; k++) {
         const [v0, v1] = [(ht * k) / n, (ht * (k + 1)) / n];
         paint.color(tint, 1.1);

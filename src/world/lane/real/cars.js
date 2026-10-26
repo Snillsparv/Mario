@@ -38,7 +38,7 @@
 // still round each tyre's patch): the car sits on its drive. Each kind keeps its proportions
 // (layout.js: the van tall and short-nosed, the estate's long roof, the SUV's square tail).
 
-import { sub, cross, dot, norm } from './geo.js';
+import { sub, cross, dot, norm, mul } from './geo.js';
 import { LAYBY } from '../ends.js';
 
 // Per kind: a crossover (black flares and cladding, skid plates), its ground clearance, the
@@ -133,9 +133,59 @@ export function cars(kit, L) {
   carClusters(L).forEach((g, k) => g.cars.forEach((i) => cluster.set(i, k)));
   L.CARS.forEach((c, i) => c.id || car(kit, L, c, cluster.get(i)));
   // (W8: the lay-by's two out on the curve, drawn only, far, in north_west's estate's cluster;
-  // on high only: the plan's levers for mid and low, ~8k triangles with their shadows.)
+  // W8 fix: on mid and low distCar's plain stand-ins, not left out: no car popping in or out.)
   const k = cluster.get(L.CARS.findIndex((c) => c.cluster));
-  if (kit.tier === 'high') for (const c of LAYBY.cars) car(kit, L, { ...c, far: true }, k);
+  for (const c of LAYBY.cars) (kit.tier === 'high' ? car : distCar)(kit, L, { ...c, far: true }, k);
+}
+
+// (W8 fix: the lay-by's two on mid and low, out in the haze: a body narrowing to its deck, a dark
+// glass cabin under a painted roof, four wheels, the lamps and a contact shadow; ~150 triangles.)
+function distCar(kit, L, c, probe) {
+  const K = L.CAR_KINDS[c.kind];
+  const { y0, R, axles, at: W } = carFrame(L, c);
+  const paint = kit[`carPaint@${probe}`] ?? kit.carPaint;
+  const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;
+  const { tyre, lamp, tail, contact } = kit;
+  const [hl, hw] = [K.l / 2, K.w / 2];
+  const [lo, deck, roof] = [y0 + R * 0.55, y0 + K.belt, y0 + K.roof];
+  const ring = (u, w0, w1, y) => [W(-u, y, w0), W(u, y, w0), W(u, y, w1), W(-u, y, w1)];
+  const avg = (q) => q.reduce((a, p) => [a[0] + p[0] / q.length, a[1] + p[1] / q.length, a[2] + p[2] / q.length], [0, 0, 0]);
+  // (A quad wound to face along `out`; a block's sides out from its middle.)
+  const face = (g, q, out) => {
+    if (dot(cross(sub(q[1], q[0]), sub(q[2], q[0])), out) >= 0) g.quad(q[0], q[1], q[2], q[3]);
+    else g.quad(q[1], q[0], q[3], q[2]);
+  };
+  const UP = [0, 1, 0];
+  const sides = (g, a, b) => {
+    const m = avg([...a, ...b]);
+    for (let i = 0; i < 4; i++) {
+      const q = [a[i], a[(i + 1) % 4], b[(i + 1) % 4], b[i]];
+      face(g, q, sub(avg(q), m));
+    }
+  };
+  paint.color(c.tint);
+  const body = [ring(hw, -hl, hl, lo), ring(hw - 4, -hl + K.tail, hl - 30, deck)];
+  sides(paint, ...body);
+  face(paint, body[1], UP);
+  const cab = [ring(hw - 8, -hl + K.tail + 4, hl - K.hood, deck + 0.5), ring(hw - 30, -hl + K.tailTop, hl - K.hood - K.screen, roof)];
+  glass.rgb(0.004, 0.005, 0.006);
+  sides(glass, ...cab);
+  face(paint, cab[1], UP);
+  tyre.rgb(...TYRE);
+  for (const w of axles) for (const s of [-1, 1]) tyre.tube(W(s * (hw - 32), y0 + R - SQUASH, w), W(s * (hw + 1), y0 + R - SQUASH, w), R, R, 8, { caps: true });
+  lamp.rgb(0.72, 0.74, 0.78);
+  tail.rgb(0.62, 0.03, 0.02);
+  const nose = sub(W(0, 0, 1), W(0, 0, 0));
+  for (const s of [-1, 1]) {
+    const at = (u0, u1, y, w) => [W(s * u0, y - 18, w), W(s * u1, y - 18, w), W(s * u1, y, w), W(s * u0, y, w)];
+    face(lamp, at(hw - 14, hw - 64, deck - 12, hl - 29.5), nose);
+    face(tail, at(hw - 10, hw - 54, deck - 14, -hl + K.tail - 0.5), mul(nose, -1));
+  }
+  if (!contact) return;
+  contact.rgb(1, 1, 1);
+  // (The ring winds facing down: turned, it faces up.)
+  const q = ring(hw + 12, -hl - 14, hl + 14, y0 + 0.35);
+  contact.quad(q[3], q[2], q[1], q[0], { shade: [0.45, 0.45, 0.45, 0.45] });
 }
 
 // One car (in its cluster's paint and glass). The dad's car returns its cuts (pieces.js: where

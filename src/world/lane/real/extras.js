@@ -18,7 +18,7 @@
 import { makeRng } from '../../../core/math.js';
 import { frameOf, fbox, wallFrame } from './house.js';
 import { add, mul, norm, sub, dot, cross } from './geo.js';
-import { OLD_DRAWN, offTheEnds } from './spots.js';
+import { oldDrawn, offTheEnds } from './spots.js';
 import { FORECOURT_WALL } from '../ends.js';
 
 const PAD = 0x2a2c30; // (W6: the photos' dark grey pad)
@@ -117,9 +117,9 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   const F = frameOf({ cx: M.cx, cz: M.cz, yaw: M.yaw, w: M.l, d: M.w });
   const [hl, hw] = [M.l / 2, M.w / 2];
   const top = G + M.h;
-  // The body: rounded sections along it (u); W8: an integrated A-class (photos 01-07), its cab
+  // The body: rounded sections along it (u); W8: an integrated motorhome (photos 01-07), its cab
   // toward the bend (+u): the roof's edge a little peaked over a full-width windscreen sloping
-  // down to a short white nose.
+  // straight down to a short white nose (the slope the collider's: lane/props.js motorhome).
   const section = (u, y0, y1, half, r) => {
     const pts = [];
     for (const [cw, cy, a0] of [[half - r, y0 + r, -Math.PI / 2], [half - r, y1 - r, 0], [-half + r, y1 - r, Math.PI / 2], [-half + r, y0 + r, Math.PI]]) {
@@ -130,14 +130,15 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
     }
     return pts;
   };
-  const nose = G + 165;
+  const nose = G + M.nose;
+  const cab = (k) => top - (top - nose) * k; // (the slope's height k along it from the roof's edge)
   const stations = [
     [-hl, G + 50, top - 8, hw - 6, 34],
     [-hl + 18, G + 45, top, hw, 34],
-    [hl - 150, G + 45, top, hw, 34],
-    [hl - 118, G + 45, top - 4, hw - 2, 32],
-    [hl - 60, G + 45, nose + 95, hw - 6, 30],
-    [hl - 16, G + 45, nose + 12, hw - 10, 26],
+    [hl - M.cab - 20, G + 45, top, hw, 34],
+    [hl - M.cab, G + 45, top - 4, hw - 2, 32],
+    [hl - M.cab / 2, G + 45, cab(0.5), hw - 5, 30],
+    [hl - 16, G + 45, cab(0.9), hw - 10, 26],
     [hl, G + 52, nose - 4, hw - 16, 22],
   ];
   paint.color(M.tint);
@@ -145,8 +146,8 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   // The windscreen on the cab's slope, the framed windows along both sides, the swoosh, the
   // stripe, the door on the road side (+w) behind the cab.
   const slope = (k, w) => {
-    const [u0, y0] = [hl - 118, top - 6];
-    const [u1, y1] = [hl - 14, nose + 14];
+    const [u0, y0] = [hl - M.cab + 12, cab(0.08)];
+    const [u1, y1] = [hl - 16, cab(0.9)];
     const n = norm(F.dir(y0 - y1, u1 - u0, 0));
     const p = F.at(u0 + (u1 - u0) * k, y0 + (y1 - y0) * k, w);
     return add(p, mul(n, 4));
@@ -166,8 +167,8 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
       fbox(paint, f, u0 - 6, u1 + 6, v0 - 6, v1 + 6, 0, 1.4, 'k');
       carGlass.quad(f.at(u0, v0, 1.6), f.at(u1, v0, 1.6), f.at(u1, v1, 1.6), f.at(u0, v1, 1.6));
     };
-    for (const [a, b] of [[-hl + 90, -hl + 250], [-hl + 360, -hl + 520], [hl - 420, hl - 330]]) win(a, b, G + 230, G + 300);
-    win(hl - 190, hl - 150, G + 220, G + 300);
+    for (const [a, b] of [[-hl + 90, -hl + 250], [-hl + 360, -hl + 520], [hl - 440, hl - 350]]) win(a, b, G + 260, G + 330);
+    win(hl - 215, hl - 175, G + 250, G + 330);
     paint.color(0x8a7a68);
     const [a0, a1] = [Math.min(U(-hl + 20), U(hl - 140)), Math.max(U(-hl + 20), U(hl - 140))];
     paint.quad(f.at(a0, G + 150, 0.4), f.at(a1, G + 150, 0.4), f.at(a1, G + 164, 0.4), f.at(a0, G + 164, 0.4));
@@ -180,10 +181,10 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   }
   const road = side(1);
   paint.color(0xe2e4e0);
-  fbox(paint, road, hl - 320, hl - 240, G + 52, G + 330, 0, 1.2, 'k');
-  carGlass.quad(road.at(hl - 308, G + 230, 1.8), road.at(hl - 252, G + 230, 1.8), road.at(hl - 252, G + 300, 1.8), road.at(hl - 308, G + 300, 1.8));
+  fbox(paint, road, hl - 340, hl - 260, G + 52, G + 360, 0, 1.2, 'k');
+  carGlass.quad(road.at(hl - 328, G + 260, 1.8), road.at(hl - 272, G + 260, 1.8), road.at(hl - 272, G + 330, 1.8), road.at(hl - 328, G + 330, 1.8));
   metal.color(0xb0aca4);
-  fbox(metal, road, hl - 262, hl - 250, G + 150, G + 158, 1, 3, 'k');
+  fbox(metal, road, hl - 282, hl - 270, G + 170, G + 178, 1, 3, 'k');
   // The nose: headlights, a dark grille band, the bumper.
   const front = wallFrame(F.at(hl + 0.5, 0, 0), F.dir(1, 0, 0));
   paint.color(0x8a8e90);
@@ -214,10 +215,10 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   }
   // The back: a small window, the ladder.
   const back = wallFrame(F.at(-hl, 0, 0), F.dir(-1, 0, 0));
-  carGlass.quad(back.at(-60, G + 250, 0.6), back.at(20, G + 250, 0.6), back.at(20, G + 300, 0.6), back.at(-60, G + 300, 0.6));
+  carGlass.quad(back.at(-60, G + 280, 0.6), back.at(20, G + 280, 0.6), back.at(20, G + 330, 0.6), back.at(-60, G + 330, 0.6));
   steel.color(0x9a9ea0);
   for (const u of [60, 110]) steel.tube(back.at(u, G + 100, 10), back.at(u, top + 20, 10), 3, 3, 6);
-  for (const v of [120, 200, 280, 360]) steel.tube(back.at(57, G + v, 10), back.at(113, G + v, 10), 2.5, 2.5, 6);
+  for (let v = 120; v < M.h; v += 80) steel.tube(back.at(57, G + v, 10), back.at(113, G + v, 10), 2.5, 2.5, 6);
 }
 
 // (W8: the light grey mailbox on the forecourt wall's pillar, photos 29-31: a folded steel box
@@ -269,7 +270,7 @@ export function treeLine(L, tier) {
     // (Not on the road on into the fog, not up the forest's bank (it rises on past its heights),
     // not off the lane's ground; none in the edge forest's clear sector, W4: the sky over the
     // garage row from the dad's drive (its spots dropped, the others where they were).)
-    if (L.roadDistance(x, z, OLD_DRAWN(L)) < L.ROAD.half + 600 || z < -6000 || Math.abs(x) > 15500 || z > 9500) continue;
+    if (L.roadDistance(x, z, oldDrawn(L)) < L.ROAD.half + 600 || z < -6000 || Math.abs(x) > 15500 || z > 9500) continue;
     placed++;
     if ((clear && x > clear.x0 && x < clear.x1 && z > clear.z0) || offTheEnds(L, x, z, 600)) continue;
     const base = L.groundHeight(x, z) - 10;

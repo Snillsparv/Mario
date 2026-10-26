@@ -13,7 +13,8 @@
 // the routes round the street, each collecting exactly its coins: down the path from the front
 // door, onto the mailbox's roof (a single jump), along the street both ways, onto north_2's hedge
 // (W6: a jump from the pavement), north_3's wall top (a hop) and up north_3's steps, up the side yard between north_2 and north_3, onto
-// the motorhome's roof (a double jump; a single one falls short from anywhere in front of it),
+// the motorhome's roof (a double jump; a single one falls short from anywhere in front of it, at
+// full speed too),
 // round the junction's lamppost and up it, round the turning area, up north_4's drive, along the
 // footpath, and along south_1's hedge top (a single jump up onto it). And the details: the
 // trampoline (with the jump button held every bounce rises to 852, a 'boing' each time, and takes
@@ -294,7 +295,7 @@ test('west: along the street (five coins), a jump onto north_2\'s hedge on its b
   assert.equal(y.coins(), 3, 'the side yard');
 });
 
-test('the motorhome: a running double jump from the drive in front of it grabs its roof\'s edge (its three coins); a single running jump falls short from anywhere in front of it', () => {
+test('the motorhome: a running double jump from the drive in front of it grabs its roof\'s edge (its three coins); a single jump falls short from anywhere in front of it, from a standstill or at full speed', () => {
   const M = lane.MOTORHOME;
   const yaw = M.yaw + Math.PI; // facing it from the road side (its frame's -w)
   const at = (w, u = 0) => [M.cx + Math.cos(M.yaw) * u + Math.sin(M.yaw) * w, M.cz - Math.sin(M.yaw) * u + Math.cos(M.yaw) * w];
@@ -307,6 +308,25 @@ test('the motorhome: a running double jump from the drive in front of it grabs i
     h.rest(1);
     jump(h, yaw, { after: 30 });
     assert.ok(h.at().y < GROUND + M.h - 100, `single from ${w}: not on its roof ${JSON.stringify(h.at())}`);
+  }
+  // At full speed (W8 fix: the run-up from the road, the jump at any point of it, along its
+  // length): never a grab of its roof's edge, never on its roof.
+  const wOf = (q) => (q.x - M.cx) * Math.sin(M.yaw) + (q.z - M.cz) * Math.cos(M.yaw);
+  for (const u of [-300, 0, 300]) {
+    for (let from = 400; from <= 880; from += 40) {
+      const [x, z] = at(1500, u);
+      const r = hero(x, lane.groundHeight(x, z), z, yaw);
+      r.rest(1);
+      for (let t = 0; t < 300 && wOf(r.at()) > from; t++) r.tick({ stickY: 1 }, yaw);
+      const speed = r.p.forwardVel;
+      let grab = null;
+      for (let t = 0; t < 120; t++) {
+        r.tick({ stickY: 1, A: true }, yaw);
+        if (!grab && /ledge/.test(r.p.action)) grab = r.at();
+      }
+      assert.ok(speed > 28, `the run-up at full speed: ${speed}`);
+      assert.ok(!grab && r.at().y < GROUND + M.h - 100, `running single from ${from} at ${u}: no grab, not on its roof ${JSON.stringify(grab ?? r.at())}`);
+    }
   }
   const h = start(600);
   h.rest(1);

@@ -332,9 +332,11 @@ test('the boundary holds: jump, crouch and attack spam from all over the course 
   // (W2: from the layout's anchors; each start's height its ground's.)
   const on = (x, z) => [x, lane.groundHeight(x, z), z];
   const SW = lane.HOUSES.find((h) => h.id === 'south_west');
-  // (Its back garden: 900 along its back wall, 300 out from it, in its own frame.)
-  const [c, sn, w] = [Math.cos(SW.yaw), Math.sin(SW.yaw), -SW.d / 2 - 300];
-  const [bx, bz] = [SW.cx + 900 * c + w * sn, SW.cz - 900 * sn + w * c];
+  // (Its back garden by the bounds' south-west edge: 300 out past its back gable, 900 toward its
+  // west side, in its own frame; W8 fix: the frame turned with the house, its u away from the
+  // street.)
+  const [c, sn, u] = [Math.cos(SW.yaw), Math.sin(SW.yaw), SW.w / 2 + 300];
+  const [bx, bz] = [SW.cx + u * c + 900 * sn, SW.cz - u * sn + 900 * c];
   const starts = [
     on(lane.LAMPS[0].x + 300, lane.LAMPS[0].z), // the junction
     [M.cx, GROUND + M.h, M.cz], // the motorhome's roof
@@ -494,11 +496,36 @@ test("the north villas (W6): each block under its drawn hipped roof (the front h
 // pavement, the footway or the drives' mouths.)
 test('W8: the two ends\' new solids (the hedges along lines, the forecourt wall, its pillar and mailbox, the garden things, north_west\'s estate) solid to their walkable tops, and the pavement along the west leg and the footway past the wall clear at GROUND', () => {
   const floor = (x, z) => col.findFloor(x + O.x, 3000, z + O.z).y - O.y;
+  // (W8 fix: each hedge's two faces sampled along it: on the street's north side behind the
+  // pavement's back, on its south side behind the bend's fence, 80 off the road's edge; and off the
+  // footpath's asphalt: none on a way.)
+  const north = (x, z) => {
+    let best = null;
+    for (let i = 0; i + 1 < lane.ROAD.line.length; i++) {
+      const [[ax, az], [bx, bz]] = [lane.ROAD.line[i], lane.ROAD.line[i + 1]];
+      const l = Math.hypot(bx - ax, bz - az);
+      const [ex, ez] = [(bx - ax) / l, (bz - az) / l];
+      const t = Math.max(0, Math.min(l, (x - ax) * ex + (z - az) * ez));
+      const d = Math.hypot(x - ax - ex * t, z - az - ez * t);
+      if (!best || d < best.d) best = { d, north: (x - ax) * ez - (z - az) * ex > 0 };
+    }
+    return best.north;
+  };
+  const FP = lane.FOOTPATH;
   for (const h of LINE_HEDGES) {
     const [x, z] = [(h.from[0] + h.to[0]) / 2, (h.from[1] + h.to[1]) / 2];
     assert.ok(Math.abs(floor(x, z) - h.top) < 1, `the ${h.kind} hedge's top at ${floor(x, z)}`);
-    // (Behind the pavement's back, or the bend's fence: none on a way.)
-    for (const [px, pz] of [h.from, h.to]) assert.ok(lane.roadDistance(px, pz) - h.depth / 2 > 520, `the ${h.kind} hedge off the street at (${px}, ${pz})`);
+    const [dx, dz] = [h.to[0] - h.from[0], h.to[1] - h.from[1]];
+    const len = Math.hypot(dx, dz);
+    for (let k = 0; k <= 20; k++) {
+      for (const e of [-1, 1]) {
+        const [px, pz] = [h.from[0] + (dx * k) / 20 - (dz / len) * e * (h.depth / 2), h.from[1] + (dz * k) / 20 + (dx / len) * e * (h.depth / 2)];
+        const r = lane.roadDistance(px, pz);
+        assert.ok(r > (north(px, pz) ? lane.PAVEMENT.to : lane.ROAD.half + 80), `the ${h.kind} hedge off the street at (${px.toFixed(0)}, ${pz.toFixed(0)}): ${r.toFixed(0)}`);
+        const [ft, fs] = [(px - FP.x) * FP.dir[0] + (pz - FP.z) * FP.dir[1], -(px - FP.x) * FP.dir[1] + (pz - FP.z) * FP.dir[0]];
+        if (ft > FP.from && ft < FP.len) assert.ok(Math.abs(fs) > FP.half + 10, `the ${h.kind} hedge off the footpath at (${px.toFixed(0)}, ${pz.toFixed(0)}): ${fs.toFixed(0)}`);
+      }
+    }
   }
   const W = FORECOURT_WALL;
   assert.ok(Math.abs(floor((W.from[0] + W.to[0]) / 2, (W.from[1] + W.to[1]) / 2) - W.top) < 0.01, 'the forecourt wall\'s top');

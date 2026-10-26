@@ -83,7 +83,7 @@ export function forestSpots(L) {
     const nz = -(q[0] - p[0]) / lengths[k];
     const x = p[0] + (q[0] - p[0]) * t + nx * away;
     const z = p[1] + (q[1] - p[1]) * t + nz * away;
-    if (L.inBounds(x, z) || L.roadDistance(x, z, OLD_DRAWN(L)) < L.ROAD.half + 300 || (x > F.x0 && z < band(x, 0))) continue;
+    if (L.inBounds(x, z) || L.roadDistance(x, z, oldDrawn(L)) < L.ROAD.half + 300 || (x > F.x0 && z < band(x, 0))) continue;
     const lo = E.low && x > E.low.x0 && z > E.low.z0 ? E.low : null;
     const kind = pick(lo?.mix ?? E.mix, er());
     const top = tops(lo ? lo.top : E.top, er);
@@ -107,7 +107,7 @@ export function forestSpots(L) {
 // spots of the ring and the far tree line are drawn at all, so their trees keep their places; the
 // spots on the curve it runs on now, its lay-by, by the veranda house and the far houses are
 // drawn and dropped, as the clear sector's.)
-export function OLD_DRAWN(L) {
+export function oldDrawn(L) {
   const [[ax, az], [bx, bz]] = L.ROAD.line;
   const l = Math.hypot(ax - bx, az - bz);
   return [[ax + ((ax - bx) / l) * 2860, az + ((az - bz) / l) * 2860], ...L.ROAD.line];

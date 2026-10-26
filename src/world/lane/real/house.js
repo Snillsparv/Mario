@@ -102,10 +102,12 @@ export const streakLength = (u) => 0.7 + 0.6 * ((((Math.sin(u * 12.9898 + 4.1) *
 // A wall band on frame f from u0 to u1, v0 to v1 at w, with rectangular holes { u0, u1, v0, v1 }
 // cut out of it; uvs in world units across the face. wear { L, eave }: each quad's weathering
 // (under its hole's sill, or under the eave).
-function band(g, f, u0, u1, v0, v1, w, holes, wear = null) {
+function band(g, f, u0, u1, v0, v1, w, holes, wear = null, turn = 0) {
   const rect = (a, b, c, d, under = null) => {
     if (wear) g.wearAt = wallWear(wear.L, f, under ? under.v0 : wear.eave, under ? streakLength(under.u0) : 0.5);
-    g.quad(f.at(a, c, w), f.at(b, c, w), f.at(b, d, w), f.at(a, d, w), { uvs: [[a, c], [b, c], [b, d], [a, d]] });
+    // (`turn`: the set turned a quarter, its boards across the band, `turn` times as close.)
+    const uvs = turn ? [[c * turn, a], [c * turn, b], [d * turn, b], [d * turn, a]] : [[a, c], [b, c], [b, d], [a, d]];
+    g.quad(f.at(a, c, w), f.at(b, c, w), f.at(b, d, w), f.at(a, d, w), { uvs });
   };
   const cuts = holes.filter((o) => o.u1 > u0 && o.u0 < u1 && o.v1 > v0 && o.v0 < v1).sort((p, q) => p.u0 - q.u0);
   // (Under a window over the band, its sill's streaks run on down it: the plinth's.)
@@ -214,12 +216,18 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
     const casing = wins.map((o) => ({ u0: o.u0 - WIN.casing, u1: o.u1 + WIN.casing, v0: o.v0 - WIN.casing, v1: o.v1 + WIN.casing }));
     for (const P of G.panels) {
       kit.boards.color(P.tint);
-      band(kit.boards, f, P.u0, P.u1, Math.max(P.v0, -4), Math.min(P.v1, top), 3, casing, { L, eave: top });
+      band(kit.boards, f, P.u0, P.u1, Math.max(P.v0, -4), Math.min(P.v1, top), 3, casing, { L, eave: top }, P.shiplap ? 240 / 144 : 0);
       for (const [u, s] of [[P.u0, -1], [P.u1, 1]]) kit.boards.quad(f.at(u, P.v0, s > 0 ? 3 : 0), f.at(u, P.v0, s > 0 ? 0 : 3), f.at(u, Math.min(P.v1, top), s > 0 ? 0 : 3), f.at(u, Math.min(P.v1, top), s > 0 ? 3 : 0));
       if (P.v0 > 0) kit.boards.quad(f.at(P.u0, P.v0, 0), f.at(P.u1, P.v0, 0), f.at(P.u1, P.v0, 3), f.at(P.u0, P.v0, 3));
-      if (!P.shiplap || kit.tier === 'low') continue;
-      kit.paint.color(0x2a0c0a);
-      for (let v = P.v0 + 14; v < Math.min(P.v1, top) - 4; v += 18) band(kit.paint, f, P.u0, P.u1, v, v + 1.6, 3.3, casing);
+      if (!P.shiplap) continue;
+      // (W8 fix: a black frame round it, its edges and a flashing under it; its courses the
+      // boards' set turned across it, band's `turn`, 18 a course.)
+      kit.paint.color(TINT.black);
+      for (const [a, b, c, d] of [[P.u0 - 7, P.u0, P.v0 - 7, top], [P.u1, P.u1 + 7, P.v0 - 7, top], [P.u0, P.u1, P.v0 - 7, P.v0]]) kit.paint.quad(f.at(a, c, 3.6), f.at(b, c, 3.6), f.at(b, d, 3.6), f.at(a, d, 3.6));
+      // (Each course's shadow line under its lap, on the set's joints: v 18 k; not on low.)
+      if (kit.tier === 'low') continue;
+      kit.paint.color(0x3a100e);
+      for (let v = Math.ceil((P.v0 + 6) / 18) * 18; v < top - 4; v += 18) band(kit.paint, f, P.u0, P.u1, v - 3.6, v - 2.4, 3.3, casing);
     }
     for (const o of wins) windowAt(kit, f, { ...o, u: (o.u0 + o.u1) / 2, w: o.u1 - o.u0 }, { bars: kit.tier === 'low' ? 0 : o.bars, mullion: o.bars > 0 });
   }
@@ -453,6 +461,7 @@ export function tileCourses(g, e0, e1, up, len, seg) {
 // and verge rolls, the ridge cap.
 function gableRoof(kit, F, h, tiled, seg) {
   const o = h.overhang ?? ROOF.overhang;
+  const ov = h.verges ?? o; // (W8 fix: the verges' own overhang, south_west's deep ones)
   const [A, B] = [h.w / 2, h.d / 2];
   const tan = (h.ridge - h.eave) / B;
   const lo = h.eave - o * tan;
@@ -461,12 +470,12 @@ function gableRoof(kit, F, h, tiled, seg) {
   // (A wing's slopes run on at its +u end to the valleys with the main roof: the rim to
   // join.rim, the ridge to join.apex; no verge there, no tile courses on it.)
   const J = h.join;
-  const [rimEnd, ridgeEnd] = J ? [J.rim, J.apex] : [A + o, A + o];
+  const [rimEnd, ridgeEnd] = J ? [J.rim, J.apex] : [A + ov, A + ov];
   for (const s of [-1, 1]) {
     const edge = s * (B + o);
     const out = F.dir(0, 0, s);
-    const [e0, e1] = [F.at(-A - o, lo, edge), F.at(rimEnd, lo, edge)];
-    const [r0, r1] = [F.at(-A - o, h.ridge, 0), F.at(ridgeEnd, h.ridge, 0)];
+    const [e0, e1] = [F.at(-A - ov, lo, edge), F.at(rimEnd, lo, edge)];
+    const [r0, r1] = [F.at(-A - ov, h.ridge, 0), F.at(ridgeEnd, h.ridge, 0)];
     const up = norm(sub(r0, e0));
     const len = Math.hypot(...sub(r0, e0));
     // (Wound to face out: the side's order flips with s.)
@@ -484,7 +493,7 @@ function gableRoof(kit, F, h, tiled, seg) {
     // The soffit under the overhang (dark), the fascia along the eave.
     const dn = (p) => [p[0], p[1] - T, p[2]];
     kit.paint.color(h.soffit ?? TINT.soffit);
-    kit.paint.quad(...[slope[1], slope[0], slope[3], slope[2]].map(dn), { shade: 0.6 });
+    kit.paint.quad(...[slope[1], slope[0], slope[3], slope[2]].map(dn), { shade: h.soffit ? 0.85 : 0.6 });
     kit.paint.color(TINT.fascia);
     const fa = add(e0, mul(out, 1));
     const fb = add(e1, mul(out, 1));
@@ -495,7 +504,7 @@ function gableRoof(kit, F, h, tiled, seg) {
     const g = kit.metal;
     g.color(TINT.gutter);
     const gc = (p) => add([p[0], lo - 12, p[2]], mul(out, 10));
-    const [ga, gb] = [gc(F.at(-A - o + 4, 0, edge)), gc(F.at(rimEnd - 4, 0, edge))];
+    const [ga, gb] = [gc(F.at(-A - ov + 4, 0, edge)), gc(F.at(rimEnd - 4, 0, edge))];
     g.tube(ga, gb, 9, 9, 6, { a0: 0, arc: Math.PI });
     g.tube(ga, gb, 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true });
     // (The downpipes at the eave's ends; h.pipes: only those listed, by side: e.g. none on an
@@ -512,7 +521,7 @@ function gableRoof(kit, F, h, tiled, seg) {
   // Barge boards up both gables (a wing's far one), a roll of verge tiles over each, the ridge
   // cap.
   for (const e of J ? [-1] : [-1, 1]) {
-    const a = e * (A + o);
+    const a = e * (A + ov);
     const vout = F.dir(e, 0, 0);
     for (const s of [-1, 1]) {
       const edge = s * (B + o);
@@ -528,7 +537,7 @@ function gableRoof(kit, F, h, tiled, seg) {
   // (Low on the ridge, its top 2 over the collider's ridge line Jonas stands on: his feet sink
   // no deeper there than on the rolls' crowns.)
   kit.tiles.color(h.realRoof ?? h.roof, 0.9);
-  const [ra, rb] = [F.at(-A - o - 4, h.ridge - 10, 0), F.at(J ? ridgeEnd : A + o + 4, h.ridge - 10, 0)];
+  const [ra, rb] = [F.at(-A - ov - 4, h.ridge - 10, 0), F.at(J ? ridgeEnd : A + ov + 4, h.ridge - 10, 0)];
   kit.tiles.tube(ra, rb, 12, 12, 8, { a0: Math.PI, arc: Math.PI, caps: true });
   // The ridge tiles' joints: thin dark rings every RIDGE_TILE (on low none on a wing's ridge,
   // behind the house).

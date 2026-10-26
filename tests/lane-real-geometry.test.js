@@ -27,7 +27,7 @@ import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
 import { roadPieces, inside } from '../src/world/lane/real/plan.js';
-import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET, WEST_FRONTS } from '../src/world/lane/facades.js';
+import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET, WEST_FRONTS, GABLES } from '../src/world/lane/facades.js';
 import { FAR_LAMPS, LAYBY } from '../src/world/lane/ends.js';
 
 const t0 = performance.now();
@@ -133,6 +133,8 @@ test('the walls are open at every window and door of the chain houses and the vi
       // WEST_FRONTS: its doors drawn proud of the wall, no window in it.)
     }
     for (const u of h.kit === 'chain' ? (h.windows ?? []) : []) openings.push([front, u, 170, 300]);
+    // (W8 fix: a gable's own windows, facades.js GABLES: south_west's street gable.)
+    for (const [name, G] of Object.entries(GABLES[h.id] ?? {})) for (const o of G.windows) openings.push([frameOf(h).face(name).f, o.u, o.sill + 10, o.sill + o.h - 10]);
     for (const u of h.kit === 'chain' ? (h.backWindows ?? (h.windows ?? []).map((w) => -w)) : []) openings.push([back, u, 170, 300]);
     if (typeof h.door === 'object') openings.push([front, h.door.u, 1, h.door.h - 1]);
     else if (typeof h.door === 'number' && h.kit === 'chain') openings.push([front, h.door, 1, 214]);
@@ -445,7 +447,7 @@ test('the cars\' bodies and tyres are closed: every edge of each shared by exact
     }
     cars(kit, lane);
     for (const c of lane.CARS) if (c.id) carOf(kit, lane, c); // (the dad's, drawn last by detail.js)
-    assert.equal(pieces.length, (lane.CARS.length + (tier === 'high' ? LAYBY.cars.length : 0)) * 5, `${tier}: a body and four tyres a car`); // (W8: and the lay-by's two on high, drawn only)
+    assert.equal(pieces.length, (lane.CARS.length + (tier === 'high' ? LAYBY.cars.length : 0)) * 5, `${tier}: a body and four tyres a car`); // (W8: and the lay-by's two on high, drawn only; W8 fix: on mid and low their plain stand-ins, no lofts)
     for (const { name, p } of pieces) {
       const key = (i) => `${p[i]},${p[i + 1]},${p[i + 2]}`;
       const edges = new Map();
@@ -699,8 +701,10 @@ test('the clutter lies on the ground: every fallen leaf within 2 of the ground (
   assert.equal(kit.lamp.count + kit.gloss.count + kit.metal.count, 0, 'no lettering, no reflectors');
   const y0 = lane.groundHeight(STREET_SIGN.x, STREET_SIGN.z);
   // (W8, photos 01, 02: clamped on lamppost B out on the curve, no post of its own.)
-  if (STREET_SIGN.on) assert.ok(FAR_LAMPS.some((l) => l.x === STREET_SIGN.x && l.z === STREET_SIGN.z), 'on lamppost B');
-  else assert.ok(Math.min(...kit.steel.pos.filter((_, i) => i % 3 === 1)) < y0, 'its post in the ground');
+  const LB = FAR_LAMPS[0];
+  assert.ok(LB.x === STREET_SIGN.x && LB.z === STREET_SIGN.z && Math.abs(LB.plate + 13 - STREET_SIGN.top) < 1e-9, 'on lamppost B, as high as its classic plate');
+  assert.ok(Math.min(...kit.steel.pos.filter((_, i) => i % 3 === 1)) > y0 + 400, 'no post of its own: its clamps on the pole');
+  assert.ok(y0 === lane.GROUND, 'on the verge\'s ground');
   assert.ok(lane.roadDistance(STREET_SIGN.x, STREET_SIGN.z, lane.ROAD_DRAWN) > lane.ROAD.half + lane.KERB.w + 40, 'on the verge');
 });
 
@@ -749,7 +753,7 @@ test('G3\'s details: the double garage\'s downpipes with faint rust under their 
   const mid = buildLaneDetail(lane, 'mid');
   const G = lane.HOUSES.find((h) => h.kit === 'garage');
   const F = frameOf(G);
-  const gable = F.face('front').f;
+  const gable = F.face('back').f; // (W8 fix: the pipes at the back gable's corners, the front's its pillars)
   const o = gable.at(0, 0, 0);
   // The streaks on the gable's render, 0.4 proud.
   const rust = (d) => {

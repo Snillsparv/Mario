@@ -1667,14 +1667,16 @@ trees' leaves).
   both looks. Out past the junction the road runs on into the fog with the side road (drawn
   only; W8, photos 01-03 and the aerial: `ROAD.beyond`, its centreline curving left into the
   through road, `ROAD_DRAWN` the drawn line through it; on its outside the lay-by (`lane/ends.js LAYBY`,
-  asphalt at GROUND, two cars parked in it nose out to the road, no colliders: the classic
-  build's boxes, the realistic look's own cars at `far` detail in north_west's estate's probe
-  cluster on high only, `real/cars.js`: the plan's levers for mid and low) and lamppost B on the verge by it (`FAR_LAMPS`: drawn only, not a pole) carrying the
-  blank street name plate (realistic `real/clutter.js STREET_SIGN`, `on` the pole; the classic a
-  plain plate); on its inside the veranda house's two-rail fence along the edge (`FENCES`); a
+  asphalt at GROUND, 720 along the road and 760 deep (W8 fix), two cars parked wholly in it nose
+  out to the road 340 apart, no colliders: the classic build's boxes, the realistic look's own
+  cars in north_west's estate's probe cluster, `real/cars.js`: at `far` detail on high, on mid
+  and low `distCar`'s plain stand-ins, ~150 triangles each, so no tier leaves the lay-by empty)
+  and lamppost B on the verge by it (`FAR_LAMPS`: drawn only, not a pole) carrying the blank
+  street name plate (realistic `real/clutter.js STREET_SIGN`, from `FAR_LAMPS[0]`: its place,
+  height and facing; the classic a plain plate); on its inside the veranda house's two-rail fence along the edge (`FENCES`); a
   gravel path north from the side road's mouth to the forest (`GRAVEL_PATH`, a hard surface: in
   the play space it is walked on); the forest's ring and the far tree line keep the old straight
-  run's draws (`real/spots.js OLD_DRAWN`: every tree where it was) and drop the spots on the
+  run's draws (`real/spots.js oldDrawn`: every tree where it was) and drop the spots on the
   curve, its lay-by and by the far houses (`offTheEnds`)).
 * **The street's wear and its edges** (W7, photos 09, 12, 13, 17-24, 41-44; `lane/surface.js`,
   data and outlines in the lane's chunk, never main (the worker only its `SHOULDER`, for the
@@ -1762,14 +1764,19 @@ trees' leaves).
   behind it; its drive and a strip round its south-west corner to the porch grey slate crazy
   paving: the classic look's flagstones tinted grey, the realistic look's stones a seeded
   Voronoi of the outlines in the worker (`real/street.js crazyPaving`, in the `patch` material:
-  no draw call; the drive's own face under them the joints, `REAL_GROUND.flags`), a white
+  no draw call; the drive's own face under them the joints, `REAL_GROUND.flags`; W8 fix: each
+  stone cut at the pavement's back, `PAVEMENT.to` off the road's nearest segment, as the
+  classic flags are by `cutPave`: none on the pavement), a white
   estate nose in at its wide door (in the north drives' probe cluster: `cluster`, plainer:
   `far`), a clipped hedge along the pavement west of its drive (`LINE_HEDGES`), its white
   picnic table and shed, a black box mailbox on a post (`GARDEN_THINGS`)) with the **motorhome**
-  on its drive (an integrated A-class, its cab toward the bend: a full-width windscreen sloping
-  from the roof's peaked edge, framed windows, the door on the road side, swoosh decals, roof
-  hatches; solid to 422: a running double jump grabs its edge, a single one from the drive falls
-  short). **Chain houses** (south_west and its wing, south_1
+  on its drive (an integrated motorhome, its cab toward the bend: a full-width windscreen sloping
+  straight from the roof's peaked edge `cab` 150 back down to its nose at `nose` 165, framed
+  windows, the door on the road side, swoosh decals, roof hatches, a ladder; 490 tall (W8 fix:
+  at W8's 400 a single running jump from full speed grabbed its edge; it grabs an edge up to
+  ~475); solid to its roof and down the windscreen's slope (one convex prism, the realistic
+  look's the same): a running double jump grabs its edge, a single one falls short from a
+  standstill or at full speed, lane-routes). **Chain houses** (south_west and its wing, south_1
   and its two wings, `DAD` and his, south_2 and its two, east_house): a white brick plinth (135),
   boards to the eaves at 412 (or white brick gable ends with boards in their triangles),
   black-framed windows with a pale glint and white curtains, a black front door with a little
@@ -1778,10 +1785,14 @@ trees' leaves).
   south_1); **south_west** (W8, photos 03-08) turned, its ridge across it (`yaw` WEST_YAW − π/2:
   its u away from the street, its front its west eave side): a very wide low gable (14°, ridge
   728) to the street in white brick under red boards in the triangle, deep white soffits
-  (`soffit`) under black verge boards, on that gable (`lane/facades.js GABLES`: a face's own
+  (`soffit`) under black verge boards (W8 fix: `verges` 100 over the gables, both looks' gable
+  roofs, the white soffits lighter), on that gable (`lane/facades.js GABLES`: a face's own
   panels proud of its brick and windows in them, both looks) a weathered white board bay at its
   east end with two clerestory windows and a red shiplap panel round a big window of four
-  lights; its west side white brick at its north end, then red boards, windows and a glazed door
+  lights (W8 fix: the panel's boards across it, its board set turned a quarter, the classic
+  plank texture by a `uv` of its own, the realistic set by `band`'s `turn`, each course's shadow
+  line on the set's joints; a black frame round it; it and its window 200 on toward the west
+  end, as photo 08; the window bare, no curtains); its west side white brick at its north end, then red boards, windows and a glazed door
   onto its patio (its lawn: a table, chairs, a closed parasol, grasses, a small red maple);
   its brown picket fence (`FENCES`, slabs) along its street side and on round the bend's south
   edge behind the gravel shoulder to the young beeches (`FENCES` with no house: world [x, z]),
@@ -1817,8 +1828,10 @@ trees' leaves).
   back wall (1146 × 660, 345 high, a concrete floor; wood underfoot), no posts).
   **east_garage** (W8, photos 25, 29-31: a double garage facing the turning area across its
   forecourt, a wide flat gable, 23°, ridge 735, its side eaves 173 out past its render walls
-  (`overhang`, the verges `verges` 60) under broad white fascias and barge boards, red-brown clay
-  pantiles; its front split-face block `pillars` at the corners up to a white `beam` across them,
+  (`overhang`, the verges `verges` 60) under broad white fascias and barge boards, white soffits
+  (`soffit`, W8 fix), red-brown clay pantiles (the realistic look's `realRoof` 0x26110a, W8 fix:
+  its tile set and the sky's sheen light a tint ~3-5x in linear terms, so W8's 0x4a2c20 came out
+  salmon, #9a6750 at p30 against the photo's #4a382d; it and the east house's now ~#56443e); its front split-face block `pillars` at the corners up to a white `beam` across them,
   cream boards over it with their joints, two tall anthracite ribbed doors (`door` 400 × 346) in
   white casings either side of a white render `pier` with a wallbox and its coiled cable; its
   collider the walls to 509 under the roof: a perch, off every route) in front of **east_house**
@@ -1945,13 +1958,16 @@ trees' leaves).
   (`beds`) under the yew, the rhododendron (rimmed with blocks on its street and path sides) and
   the hostas at the corner; the edging in the kerbs' light grey in both looks), thujas (a row of
   five on north_1's terrace, steep frustum colliders), the two big trees out past the junction
-  (lumpy canopies; drawn only: a tree's trunk collider only inside the boundary), the garden trees
+  (lumpy canopies; drawn only: a tree's trunk collider only inside the boundary; W8 fix: the
+  first's crown down to the ground, `low` 0.06, as photos 02 and 03 have it, in the realistic look
+  in bigger cards, under its crown too, about as many as before), the garden trees
   (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, the big birch east of
   the corner house (W7, photos 05, 08, 11: three white stems leaning out of one foot under a
   broad golden crown, 1950 tall, moved to (−5500, 1700) where photos 05 and 08's rays meet), a
   Virginia creeper by the double garage (W8, photos 29, 30: a deep red curtain hanging from a
   pergola beam on a post, from the garage's south pillar into the east house's garden; drawn
-  only, its red leaves fallen under it; the red shrub's collider gone: in the realistic look the
+  only but its post (solid, W8 fix: it stands in the walkable garden), its red leaves fallen
+  under it; the red shrub's collider gone: in the realistic look the
   shrub's draws from the plants' shared stream go into nothing, so every plant after keeps its
   leaves), a round broadleaf in the side yard between north_1 and
   north_2 (W7, the aerial), the ornamental cherry on north_5's terrace between its trampoline and
@@ -1960,7 +1976,9 @@ trees' leaves).
   trunks solid), the hedges along lines (W8, `lane/ends.js LINE_HEDGES`: oriented solid boxes, their tops
   walkable, their leaves on the street side in the realistic look (`side`) round a dark core,
   each its own stream: north_west's low clipped yellow-green one west of its drive, the bend's
-  tall thuja hedge and a deciduous one on, the east house's dense dark one along the footway),
+  tall thuja hedge and a deciduous one on, the east house's dense dark one along the footpath,
+  parallel to it, its near face ~255 off the path's line, clear of its asphalt (W8 fix; lane.test
+  samples every hedge's two faces against the pavement, the bend's fence line and the footpath)),
   small plants drawn only (`SMALL_PLANTS`: south_west's patio maple and grasses, an orange autumn
   shrub at south_1's west gable, box balls and a small conifer behind the forecourt wall), the
   garden things at the two ends (`GARDEN_THINGS`, both looks: north_west's white picnic table and
@@ -1996,7 +2014,7 @@ trees' leaves).
   garage door, a children's one: a post against the wall, a white board 412 …
   522 on an arm, an orange ring and a net; the board and its arm one solid block from the wall: a
   perch, a hop from the van's roof lands on it), the **trampoline** (see below), the motorhome
-  (W8: an A-class, its cab toward the bend: a windscreen sloping from the roof's edge to a white
+  (W8: an integrated one, its cab toward the bend: a windscreen sloping from the roof's edge to a white
   nose with its headlights, framed windows, a door on its road side, swoosh decals, roof hatches,
   a ladder up its back), the double garage's **forecourt wall** (W8, photos 29-31: light grey
   split-face blocks under a smooth cap, 0.7 m, `lane/ends.js FORECOURT_WALL` from the garage's south-west
@@ -2026,10 +2044,14 @@ trees' leaves).
   enough that the haze leaves it near as dark as 37 has it; photo 36, which shows none, has it near
   its left edge: the two photos do not agree); a house down the side road in the fog
   (`SIDE_BLOCKS`), the veranda house on the corner west of the side road (`VERANDA_HOUSE`, W8,
-  photos 01-03: one storey, its north gable to the street in white brick under dark red-brown
-  boards, a black tile roof, a glazed veranda across that gable on a white board parapet, a tall
-  dark chimney, a TV mast with two yagis on its apex, its long red-board west front along the
-  curve) and, beyond the footpath at the east end, a grey-blue board house and a long two-storey
+  photos 01-03: one storey, its north gable (10 m) to the street in white brick under dark
+  red-brown boards, a window in a panel of them (`gables`, an id-less house's own GABLES), a black
+  tile roof, a glazed veranda round its north-west corner under that roof (W8 fix,
+  `houses.js veranda`: along the gable and its west side from the corner, a white board parapet,
+  opaque glazing in white mullions and a transom, a white corner post; drawn only), a tall dark
+  chimney, a TV mast with two yagis (booms with their elements) on its apex, its long red-board
+  west side along the curve; the photos' views see it further left than the road's curve lets
+  it stand: moved there it would stand on the curve, inside the boundary) and, beyond the footpath at the east end, a grey-blue board house and a long two-storey
   terraced row low on the horizon (`BACKDROP`, photos 25, 30, 31), all chain houses without an
   id: the classic build draws them in both looks, out of reach (their panes opaque in paint in
   the realistic look, no room behind them). The two ends' builders' data (`GARDEN_THINGS`,
@@ -3768,8 +3790,9 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   in the forest's materials: `fir-leaves-edge`, `fir-core-edge`); the cars' lamps and lower
   bumpers wrap round the corners on the body's own stations (`cars.js along`: on mid's coarser
   body the wraps' own fewer stations cut inside it, a step); the double garage's half-round
-  gutters, brackets (high), downpipes at the gable's corners with three clips and faint rust
-  streaks under them (`hardware.js garageGutters`; the streaks in `contact`'s multiply, a
+  gutters from barge board to barge board (W8 fix: its verges', not its eaves' 173), brackets
+  (high), downpipes at the back gable's corners (W8 fix: the front's are its pillars) with a
+  swan neck down under the deep eave at 45°, three clips and faint rust streaks under them (`hardware.js garageGutters`; the streaks in `contact`'s multiply, a
   vertex colour fading from rust to white: `Geo` shades may be `[r, g, b]`; not on low); two
   boxes of geraniums on north_3's balcony rail (`villas.js`, `foliage.js boxPlants`; not on
   low). Not done: dead twigs and limb cards (the canopies' gaps already show `limbs`), and the
@@ -5113,10 +5136,10 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,287,031 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,287,087 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 105,746 | 43 kB | 104 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the A-class motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB) |
+| lane | 105,680 | 43 kB | 104 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone) |
 | realLook | 49,433 | 18 kB | 60 KiB (from 90) |
 | laneBoss | 102,277 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
@@ -5124,7 +5147,7 @@ and every cap; the gzip sizes are printed, not asserted):
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 198,766 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the A-class motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB) |
+| laneRealWorker | 200,659 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

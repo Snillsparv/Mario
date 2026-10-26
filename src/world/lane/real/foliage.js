@@ -185,9 +185,10 @@ export function plants(kit, L) {
     const top = y0 + t.h * 0.45;
     kit.bark.color(BARK);
     kit.bark.tube([t.x, y0 - 10, t.z], [t.x, top, t.z], 60, 36, 8);
-    const blobs = ragged(canopyBlobs(t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, Math.round(t.x * 7 + t.z)), 6, Math.round(t.x * 3 - t.z), kit.tier);
+    const blobs = ragged(canopyBlobs(t.x, t.z, y0 + t.h * (t.low ?? 0.32), y0 + t.h, t.r, Math.round(t.x * 7 + t.z)), 6, Math.round(t.x * 3 - t.z), kit.tier);
     limbs(kit.bark, [t.x, top - 20, t.z], blobs, 26);
-    canopy(kit, R, blobs, { size: 130, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * ({ high: 1.2, low: 0.8 }[kit.tier] ?? DENSE[kit.tier] ?? 1) }); // (W8: on high 1.2x, not DENSE's 1.4x, on low 0.8x: the plan's levers, out past the junction now)
+    // (W8 fix: a crown down to the ground in bigger cards, about as many as the higher one's.)
+    canopy(kit, R, blobs, { size: t.low ? 160 : 130, below: t.low ? -0.9 : -0.4, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * ({ high: 1.2, low: 0.8 }[kit.tier] ?? DENSE[kit.tier] ?? 1) }); // (W8: on high 1.2x, not DENSE's 1.4x, on low 0.8x: the plan's levers, out past the junction now)
   }
   for (const t of L.GARDEN_TREES) gardenTree(kit, R, L, t);
   redTree(kit, R, L);

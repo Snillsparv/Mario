@@ -42,14 +42,17 @@ export function hardware(kit, L) {
 }
 
 // The double garage (lane/houses.js garage(): its roof along w, the eaves on its sides, the
-// gables front and back): a half-round gutter along each eave, the brackets under it every 60
-// (high), and a downpipe at each front corner of the gable (a swan neck under the verge from the
-// gutter, three clips holding it to the render); and (not on low) faint rust streaks down the
-// white render from each clip's screws: contact's multiply, a rust tint fading to nothing.
+// gables front and back): a half-round gutter along each eave from barge board to barge board
+// (its verges, W8 fix), the brackets under it every 60 (high), and a downpipe at each back corner
+// of the gable (the front's corners are its pillars: photos 29, 30 show none there), a swan neck
+// from the gutter's outlet down under the deep eave to the render, three clips holding it; and
+// (not on low) faint rust streaks down the white render from each clip's screws: contact's
+// multiply, a rust tint fading to nothing.
 function garageGutters(kit, L, h, fine, finest, R) {
   const F = frameOf(h);
   const o = h.overhang ?? CHAIN.overhang;
   const [A, B] = [h.d / 2, h.w / 2]; // (along the ridge: w; across it: u)
+  const ve = A + (h.verges ?? o); // (the barge boards' outer faces)
   const tan = (h.ridge - h.eave) / B;
   const lo = h.eave - o * tan;
   const y0 = h.y0 ?? L.GROUND;
@@ -57,24 +60,27 @@ function garageGutters(kit, L, h, fine, finest, R) {
   metal.color(BLACK);
   for (const s of [-1, 1]) {
     const at = (w) => F.at(s * (B + o + 10), lo - 16, w);
-    metal.tube(at(-A - o - 6), at(A + o + 6), 9, 9, 6, { a0: 0, arc: Math.PI });
-    metal.tube(at(-A - o - 6), at(A + o + 6), 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true });
+    metal.tube(at(-ve), at(ve), 9, 9, 6, { a0: 0, arc: Math.PI });
+    metal.tube(at(-ve), at(ve), 8.2, 8.2, 6, { a0: 0, arc: Math.PI, inside: true });
     if (finest) {
-      for (let w = -A - o + 30; w <= A + o - 30; w += 60) {
+      for (let w = -ve + 30; w <= ve - 30; w += 60) {
         const [a, b] = [F.at(s * (B + o), lo - 26, w - 1.2), F.at(s * (B + o + 20), lo - 26, w + 1.2)];
         metal.box(Math.min(a[0], b[0]), Math.max(a[0], b[0]), lo - 27, lo - 25, Math.min(a[2], b[2]), Math.max(a[2], b[2]), { skip: 't' });
       }
     }
-    // The downpipe at the gable's corner (5 out of the render), its swan neck from the gutter.
+    // The downpipe at the back gable's corner (5 out of the render): from the outlet a short drop,
+    // the neck back to the wall at 45 degrees under the eave, then down the corner.
     const u = s * (B - 16);
-    const [px, , pz] = F.at(u, 0, A + 7);
-    const top = F.at(s * (B + o + 10), lo - 22, A + 14);
-    const bend = lo - 74;
-    metal.tube(top, [px, bend, pz], 5, 5, 6);
+    const wp = -A - 7;
+    const [px, , pz] = F.at(u, 0, wp);
+    const drop = F.at(s * (B + o + 10), lo - 40, wp);
+    const bend = lo - 40 - (o + 26);
+    metal.tube(F.at(s * (B + o + 10), lo - 22, wp), drop, 5, 5, 6);
+    metal.tube(drop, [px, bend, pz], 5, 5, 6);
     metal.tube([px, bend, pz], [px, y0 + 12, pz], 5, 5, 6, { caps: true });
     const clips = [y0 + 70, y0 + 170, bend - 30];
     for (const y of clips) {
-      const [a, b] = [F.at(u - 6.5, 0, A + 0.5), F.at(u + 6.5, 0, A + 13)];
+      const [a, b] = [F.at(u - 6.5, 0, -A - 0.5), F.at(u + 6.5, 0, -A - 13)];
       metal.box(Math.min(a[0], b[0]), Math.max(a[0], b[0]), y - 2, y + 2, Math.min(a[2], b[2]), Math.max(a[2], b[2]));
     }
     if (!fine || !contact) continue;
@@ -83,12 +89,12 @@ function garageGutters(kit, L, h, fine, finest, R) {
     const streak = (uc, ytop, len, wid) => {
       const k = 0.85 + 0.15 * R();
       const rust = [1 - 0.15 * k, 1 - 0.3 * k, 1 - 0.42 * k];
-      const P = (du, y) => F.at(uc + du, y, A + 0.4);
+      const P = (du, y) => F.at(uc + du, y, -A - 0.4);
       const q = [P(wid / 2, ytop - len), P(-wid / 2, ytop - len), P(-wid / 2, ytop), P(wid / 2, ytop)];
       const fade = [[1, 1, 1], [1, 1, 1], rust, rust];
       contact.rgb(1, 1, 1);
-      // (Facing out of the gable: +w.)
-      if (dot3(cross(sub(q[1], q[0]), sub(q[3], q[0])), F.dir(0, 0, 1)) >= 0) contact.quad(q[0], q[1], q[2], q[3], { shade: fade });
+      // (Facing out of the back gable: -w.)
+      if (dot3(cross(sub(q[1], q[0]), sub(q[3], q[0])), F.dir(0, 0, -1)) >= 0) contact.quad(q[0], q[1], q[2], q[3], { shade: fade });
       else contact.quad(q[1], q[0], q[3], q[2], { shade: [fade[1], fade[0], fade[3], fade[2]] });
     };
     for (const y of clips) for (const e of [-1, 1]) streak(u + e * 9, y - 2, 40 + 70 * R(), 3 + 1.5 * R());

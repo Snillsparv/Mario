@@ -71,10 +71,11 @@ const CHUNKS = {
   // none of it), the mixed forest's classic crowns, the garden trees: 92,268 B, 90.1 KiB; its fix
   // round, the south edge's tones and the beeches' verge: 92,472 B, 90.3 KiB. 104 KiB, from 92,
   // W8: the two ends, both looks' classic builders (north_west's ribbed front, porch and kicked
-  // eaves, the A-class motorhome, south_west's gables, the double garage's front, the east house's
+  // eaves, the integrated motorhome, south_west's gables, the double garage's front, the east house's
   // dormer, the forecourt wall and mailbox, the hedges along lines, the garden things and small
   // plants, the veranda house, the lay-by, lamppost B and the far houses) and their data,
-  // lane/ends.js, moved here out of main: 105,746 B, 103.3 KiB, over the plan's +2 kB.)
+  // lane/ends.js, moved here out of main: 105,746 B, 103.3 KiB, over the plan's +2 kB; its fix
+  // round, its dead garage-door branches gone: 105,680 B.)
   lane: { parent: 'main', cap: 104 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
@@ -153,10 +154,11 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   // lampposts' new heads, the kerbs' stones (the street's wear is the classic build's, not the
   // worker's): 183,170 B, 178.9 KiB; its fix round, the leafy skins on the canopy masses and the
   // bank's broadleaves' cores: 184,148 B, 179.8 KiB. 196 KiB, from 184, W8: the two ends'
-  // realistic builders (the A-class motorhome, the kicked hips' trim, the dormer, the gables'
+  // realistic builders (the integrated motorhome, the kicked hips' trim, the dormer, the gables'
   // panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars,
   // the mailbox on its pillar) and lane/ends.js's data: 198,766 B, 194.1 KiB, over the plan's
-  // +3 kB.)
+  // +3 kB; its fix round (the lay-by's plain cars on mid and low, the paving's cut, the shiplap's
+  // turned boards, the deep verges; the dead proud windows gone): 200,659 B, 195.96 KiB.)
   assert.ok(size('laneRealWorker') < 196 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');
