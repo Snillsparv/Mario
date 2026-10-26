@@ -612,9 +612,15 @@ export const LINK_BINS = [65, 185].map((d) => ({ x: LINK.x1 - d, z: LINK.z0 - 12
 // east end a big rhododendron against the house and a round clipped yew (both solid: an
 // elliptic prism inside each), hostas by the street and along the edging, dwarf conifers
 // (`conifers`: x, z, r, h over the ground or the bed they stand in). Its mailbox: MAILBOXES.
+// (W5 fix: east of the path no lawn either, photo 32: grey slabs from the street round the apron's
+// corner to the plinth and the house's east end (`paving`: a hard surface, cut by the apron and
+// the footpath), soil beds in it (`beds`: x0, x1, z0, z1, edged: a rim of blocks on its street
+// and path sides) under the yew, the rhododendron and the hostas at the corner.)
 export const S2_GARDEN = {
   edging: { x0: APRON.x0 + APRON.sw, x1: APRON.x1 - APRON.se, z: APRON.z1, w: 18 },
   gravel: { x0: DAD_DRIVE.x1, x1: 4570, z0: APRON.z1 - APRON.sw, z1: SOUTH_2.cz - SOUTH_2.d / 2 },
+  paving: { x0: 4830, x1: S2.x1, z0: APRON.z1 - APRON.se, z1: SOUTH_2.cz - SOUTH_2.d / 2 },
+  beds: [[4900, 5150, 1260, 1500, false], [4960, S2.x1, 1630, SOUTH_2.cz - SOUTH_2.d / 2, true], [5200, S2.x1, 1240, 1410, false]],
   path: { x0: 4570, x1: 4830, z0: APRON.z1 - 10, z1: SOUTH_2.cz - SOUTH_2.d / 2 },
   raised: { x0: 2800, x1: 3220, z0: APRON.z1 + 22, z1: 1770, top: GROUND + 26 }, // (just under the knee: walked up onto)
   bed: { x0: 4250, x1: 4560, z0: APRON.z1 + 24, z1: 1520 },
@@ -651,9 +657,10 @@ export const HOUSES = [...VILLAS, NORTH_WEST, NORTH_WEST_WING, SOUTH_WEST, SOUTH
 
 // Hedges (solid leafy boxes, their tops walkable): [x0, x1, z0, z1, y0, top]. south_1's (W5,
 // photos 11-15 and 43): an informal one of small leaves right at the asphalt's edge from beyond
-// its west end to the link (its east end by the link a little lower), its collider's top 190 over
-// the lawn (a single jump still lands on it), its sprigs drawn up to `informal` higher, leaf
-// litter at its foot.
+// its west end nearly to the link (its east end low: the link's car seen over it; a corner of
+// lawn open by the link's drive), its collider's top 190 over the lawn (a single jump still lands
+// on it), its sprigs drawn up to `informal` higher, leaf litter at its foot (where it stands at
+// the asphalt's edge); a taller clump of it set back against the house's white east end.
 // West of it along the road a young beech hedge just planted (BEECH_ROW, photo 11): single stems
 // on bamboo canes every `step` in a strip of fresh dark soil behind a narrow gravel shoulder;
 // drawn only (not solid: the garden behind stays open).
@@ -662,7 +669,8 @@ export const HEDGES = [
   { x0: -5400, x1: 5800, z0: 4100, z1: 4300, y0: GROUND, top: 242 }, // the south back hedges
   { x0: 7950, x1: 8150, z0: -1600, z1: -1000, y0: GROUND, top: 202 }, // between north_5 and the east house
   { x0: -1300, x1: -500, z0: -960, z1: -880, y0: TERRACE, top: 230 }, // north_3's low box hedge
-  { x0: -2300, x1: LINK.x0, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 150, y0: GROUND, top: GROUND + 160, informal: 22 }, // (W5: its east end by the link a little lower: photo 15)
+  { x0: -2300, x1: -1600, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 150, y0: GROUND, top: GROUND + 110, informal: 20 }, // (W5 fix: its east end low, the link's car seen over it, and stopping short of the link: photos 15, 42)
+  { x0: -1890, x1: -1470, z0: 700, z1: 890, y0: GROUND, top: GROUND + 140, informal: 24 }, // (W5 fix: a taller clump set back against south_1's white east end, photos 15, 42)
 ];
 export const BEECH_ROW = { x0: -6080, x1: HEDGES[0].x0 - 20, z: SOUTH_EDGE + 70, step: 52, h: 270, soil: [SOUTH_EDGE + 1, SOUTH_EDGE + 145] };
 // Thuja columns (8-sided, tapering; solid): a tall group on north_1's terrace along its drive's
@@ -774,7 +782,7 @@ export const CARS = [
   // squeeze gaps by the bumpers' slopes. The gap between them on the red door and its strip.)
   { ...parked('cross', 1975, GARAGE.wall - CAR_GAP - CAR_KINDS.cross.l, Math.PI, 0x627d93), id: 'dad_ev', style: 'ev', classicTint: 0x5884a6 },
   parked('suv', 2445, GARAGE.wall - CAR_GAP, 0, 0x3a4c66),
-  { ...parked('cross', -1140, 1190, 0, 0xeeeee8), style: 'two' }, // (W5: south_1's white crossover nose in on the link's drive, its tail ~220 in from the asphalt's edge, its roof, pillars and rails gloss black: photos 41, 42)
+  { ...parked('cross', -1095, 1150, 0, 0xeeeee8), style: 'two' }, // (W5: south_1's white crossover nose in on the link's drive, its tail ~180 in from the asphalt's edge, its roof, pillars and rails gloss black: photos 41, 42; W5 fix: where its mirror and door handles triangulate from the two)
   parked('hatch', garageAt('north_1').x, garageAt('north_1').front + 40, Math.PI, 0xb6babe),
   parked('cross', garageAt('north_2').x, garageAt('north_2').front + 40, Math.PI, 0x45484c),
   parked('hatch', garageAt('north_3').x, garageAt('north_3').front + 40, Math.PI, 0x1f2124),

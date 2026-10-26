@@ -179,6 +179,20 @@ test("the neighbours (W5): a standing jump within 100 of south_1's and south_2's
   const w = hero((B.x0 + B.x1) / 2 + B.step / 2, 0, lane.SOUTH_EDGE - 150, S);
   w.walk([[(B.x0 + B.x1) / 2 + B.step / 2, B.soil[1] + 300]], 0.6);
   assert.ok(w.at().z > B.soil[1] + 200 && Math.abs(w.at().y - GROUND) < 1, `through the beech row: ${JSON.stringify(w.at())}`);
+  // (W5 fix: the hedge stops short of the link's drive: in from the street past its end onto the
+  // lawn; its low east end (110) and the clump set back by the house (140) each a hop up.)
+  const E = lane.HEDGES.find((e) => e.informal && e.x0 === lane.HEDGES[0].x1);
+  const C = lane.HEDGES.find((e) => e.informal && e.z0 > lane.SOUTH_EDGE);
+  const xc = (E.x1 + lane.LINK.x0) / 2;
+  const c = hero(xc, 0, lane.SOUTH_EDGE - 150, S);
+  c.walk([[xc, C.z0 - 120]], 0.6);
+  assert.ok(c.at().z > C.z0 - 160 && Math.abs(c.at().y - GROUND) < 1, `in past the hedge's end: ${JSON.stringify(c.at())}`);
+  for (const [K, x, z, yaw] of [[E, E.x1 - 150, E.z1 + 120, N], [C, (C.x0 + C.x1) / 2, C.z0 - 120, S]]) {
+    const j = hero(x, GROUND, z, yaw);
+    jump(j, yaw, { push: 0.5, after: 4 });
+    assert.ok(Math.abs(j.at().y - K.top) < 1 && j.p.grounded, `up onto the hedge at ${K.x0}: ${JSON.stringify(j.at())}`);
+    assert.equal(j.p.health, MAX_HEALTH);
+  }
 });
 
 test('the red-leaf tree: climbed to a handstand on its top, a flip toward the house with the stick held 8 to 24 ticks lands on the roof (W3: its trunk 640 from the wall); held on, he lands on its far side and walks on down into the back garden, unhurt; let go early, he lands in the garden', () => {

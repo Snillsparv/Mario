@@ -478,11 +478,21 @@ test("the neighbours (W5): south_1 and south_2 under their steeper roofs (28 and
   assert.ok(R.top - GROUND < 30, 'the raised bed a step under the knee');
   assert.equal(col.findFloor((R.x0 + R.x1) / 2 + O.x, 600, (R.z0 + R.z1) / 2 + O.z).y - O.y, R.top);
   assert.equal(col.findFloor(3600 + O.x, 600, 1600 + O.z).y - O.y, GROUND, 'the gravel');
-  // The hedge right at the asphalt's edge, its walkable top 190 over the lawn, 160 by the link.
-  const [H, E] = [lane.HEDGES[0], lane.HEDGES.find((e) => e.informal && e.x1 === L.x0)];
-  assert.ok(H.z0 === lane.SOUTH_EDGE && E.z0 === lane.SOUTH_EDGE && H.x1 === E.x0, 'one hedge along the edge');
+  // (W5 fix: and slabs east of its path, at GROUND, hard.)
+  const Pv = lane.S2_GARDEN.paving;
+  const slab = col.findFloor(5000 + O.x, 600, 1570 + O.z);
+  assert.ok(Pv.x0 < 5000 && Pv.x1 > 5000 && slab.y - O.y === GROUND && slab.surface.terrain === 'stone', `the slabs: ${slab.y - O.y} ${slab.surface.terrain}`);
+  // The hedge right at the asphalt's edge, its walkable top 190 over the lawn, 110 at its east
+  // end (W5 fix), which stops short of the link's drive (a corner of lawn open there); a taller
+  // clump of it set back against south_1's east end, 140 high.
+  const [H, E] = [lane.HEDGES[0], lane.HEDGES.find((e) => e.informal && e.x0 === lane.HEDGES[0].x1)];
+  const C = lane.HEDGES.find((e) => e.informal && e.z0 > lane.SOUTH_EDGE);
+  assert.ok(H.z0 === lane.SOUTH_EDGE && E.z0 === lane.SOUTH_EDGE && E.x1 < L.x0 - 100, 'one hedge along the edge, short of the link');
   assert.equal(col.findFloor(-3000 + O.x, 600, (H.z0 + H.z1) / 2 + O.z).y - O.y, GROUND + 190);
-  assert.equal(col.findFloor(-1800 + O.x, 600, (E.z0 + E.z1) / 2 + O.z).y - O.y, GROUND + 160);
+  assert.equal(col.findFloor(-1800 + O.x, 600, (E.z0 + E.z1) / 2 + O.z).y - O.y, GROUND + 110);
+  assert.equal(col.findFloor((E.x1 + L.x0) / 2 + O.x, 600, (E.z0 + E.z1) / 2 + O.z).y - O.y, GROUND, 'the corner by the link open');
+  assert.ok(C && C.z1 < lane.SOUTH_1.cz - lane.SOUTH_1.d / 2 && C.x1 < L.x0, "the clump in front of south_1's east end");
+  assert.equal(col.findFloor((C.x0 + C.x1) / 2 + O.x, 600, (C.z0 + C.z1) / 2 + O.z).y - O.y, GROUND + 140);
   // The beech row: nothing to stand on (the garden behind it open).
   const B = lane.BEECH_ROW;
   for (let x = B.x0 + 20; x < B.x1; x += B.step) assert.equal(col.findFloor(x + O.x, 600, B.z + O.z).y - O.y, GROUND, `the beech row at ${x}`);

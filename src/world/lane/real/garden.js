@@ -401,6 +401,26 @@ export function neighbourGround(kit, L) {
       flat(Pa.x0 + i * sw + 2, Pa.x0 + (i + 1) * sw - 2, z + 2, z + sd - 2, G + 0.7, 1.2, 400);
     }
   }
+  // (W5 fix: the slabs east of the path round the apron's corner to the plinth, short of the
+  // footpath and round the soil beds: whole slabs only, the hard surface under them showing along
+  // the curve; the beds' soil.)
+  const Pv = P.paving;
+  const F = L.FOOTPATH;
+  const foot = [[F.from, F.half], [F.from, -F.half], [F.len, -F.half], [F.len, F.half]].map(([t, s]) => {
+    const p = L.footpathAt(t, s);
+    return [p.x, p.z];
+  });
+  const free = (x, z) => !L.inApron(x, z) && !L.inPolygon(foot, x, z) && !P.beds.some(([a, b, c, d]) => x > a - 2 && x < b + 2 && z > c - 2 && z < d + 2);
+  for (let z = Pv.z1 - sd, j = 0; z >= Pv.z0 - 1; z -= sd, j++) {
+    for (let x = Pv.x0, i = 0; x < Pv.x1 - 1; x += sd, i++) {
+      const [x1, z1] = [Math.min(Pv.x1, x + sd), z + sd];
+      if (![[x, z], [x1, z], [x1, z1], [x, z1]].every(([a, b]) => free(a, b))) continue;
+      granite.rgb(...[0.64, 0.61, 0.56].map((c) => c * (0.93 + 0.09 * Math.sin(i * 5.3 + j * 2.9))));
+      flat(x + 2, x1 - 2, z + 2, z1 - 2, G + 0.7, 1.2, 400);
+    }
+  }
+  granite.rgb(0.2, 0.13, 0.08);
+  for (const [x0, x1, z0, z1] of P.beds) flat(x0, x1, z0, z1, G + 1.5, 2);
   const K = L.LINK_BIN;
   if (kit.tier === 'low') {
     paint.color(0x182434);

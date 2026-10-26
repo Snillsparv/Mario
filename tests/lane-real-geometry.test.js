@@ -288,7 +288,7 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     return [m.data[(j * m.width + i) * 4], m.data[(j * m.width + i) * 4 + 1] * 4];
   };
   const { DAD, SOUTH_EDGE, HEDGES, PLOTS_N, APRON, wallZAt } = lane;
-  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [4900, 1550]]; // (W5: south_2's west front a gravel garden: its lawn east of the path)
+  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [5480, 1900]]; // (W5: south_2's front a gravel garden, W5 fix: slabs east of its path too: the lawn past its east end)
   for (const [x, z] of lawns) {
     const [grow, y] = at(x, z);
     assert.equal(grow, 255, `a lawn at ${x}, ${z}`);
@@ -319,6 +319,10 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     gravel: [3500, 1600],
     'raised bed': [(lane.S2_GARDEN.raised.x0 + lane.S2_GARDEN.raised.x1) / 2, (lane.S2_GARDEN.raised.z0 + lane.S2_GARDEN.raised.z1) / 2],
     "south_2's path": [(lane.S2_GARDEN.path.x0 + lane.S2_GARDEN.path.x1) / 2, 1600],
+    // (W5 fix: the slabs east of the path and their beds, round the apron's corner.)
+    "south_2's slabs": [5000, 1570],
+    "south_2's slabs by the corner": [5100, 1200],
+    "south_2's beds": [5300, 1800],
     'beech row': [(lane.BEECH_ROW.x0 + lane.BEECH_ROW.x1) / 2, lane.BEECH_ROW.z],
     'outside the boundary': [-3000, 4450],
   };

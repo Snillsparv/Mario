@@ -107,11 +107,12 @@ const TINT = {
   patio: 0xa8a6a0,
   gravel: 0xb0aa9e, // (south_2's grey gravel: W5)
   slabs: 0xb4b2ac, // (its path's concrete slabs)
+  paving: 0xb4b2ac, // (W5 fix: the slabs' bed east of its path, plain grey)
   floor: 0x9a9890, // (the store room's concrete)
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
-const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8 };
+const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea };
 
 const UP = [0, 1, 0];
 // Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
@@ -439,10 +440,18 @@ function hardSurfaces(L, road, tints) {
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', tints.floor, 0.4);
   add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', tints.drive);
   add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', tints.patio);
-  // (W5: south_2's front garden, grey gravel to its plinth and a path of grey slabs to its door.)
+  const FP = L.FOOTPATH;
+  const fp = (t, s) => {
+    const p = L.footpathAt(t, s);
+    return [p.x, p.z];
+  };
+  const foot = [fp(FP.from, FP.half), fp(FP.from, -FP.half), fp(FP.len, -FP.half), fp(FP.len, FP.half)];
+  // (W5: south_2's front garden, grey gravel to its plinth and a path of grey slabs to its door;
+  // W5 fix: grey slabs east of the path too, round the apron's corner, short of the footpath.)
   const SG = L.S2_GARDEN;
   add(rectOf(SG.gravel.x0, SG.gravel.x1, SG.gravel.z0, SG.gravel.z1), 'asphalt', tints.gravel);
   add(rectOf(SG.path.x0, SG.path.x1, SG.path.z0, SG.path.z1), 'cobbles', tints.slabs);
+  add(rectOf(SG.paving.x0, SG.paving.x1, SG.paving.z0, SG.paving.z1), 'asphalt', tints.paving, 1, [...road, foot]); // (a plain hard grey, as light as the pavement in the realistic look, which lays its slabs over it: the joints and the curve's edge in it)
   const C = L.FORECOURT;
   add(rectOf(C.x0, C.x1, C.z0, C.z1), 'asphalt', tints.drive);
   const F = frame(L.NORTH_WEST);
@@ -450,12 +459,7 @@ function hardSurfaces(L, road, tints) {
     const p = F.at(u, 0, w);
     return [p[0], p[2]];
   }), 'cobbles', tints.flags, 1, cutPave);
-  const FP = L.FOOTPATH;
-  const fp = (t, s) => {
-    const p = L.footpathAt(t, s);
-    return [p.x, p.z];
-  };
-  add([fp(FP.from, FP.half), fp(FP.from, -FP.half), fp(FP.len, -FP.half), fp(FP.len, FP.half)], 'asphalt', tints.footpath);
+  add(foot, 'asphalt', tints.footpath);
   // The footway: from the forecourt down behind the east kerb to the footpath's east edge.
   const W = L.FOOTWAY;
   const [ex, ez] = fp(0, -FP.half);

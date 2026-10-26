@@ -88,6 +88,7 @@ const TINT = {
   trunk: 0x6a5444,
   redTrunk: 0x948a80, // (the red-leaf tree's pale grey bark, over the render texture: W3 fix)
   stones: 0xa8a49c,
+  kerb: 0xb8b2a8, // (south_2's flush concrete edging: build.js's kerbs' light grey, W5 fix)
   pinkStone: 0xb89a8e, // (the corner bed's pinkish granite field stones)
   pot: 0x3a6a9a,
   potLeaves: 0x4a7a34,
@@ -151,7 +152,7 @@ export function* propsSteps(kit, layout) {
   for (const f of layout.FLAGPOLES) flagpole(kit, layout, f);
   layout.BINS.forEach((b, i) => bin(kit, layout, b, i));
   yield;
-  for (const h of layout.HEDGES) hedge(kit, h);
+  for (const h of layout.HEDGES) hedge(kit, h, layout);
   for (const t of layout.THUJAS) thuja(kit, layout, t);
   yield;
   for (const t of layout.TREES) broadTree(kit, layout, t);
@@ -339,7 +340,7 @@ function bin(kit, layout, { x, z }, i) {
 
 // A hedge: a leafy box, darker toward its foot, a soft crown along its top; solid, its top
 // walkable (flat).
-function hedge(kit, h) {
+function hedge(kit, h, layout) {
   const { leaves, render, solids } = kit.drawn('plants');
   const { x0, x1, z0, z1, y0, top } = h;
   leaves.color(TINT.hedge);
@@ -368,8 +369,10 @@ function hedge(kit, h) {
     leaves.color(TINT.hedge, 0.92 + rng() * 0.2);
     blob(leaves, x, z0 + (z1 - z0) * (0.3 + rng() * 0.4), top + h.informal * (0.2 + rng() * 0.45), 45 + rng() * 25, h.informal * 0.7, rng() * 6, 5);
   }
-  // (On the asphalt's bevelled edge up to the hedge, and a little way out over the road.)
-  render.color(TINT.litter, 0.8);
+  // (On the asphalt's bevelled edge up to the hedge, and a little way out over the road: where it
+  // stands at the asphalt's edge.)
+  if (z0 !== layout.SOUTH_EDGE) return;
+  render.color(TINT.soil, 0.85); // (W5 fix: the photos' dark brown, not a brick-red kerb)
   const e = z0 - BEVEL;
   render.poly([[x0, 0.7, e - 14], [x1, 0.7, e - 14], [x1, 0.9, e], [x0, 0.9, e]], { facing: [0, 1, 0] });
   render.poly([[x0, 0.9, e], [x1, 0.9, e], [x1, y0 + 0.6, z0], [x0, y0 + 0.6, z0]], { facing: [0, 1, -1] });
@@ -714,6 +717,13 @@ function neighbours(kit, layout) {
   // (A rim of blocks round each: the raised bed's on its top, the bed's 10 over the gravel.)
   for (const [B2, w, y0, y1] of [[R, 14, R.top - 2, R.top], [D, 12, G - 2, G + 10]]) {
     for (const [x0, x1, z0, z1] of [[B2.x0, B2.x1, B2.z0, B2.z0 + w], [B2.x0, B2.x1, B2.z1 - w, B2.z1], [B2.x0, B2.x0 + w, B2.z0, B2.z1], [B2.x1 - w, B2.x1, B2.z0, B2.z1]]) blocks.box(x0, x1, y0, y1, z0, z1, { bottom: false });
+  }
+  // (W5 fix: the soil beds in the slabs east of the path, the rhododendron's rimmed with blocks
+  // on its street and path sides.)
+  render.color(TINT.soil, 0.9);
+  for (const [x0, x1, z0, z1, rim] of S.beds) {
+    render.poly([[x0, G + 1.5, z0], [x1, G + 1.5, z0], [x1, G + 1.5, z1], [x0, G + 1.5, z1]], { facing: [0, 1, 0] });
+    if (rim) for (const [a, b, c, d] of [[x0, x1, z0, z0 + 12], [x0, x0 + 12, z0, z1]]) blocks.box(a, b, G - 2, G + 8, c, d, { bottom: false });
   }
   const gr = makeRng(613);
   for (let i = 0; i < 14; i++) {

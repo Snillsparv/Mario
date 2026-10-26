@@ -158,7 +158,10 @@ export function plants(kit, L) {
   const R = makeRng(4242);
   const G = L.GROUND;
   const leafy = [[1, 1.04, 0.92], [0.86, 0.95, 0.8], [1.08, 1.1, 0.9]];
-  // The hedges: cards over their faces and tops round a dark box.
+  // The hedges: cards over their faces and tops round a dark box. (W5 fix: the stream first
+  // stepped on as far as the clipped hedge along south_1 took it before W5, so every plant after
+  // it keeps its leaves where W1-W4 put them: the informal hedges draw from their own.)
+  for (let i = STREAM_SKIP[kit.tier] ?? STREAM_SKIP.high; i > 0; i--) R();
   for (const h of L.HEDGES) if (!h.informal) hedge(kit, R, h);
   // The thujas: dark green columns.
   for (const t of L.THUJAS) thuja(kit, R, L, t);
@@ -202,7 +205,7 @@ export function plants(kit, L) {
   climber(kit, L);
   for (const t of L.COLUMN_TREES ?? []) column(kit, L, t);
   // (W5: the neighbours', each its own stream: the others' kept.)
-  for (const h of L.HEDGES) if (h.informal) hedge(kit, null, h);
+  for (const h of L.HEDGES) if (h.informal) hedge(kit, null, h, L);
   beechRow(kit, L);
   southGarden(kit, L);
 }
@@ -385,10 +388,19 @@ function ring(x, y, z, r, sides) {
 // clipped, small lance-shaped leaves, lighter yellow-green sprigs outside over darker gaps, its
 // faces loose (cards in and out of them), its top ragged (a sprig or two standing up to
 // h.informal over the walkable top), cards a little farther apart than a clipped hedge's, per
-// tier; fallen leaves on the asphalt's edge at its foot.)
-const INFORMAL = { high: [30, 230], mid: [42, 150], low: [46, 60] };
-const LOOSE = [[1.75, 1.45, 0.55], [1.4, 1.25, 0.5], [2.15, 1.8, 0.6], [1.2, 1.05, 0.45]];
-function hedge(kit, R, h) {
+// tier; fallen leaves on the asphalt's edge at its foot where it stands there. W5 fix: the
+// photos' warm olive (a few browning leaves), half the face cards leaning along it (so a view
+// along the street still meets leaves, not the core's face), its core a lighter olive in lumps
+// of uneven height and depth (no long straight edge).)
+const INFORMAL = { high: [28, 230], mid: [36, 150], low: [40, 60] };
+const STREAM_SKIP = { high: 26943, mid: 19648, low: 13766 };
+const LOOSE = [[3.55, 1.9, 2.55], [3.0, 1.65, 2.3], [4.15, 2.25, 2.7], [2.6, 1.4, 2.1], [3.9, 1.75, 1.95]];
+// (Its cards' tints, [scale, spread]: lower on low, whose lighting (no shadows) lifts them most,
+// so every tier shows the photos' olive, and more varied there; the cards bigger where they stand
+// farther apart.)
+const LOOSE_K = { high: [0.75, 0.26], mid: [0.75, 0.26], low: [0.2, 0.7] };
+const LOOSE_CORE = [0.14, 0.125, 0.065];
+function hedge(kit, R, h, L) {
   const { foliage, core } = kit;
   const loose = h.informal;
   if (loose) R = makeRng(5821 + Math.round(h.x0));
@@ -397,14 +409,15 @@ function hedge(kit, R, h) {
   const step = loose ? ls : (kit.tier === 'low' ? 36 : kit.tier === 'mid' ? 29 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
   const card = (c, n, s, deep = 0) => {
     if (loose) {
-      const t = LOOSE[Math.floor(R() * 4)];
-      const k = (0.78 + 0.4 * R()) * (1 - deep * 0.3);
+      const t = LOOSE[Math.floor(R() * LOOSE.length)];
+      const [lk, lv] = LOOSE_K[kit.tier] ?? LOOSE_K.high;
+      const k = (1 - lv / 2 + lv * R()) * (1 - deep * 0.3) * lk;
       foliage.rgb(t[0] * k, t[1] * k, t[2] * k);
     } else {
       const k = 0.8 + 0.35 * R();
       foliage.rgb(1.35 * k, 1 * k, 0.5 * k); // (an autumn olive, as the photos' hedges)
     }
-    cluster(foliage, R, c, norm(n), loose ? s * (0.8 + 0.45 * R()) : s, CELL.hedge, loose ? 2 : 1.5, 1);
+    cluster(foliage, R, c, norm(n), loose ? s * (0.8 + 0.45 * R()) * (ls / 28) : s, CELL.hedge, loose ? 2 : 1.5, 1);
   };
   const jit = () => (R() - 0.5) * step;
   const top = h.top + (loose ? 6 : 8);
@@ -416,7 +429,7 @@ function hedge(kit, R, h) {
         card([x + jit(), y + jit() * 0.5, h.z1 - 4 - R() * 6], [0, 0.1, 1], 50);
         continue;
       }
-      for (const [z, s] of [[h.z0, -1], [h.z1, 1]]) card([x + jit(), y + jit() * 0.6, z + s * (R() * 14 - 6)], [s * 0.2, 0.15, s], 54, (1 - (y - h.y0) / (top - h.y0)) * 0.6);
+      for (const [z, s] of [[h.z0, -1], [h.z1, 1]]) card([x + jit(), y + jit() * 0.6, z + s * (R() * 14 - 6)], [s * 0.2 + (R() < 0.5 ? 0 : R() < 0.5 ? -0.8 : 0.8), 0.15, s], 54, (1 - (y - h.y0) / (top - h.y0)) * 0.6);
     }
     for (let z = h.z0 + step / 2; z <= h.z1; z += step) card([x + jit(), top - (loose ? 8 : 6) + R() * (loose ? 10 : 8), z + jit() * 0.6], [0, 1, 0], loose ? 56 : 52);
     for (let k = loose ? (R() < 0.6 ? 2 : 1) : 0; k > 0; k--) {
@@ -427,9 +440,19 @@ function hedge(kit, R, h) {
   for (const [xe, s] of [[h.x0, -1], [h.x1, 1]]) {
     for (let z = h.z0; z <= h.z1; z += step) for (let y = y1; y <= top; y += step) card([xe + s * (loose ? R() * 12 - 4 : 4 + R() * 6), y, z + jit() * 0.6], [s, 0.1, 0], sz);
   }
-  core.rgb(...(loose ? [0.055, 0.068, 0.024] : HEDGE_CORE));
-  core.box(h.x0 + 8, h.x1 - 8, h.y0 - 4, top - (loose ? 18 : 14), h.z0 + 8, h.z1 - 8, { skip: 'b' });
-  if (!loose) return;
+  if (!loose) {
+    core.rgb(...HEDGE_CORE);
+    core.box(h.x0 + 8, h.x1 - 8, h.y0 - 4, top - 14, h.z0 + 8, h.z1 - 8, { skip: 'b' });
+    return;
+  }
+  core.rgb(...LOOSE_CORE.map((c) => c * (kit.tier === 'low' ? 0.5 : 0.85)));
+  const n = Math.max(1, Math.round((h.x1 - h.x0) / 260));
+  for (let i = 0; i < n; i++) {
+    const [a, b] = [h.x0 + ((h.x1 - h.x0) * i) / n, h.x0 + ((h.x1 - h.x0) * (i + 1)) / n];
+    const [d0, d1] = [8 + R() * 14, 8 + R() * 14];
+    core.box(i ? a - 20 : a + 8, i === n - 1 ? b - 8 : b + 20, h.y0 - 4, top - 18 - R() * 22, h.z0 + d0, h.z1 - d1, { skip: 'b' });
+  }
+  if (h.z0 !== L.SOUTH_EDGE) return;
   // Fallen leaves along its foot, on the asphalt's bevelled edge and a little out over the road
   // (over the atlas's green leaves: browns, a few yellowed).
   for (let i = Math.round(((h.x1 - h.x0) / 1000) * litter); i > 0; i--) {

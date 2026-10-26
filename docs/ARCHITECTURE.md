@@ -1815,8 +1815,10 @@ trees' leaves).
   vertex swung across the wind the more the farther down its flag, in a wave running down it,
   from typed arrays, allocating nothing), hedges (solid leafy boxes with a soft crown, their
   tops walkable: south_1's (W5: informal, small-leaved, right at the asphalt's edge from x −5450
-  to the link, 190 over the lawn, 160 by the link, its ragged sprigs drawn up to `informal`
-  higher, leaf litter on the asphalt's edge at its foot), the back hedge at 242, one at 202 east
+  nearly to the link, 190 over the lawn, its ragged sprigs drawn up to `informal` higher, leaf
+  litter on the asphalt's edge at its foot; W5 fix, photos 15 and 42: its east end from x −2300
+  only 110 high, the link's car seen over it, stopping at x −1600, a corner of lawn open by the
+  link's drive, and a taller clump of it, 140, set back against south_1's white east end), the back hedge at 242, one at 202 east
   of the double garage, north_3's low box hedge on its terrace), west of south_1's the young
   beech hedge (`BEECH_ROW`, W5, photo 11: single stems on bamboo canes in a strip of dark soil,
   drawn only, not solid), the link's two black bins (`LINK_BINS`, static, box colliders), the
@@ -1826,7 +1828,11 @@ trees' leaves).
   raised bed of stacked grey blocks at its west end by the dad's drive, 26 over the gravel,
   solid (walked up onto: under the knee), with a low ground cover and a dwarf conifer, a bed
   edged with blocks west of the path, a big rhododendron against the house's east end and a
-  round clipped yew (both solid), hostas), thujas (a row of
+  round clipped yew (both solid), hostas; W5 fix, photo 32: no lawn east of the path either,
+  grey slabs (`paving`, a hard surface cut by the apron's corner and the footpath; whole slabs
+  over it in the realistic look) to the plinth and the house's east end, soil beds in them
+  (`beds`) under the yew, the rhododendron (rimmed with blocks on its street and path sides) and
+  the hostas at the corner; the edging in the kerbs' light grey in both looks), thujas (a row of
   five on north_1's terrace, steep frustum colliders), the two big trees out past the junction
   (lumpy canopies; drawn only: a tree's trunk collider only inside the boundary), the garden trees
   (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, a birch behind the
@@ -1851,8 +1857,9 @@ trees' leaves).
   gap between them; their ends `CAR_GAP` (110) off the doors: a clean strip one Jonas wide
   behind them, so every door is reached and walked through (the photos' 0.3 … 0.6 m left
   squeeze gaps by the bumpers' slopes) (the crossover a lookalike of his own car: "The dad's car"
-  below); the west neighbour's white one at the link (W5: nose in, its tail ~220 in from the
-  asphalt's edge, two-tone: `style` 'two', its roof, pillars and rails gloss black); a silver hatchback, a dark grey crossover, a
+  below); the west neighbour's white one at the link (W5: nose in, its tail ~180 in from the
+  asphalt's edge (W5 fix: where its mirror and door handles triangulate from photos 41 and 42),
+  two-tone: `style` 'two', its roof, pillars and rails gloss black); a silver hatchback, a dark grey crossover, a
   black hatchback noses in on north_1's, north_2's and north_3's drives, a black van on north_4's
   (the photos' hoop house; its coins up the drive west of the van); a grey estate on the double
   garage's forecourt), north_4's **basketball hoop** (`HOOP`, on its front wall west of its
@@ -2135,7 +2142,9 @@ trees' leaves).
   eaves, the carport's roof and the store room under it), the neighbours (W5: south_1's and
   south_2's 28 and 29 degree slopes raycast on both, their front eaves' lips, their wings' slopes,
   the link's door wall and its bins, south_2's raised bed a step under the knee over its gravel,
-  the hedge 190 over the lawn and 160 by the link, nothing solid along the beech row), no floor under a ceiling lower than 300 anywhere,
+  the hedge 190 over the lawn and 110 at its east end short of the link, the corner by the link's
+  drive open, the clump set back by the house 140, the slabs east of south_2's path hard at
+  GROUND, nothing solid along the beech row), no floor under a ceiling lower than 300 anywhere,
   every coin over a floor, the star, every sign read from in front only (the mailbox with no
   signpost), the nine poles (every lamppost among them) grabbed from every open side with the
   camera swinging to `camYaw`, climbed to the top and
@@ -3049,9 +3058,14 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   short trunk parting into upright leaders, the leaves in loose clumps over a slim crown widest
   low and blunt and ragged at its top (`CROWN`), some poking past it, the sky through its gaps,
   no solid core; olive, yellowing toward its top; 2000 clusters of crossed cards on high, 1400 mid,
-  900 low); W5: south_1's informal hedge (`informalHedge`: lighter yellow-green sprigs over
-  darker gaps, loose faces, a ragged top up to `informal` over the walkable one, brown leaf
-  litter on the asphalt's edge at its foot; cards 30 apart on high, 42 mid, 46 low), the young
+  900 low); W5: south_1's informal hedge (`hedge`, `h.informal`: lighter sprigs over darker gaps, loose
+  faces, a ragged top up to `informal` over the walkable one, brown leaf litter on the asphalt's
+  edge at its foot where it stands there; W5 fix: the photos' warm olive with a few browning
+  leaves, half the face cards leaning along it so a view along the street meets leaves, its core
+  a lighter olive in lumps of uneven height and depth, the cards' tints lower and more varied on
+  low (its unshadowed light lifts them most); cards 28 apart on high, 36 mid, 40 low, bigger the
+  farther apart; `plants()`'s shared stream first stepped on as far as the clipped hedge along
+  south_1 took it before W5, so every other plant keeps W1-W4's leaves), the young
   beech row (`beechRow`: slim stems tied to pale canes, light-green leaf sprays up each: 34 on
   high, 12 mid, 6 low), south_2's garden (`southGarden`: the rhododendron, the clipped yew,
   dwarf conifers, hostas, the raised bed's ground cover, white flowers in the bed), each its
@@ -3655,7 +3669,9 @@ classic build's, exactly the classic faces but `REAL_DRAWN`'s, the split by part
 its own,
 unbaked tints, grey lawns, roof uvs up the slopes, no NaN, the catalogue's and the detail's
 materials and shadow flags, the firs instanced, the grass following the camera and its reach, the pause
-legend's look row, the realistic sources' privacy), `tests/lane-real-geometry.test.js` (the
+legend's look row, the realistic sources' privacy, W5 fix: south_2's flush edging in the kerbs'
+light grey in both looks, never a colour left over from what was drawn before it),
+`tests/lane-real-geometry.test.js` (the
 worker's geometry: deterministic, within each tier's triangle budget, every face wound the way
 its normals point, the walls open at every window and door of the chain houses and the villas,
 the tile courses in the classic roof planes (the crowns at most 1.5 over them, the ridge line's
@@ -3697,7 +3713,7 @@ with E2E=1 the built bundle's minified shaders compiling and drawing every look)
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
 own chunk (`laneRealWorker-*.js`, ~116 kB with G2's cars, clutter and hardware and G3's details,
-~167 kB with the photo-match packages' (W5), no three.js, no imports: under 168 KiB); the renderer side's code that the boot does not need is
+~164.8 KiB with the photo-match packages' (W5), no three.js, no imports: under 168 KiB); the renderer side's code that the boot does not need is
 the lazy `realLook` chunk (above: ~47 kB with G1's post chain and G2's weathering and probes, its
 shaders minified since G3; imported by `main` only dynamically, importing only `main`: under 90
 kB; no modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB,
@@ -4869,18 +4885,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,285,030 | 401 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,285,239 | 401 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 73,406 | 30 kB | 80 KiB (from 72, W5: the photo-match packages' builders for the neighbours; the plan's own allowance) |
-| realLook | 49,059 | 17 kB | 60 KiB (from 90) |
+| lane | 73,774 | 30 kB | 80 KiB (from 72, W5: the photo-match packages' builders for the neighbours; W5 left it at 71.7 KiB, 322 B under 72, so the plan's allowance for W6 was taken early; its fix round took it to 72.0 KiB) |
+| realLook | 49,397 | 18 kB | 60 KiB (from 90) |
 | laneBoss | 101,981 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 167,396 | 69 kB | 168 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it) |
+| laneRealWorker | 168,704 | 69 kB | 168 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

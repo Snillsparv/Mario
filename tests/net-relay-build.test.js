@@ -60,8 +60,9 @@ const CHUNKS = {
   // came in from main.)
   skerries: { parent: 'main', cap: 100 * KiB, min: 40000 },
   // (80 KiB, from 72: the photo-match packages' builders for the neighbours' houses, gardens and
-  // hedges (W5: the plan's own allowance, 72 -> 80 KiB, for when the lane's chunk ran out); it was
-  // at 73.4 KiB.)
+  // hedges. W5 took the chunk to 73,406 B, 71.7 KiB: 322 B under 72, so the plan's allowance for
+  // W6 (72 -> 80 KiB) was taken early there; its fix round (the slabs east of south_2's path, the
+  // hedge's east end and clump) took it to 73,774 B, 72.0 KiB, over 72.)
   lane: { parent: 'main', cap: 80 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
@@ -131,8 +132,8 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
     assert.ok(!src[w].includes('WebGLRenderer'), `no three.js in ${w}`);
   }
   // (168 KiB, from 160: the photo-match packages' realistic builders (W3-W5: the dad's house and
-  // garden, his drive, the neighbours' houses, hedges and gardens; layout.js rides in it too); it
-  // was at 163.4 KiB.)
+  // garden, his drive, the neighbours' houses, hedges and gardens; layout.js rides in it too); W5
+  // took it to 167,396 B, 163.5 KiB, over 160; 168,704 B, 164.8 KiB, with W5's fix round.)
   assert.ok(size('laneRealWorker') < 168 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');

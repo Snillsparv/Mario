@@ -158,6 +158,31 @@ test('its lawns are grey tints (the lawn texture is green), its roofs\' uvs run 
   assert.ok(tris < classicTris * 1.05 && tris < 100000, `${tris} triangles (classic ${classicTris})`);
 });
 
+test("south_2's flush edging (W5 fix) in the kerbs' light grey in both looks, never a colour left over from what was drawn before it", () => {
+  const E = lane.S2_GARDEN.edging;
+  const tops = (part, y) => {
+    const m = meshes(part)['lane-blocks'];
+    const [p, c, n] = ['position', 'color', 'normal'].map((k) => m.geometry.attributes[k]);
+    const out = [];
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i) - y) > 0.01 || n.getY(i) < 0.99) continue; // (the tops only)
+      const inside = p.getX(i) > E.x0 - 1 && p.getX(i) < E.x1 + 1 && p.getZ(i) > E.z - 1 && p.getZ(i) < E.z + E.w + 1;
+      out.push({ inside, rgb: [c.getX(i), c.getY(i), c.getZ(i)] });
+    }
+    return out;
+  };
+  const G = lane.GROUND;
+  // (Classic: baked as the kerbs' tops, at 0.95 of their tint where theirs is 1.05.)
+  const kerb = tops(classic, G + 1.5).filter((v) => !v.inside).map((v) => v.rgb);
+  assert.ok(kerb.length > 100, 'the kerbs\' tops');
+  const want = [0, 1, 2].map((k) => (kerb.map((v) => v[k]).sort((a, b) => a - b)[kerb.length >> 1] * 0.95) / 1.05);
+  for (const [look, part, rgb] of [['classic', classic, want], ['realistic', real, linear(0xb8b2a8).multiplyScalar(0.95).toArray()]]) {
+    const edge = tops(part, G + 1.2).filter((v) => v.inside);
+    assert.ok(edge.length >= 4, `${look}: the edging's top`);
+    for (const v of edge) assert.ok(v.rgb.every((x, k) => Math.abs(x - rgb[k]) < 0.01), `${look}: the edging's top ${v.rgb.map((x) => x.toFixed(3))} for ${rgb.map((x) => x.toFixed(3))}`);
+  }
+});
+
 test('the realistic lane: each mesh in its catalogue material, shadows cast by all but the ground and the glass (on low not by the small things either), the glass on the probe, the signs classic', () => {
   const tier = TIERS.low;
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
