@@ -27,7 +27,8 @@ const TARGET = 'es2022';
 //     Sparrow Lane needs, kept out of main; no three.js, under 184 KiB: from 160 when the
 //     photo-match packages' realistic builders took it to 163.5 KiB in W5, from 168 when W6's
 //     north villas' kit, beds and net took it to 173.9 KiB, from 176 when W7's mixed forest of
-//     card crowns, its garden trees and its lampposts took it to 178.9 KiB).
+//     card crowns, its garden trees and its lampposts took it to 178.9 KiB; 179.8 KiB after its fix
+//     round).
 // Without the plan Rolldown would carve main itself into shared chunks as soon as a third lazy
 // chunk shares game modules with it. A module two siblings need is hoisted into their parent,
 // one needed on two branches into main; the build prints each hoist ("chunk-plan: main also

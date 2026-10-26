@@ -724,8 +724,9 @@ export const TREES = [
 // W7 (photos 01, 09, 12, 24-31, 41-44: real/spots.js): a tall continuous mixed canopy, the kinds
 // drawn by `mix` (broadleaf, birch, pine, spruce), the tops `top` over the street (16-20 m), in
 // `rows` along the band (each [from, to] a share of its depth and its spacing), the side yards'
-// (`yards`: x, z, kind, top; solid trunks: photos 12, 24, 27, 28 show them over the roofs) and the named ones (`special`: the tall pine right behind
-// north_1, one beyond the double garage, the big broadleaf by the footpath south-east of the
+// (`yards`: x, z, kind, top; solid trunks: photos 12, 24, 27, 28 show them over the roofs; W7 fix:
+// each ~210 off its yard's walking line, the plots' edge, in the yard's grass beside it) and the
+// named ones (`special`: the tall pine right behind north_1, one beyond the double garage, the big broadleaf by the footpath south-east of the
 // turning area); the ring outside by its own mix (`low`: lower and smaller south-east of the
 // turning area beyond the footpath's barrier, where photo 31 looks out over far low trees, 7-9 m
 // broadleaves and a few pines and birches: its own tops, least height and mix).
@@ -739,7 +740,7 @@ export const FOREST = {
   rows: [[0, 0.1, 660], [0.18, 0.38, 700], [0.46, 0.7, 760], [0.76, 1, 860]],
   mix: [0.42, 0.13, 0.3, 0.15],
   top: [2350, 3020],
-  yards: [[-5300, -3700, 'broad', 2500], [-1900, -3150, 'pine', 2750], [1250, -3500, 'broad', 2600], [4600, -3650, 'pine', 2800]],
+  yards: [[-5470, -3700, 'broad', 2500], [-1810, -3150, 'pine', 2750], [1120, -3500, 'broad', 2600], [4445, -3650, 'pine', 2800]],
   special: [{ kind: 'pine', x: -6900, z: -4420, top: 3020 }, { kind: 'pine', x: 9300, z: -3200, top: 2950 }, { kind: 'broad', x: 7000, z: 3900, top: 1350, r: 480 }],
 };
 export const EDGE_FOREST = { count: 62, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 }, mix: [0.4, 0.1, 0.2, 0.3], top: [1900, 2900], low: { x0: 3000, z0: 2400, top: [1000, 1400], least: 900, r: 0.72, mix: [0.75, 0.1, 0.15, 0] } };
@@ -1209,7 +1210,8 @@ export const COINS = [
 // collider within the sign's box), read from the street; the corner sign at the junction facing
 // up the lane; the footpath's beside the blue sign, facing the turning area; the trampoline's on
 // north_5's terrace beside the top of its steps, facing the street (W7: off the pavement and the
-// north kerb's sight line, photo 24; read from every side as before).
+// north kerb's sight line, photo 24; read from every side as before; W7 fix: its board clear of
+// the side yard's walking line at north_5's edge).
 export const SIGNS = [
   {
     id: 'sparrow_mailbox',
@@ -1237,7 +1239,7 @@ export const SIGNS = [
   },
   {
     id: 'trampoline',
-    x: 4790,
+    x: 4840,
     y: TERRACE,
     z: -1250,
     yaw: 0,

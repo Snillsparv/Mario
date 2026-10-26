@@ -16,9 +16,10 @@
 // look.js FAR_TOP); on the bank behind the north gardens rows of crowns that touch (FOREST.rows:
 // each a share of the band's depth and a spacing along it, jittered), every spot a kind drawn by
 // FOREST.mix (broadleaf, birch, pine, spruce: ~55 % broadleaf, ~30 % Scots pine, ~15 % spruce);
-// a few in the side yards between the villas (FOREST.yards: solid trunks, off every route); the
-// trees named in FOREST.special (a tall pine right behind north_1, one beyond the double garage, the
-// big broadleaf south-east of the turning area by the footpath, out of bounds); the ring round the
+// a few in the side yards between the villas (FOREST.yards: solid trunks beside the yards' walking
+// lines, off every route); the trees named in FOREST.special (a tall pine right behind north_1,
+// one beyond the double garage, the big broadleaf south-east of the turning area by the footpath,
+// out of bounds); the ring round the
 // outside of the boundary (EDGE_FOREST: each a seeded way out from a seeded point on one of its
 // edges, kept off the road drawn on past it, the bank and its clear sector) by its own mix (and
 // in its `low` sector, south-east, lower trees by that sector's own mix, tops and least height).

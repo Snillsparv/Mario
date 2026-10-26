@@ -1441,7 +1441,8 @@ function footpathProps(kit, layout) {
 // boundary (W7: world/lane/real/spots.js's mixed canopy, the realistic look plants the same trees):
 // spruces (skerries/props.js fir()), birches, broadleaves (a short trunk under two golden-green
 // blobs) and Scots pines (a tall orange-brown trunk under a flat dark crown), drawn only but the
-// side yards' trunks (solid, off every route): the boundary's walls stand inside the rest.
+// side yards' trunks (solid, beside the yards' walking lines: off every route): the boundary's
+// walls stand inside the rest.
 function forest(kit, layout) {
   const { leaves, wood, solids } = kit.drawn('forest');
   const { firs, birches, broad, pines } = forestSpots(layout);

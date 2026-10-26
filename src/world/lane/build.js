@@ -112,13 +112,14 @@ const TINT = {
   slabs: 0xb4b2ac, // (its path's concrete slabs)
   paving: 0xb4b2ac, // (W5 fix: the slabs' bed east of its path, plain grey)
   floor: 0x9a9890, // (the store room's concrete)
-  litter: 0x4a3a2c, // (W7: the south edge's leaf litter, the dad's lawn's timber edging, its moss strip)
+  litter: 0x60584e, // (W7: the south edge's leaf litter, the dad's lawn's timber edging, its moss strip; W7 fix: near the road's tone, a little browner, as photo 18's edge ~0.85 the road's)
+  sand: 0x958a7e, // (W7 fix: the young beeches' light sandy verge, photo 11)
   edging: 0x8a8780,
   moss: 0x6a6a44,
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
-const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea };
+const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea, litter: 0xb8a896, sand: 0xffe8d0 };
 
 const UP = [0, 1, 0];
 // Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
@@ -578,9 +579,11 @@ function kerbs(kit, L, road, all = kit) {
 // looks (the realistic look's meshes light them: its asphalt's patches a darker tint of the same
 // asphalt): the mended patches and the sealant bands a shade darker over the asphalt, the crack
 // seals near black, the covers, the gullies by the north kerb and the round patch with its grate;
-// along the south edge a ragged strip of leaf litter down the bevel, the dad's lawn's weathered
-// timber edging (boards, its joints dark), the small concrete edging stones and the moss strip
-// along its west edge by the link's drive, the bend's light gravel shoulder.
+// along the south edge a ragged strip of leaf litter down the bevel, near the road's own tone and
+// in patches (W7 fix: photo 18's edge ~0.85 the road's), a light sandy verge along the young
+// beeches (photo 11), the dad's lawn's weathered timber edging (boards, its joints dark), the
+// small concrete edging stones and the moss strip along its west edge by the link's drive, the
+// bend's light gravel shoulder.
 function surface(kit, L, road) {
   const { asphalt, boards: wood, blocks, grass } = kit;
   const G = L.GROUND;
@@ -588,9 +591,10 @@ function surface(kit, L, road) {
   const T = real ? REAL_GROUND : TINT;
   const { parts, boards, stones } = surfaceParts(L, kerbRuns(L, road));
   // (Each piece's builder and tint: all in the asphalt, flat (no shadow cast in the realistic
-  // look), its darker tints, the iron and the litter dark; the moss in the lawn's.)
+  // look), its darker tints, the iron dark, the litter near the road's tone and the beeches'
+  // verge light; the moss in the lawn's.)
   const k = real ? 2.2 : 1;
-  const by = { patch: [T.road, 0.74], band: [T.road, 0.64], seal: [0x1c1c1c, k], cover: [0x4a3e36, k], sump: [T.road, 0.56], slot: [0x141414, k], bar: [0x4a4846, k], litter: [TINT.litter, k], moss: [TINT.moss, 1, grass], gravel: [T.gravel, 1.08] };
+  const by = { patch: [T.road, 0.74], band: [T.road, 0.64], seal: [0x1c1c1c, k], cover: [0x4a3e36, k], sump: [T.road, 0.56], slot: [0x141414, k], bar: [0x4a4846, k], litter: [T.litter, 1], sand: [T.sand, real ? 1.6 : 1], moss: [TINT.moss, 1, grass], gravel: [T.gravel, 1.08] };
   for (const { k: kind, pts, up, fan, shade = 1 } of parts) {
     const [tint, f = 1, b = asphalt] = by[kind];
     b.color(tint, f * shade);

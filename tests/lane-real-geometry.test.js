@@ -1040,3 +1040,63 @@ test('W6 fix: nothing but its door in a recess at the floor: no lawn crossing a 
     }
   }
 });
+
+test('W7 fix: the south edge near the road\'s own tone in both looks (photo 18: ~0.85 the road\'s, not a dark gutter), in patches; the young beeches\' verge lighter than the road (photo 11, sand)', () => {
+  const SE = lane.SOUTH_EDGE;
+  const G = lane.GROUND;
+  const B = lane.BEECH_ROW;
+  const lum = (c, i) => 0.2126 * c[i] + 0.7152 * c[i + 1] + 0.0722 * c[i + 2];
+  for (const look of ['classic', 'real']) {
+    const part = buildLane(lane, { look, materials: {} });
+    let asphalt = null;
+    part.object3D.traverse((o) => o.isMesh && o.name === 'lane-asphalt' && (asphalt = o.geometry));
+    const g = asphalt.index ? asphalt.toNonIndexed() : asphalt;
+    const [p, c] = [g.attributes.position.array, g.attributes.color.array];
+    // (The road's own: the carriageway's corners at 0 along the street, their median; the edge's
+    // pieces: the litter's lip at G + 0.6, down the bevel to 1 and out at 0.6, along the open edge.)
+    const [road, edge, sand] = [[], [], []];
+    let out = 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const [x, y, z] = [p[i], p[i + 1], p[i + 2]];
+      if (Math.abs(y) < 0.01 && x > -7000 && x < 7000 && z > SE - 2 * lane.ROAD.half - 10 && z < SE + 1) road.push(lum(c, i));
+      const piece = Math.abs(y - G - 0.6) < 0.05 || Math.abs(y - 1) < 0.05;
+      if (piece && z > SE - 23 && z < SE + 7 && x > -800 && x < 800) edge.push(lum(c, i));
+      if (piece && z > SE - 23 && z < SE + 7 && x > B.x0 + 60 && x < B.x1 - 60) sand.push(lum(c, i));
+      if (Math.abs(y - 0.6) < 0.05 && z > SE - 70 && z < SE - 22 && x > -800 && x < 800) out++;
+    }
+    const r = road.sort((u, v) => u - v)[road.length >> 1];
+    assert.ok(road.length > 20 && edge.length > 20 && sand.length > 20, `${look}: the road's and the edge's pieces (${road.length}, ${edge.length}, ${sand.length})`);
+    for (const v of edge) assert.ok(v > r * 0.45 && v < r * 1.0, `${look}: the edge ${(v / r).toFixed(2)} the road's (linear)`);
+    for (const v of sand) assert.ok(v > r * 1.0, `${look}: the beeches' verge ${(v / r).toFixed(2)} the road's`);
+    // (In patches: out onto the road at some steps only, each piece its own shade.)
+    assert.ok(out > 0 && out < (1600 / 90) * 6, `${look}: the litter out onto the road at ${out / 6} of ${Math.round(1600 / 90)} steps`);
+    assert.ok(new Set(edge.map((v) => v.toFixed(3))).size > 6, `${look}: its shades`);
+  }
+});
+
+test('W7 fix: the bank\'s canopy masses and its broadleaves\' cores leafy, not smooth solids (they read as grey rock): the only dark core left in the band the masses\', under every crown\'s top; leaf quads over each mass on every tier', () => {
+  const F = lane.FOREST;
+  const front = (x) => F.z0 + F.slope * x;
+  const masses = [];
+  for (let x = F.x0 - 1700; x < F.x1; x += 700) masses.push(x);
+  for (const [tier, d] of [['high', high], ['low', low]]) {
+    const core = positionsOf(d, 'core');
+    let inBand = 0;
+    for (let i = 0; i < core.length; i += 3) {
+      if (core[i + 2] > front(core[i]) - 100 || core[i] < F.x0 - 2600) continue;
+      inBand++;
+      assert.ok(core[i + 1] < F.top[0], `${tier}: a core at ${Math.round(core[i])}, ${Math.round(core[i + 1])} over the crowns' least top`);
+    }
+    // (The masses' cores only: 8 x 4 quads each.)
+    assert.ok(inBand > 0 && inBand <= masses.length * 8 * 4 * 6, `${tier}: ${inBand / 6} core quads in the band`);
+    // Leaves round each mass, at its middle's depth along the band.
+    const leaves = positionsOf(d, 'foliage');
+    const per = masses.map(() => 0);
+    for (let i = 0; i < leaves.length; i += 3) {
+      const k = Math.round((leaves[i] - (F.x0 - 1700)) / 700);
+      const z = front(leaves[i]) + 0.36 * (F.z1 - F.z0);
+      if (k >= 0 && k < masses.length && Math.abs(leaves[i] - masses[k]) < 600 && Math.abs(leaves[i + 2] - z) < 500 && leaves[i + 1] < lane.groundHeight(leaves[i], leaves[i + 2]) + 1600) per[k]++;
+    }
+    for (let k = 0; k < masses.length; k++) assert.ok(per[k] / 6 >= (tier === 'high' ? 50 : 15), `${tier}: the mass at ${masses[k]}: ${per[k] / 6} leaf quads`);
+  }
+});

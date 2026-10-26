@@ -1677,7 +1677,10 @@ trees' leaves).
   straight's south half by the dad's, two on the apron's line and one in its middle; none west of
   the link, photo 12), the dark round patch with its small square grate (photos 33, 34) and five
   gullies at the north kerb only; along the south edge a ragged strip of leaf litter down the
-  bevel and onto the road (not where a hedge stands at the edge: its own), the dad's lawn's
+  bevel and, in patches, onto the road (not where a hedge stands at the edge: its own; W7 fix,
+  photos 18-21 and 41: near the road's own tone, a little browner, each piece its own shade, ~0.85
+  the road's as photo 18's edge, not the dark gutter it first was), a light sandy verge along the
+  young beeches (`BEECH_ROW`, photo 11), the dad's lawn's
   weathered grey timber edging (`EDGING`, 18 wide, joints every 300), small concrete edging
   stones and a moss strip along its west edge by the link's drive, and the bend's light gravel
   shoulder (`SHOULDER`); all drawn only (the GROUND step under them stays the walk-up collider).
@@ -1847,7 +1850,9 @@ trees' leaves).
   had it 790 east, in north_1's drive's mouth); every one a climbable pole, no collider of its
   own: R fixes, the dad: "I want to climb ALL the lampposts"), at their feet the kerbside
   furniture (W7, `lane/surface.js KERBSIDE`, solid boxes and thin prisms: a grey metal cabinet on a
-  concrete footing with a white marker post by L2, a grey-green one with a gabled lid on a dark
+  concrete footing just east of L2, a little back from its line, and a white marker post at its east end (W7
+  fix: photo 09 has them east of the pole, toward north_1's drive; from the bend pole, cabinet and
+  post left to right), a grey-green one with a gabled lid on a dark
   plinth by L3, a pale blue-grey one and a white bollard with a grey cap at L5's foot, a small
   white box by L1; a blank sign plate clamped on L5's pole facing east, its back dark grey), the turning
   area's sign (`TURN_SIGN`, R fixes, as in the dad's photo; W3: taller, at the red-leaf bed's
@@ -1944,7 +1949,8 @@ trees' leaves).
   tops 2350-3020 over the street (16-20 m: their cards under the shadows' box's top, look.js `FAR_TOP` 3200), the
   named ones (`FOREST.special`: a tall pine right behind north_1, one beyond the double garage, a
   big broadleaf by the footpath south-east of the turning area), a tree in each side yard
-  between the villas (`FOREST.yards`: their trunks solid, off every route), and the ring round
+  between the villas (`FOREST.yards`: their trunks solid; W7 fix: each ~210 off its yard's walking
+  line, the plots' edge `PLOTS_N[i].x1`, so the side-yards walk meets none of them), and the ring round
   the outside of the boundary (`EDGE_FOREST`, 62 seeded spots, its own mix, tops 1900-2900; in
   its `low` sector south-east of the turning area, where photo 31 looks out beyond the footpath,
   7-9 m broadleaves with a few pines and birches, no spruce, their crowns ×0.72);
@@ -2011,7 +2017,8 @@ trees' leaves).
   drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
   the junction facing up the lane, `lane_footpath` beside the blue sign, `trampoline` up on north_5's
   terrace beside the top of its steps, facing the street (W7: off the pavement and the north
-  kerb's sight line, photo 24; its size kept: the shared signpost kit). Only "Jonas" is named.
+  kerb's sight line, photo 24; its size kept: the shared signpost kit; W7 fix: x 4840, its board
+  clear of the side yard's walking line at x 4655). Only "Jonas" is named.
 * **Poles** (`POLES`, nine, each with its own side, `camYaw`): L1 (looking along the west leg),
   F1, F2 (west up the lane), F3, the red-leaf tree (the roof ahead), then (R fixes) L2 (looking
   west to the junction), L3, L5 (looking east up the lane), L7 (from by the double garage):
@@ -2255,7 +2262,9 @@ trees' leaves).
   once, down in the garden), and the routes round the street, each collecting exactly its coins
   (W6: north_2's hedge top from the pavement and from the terrace behind it; W7: the pavement
   walked from the west end to the turning area past every kerbside cabinet, post, street bin and
-  side-yard trunk with none of them in the way, and no tree over a coin); the
+  side-yard trunk with none of them in the way, and no tree over a coin; W7 fix: each side yard's
+  line walked up to the back gardens and back without straying off it, its tree's trunk 150 or
+  more off it); the
   trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
   and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
   perch from the van's roof, the dad's cars as steps up to the garage row: the crossover's
@@ -3185,11 +3194,15 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   (`FOREST_CARDS` 215 / 240 / 290 a card on high / mid / low for the bank's, seen from the street
   40-120 m off through the haze; `NEAR_CARDS` 185 / 210 / 270, a little denser and ragged, for the
   ring round the outside, the side yards' and the named trees, seen nearer), a bank tree's far
-  side (away from the lane) left bare, golden-green oaks and aspens on one low olive core, airy
+  side (away from the lane) left bare, golden-green oaks and aspens on one low leafy core (W7 fix:
+  `leafSkin`, an ellipsoid's quads each the leaf atlas's tree cell in the foliage mesh, cut-out
+  leaves both sides, not a smooth olive solid, which read as rock), airy
   golden birches without one, the pines a tall trunk grey-brown low and orange-brown up into a flat
   irregular crown of clumps; trunks of 6 / 5 / 4 sides, limbs only in the near ones; behind the
-  bank's front row its canopy masses (`canopyMasses`: low opaque olive mounds every 700 along the
-  band, their tops under the crowns', so the sky never shows through between them). The big birch
+  bank's front row its canopy masses (`canopyMasses`: low mounds every 700 along the band, their
+  tops well under the crowns', so the sky never shows through between them; W7 fix: each a leafy
+  skin in the crowns' tints a shade deeper over an olive core, a few cards ragging its outline,
+  where they had been smooth dark solids reading as grey rock on every tier). The big birch
   east of the corner house (`bigBirch`: three white stems under a broad crown) and the side yard's
   broadleaf and north_5's cherry (`gardenBroad`: the cherry forking low into three crooked limbs,
   an open crown, no core). The forest's **firs** (W7: now its spruces only, ~15 % of the bank's and
@@ -5032,7 +5045,7 @@ and every cap; the gzip sizes are printed, not asserted):
 | main | 1,286,190 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 92,268 | 37 kB | 92 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB) |
+| lane | 92,472 | 37 kB | 92 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round) |
 | realLook | 49,433 | 18 kB | 60 KiB (from 90) |
 | laneBoss | 102,277 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
@@ -5040,7 +5053,7 @@ and every cap; the gzip sizes are printed, not asserted):
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 183,170 | 76 kB | 184 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB) |
+| laneRealWorker | 184,148 | 76 kB | 184 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

@@ -68,7 +68,8 @@ const CHUNKS = {
   // kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net: 81,994 B, 80.1 KiB.
   // 92 KiB, from 84, W7: the street's wear and edges and the kerbside furniture (lane/surface.js:
   // their data and outlines, the classic build drawing them for both looks so the worker carries
-  // none of it), the mixed forest's classic crowns, the garden trees: 92,268 B, 90.1 KiB.)
+  // none of it), the mixed forest's classic crowns, the garden trees: 92,268 B, 90.1 KiB; its fix
+  // round, the south edge's tones and the beeches' verge: 92,472 B, 90.3 KiB.)
   lane: { parent: 'main', cap: 92 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
@@ -145,7 +146,8 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   // trampoline's net: 178,114 B, 173.9 KiB. 184 KiB, from 176, W7: the forest's mixed canopy as
   // card crowns (broadleaves, birches, Scots pines, the canopy masses), the garden trees, the
   // lampposts' new heads, the kerbs' stones (the street's wear is the classic build's, not the
-  // worker's): 183,170 B, 178.9 KiB.)
+  // worker's): 183,170 B, 178.9 KiB; its fix round, the leafy skins on the canopy masses and the
+  // bank's broadleaves' cores: 184,148 B, 179.8 KiB.)
   assert.ok(size('laneRealWorker') < 184 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');

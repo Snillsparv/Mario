@@ -938,7 +938,6 @@ const OAK = [[1.6, 1.42, 0.56], [1.3, 1.26, 0.64], [1.85, 1.52, 0.46], [1.15, 1.
 const PINES = [[0.72, 0.76, 0.38], [0.6, 0.68, 0.34], [0.84, 0.82, 0.4]];
 const GOLD = [[1.7, 1.45, 0.55], [1.3, 1.22, 0.62], [2.1, 1.6, 0.42]];
 const PINE_BARK = [1.55, 0.86, 0.6]; // (over BARK: the upper trunk's orange-brown)
-const FOREST_CORE = [0.04, 0.05, 0.018];
 // (The lane's middle: a forest tree's far side, away from it, is never seen.)
 const MIDDLE = [-1050, -200];
 export function forestTree(kit, t, kind) {
@@ -982,25 +981,64 @@ export function forestTree(kit, t, kind) {
     // (A near one no core: its smooth facets showed through the cards.)
     if (birchy || near) return;
   }
-  // One low core in the crown's main blob, an olive a little lighter than a bush's (the sky not
-  // through the canopy's middle: from the street it reads as the mass the cards fringe).
+  // One low core in the crown's main blob (the sky not through the canopy's middle: from the
+  // street it reads as the mass the cards fringe): W7 fix, a leafy skin (cut-out leaves both
+  // sides), not a smooth olive solid, which read as rock.
   const [m] = blobs;
-  kit.core.rgb(...FOREST_CORE);
-  kit.core.ellipsoid(m.c, [1, 0, 0], [0, 1, 0], [0, 0, 1], m.r[0] * 0.6, m.r[1] * 0.62, m.r[2] * 0.6, tier === 'low' ? 6 : 8, tier === 'low' ? 3 : 4);
+  leafSkin(kit.foliage, m.c, [m.r[0] * 0.6, m.r[1] * 0.62, m.r[2] * 0.6], tier === 'low' ? 6 : 8, tier === 'low' ? 3 : 4, MASS_TINTS[t.seed % MASS_TINTS.length], away);
 }
 
-// The bank's canopy masses (W7, photos 09, 12, 43, 44: the forest behind the north gardens one
-// continuous dark wall, its sunlit tops golden): low opaque olive mounds along the band behind its
-// front row, their tops under the crowns', so the sky never shows through the gaps between them.
-export function canopyMasses({ core, tier }, L) {
+// A leafy skin (W7 fix): an ellipsoid's quads (seg round, ring up) each the leaf atlas's tree
+// cell (its cut-out sprays; the material both-sided, so the far side's leaves show through the
+// near side's gaps), tinted, lighter up top and darker under, the normals bent up as a card's;
+// the quads facing `away` (from the lane) left out.
+function leafSkin(g, c, r, seg, ring, tint, away = null) {
+  const [cu, cv] = CELL.tree;
+  const at = (i, j) => {
+    const [th, ph] = [(2 * Math.PI * i) / seg, -Math.PI / 2 + (Math.PI * j) / ring];
+    const d = [Math.cos(ph) * Math.cos(th), Math.sin(ph), Math.cos(ph) * Math.sin(th)];
+    return { p: [c[0] + d[0] * r[0], c[1] + d[1] * r[1], c[2] + d[2] * r[2]], n: norm(add(norm([d[0] / r[0], d[1] / r[1], d[2] / r[2]]), [0, 0.35, 0])), k: 0.55 + 0.55 * (d[1] * 0.5 + 0.5) };
+  };
+  g.rgb(...tint);
+  for (let j = 0; j < ring; j++) {
+    for (let i = 0; i < seg; i++) {
+      const q = [at(i, j), at(i, j + 1), at(i + 1, j + 1), at(i + 1, j)];
+      const th = (2 * Math.PI * (i + 0.5)) / seg;
+      if (away && Math.cos(th) * away[0] + Math.sin(th) * away[2] > 0.55) continue;
+      // (Every other quad the cell mirrored: no one spray repeated in rows.)
+      const [u0, u1] = (i + j) % 2 ? [cu + 0.49, cu + 0.01] : [cu + 0.01, cu + 0.49];
+      g.quad(q[0].p, q[1].p, q[2].p, q[3].p, { n: q.map((v) => v.n), uvs: [[u0, cv + 0.01], [u0, cv + 0.49], [u1, cv + 0.49], [u1, cv + 0.01]], shade: q.map((v) => v.k) });
+    }
+  }
+}
+
+// The bank's canopy masses (W7, photos 09, 12, 23, 24, 43, 44: the forest behind the north
+// gardens one continuous wall of leaves, its sunlit tops golden): low mounds along the band behind
+// its front row, so the sky never shows through the gaps between the trees. W7 fix: each a leafy
+// skin (the crowns' tints a shade deeper, the side away from the lane left out) over an olive
+// core, a few leaf cards ragging its outline (their own stream: the masses stand where they
+// stood), its top well under the crowns' (the skyline the trees' own); they had been smooth dark
+// solids that read as grey rock.
+const MASS_CARDS = { high: [250, 0.45], mid: [280, 0.45], low: [330, 0.45] };
+const MASS_TINTS = OAK.map((t) => t.map((c) => c * 0.8));
+const MASS_CORE = [0.06, 0.075, 0.016];
+export function canopyMasses(kit, L) {
+  const { core, foliage, tier } = kit;
   const F = L.FOREST;
   const R = makeRng(F.seed + 9);
+  const S = makeRng(F.seed + 10);
   const [seg, ring] = tier === 'low' ? [8, 4] : [10, 6];
-  core.rgb(...FOREST_CORE);
-  for (let x = F.x0 - 1700; x < F.x1; x += 700) {
+  const [size, density] = MASS_CARDS[tier] ?? MASS_CARDS.high;
+  for (let k = 0, x = F.x0 - 1700; x < F.x1; x += 700, k++) {
     const z = F.z0 + F.slope * x + 0.36 * (F.z1 - F.z0) + (R() - 0.5) * 200;
-    const y = L.groundHeight(x, z) + 1050 + R() * 250;
-    core.ellipsoid([x, y, z], [1, 0, 0], [0, 1, 0], [0, 0, 1], 620 + R() * 120, 760, 480, seg, ring);
+    const c = [x, L.groundHeight(x, z) + 850 + R() * 250, z];
+    const r = [620 + R() * 120, 700, 480];
+    const l = Math.hypot(x - MIDDLE[0], z - MIDDLE[1]) || 1;
+    const away = [(x - MIDDLE[0]) / l, 0, (z - MIDDLE[1]) / l];
+    core.rgb(...MASS_CORE);
+    core.ellipsoid(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], r[0] * 0.78, r[1] * 0.78, r[2] * 0.78, 8, 4);
+    leafSkin(foliage, c, r, seg, ring, MASS_TINTS[k % MASS_TINTS.length], away);
+    canopy(kit, S, [{ c, r }], { size, cell: CELL.tree, tints: MASS_TINTS, density, below: -0.3, sway: 5, core: null, away });
   }
 }
 

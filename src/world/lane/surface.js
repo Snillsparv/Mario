@@ -162,11 +162,14 @@ export const EDGING = Object.freeze({ x0: -860, x1: 885, w: 18, joint: 300, west
 export const SHOULDER = Object.freeze({ x0: -7700, x1: -6080, w: 70 });
 
 // At the lampposts' feet (photos 01, 09, 13, 16, 24, 34): du along the street (+ east), dw back
-// toward the wall from the pole.
+// toward the wall from the pole. (W7 fix, L2's as photo 09 has them: the cabinet just east of the
+// pole toward north_1's drive, the white post at its east end nearer the wall; seen from the bend
+// pole, cabinet and post left to right, the post's top over the cabinet's. Both a little back from
+// the pole's line: on it they stood in the way of the pole's camera swinging round to its side.)
 export const KERBSIDE = Object.freeze([
   { lamp: 'L1', kind: 'cabinet', du: -240, dw: 10, w: 70, d: 45, h: 110, tint: 0xd8d6d0 },
-  { lamp: 'L2', kind: 'cabinet', du: -95, dw: 40, w: 95, d: 45, h: 125, tint: 0x9a9ea2, foot: 0x8a8884 },
-  { lamp: 'L2', kind: 'post', du: -30, dw: 52, w: 12, h: 150, tint: 0xf2f2ee },
+  { lamp: 'L2', kind: 'cabinet', du: 100, dw: 20, w: 70, d: 40, h: 105, tint: 0x9a9ea2, foot: 0x8a8884 },
+  { lamp: 'L2', kind: 'post', du: 150, dw: 30, w: 12, h: 150, tint: 0xf2f2ee },
   { lamp: 'L3', kind: 'cabinet', du: -90, dw: 24, w: 60, d: 45, h: 160, tint: 0x6a8478, gable: true, foot: 0x2a2a2a },
   { lamp: 'L5', kind: 'cabinet', du: 60, dw: 30, w: 50, d: 35, h: 105, tint: 0x9aa8b2 },
   { lamp: 'L5', kind: 'post', du: 115, dw: 10, w: 16, h: 114, tint: 0xeeeeea, cap: 0x8a8c8e },
@@ -188,9 +191,11 @@ export function kerbside(L) {
 // each { k, pts: [[x, y, z]...] (convex, or star-shaped and fanned from its middle: `fan`), up? (a
 // slanted one's way up), shade? }; k: 'patch', 'band', 'seal', 'cover' (the covers: an iron disc,
 // its raised ring a shade lighter), 'sump', 'slot', 'bar', 'litter' (down the south edge's bevel
-// and a ragged way out onto the road, `runs`' edges but where a hedge stands at the edge),
-// 'moss', 'gravel'; and `boards` (the timber edging's [x0, x1] between its joints) and `stones`
-// (the west edging's [z0, z1]). (`step`: the litter's pieces' length.)
+// and, in patches, a ragged way out onto the road, `runs`' edges but where a hedge stands at the
+// edge: near the road's tone, each piece its own shade), 'sand' (the same along the young
+// beeches, BEECH_ROW: their light sandy verge), 'moss', 'gravel'; and `boards` (the timber
+// edging's [x0, x1] between its joints) and `stones` (the west edging's [z0, z1]). (`step`: the
+// litter's pieces' length.)
 export function surfaceParts(L, runs, step = 90) {
   const W = streetWear(L, 12);
   const G = L.GROUND;
@@ -224,8 +229,10 @@ export function surfaceParts(L, runs, step = 90) {
     for (let k = -35; k <= 35; k += 10) add('bar', [P(k - 2.5, -20, 1.3), P(k + 2.5, -20, 1.3), P(k + 2.5, 20, 1.3), P(k - 2.5, 20, 1.3)]);
   }
   const hedged = (x) => L.HEDGES.some((h) => h.z0 === L.SOUTH_EDGE && x > h.x0 - 20 && x < h.x1 + 20);
+  const Be = L.BEECH_ROW;
   const H = SHOULDER;
   const B = 22; // (the south edge's bevel: real/plan.js BEVEL)
+  const R = makeRng(7181);
   for (const { p, q, n, kind } of runs) {
     if (kind !== 'edge') continue;
     const count = Math.max(1, Math.round(Math.hypot(q[0] - p[0], q[1] - p[1]) / step));
@@ -236,10 +243,14 @@ export function surfaceParts(L, runs, step = 90) {
     };
     for (let k = 0; k < count; k++) {
       const [t0, t1] = [k / count, (k + 1) / count];
-      if (hedged(at((t0 + t1) / 2, 0, 0)[0])) continue;
-      add('litter', [at(t0, -6, G + 0.6), at(t1, -6, G + 0.6), at(t1, 0, G + 0.6), at(t0, 0, G + 0.6)]);
-      add('litter', [at(t0, 0, G + 0.6), at(t1, 0, G + 0.6), at(t1, B, 1), at(t0, B, 1)], { up: [-n[0], 1, -n[1]] });
-      add('litter', [at(t0, B, 1), at(t1, B, 1), at(t1, far(t1), 0.6), at(t0, far(t0), 0.6)]);
+      const x = at((t0 + t1) / 2, 0, 0)[0];
+      if (hedged(x)) continue;
+      // (W7 fix, photos 11, 18-21, 41: the edge near the road's own tone, a little browner, in
+      // patches; the young beeches' strip a light sandy verge.)
+      const [piece, shade] = x > Be.x0 && x < Be.x1 ? ['sand', 0.94 + 0.12 * R()] : ['litter', 0.9 + 0.16 * R()];
+      add(piece, [at(t0, -6, G + 0.6), at(t1, -6, G + 0.6), at(t1, 0, G + 0.6), at(t0, 0, G + 0.6)], { shade });
+      add(piece, [at(t0, 0, G + 0.6), at(t1, 0, G + 0.6), at(t1, B, 1), at(t0, B, 1)], { up: [-n[0], 1, -n[1]], shade: shade * 1.05 });
+      if (piece === 'sand' || R() > 0.35) add(piece, [at(t0, B, 1), at(t1, B, 1), at(t1, far(t1), 0.6), at(t0, far(t0), 0.6)], { shade });
     }
     if (Math.max(p[0], q[0]) < H.x0 || Math.min(p[0], q[0]) > H.x1) continue;
     const cut = (x) => [x, p[1] + ((q[1] - p[1]) * (x - p[0])) / (q[0] - p[0])];

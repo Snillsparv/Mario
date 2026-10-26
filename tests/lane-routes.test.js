@@ -544,6 +544,28 @@ test('D1, the garage: from the street up the gap between the cars to the red doo
   }
 });
 
+test('the side yards (W7 fix): walked up each yard\'s line (the side-yards walk\'s, on the plots\' edges) from the terrace to the back gardens and back, nothing in the way: he never strays off it, the yards\' forest trees\' trunks stand well clear of it', () => {
+  const { broad, pines } = forestSpots(lane);
+  const trunks = [...broad, ...pines].filter((s) => s.solid);
+  assert.equal(trunks.length, lane.FOREST.yards.length);
+  for (const x of lane.PLOTS_N.slice(0, 4).map((pl) => pl.x1)) {
+    // (Jonas's radius 50 and a trunk's 40, with room for the follow camera behind him.)
+    for (const t of trunks) assert.ok(Math.abs(t.x - x) >= 150, `the yard's tree at ${t.x}, ${t.z} ${Math.abs(t.x - x)} off the line at ${x}`);
+    const z0 = lane.wallZAt(x) - 200;
+    const back = lane.flatZAt(x) + 120;
+    const h = hero(x, TERRACE, z0, N);
+    let [drift, ticks] = [0, 0];
+    for (const tz of [back, z0]) {
+      for (let t = 0; t < 400 && Math.abs(h.at().z - tz) > 60; t++, ticks++) {
+        h.tick({ stickY: 1 }, Math.atan2(x - h.at().x, tz - h.at().z));
+        drift = Math.max(drift, Math.abs(h.at().x - x));
+      }
+      assert.ok(Math.abs(h.at().z - tz) <= 60, `yard ${x}: got to ${Math.round(h.at().z)} of ${Math.round(tz)}`);
+    }
+    assert.ok(drift < 1, `yard ${x}: ${drift.toFixed(1)} off the line (${ticks} ticks)`);
+  }
+});
+
 test('the pavement (W7): walked along it from north_1 to the turning area past the lampposts (735 tall now), their cabinets and posts and the bins out for collection, each of those solid; the side yards\' trees\' trunks solid, off the side yards\' coins', () => {
   // (A Jonas in from the kerb: the bins stand 100 out from the wall.)
   const Z = lane.ROAD.line.at(-1)[1] - lane.PAVEMENT.from - 80;
