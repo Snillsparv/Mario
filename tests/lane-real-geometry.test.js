@@ -156,12 +156,11 @@ test('the walls are open at every window and door of the chain houses and the vi
 
 test('the tile courses lie in the classic roof planes (the colliders Jonas walks on): their crowns at most 1.5 over them (he stands on the crowns), the troughs under them', () => {
   const { position: p } = mesh(high, 'tiles');
-  // (And south_2's wing, its courses plain since W2: its ridge cap and verge rolls, in the tiles,
-  // reach over south_2's back eave.)
-  const roofs = [...lane.LANE_REAL.tiles, 'south_2_wing'].map((id) => {
-    const h = lane.HOUSES.find((o) => o.id === id);
-    return { h, F: frameOf(h), o: h.overhang ?? 60, A: h.w / 2, B: h.d / 2, tan: (h.ridge - h.eave) / (h.d / 2) };
-  });
+  // (W5: every wing's courses plain, each running into its house's back slope: its ridge cap and
+  // verge rolls, in the tiles, are checked with the wings' below.)
+  const roofOf = (h) => ({ h, F: frameOf(h), o: h.overhang ?? 60, A: h.w / 2, B: h.d / 2, tan: (h.ridge - h.eave) / (h.d / 2) });
+  const roofs = lane.LANE_REAL.tiles.map((id) => roofOf(lane.HOUSES.find((o) => o.id === id)));
+  const wings = lane.HOUSES.filter((h) => h.join);
   let checked = 0;
   let crown = -Infinity;
   for (let i = 0; i < p.length; i += 3) {
@@ -180,8 +179,9 @@ test('the tile courses lie in the classic roof planes (the colliders Jonas walks
       if (u > A + o - 20 || w > B + o + 4 || w < 30) continue; // (the eave's nose stands a little out)
       overs.push((p[i + 1] - (h.ridge - w * tan)) * Math.cos(Math.atan(tan)));
     }
-    // (W3: the dad's wings' ridge caps run on over his back slope to the valleys' apex: theirs.)
-    const wing = lane.DAD_WINGS.some((wg) => Math.abs(p[i] - wg.cx) < wg.d / 2 + 30 && p[i + 2] > lane.DAD.z1 - (wg.join.apex - wg.w / 2) - 30);
+    // (W3: the wings' ridge caps run on over their house's back slope to the valleys' apex:
+    // theirs; W5: the neighbours' wings too.)
+    const wing = wings.some((wg) => Math.abs(p[i] - wg.cx) < wg.d / 2 + 30 && p[i + 2] > wg.cz - wg.join.apex - 30);
     if (!overs.length || cap || wing) continue;
     assert.ok(overs.some((over) => over > -10.5 && over <= 1.55), `a tile vertex ${overs.map((v) => v.toFixed(2))} off its roof's plane`);
     crown = Math.max(crown, Math.min(...overs.map((v) => (v > -10.5 ? v : Infinity))));
@@ -191,7 +191,7 @@ test('the tile courses lie in the classic roof planes (the colliders Jonas walks
   assert.ok(crown > 1 && crown <= 1.55, `the highest crown ${crown.toFixed(2)} over the plane`);
   // The ridge caps (and the verge rolls' tops at its ends) sit low on the ridge line Jonas walks
   // along (his feet sinking no deeper there than on the crowns).
-  for (const { h, F, A, o } of roofs) {
+  for (const { h, F, A, o } of [...roofs, ...wings.map(roofOf)]) {
     let top = -Infinity;
     for (let i = 0; i < p.length; i += 3) {
       const [dx, dz] = [p[i] - h.cx, p[i + 2] - h.cz];
@@ -288,7 +288,7 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     return [m.data[(j * m.width + i) * 4], m.data[(j * m.width + i) * 4 + 1] * 4];
   };
   const { DAD, SOUTH_EDGE, HEDGES, PLOTS_N, APRON, wallZAt } = lane;
-  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [3500, 1600]];
+  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [4900, 1550]]; // (W5: south_2's west front a gravel garden: its lawn east of the path)
   for (const [x, z] of lawns) {
     const [grow, y] = at(x, z);
     assert.equal(grow, 255, `a lawn at ${x}, ${z}`);
@@ -315,6 +315,11 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     "terrace's wall": [-2000, wallZAt(-2000) - 5],
     forecourt: [lane.FORECOURT.x0 + 300, (lane.FORECOURT.z0 + lane.FORECOURT.z1) / 2],
     footway: [(lane.FOOTWAY.x0 + lane.FOOTWAY.x1) / 2, 0],
+    // (W5: south_2's gravel garden, its raised bed and its path; the young beech row's soil.)
+    gravel: [3500, 1600],
+    'raised bed': [(lane.S2_GARDEN.raised.x0 + lane.S2_GARDEN.raised.x1) / 2, (lane.S2_GARDEN.raised.z0 + lane.S2_GARDEN.raised.z1) / 2],
+    "south_2's path": [(lane.S2_GARDEN.path.x0 + lane.S2_GARDEN.path.x1) / 2, 1600],
+    'beech row': [(lane.BEECH_ROW.x0 + lane.BEECH_ROW.x1) / 2, lane.BEECH_ROW.z],
     'outside the boundary': [-3000, 4450],
   };
   for (const [what, [x, z]] of Object.entries(bare)) assert.equal(at(x, z)[0], 0, `none on the ${what}`);

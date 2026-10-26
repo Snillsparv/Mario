@@ -228,6 +228,15 @@ export function lawnMask(L) {
   rect(L.LANDING, 14);
   for (const p of [...L.LAMPS, ...L.FLAGPOLES, ...L.SIGNS, L.CABINET, L.PATH_SIGN]) disc(p.x, p.z, 50);
   for (const b of L.BINS) disc(b.x, b.z, 90);
+  // (W5: south_2's gravel, path, raised bed and bed; its shrubs; the beech row's soil strip.)
+  const S2 = L.S2_GARDEN;
+  for (const r of [S2.gravel, S2.path, S2.raised, S2.bed]) rect(r, 8);
+  rect({ x0: S2.edging.x0, x1: S2.edging.x1, z0: S2.edging.z, z1: S2.edging.z + S2.edging.w }, 6);
+  const s2 = S2.rhododendron;
+  clear((x, z) => ((x - s2.x) / (s2.rx + m)) ** 2 + ((z - s2.z) / (s2.rz + m)) ** 2 < 1, s2.x - s2.rx, s2.x + s2.rx, s2.z - s2.rz, s2.z + s2.rz);
+  disc(S2.yew.x, S2.yew.z, S2.yew.r);
+  const BR = L.BEECH_ROW;
+  rect({ x0: BR.x0, x1: BR.x1, z0: BR.soil[0], z1: BR.soil[1] }, 6);
   disc(L.HOOP.x, L.HOOP.z, 40);
   return { width: W, height: H, x0, z0, x1, z1, data: mask };
 }

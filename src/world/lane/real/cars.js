@@ -61,13 +61,16 @@ const STYLE = {
   // swept back into the wings with a sideways-T light, tall tail lamps up the rear pillars, black
   // cladding over the arches and sills, two-tone aero wheels, no rails.
   ev: { tall: true, clear: 26, noseR: 5, tailR: 12, front: 60, rear: 36, rails: null, blackRear: true, crease: 15, rise: 21, ev: true, rake: 0.36, slope: [0.8, -6.5] },
+  // A two-tone crossover (W5: south_1's on the link's drive, photo 42): the cross's body, its roof
+  // gloss black over the black pillars and rails.
+  two: { tall: true, clear: 28, noseR: 16, tailR: 12, front: 42, rear: 32, rails: 'black', blackRear: true, crease: 16, rise: 13, blackRoof: true },
 };
 // Per tier: body stations, wheel sides, spokes, arch segments, the fine details, the lamps and
 // bumpers wrapping round the corners (on the body's own stations there).
 const LOD = {
   high: { stations: 46, sides: 30, spokes: 10, arch: 14, fine: true, wrap: true },
   mid: { stations: 22, sides: 16, spokes: 5, arch: 6, fine: false, wrap: true },
-  low: { stations: 16, sides: 12, spokes: 5, arch: 6, fine: false, wrap: false },
+  low: { stations: 16, sides: 10, spokes: 5, arch: 6, fine: false, wrap: false, tread: true }, // (W5: the plan's lever for low: rounder wheels' cost spent on the neighbours)
 };
 const WHEEL = 0.9; // the wheels to the bodies' scale (the classic ones are a size up: a real
 // crossover's wheel is ~0.7 of its bonnet's height across)
@@ -154,6 +157,7 @@ function car(kit, L, c, probe) {
   const K = L.CAR_KINDS[c.kind];
   const S = STYLE[c.style ?? c.kind];
   const EV = !!S.ev;
+  const black = EV || S.blackRoof; // (the roof gloss black)
   // (On high the cars across the street, on the north drives, at mid's detail: W2, the plan's
   // lever for the north side's cars, the van now on north_4's drive in more views.)
   const D = LOD[kit.tier === 'high' && c.z < 0 ? 'mid' : kit.tier] ?? LOD.high;
@@ -374,7 +378,7 @@ function car(kit, L, c, probe) {
   trim.loft(gs.map((g) => g.ring), { segs: (i) => isCorner(i) && (isFront(i) || S.blackRear) }); // (the A pillars; the crossovers' rear quarters)
   paint.loft(gs.map((g) => g.ring), { segs: (i) => isCorner(i) && !isFront(i) && !S.blackRear });
   // (The EV's roof gloss black: the lacquer in black.)
-  if (EV) paint.rgb(...ROOF_BLACK);
+  if (black) paint.rgb(...ROOF_BLACK);
   paint.loft([glassTop, 0.92, 1].map((f) => slice(f).ring), { capEnd: true });
   // The seal round the belt, the drip rails over the side glass.
   trim.rgb(...BLACK);
@@ -422,7 +426,7 @@ function car(kit, L, c, probe) {
   }
   // A spoiler lip over the rear window (body colour; the EV's black), roof rails on posts, a fin
   // antenna, wipers.
-  if (EV) paint.rgb(...ROOF_BLACK);
+  if (black) paint.rgb(...ROOF_BLACK);
   if (D.fine && !van) {
     const g = slice(0.97);
     const lip = (s, back, dy) => W(s * (g.half - 12), g.y + dy, g.rearW - back);
@@ -432,7 +436,7 @@ function car(kit, L, c, probe) {
     orient(paint, [b0, b1, down(b1, 3), down(b0, 3)], dirW(0, 0, -1));
     orient(paint, [down(a0, 5), down(a1, 5), down(b1, 3), down(b0, 3)], [0, -1, 0]);
   }
-  if (EV) paint.color(c.tint);
+  if (black) paint.color(c.tint);
   if (S.rails) {
     metal.rgb(...(S.rails === 'black' ? [0.03, 0.03, 0.033] : [0.5, 0.5, 0.52]));
     for (const s of [-1, 1]) {
@@ -753,7 +757,8 @@ function car(kit, L, c, probe) {
       });
       tyre.rgb(...(EV ? TYRE_EV : TYRE));
       const prof = [[RR + 1, -tw / 2 + 2], [R - 8, -tw / 2 - 0.5], [R - 2, -tw / 2 + 3.5], [R, -tw / 2 + 9], [R, tw / 2 - 9], [R - 2, tw / 2 - 3.5], [R - 8, tw / 2 + 0.5], [RR + 1, tw / 2 - 1], [RR + 1, -tw / 2 + 2]];
-      tyre.loft(prof.map(([r, du]) => disc(r, du, r >= R - 2.5)));
+      // (On low no rounded shoulders: the sidewall's bulge and the tread.)
+      tyre.loft((D.tread ? prof.filter((_, i) => i !== 2 && i !== 5) : prof).map(([r, du]) => disc(r, du, r >= R - 2.5)));
       // The barrel (dark, deep), the brake disc, the rim's lip and its spokes, the hub.
       trim.rgb(...BARREL);
       trim.loft([[RR, tw / 2 - 1], [RR - 1.5, tw / 2 - 12], [RR * 0.35, tw / 2 - 15]].map(([r, du]) => disc(r, du)), { capEnd: true });

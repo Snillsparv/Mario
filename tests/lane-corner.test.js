@@ -162,9 +162,10 @@ test('the straight runs on into the turning area: asphalt and a floor at 0 acros
     const f = floorAt(x, z, 100);
     assert.ok(f.surface && Math.abs(f.y - O.y) < 0.5, `a floor at 0 at ${x}, ${z} (${(f.y - O.y).toFixed(1)})`);
   }
-  // And south_2's lawn behind the apron's south edge still a step up.
-  const f = floorAt(A.x0 + 234, A.z1 + 120, 100);
-  assert.ok(Math.abs(f.y - O.y - GROUND) < 0.5, `the neighbour's lawn at ${GROUND}`);
+  // And south_2's front garden behind the apron's south edge still a step up (W5: its gravel,
+  // east of its raised bed).
+  const f = floorAt(lane.S2_GARDEN.raised.x1 + 150, A.z1 + 120, 100);
+  assert.ok(Math.abs(f.y - O.y - GROUND) < 0.5, `the neighbour's garden at ${GROUND}`);
 });
 
 test('the dad\'s red-leaf bed (W3: a rounded rectangle from the path to the drive): at the corner where his drive meets the street, a little over the lawn (walked onto from the road), its field stones close set along its edges in both looks, the red-leaf tree in its middle', () => {

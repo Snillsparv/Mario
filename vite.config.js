@@ -24,7 +24,8 @@ const TARGET = 'es2022';
 //     imports only its ancestors (never a sibling, never a shared chunk), and holds no three.js;
 //   * two module workers of their own (new Worker(new URL(...)), not imports): the title logo's
 //     and the realistic look's (render/real/laneRealWorker.js: the pure code the realistic
-//     Sparrow Lane needs, kept out of main; no three.js, under 160 kB).
+//     Sparrow Lane needs, kept out of main; no three.js, under 168 KiB: from 160 with the
+//     photo-match packages' realistic builders, W5).
 // Without the plan Rolldown would carve main itself into shared chunks as soon as a third lazy
 // chunk shares game modules with it. A module two siblings need is hoisted into their parent,
 // one needed on two branches into main; the build prints each hoist ("chunk-plan: main also

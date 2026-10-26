@@ -36,7 +36,7 @@
 // them casts the roof's.
 
 import { add, mul, sub, dot, cross, norm } from './geo.js';
-import { brickSpans, chainFaces } from './plan.js';
+import { brickSpans, chainFaces, chainWindows } from './plan.js';
 
 export function wallFrame(origin, out) {
   const l = Math.hypot(out[0], out[2]);
@@ -137,11 +137,12 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
   const plinth = h.plinth ?? PLINTH;
   const dad = typeof h.door === 'object';
   const holes = { front: [], back: [], left: [], right: [] };
-  const W = h.win ?? WIN; // (the dad's openings bigger: two casements of three lights)
-  const win = (u) => ({ u0: u - W.w / 2, u1: u + W.w / 2, v0: W.sill, v1: W.sill + W.h });
-  const back = h.backWindows ?? (h.windows ?? []).map((u) => -u);
-  for (const u of h.windows ?? []) holes.front.push(win(u));
-  for (const u of back) holes.back.push(win(u));
+  // (A house's own openings, h.win: the dad's and his neighbours' bigger, two casements of three
+  // lights; a front window's own kind, h.panes: plan.js chainWindows.)
+  const win = (o) => ({ u0: o.u - o.w / 2, u1: o.u + o.w / 2, v0: o.sill, v1: o.sill + o.h, kind: o.kind });
+  const wins = { front: chainWindows(h, 'front', WIN).map(win), back: chainWindows(h, 'back', WIN).map(win) };
+  holes.front.push(...wins.front);
+  holes.back.push(...wins.back);
   let side = null;
   if (dad) {
     // The door's opening from its sill (the landing's top) and the side light west of it in the
@@ -150,7 +151,16 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
     holes.front.push({ u0: D.u - D.w / 2, u1: D.u + D.w / 2, v0: D.sill ?? 0, v1: D.h });
     side = { u0: D.u + D.w / 2 + 16 + WIN.casing, u1: D.u + D.w / 2 + 88, v0: (D.sill ?? 0) + 34, v1: D.h - WIN.casing };
     holes.front.push(side);
-  } else if (typeof h.door === 'number') holes.front.push({ u0: h.door - DOOR.w / 2, u1: h.door + DOOR.w / 2, v0: 0, v1: DOOR.h });
+  } else if (typeof h.door === 'number') {
+    const D = h.doorSize ?? DOOR;
+    holes.front.push({ u0: h.door - D.w / 2, u1: h.door + D.w / 2, v0: 0, v1: D.h });
+    // (A neighbour's side light west of its door, in the same dark frame: W5.)
+    if (h.sidelight) {
+      const S = h.sidelight;
+      side = { u0: S.u - S.w / 2, u1: S.u + S.w / 2, v0: 30, v1: D.h - WIN.casing };
+      holes.front.push(side);
+    }
+  }
   // The walls: the plinth (or the gable end, or a face's brick ranges: h.brick) in white brick, 2
   // proud, the boards over it, the gables' triangles; the flashing on the plinth's top. (A wing's
   // end inside the main body is not drawn: lane/houses.js chainFaces.)
@@ -195,15 +205,24 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
   const front = F.face('front').f;
   const backF = F.face('back').f;
   const bars = kit.tier === 'low' ? 0 : 2;
-  for (const u of h.windows ?? []) windowAt(kit, front, win(u), { bars });
-  for (const u of back) windowAt(kit, backF, win(u), { bars });
-  if (dad) windowAt(kit, front, side, { bars, mullion: false, curtains: false, net: true });
-  else if (typeof h.door === 'number') doorAt(kit, front, h.door);
+  for (const o of wins.front) windowAt(kit, front, o, { bars, curtains: !o.kind, blinds: o.kind === 'blinds', frosted: o.kind === 'frosted' });
+  for (const o of wins.back) windowAt(kit, backF, o, { bars });
+  if (side) windowAt(kit, front, side, { bars, mullion: false, curtains: false, net: true });
+  if (!dad && typeof h.door === 'number') doorAt(kit, front, h.door, h);
+  // (A white plastic downpipe down the front from the gutter, a shoe at its foot: W5.)
+  for (const u of h.pvc ?? []) {
+    kit.metal.color(0xe8e6e0);
+    const o = (h.overhang ?? ROOF.overhang) + 10;
+    const lo = h.eave - (h.overhang ?? ROOF.overhang) * ((h.ridge - h.eave) / (h.d / 2));
+    kit.metal.tube(front.at(u, lo - 12 - y0, o), front.at(u, lo - 70 - y0, 7), 5, 5, 6);
+    kit.metal.tube(front.at(u, lo - 70 - y0, 7), front.at(u, 12, 7), 5, 5, 6);
+    kit.metal.tube(front.at(u, 12, 7), front.at(u, 4, 17), 5, 5, 6, { caps: true });
+  }
   gableRoof(kit, F, h, tiled, seg);
 }
 
 // A window in the opening o of wall frame f (its glass 10 in, the casing proud).
-function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = false } = {}) {
+function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = false, blinds = false, frosted = false } = {}) {
   const { paint, glass, cloth, core, metal } = kit;
   const { u0, u1, v0, v1 } = o;
   const cs = WIN.casing;
@@ -240,15 +259,27 @@ function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = 
   glass.quad(f.at(u0, v0, R - 1), f.at(u1, v0, R - 1), f.at(u1, v1, R - 1), f.at(u0, v1, R - 1));
   // White curtains in folds either side, a little behind the glass.
   if (curtains) {
+    // (Five folds a side; two on low: W5, the tier's budget.)
+    const folds = kit.tier === 'low' ? 2 : 5;
     for (const [ca, cb] of [[u0 + 4, u0 + 30], [u1 - 30, u1 - 4]]) {
-      for (let i = 0; i < 5; i++) {
-        const a = ca + ((cb - ca) * i) / 5;
-        const b = ca + ((cb - ca) * (i + 1)) / 5;
+      for (let i = 0; i < folds; i++) {
+        const a = ca + ((cb - ca) * i) / folds;
+        const b = ca + ((cb - ca) * (i + 1)) / folds;
         const [da, db] = [R - 6 - (i % 2) * 3, R - 6 - ((i + 1) % 2) * 3];
         cloth.color(TINT.curtain, i % 2 ? 0.47 : 0.55);
         cloth.quad(f.at(a, v0 + 2, da), f.at(b, v0 + 2, db), f.at(b, v1 - 2, db), f.at(a, v1 - 2, da));
       }
     }
+  }
+  // (The kitchen's venetian blinds: pale slats a little behind the glass, half drawn; pebbled
+  // glass: a pale even sheet right behind it: W5.)
+  if (blinds) {
+    cloth.color(0xdcd8cc, 0.8);
+    for (let v = v1 - 4; v > v0 + (v1 - v0) * 0.35; v -= 9) cloth.quad(f.at(u0 + 2, v - 6, R - 5), f.at(u1 - 2, v - 6, R - 5), f.at(u1 - 2, v, R - 3), f.at(u0 + 2, v, R - 3));
+  }
+  if (frosted) {
+    cloth.color(0x8a8680, 0.75);
+    cloth.quad(f.at(u0, v0, R - 2), f.at(u1, v0, R - 2), f.at(u1, v1, R - 2), f.at(u0, v1, R - 2));
   }
   // (A side light's net curtain: one pale sheet a little behind the glass.)
   if (net) {
@@ -272,26 +303,39 @@ function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = 
   metal.quad(f.at(sa, v0 - 2, 9), f.at(sa, v0 - 7, 9.5), f.at(sb, v0 - 7, 9.5), f.at(sb, v0 - 2, 9));
 }
 
-// A front door at u (its opening DOOR wide): a black frame, the leaf set back 6, a handle, a
-// lamp beside it.
-function doorAt(kit, f, u) {
+// A front door at u (its opening DOOR wide, or the house's own: h.doorSize): a black frame, the
+// leaf set back 6 (a neighbour's of black vertical boards: grooves down it), a handle, a lamp
+// beside it (or where the house's hangs: h.lantern).
+function doorAt(kit, f, u, h = {}) {
   const { paint, metal } = kit;
-  const [u0, u1] = [u - DOOR.w / 2, u + DOOR.w / 2];
+  const D = h.doorSize ?? DOOR;
+  const [u0, u1] = [u - D.w / 2, u + D.w / 2];
   const cs = 12;
+  // (With a side light west of it, +u: one frame round both.)
+  const e1 = h.sidelight ? h.sidelight.u + h.sidelight.w / 2 : u1;
   paint.color(TINT.black);
-  fbox(paint, f, u0 - cs, u1 + cs, DOOR.h, DOOR.h + cs, 0, 3, 'k');
-  fbox(paint, f, u0 - cs, u0, 0, DOOR.h, 0, 3, 'kt');
-  fbox(paint, f, u1, u1 + cs, 0, DOOR.h, 0, 3, 'kt');
+  fbox(paint, f, u0 - cs, e1 + cs, D.h, D.h + cs, 0, 3, 'k');
+  fbox(paint, f, u0 - cs, u0, 0, D.h, 0, 3, 'kt');
+  // (The jamb between the door and its side light up to the light's own casing.)
+  fbox(paint, f, u1, h.sidelight ? h.sidelight.u - h.sidelight.w / 2 - WIN.casing : u1 + cs, 0, D.h, 0, 3, 'kt');
   paint.color(TINT.black, 1.4);
-  paint.quad(f.at(u0, 0, -6), f.at(u0, 0, 0), f.at(u0, DOOR.h, 0), f.at(u0, DOOR.h, -6));
-  paint.quad(f.at(u1, 0, 0), f.at(u1, 0, -6), f.at(u1, DOOR.h, -6), f.at(u1, DOOR.h, 0));
-  paint.quad(f.at(u0, DOOR.h, 0), f.at(u1, DOOR.h, 0), f.at(u1, DOOR.h, -6), f.at(u0, DOOR.h, -6));
+  paint.quad(f.at(u0, 0, -6), f.at(u0, 0, 0), f.at(u0, D.h, 0), f.at(u0, D.h, -6));
+  paint.quad(f.at(u1, 0, 0), f.at(u1, 0, -6), f.at(u1, D.h, -6), f.at(u1, D.h, 0));
+  paint.quad(f.at(u0, D.h, 0), f.at(u1, D.h, 0), f.at(u1, D.h, -6), f.at(u0, D.h, -6));
   paint.color(TINT.door);
-  paint.quad(f.at(u0, 0, -6), f.at(u1, 0, -6), f.at(u1, DOOR.h, -6), f.at(u0, DOOR.h, -6));
+  paint.quad(f.at(u0, 0, -6), f.at(u1, 0, -6), f.at(u1, D.h, -6), f.at(u0, D.h, -6));
+  if (h.doorSize && kit.tier !== 'low') {
+    paint.color(0x050506);
+    for (let k = 1; k < 5; k++) {
+      const a = u0 + (D.w * k) / 5;
+      paint.quad(f.at(a - 1, 4, -5.6), f.at(a + 1, 4, -5.6), f.at(a + 1, D.h - 4, -5.6), f.at(a - 1, D.h - 4, -5.6));
+    }
+  }
   metal.color(TINT.handle);
   fbox(metal, f, u1 - 22, u1 - 10, 100, 104, -6, 2, 'k');
   fbox(metal, f, u1 - 14, u1 - 10, 90, 118, -6, -3, 'k');
-  lamp(kit, f, u1 + cs + 40, 200);
+  if (h.lantern) lamp(kit, f, h.lantern.u, h.lantern.v);
+  else lamp(kit, f, u1 + cs + 40, 200);
 }
 
 // A small black wall lantern at (u, v) on frame f, its glass lit warm.
@@ -417,8 +461,9 @@ function gableRoof(kit, F, h, tiled, seg) {
     for (const s of [-1, 1]) {
       const edge = s * (B + o);
       const [p, q] = [add(F.at(a, lo, edge), mul(vout, 1)), add(F.at(a, h.ridge, 0), mul(vout, 1))];
-      kit.paint.color(TINT.fascia);
-      const board = [[p[0], p[1] - 22, p[2]], [q[0], q[1] - 22, q[2]], [q[0], q[1] + 3, q[2]], [p[0], p[1] + 3, p[2]]];
+      kit.paint.color(h.verge ?? TINT.fascia);
+      const deep = h.verge ? 40 : 22; // (the neighbours' verge boards broad, in their own tint: W5)
+      const board = [[p[0], p[1] - deep, p[2]], [q[0], q[1] - deep, q[2]], [q[0], q[1] + 3, q[2]], [p[0], p[1] + 3, p[2]]];
       kit.paint.quad(...((e > 0) !== (s > 0) ? [board[1], board[0], board[3], board[2]] : board));
       kit.tiles.color(h.roof, 0.85);
       kit.tiles.tube(add(p, [0, -5, 0]), add(q, [0, -5, 0]), 7, 7, 5, { a0: Math.PI, arc: Math.PI, caps: true });

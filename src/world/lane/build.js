@@ -105,11 +105,13 @@ const TINT = {
   flags: 0xd8d4cc,
   railing: 0x2a2a2a,
   patio: 0xa8a6a0,
+  gravel: 0xb0aa9e, // (south_2's grey gravel: W5)
+  slabs: 0xb4b2ac, // (its path's concrete slabs)
   floor: 0x9a9890, // (the store room's concrete)
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
-const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6 };
+const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8 };
 
 const UP = [0, 1, 0];
 // Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
@@ -398,7 +400,8 @@ const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 // to the terraces' wall), the drives and the notches' cobbles, the dad's grass-paver path, his
 // drive (darker under the carport's edge, the store room's concrete floor behind its door wall)
 // and the link's, the double garage's forecourt east of the apron and the footway behind its east
-// kerb, the north-west villa's flagstones (cut at the pavement), the footpath, the dad's patio.
+// kerb, the north-west villa's flagstones (cut at the pavement), the footpath, the dad's patio,
+// south_2's gravel and its slab path (W5).
 function hardSurfaces(L, road, tints) {
   const out = [];
   const pavement = [];
@@ -436,6 +439,10 @@ function hardSurfaces(L, road, tints) {
   add(rectOf(L.DAD_DRIVE.x0, L.DAD_DRIVE.x1, L.GARAGE.wall, L.CARPORT.z1), 'asphalt', tints.floor, 0.4);
   add(rectOf(L.LINK_DRIVE.x0, L.LINK_DRIVE.x1, L.LINK_DRIVE.z0, L.LINK_DRIVE.z1), 'asphalt', tints.drive);
   add(rectOf(L.PATIO.x0, L.PATIO.x1, L.PATIO.z0, L.PATIO.z1), 'cobbles', tints.patio);
+  // (W5: south_2's front garden, grey gravel to its plinth and a path of grey slabs to its door.)
+  const SG = L.S2_GARDEN;
+  add(rectOf(SG.gravel.x0, SG.gravel.x1, SG.gravel.z0, SG.gravel.z1), 'asphalt', tints.gravel);
+  add(rectOf(SG.path.x0, SG.path.x1, SG.path.z0, SG.path.z1), 'cobbles', tints.slabs);
   const C = L.FORECOURT;
   add(rectOf(C.x0, C.x1, C.z0, C.z1), 'asphalt', tints.drive);
   const F = frame(L.NORTH_WEST);

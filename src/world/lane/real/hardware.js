@@ -21,7 +21,7 @@
 
 import { frameOf, fbox, lamp } from './house.js';
 import { makeRng } from '../../../core/math.js';
-import { terraceSpans } from './plan.js';
+import { terraceSpans, chainWindows } from './plan.js';
 
 const CHAIN = { overhang: 60, thick: 18, plinth: 135, win: { w: 150, sill: 170, h: 130 }, door: { w: 116, h: 215 } };
 // The dad's roof vents (W3): the hood's and the two pipes' x.
@@ -35,6 +35,7 @@ export function hardware(kit, L) {
   const finest = kit.tier === 'high';
   for (const h of L.HOUSES) if (h.kit === 'chain') chainHardware(kit, L, h, fine, R, finest);
   for (const a of L.ANTENNAS) antenna(kit, L, a, fine);
+  for (const m of L.MAILBOXES ?? []) mailbox(kit, L, m);
   villaHardware(kit, L, fine);
   for (const h of L.HOUSES) if (h.kit === 'garage') garageGutters(kit, L, h, fine, finest, R);
   coping(kit, L);
@@ -115,7 +116,7 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
     g.quad(P(u1, w0), P(u0, w0), P(u0, w1), P(u1, w1));
   };
   // Snow guards on the street side (both rails on brackets every 120, a course up the eave).
-  if (fine && h.id !== 'south_2_wing') {
+  if (fine && !h.join) {
     const w = B + o - 55;
     metal.color(BLACK);
     for (let u = -A - o + 40; u <= A + o - 40; u += 120) {
@@ -166,7 +167,35 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
     hood(uh - 60, uh + 60, w - 25, w + 25, roof.y(w + 25) - 4, roof.y(w - 25) + 40);
     hood(uh - 66, uh + 66, w - 31, w + 31, roof.y(w - 25) + 40, roof.y(w - 25) + 45);
   }
-  if (fine && (dad || h.id === 'south_2')) ladder(kit, F, roof, dad ? 160 : -200);
+  if (fine && dad) ladder(kit, F, roof, 160);
+  // The neighbours' roofs (W5, photos 14, 15 and 32: h.roofKit): thin vent pipes, a vent cap with
+  // a hood (south_1's), a roof hatch (south_2's), a ladder up from the eave to the cap or hatch.
+  const K = h.roofKit;
+  if (K) {
+    steel.color(0x2c2e30);
+    for (const x of K.pipes) {
+      const [u, w] = [h.cx - x, B * 0.18];
+      const [px, , pz] = F.at(u, 0, w);
+      steel.cyl('y', roof.y(w) - 6, roof.y(w) + 36, px, pz, 4.5, fine ? 10 : 6, { caps: true });
+    }
+    const [u, w] = [h.cx - K.at, B * 0.28];
+    paint.color(K.hatch ? 0x23272b : 0x3a3d42);
+    if (K.hatch) {
+      // (A dark framed hatch flush on the slope, its glass a little lighter.)
+      onSlope(paint, u - 38, u + 38, w - 34, w + 34, 2.5);
+      kit.glass.color(0x4a5058);
+      onSlope(kit.glass, u - 30, u + 30, w - 26, w + 26, 3);
+    } else {
+      const P = (uu, ww, dy) => F.at(uu, roof.y(ww) + dy, ww);
+      const box = (u0, u1, w0, w1, ya, yb) => {
+        const c = (i, j, k) => P(i ? u1 : u0, k ? w1 : w0, j ? yb : ya);
+        for (const q of [[c(0, 0, 1), c(1, 0, 1), c(1, 1, 1), c(0, 1, 1)], [c(1, 0, 0), c(0, 0, 0), c(0, 1, 0), c(1, 1, 0)], [c(0, 0, 0), c(0, 0, 1), c(0, 1, 1), c(0, 1, 0)], [c(1, 0, 1), c(1, 0, 0), c(1, 1, 0), c(1, 1, 1)], [c(0, 1, 1), c(1, 1, 1), c(1, 1, 0), c(0, 1, 0)]]) paint.quad(...orientOut(q, F, (u0 + u1) / 2, roof.y((w0 + w1) / 2) + (ya + yb) / 2, (w0 + w1) / 2));
+      };
+      box(u - 25, u + 25, w - 25, w + 25, -4, 30);
+      box(u - 30, u + 30, w - 30, w + 30, 30, 35);
+    }
+    if (fine) ladder(kit, F, roof, u, w + 40);
+  }
   // The walls: air bricks in the plinth, vents under the soffit, splash blocks under the
   // downpipes.
   const plinth = h.plinth ?? CHAIN.plinth;
@@ -212,13 +241,14 @@ function chainHardware(kit, L, h, fine, R, finest = fine) {
   if (typeof h.door === 'number') {
     kit.metal.color(0xa8a49a);
     fbox(kit.metal, front, h.door - 16, h.door + 16, 92, 99, -6, -5, 'k');
-    bell(kit, front, h.door + CHAIN.door.w / 2 + 22, 112);
+    // (A neighbour's bell on the side away from its side light.)
+    const dw = (h.doorSize ?? CHAIN.door).w / 2 + 22;
+    bell(kit, front, h.door + (h.sidelight ? -dw : dw), 112);
   } else if (typeof h.door === 'object') bell(kit, front, h.door.u - h.door.w / 2 - 26, 118);
   if (fine) {
     kit.metal.color(0xc8c4bc);
-    const W = h.win ?? CHAIN.win;
-    for (const [f, us] of [[front, h.windows ?? []], [F.face('back').f, backWins]]) {
-      for (const u of us) for (const du of [-12, 12]) fbox(kit.metal, f, u + du - 1, u + du + 1, W.sill + W.h * 0.45, W.sill + W.h * 0.45 + 11, -7, -5, 'k');
+    for (const [f, name] of [[front, 'front'], [F.face('back').f, 'back']]) {
+      for (const W of chainWindows(h, name, CHAIN.win)) for (const du of [-12, 12]) fbox(kit.metal, f, W.u + du - 1, W.u + du + 1, W.sill + W.h * 0.45, W.sill + W.h * 0.45 + 11, -7, -5, 'k');
     }
   }
   if (dad) {
@@ -273,10 +303,9 @@ function ring(x, y, z, r, sides) {
 }
 
 // A black roof ladder up the street slope at u: two stringers on low brackets, rungs every 30.
-function ladder({ metal }, F, roof, u) {
+function ladder({ metal }, F, roof, u, w1 = 60) {
   metal.color(BLACK);
   const w0 = roof.B + roof.o - 30;
-  const w1 = 60;
   for (const du of [-22, 22]) metal.tube(F.at(u + du, roof.y(w0) + 4.5, w0), F.at(u + du, roof.y(w1) + 4.5, w1), 1.6, 1.6, 5, { caps: true });
   for (let w = w0 - 15; w > w1; w -= 30) metal.tube(F.at(u - 22, roof.y(w) + 5, w), F.at(u + 22, roof.y(w) + 5, w), 1.1, 1.1, 4);
 }
@@ -287,6 +316,29 @@ function bell({ enamel, paint }, f, u, v) {
   fbox(enamel, f, u - 3, u + 3, v, v + 9, 0, 1.6, 'k');
   paint.color(BLACK);
   fbox(paint, f, u - 1.4, u + 1.4, v + 3, v + 6, 1.6, 2.2, 'k');
+}
+
+// A neighbour's mailbox (W5: layout MAILBOXES): a black steel box on its house's plinth, or on a
+// black post (a pale lid on south_1's by the hedge).
+function mailbox({ paint, steel }, L, m) {
+  paint.color(0x18191b);
+  if (m.wall) {
+    const f = frameOf(L.HOUSES.find((h) => h.id === m.house)).face('front').f;
+    fbox(paint, f, m.u - m.w / 2, m.u + m.w / 2, m.v, m.v + m.h, 2, 2 + m.d);
+    paint.color(0x2a2c30);
+    fbox(paint, f, m.u - m.w / 2 + 6, m.u + m.w / 2 - 6, m.v + m.h - 18, m.v + m.h - 14, 2 + m.d, 3 + m.d, 'k');
+    return;
+  }
+  steel.color(0x1c1d1f);
+  steel.cyl('y', L.GROUND - 4, m.top - m.h, m.x, m.z, 3, 6, { caps: true });
+  const [x0, x1, z0, z1] = [m.x - m.w / 2, m.x + m.w / 2, m.z - m.d / 2, m.z + m.d / 2];
+  paint.box(x0, x1, m.top - m.h, m.top - (m.lid ? 6 : 0), z0, z1);
+  if (m.lid) {
+    paint.color(m.lid);
+    paint.box(x0 - 2, x1 + 2, m.top - 6, m.top, z0 - 2, z1 + 2);
+  }
+  paint.color(0x2a2c30);
+  paint.box(m.x - m.w / 2 + 6, m.x + m.w / 2 - 6, m.top - m.h + 22, m.top - m.h + 25, z0 - 1, z0, { skip: '+z' });
 }
 
 // A TV antenna on a chain house's ridge (layout.js ANTENNAS: lane/props.js antenna()'s place):

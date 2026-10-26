@@ -53,7 +53,7 @@ import { makeRng } from '../../core/math.js';
 import { fir } from '../courseKit.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
-import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses } from './real/plan.js';
+import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses, BEVEL } from './real/plan.js';
 import { signFace } from './real/sign.js';
 
 const TINT = {
@@ -159,6 +159,7 @@ export function* propsSteps(kit, layout) {
   for (const t of layout.COLUMN_TREES ?? []) columnTree(kit, layout, t);
   yield;
   dadsGarden(kit, layout);
+  neighbours(kit, layout);
   turnSign(kit, layout);
   mailbox(kit, layout);
   // (A car with an id, the dad's: its collider here, named; drawn last, below.)
@@ -339,7 +340,7 @@ function bin(kit, layout, { x, z }, i) {
 // A hedge: a leafy box, darker toward its foot, a soft crown along its top; solid, its top
 // walkable (flat).
 function hedge(kit, h) {
-  const { leaves, solids } = kit.drawn('plants');
+  const { leaves, render, solids } = kit.drawn('plants');
   const { x0, x1, z0, z1, y0, top } = h;
   leaves.color(TINT.hedge);
   leaves.shade = (x, y) => 0.75 + 0.25 * Math.min(1, (y - y0) / Math.max(1, top - y0));
@@ -359,6 +360,19 @@ function hedge(kit, h) {
     for (const z of [z0, z1]) leaves.poly([[x0, top, z], [x1, top, z], [mid, top + crown, z]], { facing: [0, 0, z === z0 ? -1 : 1] });
   }
   solids.box(x0, x1, y0 - 4, top, z0, z1, 'grass');
+  // (An informal one, south_1's (W5): sprigs over its walkable top, up to `informal` higher, lumpy
+  // along its face, the fallen leaves on the asphalt at its foot.)
+  if (!h.informal) return;
+  const rng = makeRng(Math.round(x0));
+  for (let x = x0 + 40; x < x1 - 30; x += 110 + rng() * 60) {
+    leaves.color(TINT.hedge, 0.92 + rng() * 0.2);
+    blob(leaves, x, z0 + (z1 - z0) * (0.3 + rng() * 0.4), top + h.informal * (0.2 + rng() * 0.45), 45 + rng() * 25, h.informal * 0.7, rng() * 6, 5);
+  }
+  // (On the asphalt's bevelled edge up to the hedge, and a little way out over the road.)
+  render.color(TINT.litter, 0.8);
+  const e = z0 - BEVEL;
+  render.poly([[x0, 0.7, e - 14], [x1, 0.7, e - 14], [x1, 0.9, e], [x0, 0.9, e]], { facing: [0, 1, 0] });
+  render.poly([[x0, 0.9, e], [x1, 0.9, e], [x1, y0 + 0.6, z0], [x0, y0 + 0.6, z0]], { facing: [0, 1, -1] });
 }
 
 // A thuja: a dark green eight-sided column tapering to a point; its collider a steep frustum
@@ -638,17 +652,108 @@ function dadsGarden(kit, layout) {
   paint.lathe(Fl.x, Fl.z, [[Fl.r, foot - 24], [Fl.r, cap - 12], [Fl.cap, cap - 12], [Fl.cap, cap - 6], [Fl.cap * 0.5, cap + 4], [0, cap + 6]], 8);
 }
 
+// The neighbours' things (W5): the young beech hedge west of south_1's (single stems on bamboo
+// canes in a strip of dark soil, a few leaves up each: drawn only), the link's two black bins
+// (box colliders), the mailboxes (MAILBOXES: drawn only), south_2's front garden: its flush
+// edging and its raised bed of grey blocks (a step up: solid), the bed west of its path edged with
+// blocks, the rhododendron and the round yew (solid), dwarf conifers and hostas.
+function neighbours(kit, layout) {
+  const { GROUND: G, BEECH_ROW: B, LINK_BIN: K, S2_GARDEN: S } = layout;
+  const { leaves, render, paint: pp, solids } = kit.drawn('plants');
+  render.color(TINT.soil, 0.8);
+  render.poly([[B.x0, G + 0.8, B.soil[0]], [B.x1, G + 0.8, B.soil[0]], [B.x1, G + 0.8, B.soil[1]], [B.x0, G + 0.8, B.soil[1]]], { facing: [0, 1, 0] });
+  const rng = makeRng(611);
+  for (let x = B.x0 + 20; x < B.x1; x += B.step) {
+    const z = B.z + (rng() - 0.5) * 16;
+    const h = B.h * (0.85 + rng() * 0.25);
+    pp.color(TINT.trunk);
+    pp.box(x - 2, x + 2, G, G + h, z - 2, z + 2, { bottom: false });
+    pp.color(0xd8c890);
+    pp.box(x + 4, x + 6, G, G + h * 0.9, z - 1, z + 1, { bottom: false });
+    leaves.color(TINT.apple, 0.9 + rng() * 0.2);
+    for (const k of [0.45, 0.8]) blob(leaves, x + (rng() - 0.5) * 14, z, G + h * k, 20 + rng() * 8, h * 0.16, rng() * 6, 5);
+  }
+  // The link's bins (their backs to the wall), solid.
+  const { paint: bp, solids: bs } = kit.drawn('bins');
+  for (const b of layout.LINK_BINS) {
+    const [hx, hz, y1] = [K.x / 2, K.z / 2, G + K.h];
+    bp.color(TINT.bin);
+    bp.box(b.x - hx + 4, b.x + hx - 4, G, y1 - 10, b.z - hz, b.z + hz - 6, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+    bp.box(b.x - hx, b.x + hx, y1 - 10, y1, b.z - hz - 3, b.z + hz + 4, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+    bs.box(b.x - hx, b.x + hx, G, y1, b.z - hz, b.z + hz, 'stone');
+  }
+  // The mailboxes.
+  const { paint: mp } = kit.drawn('mailbox');
+  for (const m of layout.MAILBOXES) {
+    mp.color(0x18191b);
+    if (m.wall) {
+      const f = frame(layout.HOUSES.find((h) => h.id === m.house)).face('front').frame;
+      mp.solid(localBoxPolys(f, m.u - m.w / 2, m.u + m.w / 2, m.v, m.v + m.h, 2, 2 + m.d), { faceShade: (n) => (n[1] > 0.5 ? 1.2 : 1) });
+      continue;
+    }
+    mp.box(m.x - 3, m.x + 3, G, m.top - m.h, m.z - 3, m.z + 3, { bottom: false });
+    mp.box(m.x - m.w / 2, m.x + m.w / 2, m.top - m.h, m.top - (m.lid ? 6 : 0), m.z - m.d / 2, m.z + m.d / 2);
+    if (m.lid) {
+      mp.color(m.lid);
+      mp.box(m.x - m.w / 2 - 2, m.x + m.w / 2 + 2, m.top - 6, m.top, m.z - m.d / 2 - 2, m.z + m.d / 2 + 2);
+    }
+  }
+  // south_2's garden: the edging (flush, a touch over the gravel), the raised bed and the bed's
+  // block edging; the ground cover on the raised bed and the bed's soil.
+  const { blocks } = kit;
+  blocks.color(TINT.kerb, 0.95);
+  const E = S.edging;
+  blocks.box(E.x0, E.x1, G - 3, G + 1.2, E.z, E.z + E.w, { bottom: false });
+  const R = S.raised;
+  blocks.color(0xa8a6a2);
+  blocks.box(R.x0, R.x1, G - 3, R.top, R.z0, R.z1, { bottom: false, top: false });
+  solids.box(R.x0, R.x1, G - 10, R.top, R.z0, R.z1, 'stone', { bottom: false });
+  const D = S.bed;
+  render.color(TINT.soil);
+  for (const [x0, x1, z0, z1, y] of [[R.x0 + 14, R.x1 - 14, R.z0 + 14, R.z1 - 14, R.top - 2], [D.x0, D.x1, D.z0, D.z1, G + 3]]) render.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], { facing: [0, 1, 0] });
+  // (A rim of blocks round each: the raised bed's on its top, the bed's 10 over the gravel.)
+  for (const [B2, w, y0, y1] of [[R, 14, R.top - 2, R.top], [D, 12, G - 2, G + 10]]) {
+    for (const [x0, x1, z0, z1] of [[B2.x0, B2.x1, B2.z0, B2.z0 + w], [B2.x0, B2.x1, B2.z1 - w, B2.z1], [B2.x0, B2.x0 + w, B2.z0, B2.z1], [B2.x1 - w, B2.x1, B2.z0, B2.z1]]) blocks.box(x0, x1, y0, y1, z0, z1, { bottom: false });
+  }
+  const gr = makeRng(613);
+  for (let i = 0; i < 14; i++) {
+    leaves.color(TINT.tuft, 0.7 + gr() * 0.25);
+    blob(leaves, R.x0 + 60 + gr() * (R.x1 - R.x0 - 120), R.z0 + 60 + gr() * (R.z1 - R.z0 - 120), R.top + 14, 60 + gr() * 30, 22, gr() * 6, 5);
+  }
+  // The shrubs: the rhododendron (two domes, as the dad's) and the yew, solid; conifers, hostas.
+  const Rh = S.rhododendron;
+  leaves.color(TINT.rhodo);
+  leaves.shade = (x, y) => 0.7 + 0.3 * Math.min(1, (y - G) / Rh.h);
+  for (const k of [-1, 1]) leaves.lathe(Rh.x + k * (Rh.rx - Rh.rz) * 0.8, Rh.z, [[Rh.rz * 0.85, G - 6], [Rh.rz, G + Rh.h * 0.35], [Rh.rz * 0.8, G + Rh.h * 0.8], [Rh.rz * 0.3, G + Rh.h], [0, G + Rh.h + 6]], 8, { a0: 0.3 + k });
+  const Y = S.yew;
+  leaves.color(TINT.thuja, 0.9);
+  blob(leaves, Y.x, Y.z, G + Y.h / 2, Y.r, Y.h / 2, 0.4, 8);
+  leaves.shade = null;
+  solids.solid(ellipsePrism(Rh.x, Rh.z, Rh.rx * 0.85, Rh.rz * 0.85, 8, G - 6, G + Rh.h * 0.85), 'grass');
+  solids.solid(prismPolys(Y.x, Y.z, Y.r * 0.8, 8, G - 6, G + Y.h * 0.85), 'grass');
+  for (const c of S.conifers) {
+    const y0 = c.x > R.x0 && c.x < R.x1 && c.z > R.z0 && c.z < R.z1 ? R.top : G;
+    leaves.color(TINT.thuja);
+    leaves.lathe(c.x, c.z, [[c.r, y0], [c.r * 0.9, y0 + c.h * 0.4], [c.r * 0.4, y0 + c.h * 0.85], [0, y0 + c.h]], 6, { a0: c.x });
+  }
+  for (const [x, z] of S.hostas) {
+    leaves.color(0xb8c048);
+    blob(leaves, x, z, G + 18, 34, 18, x * 0.01, 6);
+  }
+}
+
 // A round black bulkhead lamp on a wall (GABLE_LAMPS): a ring standing 9 out of the wall round a
 // pale glass, two bars of its cage across it.
-function gableLamp(b, { x, y, z, out }) {
+function gableLamp(b, { x, y, z, out, white }) {
   const f = wallFrame([x, 0, z], [out, 0, 0]);
-  const ring = (r) => Array.from({ length: 10 }, (_, i) => [Math.sin((i / 10) * Math.PI * 2) * r, y + Math.cos((i / 10) * Math.PI * 2) * r]);
-  b.color(TINT.lampBody);
+  const k = white ? 1.5 : 1; // (south_1's white one bigger: W5)
+  const ring = (r) => Array.from({ length: 10 }, (_, i) => [Math.sin((i / 10) * Math.PI * 2) * r * k, y + Math.cos((i / 10) * Math.PI * 2) * r * k]);
+  b.color(white ? TINT.white : TINT.lampBody);
   b.moulding(f, ring(11), ring(16), 9, { closed: true });
-  b.color(TINT.lampGlass);
+  b.color(white ? 0xe4dcc0 : TINT.lampGlass);
   b.panel(f, ring(11), 6);
-  b.color(TINT.lampBody);
-  for (const dv of [-4.5, 4.5]) b.panel(f, [[-11, y + dv - 1.2], [11, y + dv - 1.2], [11, y + dv + 1.2], [-11, y + dv + 1.2]], 7);
+  b.color(white ? TINT.white : TINT.lampBody);
+  if (!white) for (const dv of [-4.5, 4.5]) b.panel(f, [[-11, y + dv - 1.2], [11, y + dv - 1.2], [11, y + dv + 1.2], [-11, y + dv + 1.2]], 7);
 }
 
 // The charger's cable: a square tube 4 wide from the box's underside, sagging in a loop to its
@@ -815,8 +920,10 @@ function car(kit, layout, c, what = 'all', mark = null) {
   paint.poly(ring(-hl - 20, hl + 20, hw + 20, y0 + 1.5), { facing: [0, 1, 0], shade: 0.55 });
   part(c.tint, body(y0 + CAR_CLEAR), (n) => (n[1] > 0.5 ? 1.12 : 0.92));
   part(TINT.glass, cabin(false), (n) => (n[1] > 0.3 ? 1.25 : 1));
-  part(c.tint, hexa(ring(r0 - 4, r1 + 6, hw - 28, roof - 12), ring(r0 - 2, r1 + 4, hw - 30, roof + 3)), (n) => (n[1] > 0.5 ? 1.15 : 0.9));
-  part(c.tint, hexa(ring(wm - 14, wm + 14, hw - 9, belt), ring(wm - 14, wm + 14, hw - 31, roof - 10), { bottom: false, top: false }));
+  // (Two-tone, style 'two': its roof and pillars gloss black, W5.)
+  const top = c.style === 'two' ? TINT.evRoof : c.tint;
+  part(top, hexa(ring(r0 - 4, r1 + 6, hw - 28, roof - 12), ring(r0 - 2, r1 + 4, hw - 30, roof + 3)), (n) => (n[1] > 0.5 ? 1.15 : 0.9));
+  part(top, hexa(ring(wm - 14, wm + 14, hw - 9, belt), ring(wm - 14, wm + 14, hw - 31, roof - 10), { bottom: false, top: false }));
   // Pale headlights on the nose and red lights on the tail (on their sloping faces).
   for (const [tint, e, k] of [[TINT.white, 1, 45], [TINT.taillight, -1, 18]]) {
     const at = (u, y) => f.at(u, y, e * (hl - (k * (y - y0 - CAR_CLEAR)) / (K.belt - CAR_CLEAR) + 1.5));

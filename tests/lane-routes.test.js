@@ -157,6 +157,30 @@ test('the front eave: a standing jump within 100 of the front wall grabs the eav
   }
 });
 
+test("the neighbours (W5): a standing jump within 100 of south_1's and south_2's front walls grabs the eave (a lip, as the dad's: their roofs as steep) and climbs onto the roof; south_2's raised bed walked up onto from its gravel; on through the young beech row into the garden behind it", () => {
+  for (const H of [lane.SOUTH_1, lane.SOUTH_2]) {
+    const tan = (H.ridge - H.eave) / (H.d / 2);
+    const z0 = H.cz - H.d / 2;
+    for (const x of [H.cx - 500, H.cx + 700]) {
+      const h = hero(x, GROUND, z0 - 50 - 80, S);
+      h.rest(2);
+      for (let t = 0; t < 40; t++) h.tick({ stickY: 1, A: t < 15 }, S);
+      h.rest(30);
+      const q = h.at();
+      assert.ok(q.z > z0 && Math.abs(q.y - (H.ridge - Math.abs(q.z - H.cz) * tan)) < 4 && h.p.grounded, `${H.id} at x ${x}: on the roof ${JSON.stringify(q)}`);
+      assert.equal(h.p.health, MAX_HEALTH);
+    }
+  }
+  const R = lane.S2_GARDEN.raised;
+  const b = hero((R.x0 + R.x1) / 2, GROUND, R.z1 + 120, N);
+  b.walk([[(R.x0 + R.x1) / 2, (R.z0 + R.z1) / 2]], 0.6);
+  assert.ok(Math.abs(b.at().y - R.top) < 1 && b.p.grounded, `on the raised bed: ${JSON.stringify(b.at())}`);
+  const B = lane.BEECH_ROW;
+  const w = hero((B.x0 + B.x1) / 2 + B.step / 2, 0, lane.SOUTH_EDGE - 150, S);
+  w.walk([[(B.x0 + B.x1) / 2 + B.step / 2, B.soil[1] + 300]], 0.6);
+  assert.ok(w.at().z > B.soil[1] + 200 && Math.abs(w.at().y - GROUND) < 1, `through the beech row: ${JSON.stringify(w.at())}`);
+});
+
 test('the red-leaf tree: climbed to a handstand on its top, a flip toward the house with the stick held 8 to 24 ticks lands on the roof (W3: its trunk 640 from the wall); held on, he lands on its far side and walks on down into the back garden, unhurt; let go early, he lands in the garden', () => {
   const T = lane.RED_TREE;
   const flip = (hold, walkOn = false) => {
@@ -313,14 +337,16 @@ test('east: along the street (three coins), round the turning area (seven), up n
   assert.equal(p.coins(), 1, 'the footpath');
 });
 
-test("the hedge walk: a single jump from the lawn up onto south_1's hedge (165 high), and along its top (three coins)", () => {
+test("the hedge walk: a single jump from the lawn up onto south_1's hedge (190 high), and along its top (three coins)", () => {
   const H = lane.HEDGES[0];
-  assert.equal(H.top - GROUND, 165);
+  // (W5: the photos' informal hedge is ~225 tall: its walkable top kept at 190, a single jump's
+  // reach, its ragged sprigs drawn over it.)
+  assert.equal(H.top - GROUND, 190);
   // (W2: its street side is the road's south edge, a step down: up from the lawn behind it.)
   const h = hero(H.x0 + 440, GROUND, H.z1 + 120, N);
   jump(h, N, { push: 0.5, after: 4 }); // (a gentler push: the hedge is 130 deep, the road behind it)
   assert.ok(Math.abs(h.at().y - H.top) < 1 && h.p.grounded, `on the hedge: ${JSON.stringify(h.at())}`);
-  h.walk([[H.x0 + 440, (H.z0 + H.z1) / 2], [H.x1 - 670, (H.z0 + H.z1) / 2]], 0.4);
+  h.walk([[H.x0 + 440, (H.z0 + H.z1) / 2], [H.x1 - 670, (H.z0 + H.z1) / 2]], 0.4, 1400); // (W5: it runs on west past south_1: a longer walk)
   assert.ok(Math.abs(h.at().y - H.top) < 1, `along its top: ${JSON.stringify(h.at())}`);
   assert.equal(h.coins(), 3, 'its coins');
 });

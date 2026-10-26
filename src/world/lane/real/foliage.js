@@ -159,7 +159,7 @@ export function plants(kit, L) {
   const G = L.GROUND;
   const leafy = [[1, 1.04, 0.92], [0.86, 0.95, 0.8], [1.08, 1.1, 0.9]];
   // The hedges: cards over their faces and tops round a dark box.
-  for (const h of L.HEDGES) hedge(kit, R, h);
+  for (const h of L.HEDGES) if (!h.informal) hedge(kit, R, h);
   // The thujas: dark green columns.
   for (const t of L.THUJAS) thuja(kit, R, L, t);
   // The junction's trees.
@@ -201,6 +201,88 @@ export function plants(kit, L) {
   // (W4: their own streams, the others' kept.)
   climber(kit, L);
   for (const t of L.COLUMN_TREES ?? []) column(kit, L, t);
+  // (W5: the neighbours', each its own stream: the others' kept.)
+  for (const h of L.HEDGES) if (h.informal) hedge(kit, null, h);
+  beechRow(kit, L);
+  southGarden(kit, L);
+}
+
+// The young beech hedge west of south_1's (W5, photo 11): single slim stems every `step` along
+// the road tied to bamboo canes, a few small light-green leaf sprays up each, in a strip of
+// fresh dark soil (garden.js draws the soil).
+const BEECH = { high: 34, mid: 12, low: 6 };
+function beechRow(kit, L) {
+  const B = L.BEECH_ROW;
+  const G = L.GROUND;
+  const S = makeRng(6113);
+  const sprays = BEECH[kit.tier] ?? BEECH.high;
+  for (let x = B.x0 + 20; x < B.x1; x += B.step) {
+    const z = B.z + (S() - 0.5) * 16;
+    const h = B.h * (0.85 + S() * 0.25);
+    const lean = [(S() - 0.5) * 14, (S() - 0.5) * 10];
+    kit.bark.color(0x8a7a6a);
+    kit.bark.tube([x, G - 4, z], [x + lean[0], G + h, z + lean[1]], 2.4, 1.1, 5);
+    kit.paint.color(0xcab47c);
+    kit.paint.tube([x + 5, G - 4, z + 1], [x + 5, G + h * 0.92, z + 1], 1.6, 1.4, 4);
+    for (let i = 0; i < sprays; i++) {
+      const t = 0.2 + 0.8 * (i / sprays) + (S() - 0.5) * 0.06;
+      const a = S() * Math.PI * 2;
+      const c = [x + lean[0] * t + Math.sin(a) * 16, G + h * t, z + lean[1] * t + Math.cos(a) * 16];
+      const k = 0.8 + 0.35 * S();
+      kit.foliage.rgb(0.95 * k, 1.12 * k, 0.6 * k);
+      cluster(kit.foliage, S, c, norm([Math.sin(a), 0.4, Math.cos(a)]), 34 + S() * 14, CELL.tree, 3);
+    }
+  }
+}
+
+// south_2's front garden's plants (W5, photos 25 and 29-35: S2_GARDEN): the big rhododendron
+// against the house's east end (dark glossy leaves to the ground), the round clipped yew (small
+// dark needles, a dark core), dwarf conifers, hostas (broad yellow-green leaves), the raised bed's
+// low ground cover, white flowers and a little green in the bed west of the path.
+function southGarden(kit, L) {
+  const P = L.S2_GARDEN;
+  const G = L.GROUND;
+  const S = makeRng(7171);
+  const Rh = P.rhododendron;
+  const rhodo = [[0.63, 0.72, 0.5], [0.5, 0.59, 0.41], [0.69, 0.75, 0.51], [1.05, 0.97, 0.37]];
+  const lumps = [
+    { c: [Rh.x, G + Rh.h * 0.4, Rh.z], r: [Rh.rx, Rh.h * 0.62, Rh.rz], n: 300 },
+    { c: [Rh.x - Rh.rx * 0.55, G + Rh.h * 0.3, Rh.z - Rh.rz * 0.25], r: [Rh.rx * 0.5, Rh.h * 0.36, Rh.rz * 0.7], n: 90 },
+  ];
+  for (const m of lumps) shell(kit, S, { c: m.c, r: m.r, count: m.n, size: 80, cell: CELL.rhodo, tints: rhodo, below: -0.8, sway: 2, outside: lumps.filter((o) => o !== m) });
+  const Y = P.yew;
+  shell(kit, S, { c: [Y.x, G + Y.h * 0.5, Y.z], r: [Y.r, Y.h * 0.52, Y.r], count: 130, size: 38, cell: CELL.hedge, tints: [[0.5, 0.52, 0.26], [0.42, 0.46, 0.22]], below: -0.6, sway: 1, coreK: 0.85 });
+  const R = P.raised;
+  for (const c of P.conifers) {
+    const y0 = c.x > R.x0 && c.x < R.x1 && c.z > R.z0 && c.z < R.z1 ? R.top : G;
+    for (let i = Math.round(40 * (CLUSTERS[kit.tier] ?? 1)); i > 0; i--) {
+      const y = c.h * Math.pow(S(), 0.8) * 0.95;
+      const a = S() * Math.PI * 2;
+      const rr = c.r * (1 - (y / c.h) * 0.8) * (0.85 + 0.2 * S());
+      kit.foliage.rgb(0.55, 0.6, 0.3);
+      cluster(kit.foliage, S, [c.x + Math.sin(a) * rr, y0 + y, c.z + Math.cos(a) * rr], norm([Math.sin(a), 0.4, Math.cos(a)]), 20, CELL.hedge, 1);
+    }
+    kit.core.rgb(...CORE.green);
+    kit.core.loft([[c.r * 0.7, 0], [c.r * 0.5, c.h * 0.5], [c.r * 0.1, c.h * 0.9]].map(([r, y]) => ring(c.x, y0 + y, c.z, r, 6)), { capEnd: true });
+  }
+  for (const [x, z] of P.hostas) shell(kit, S, { c: [x, G + 24, z], r: [60, 28, 60], count: 16, size: 46, cell: CELL.rhodo, tints: [[2.3, 2.25, 0.62], [1.85, 1.95, 0.58]], below: -0.1, sway: 1, core: null });
+  // The beds' cover: low tufts; the bed west of the path a few white flowers too.
+  const D = P.bed;
+  for (const [x0, x1, z0, z1, y, n] of [[R.x0 + 20, R.x1 - 20, R.z0 + 20, R.z1 - 20, R.top - 2, 240], [D.x0 + 16, D.x1 - 16, D.z0 + 16, D.z1 - 16, G + 3, 26]]) {
+    for (let i = 0; i < Math.round(n * (CLUSTERS[kit.tier] ?? 1)); i++) {
+      const c = [x0 + S() * (x1 - x0), y + 10 + S() * 8, z0 + S() * (z1 - z0)];
+      kit.foliage.rgb(0.74 + 0.25 * S(), 0.84, 0.44);
+      cluster(kit.foliage, S, c, norm([(S() - 0.5) * 0.8, 1, (S() - 0.5) * 0.8]), 44 + S() * 18, CELL.hedge, 1, kit.tier === 'low' ? 1 : 2);
+    }
+  }
+  kit.paint.color(0xf4f2ec);
+  for (let i = 0; i < 24; i++) {
+    const [x, z, y] = [D.x0 + 30 + S() * (D.x1 - D.x0 - 60), D.z0 + 30 + S() * (D.z1 - D.z0 - 60), G + 20 + S() * 14];
+    for (let p = 0; p < 4; p++) {
+      const b = (p / 4) * Math.PI * 2;
+      kit.paint.tri([x, y + 0.5, z], [x + Math.sin(b + 0.5) * 4, y, z + Math.cos(b + 0.5) * 4], [x + Math.sin(b - 0.5) * 4, y, z + Math.cos(b - 0.5) * 4]);
+    }
+  }
 }
 
 // The climber up the dad's gable's back corner and over the garage row's west end (CLIMBER, W4):
@@ -299,32 +381,72 @@ function ring(x, y, z, r, sides) {
   });
 }
 
+// (W5: south_1's informal hedge, h.informal, photos 11-15 and 43: its own stream; loosely
+// clipped, small lance-shaped leaves, lighter yellow-green sprigs outside over darker gaps, its
+// faces loose (cards in and out of them), its top ragged (a sprig or two standing up to
+// h.informal over the walkable top), cards a little farther apart than a clipped hedge's, per
+// tier; fallen leaves on the asphalt's edge at its foot.)
+const INFORMAL = { high: [30, 230], mid: [42, 150], low: [46, 60] };
+const LOOSE = [[1.75, 1.45, 0.55], [1.4, 1.25, 0.5], [2.15, 1.8, 0.6], [1.2, 1.05, 0.45]];
 function hedge(kit, R, h) {
   const { foliage, core } = kit;
+  const loose = h.informal;
+  if (loose) R = makeRng(5821 + Math.round(h.x0));
+  const [ls, litter] = INFORMAL[kit.tier] ?? INFORMAL.high;
   // (The long hedges behind the houses a little coarser.)
-  const step = (kit.tier === 'low' ? 36 : kit.tier === 'mid' ? 29 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
-  const tint = () => {
-    const k = 0.8 + 0.35 * R();
-    foliage.rgb(1.35 * k, 1 * k, 0.5 * k); // (an autumn olive, as the photos' hedges)
-  };
-  const card = (c, n, s) => {
-    tint();
-    cluster(foliage, R, c, norm(n), s, CELL.hedge, 1.5, 1);
+  const step = loose ? ls : (kit.tier === 'low' ? 36 : kit.tier === 'mid' ? 29 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
+  const card = (c, n, s, deep = 0) => {
+    if (loose) {
+      const t = LOOSE[Math.floor(R() * 4)];
+      const k = (0.78 + 0.4 * R()) * (1 - deep * 0.3);
+      foliage.rgb(t[0] * k, t[1] * k, t[2] * k);
+    } else {
+      const k = 0.8 + 0.35 * R();
+      foliage.rgb(1.35 * k, 1 * k, 0.5 * k); // (an autumn olive, as the photos' hedges)
+    }
+    cluster(foliage, R, c, norm(n), loose ? s * (0.8 + 0.45 * R()) : s, CELL.hedge, loose ? 2 : 1.5, 1);
   };
   const jit = () => (R() - 0.5) * step;
-  const top = h.top + 8;
+  const top = h.top + (loose ? 6 : 8);
+  const [y1, sz] = [h.y0 + (loose ? 14 : 12), loose ? 54 : 50];
   for (let x = h.x0; x <= h.x1; x += step) {
-    for (let y = h.y0 + 12; y <= top; y += step) {
-      card([x + jit(), y + jit() * 0.5, h.z0 + 4 + R() * 6], [0, 0.1, -1], 50);
-      card([x + jit(), y + jit() * 0.5, h.z1 - 4 - R() * 6], [0, 0.1, 1], 50);
+    for (let y = y1; y <= top; y += step) {
+      if (!loose) {
+        card([x + jit(), y + jit() * 0.5, h.z0 + 4 + R() * 6], [0, 0.1, -1], 50);
+        card([x + jit(), y + jit() * 0.5, h.z1 - 4 - R() * 6], [0, 0.1, 1], 50);
+        continue;
+      }
+      for (const [z, s] of [[h.z0, -1], [h.z1, 1]]) card([x + jit(), y + jit() * 0.6, z + s * (R() * 14 - 6)], [s * 0.2, 0.15, s], 54, (1 - (y - h.y0) / (top - h.y0)) * 0.6);
     }
-    for (let z = h.z0 + step / 2; z <= h.z1; z += step) card([x + jit(), top - 6 + R() * 8, z + jit() * 0.6], [0, 1, 0], 52);
+    for (let z = h.z0 + step / 2; z <= h.z1; z += step) card([x + jit(), top - (loose ? 8 : 6) + R() * (loose ? 10 : 8), z + jit() * 0.6], [0, 1, 0], loose ? 56 : 52);
+    for (let k = loose ? (R() < 0.6 ? 2 : 1) : 0; k > 0; k--) {
+      const z = h.z0 + 20 + R() * (h.z1 - h.z0 - 40);
+      card([x + jit(), top + loose * (0.3 + 0.7 * R()) - 20, z], [(R() - 0.5) * 0.6, 1, (z - (h.z0 + h.z1) / 2) / 90], 50);
+    }
   }
   for (const [xe, s] of [[h.x0, -1], [h.x1, 1]]) {
-    for (let z = h.z0; z <= h.z1; z += step) for (let y = h.y0 + 12; y <= top; y += step) card([xe + s * (4 + R() * 6), y, z + jit() * 0.6], [s, 0.1, 0], 50);
+    for (let z = h.z0; z <= h.z1; z += step) for (let y = y1; y <= top; y += step) card([xe + s * (loose ? R() * 12 - 4 : 4 + R() * 6), y, z + jit() * 0.6], [s, 0.1, 0], sz);
   }
-  core.rgb(...HEDGE_CORE);
-  core.box(h.x0 + 8, h.x1 - 8, h.y0 - 4, top - 14, h.z0 + 8, h.z1 - 8, { skip: 'b' });
+  core.rgb(...(loose ? [0.055, 0.068, 0.024] : HEDGE_CORE));
+  core.box(h.x0 + 8, h.x1 - 8, h.y0 - 4, top - (loose ? 18 : 14), h.z0 + 8, h.z1 - 8, { skip: 'b' });
+  if (!loose) return;
+  // Fallen leaves along its foot, on the asphalt's bevelled edge and a little out over the road
+  // (over the atlas's green leaves: browns, a few yellowed).
+  for (let i = Math.round(((h.x1 - h.x0) / 1000) * litter); i > 0; i--) {
+    const x = h.x0 + R() * (h.x1 - h.x0);
+    const d = Math.pow(R(), 1.6) * 40;
+    const z = h.z0 - d;
+    const flat = d > 22;
+    const y = flat ? 0.7 : 22.8 - d;
+    const sz2 = 6 + R() * 5;
+    const turn = R() * Math.PI;
+    foliage.rgb(...(R() < 0.6 ? [1.9, 0.9, 0.62] : R() < 0.7 ? [2.6, 1.9, 0.6] : [1.4, 0.7, 0.5]));
+    const [ca, sa] = [Math.cos(turn) * sz2, Math.sin(turn) * sz2];
+    const [u0, v0] = CELL.hedge;
+    const up = flat ? [0, 1, 0] : norm([0, 1, -1]);
+    const P = (dx, dz) => [x + dx, y + (flat ? 0 : dz), z + dz];
+    foliage.quad(P(-ca, -sa), P(sa, -ca), P(ca, sa), P(-sa, ca), { n: [up, up, up, up], uvs: [[u0 + 0.2, v0 + 0.2], [u0 + 0.3, v0 + 0.2], [u0 + 0.3, v0 + 0.3], [u0 + 0.2, v0 + 0.3]] });
+  }
 }
 
 function thuja(kit, R, L, { x, z }) {

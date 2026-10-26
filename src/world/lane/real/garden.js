@@ -12,6 +12,8 @@
 //   roadDecals(kit, L)  // mended patches, a sealed crack, manhole and drain covers
 //   bedStones(kit, L)   // the corner bed's field stones (where the classic ones lie)
 //   turnSign(kit, L)    // the turning area's sign at the bed's corner (its face: sign.js)
+//   neighbourGround(kit, L)   // W5: south_2's gravel, the beech row's and the beds' soil, the
+//                       // link's two bins
 //
 // The mailbox (MAILBOX, W3): one anthracite pedestal box of sheet steel standing on the lawn
 // (a concrete pad at its foot), its gable end toward the street: a lid of two folded sheets
@@ -22,7 +24,8 @@
 // beak, glossy black eyes, its wings raised and swept back like the real ornament's, its tail a
 // wide spiky fan cocked up behind, on a rod at the ridge's street end, side-on to the street.
 
-import { add, mul, norm, cross } from './geo.js';
+import { Geo, add, mul, norm, cross } from './geo.js';
+import { bins } from './street.js';
 import { roadPieces, kerbRuns, bevelEnds, BEVEL, bedStones as bedStoneSpots } from './plan.js';
 import { signFace } from './sign.js';
 import { makeRng } from '../../../core/math.js';
@@ -358,5 +361,62 @@ export function turnSign({ steel, enamel, paint }, L) {
     enamel.quad(at(1.5, v0 + 1.5, 0.3), at(P.w - 1.5, v0 + 1.5, 0.3), at(P.w - 1.5, v1 - 1.5, 0.3), at(1.5, v1 - 1.5, 0.3), { n: [f, f, f, f] });
     enamel.color(0xf0f0ec);
     enamel.quad(at(0, v0, 0.2), at(P.w, v0, 0.2), at(P.w, v1, 0.2), at(0, v1, 0.2), { n: [f, f, f, f] });
+  }
+}
+
+// The neighbours' ground (W5): south_2's gravel (the granite set at a gravel's grain, over its
+// hard surface, round its raised bed and its bed), the fresh dark soil of the young beech row and
+// the beds' soil (the raised bed's top: its blocks are the classic build's, both looks); the
+// link's two bins (the dad's bin turned round, their backs to the wall; boxes on low).
+export function neighbourGround(kit, L) {
+  const { granite, paint } = kit;
+  const G = L.GROUND;
+  const flat = (x0, x1, z0, z1, y, k = 3, tile = 500) => {
+    for (let x = x0; x < x1 - 0.5; x += tile) {
+      for (let z = z0; z < z1 - 0.5; z += tile) {
+        const [a, b, c, d] = [Math.min(x1, x + tile), x, z, Math.min(z1, z + tile)];
+        granite.quad([a, y, c], [b, y, c], [b, y, d], [a, y, d], { uvs: [[a * k, c * k], [b * k, c * k], [b * k, d * k], [a * k, d * k]] });
+      }
+    }
+  };
+  const P = L.S2_GARDEN;
+  const [E, R, D, Gr] = [P.edging, P.raised, P.bed, P.gravel];
+  const [z0, z1] = [E.z + E.w, Gr.z1];
+  granite.rgb(0.5, 0.48, 0.45);
+  for (const [x0, x1, za, zb] of [[Gr.x0, R.x0, z0, z1], [R.x0, R.x1, R.z1, z1], [R.x1, D.x0, z0, z1], [D.x0, Gr.x1, D.z1, z1], [D.x1, Gr.x1, z0, D.z1]]) flat(x0, x1, za, zb, G + 0.5);
+  granite.rgb(0.2, 0.13, 0.08);
+  const B = L.BEECH_ROW;
+  flat(B.x0, B.x1, B.soil[0], B.soil[1], G + 0.8, 2);
+  flat(D.x0 + 12, D.x1 - 12, D.z0 + 12, D.z1 - 12, G + 3, 2);
+  // (The raised bed's top under its ground cover: dense dark green.)
+  granite.rgb(0.05, 0.075, 0.025);
+  flat(R.x0 + 14, R.x1 - 14, R.z0 + 14, R.z1 - 14, R.top - 2, 2);
+  // The path's concrete slabs (~45 cm) over its hard surface, dark joints between them.
+  const Pa = P.path;
+  const n = Math.round((Pa.x1 - Pa.x0) / 66);
+  const [sw, sd] = [(Pa.x1 - Pa.x0) / n, 66];
+  for (let z = E.z + E.w + 2; z + sd <= Pa.z1 + 1; z += sd) {
+    for (let i = 0; i < n; i++) {
+      granite.rgb(...[0.72, 0.7, 0.66].map((c) => c * (0.94 + 0.08 * Math.sin(i * 7.1 + z * 0.37))));
+      flat(Pa.x0 + i * sw + 2, Pa.x0 + (i + 1) * sw - 2, z + 2, z + sd - 2, G + 0.7, 1.2, 400);
+    }
+  }
+  const K = L.LINK_BIN;
+  if (kit.tier === 'low') {
+    paint.color(0x182434);
+    for (const b of L.LINK_BINS) {
+      paint.box(b.x - K.x / 2 + 4, b.x + K.x / 2 - 4, G, G + K.h - 10, b.z - K.z / 2 + 6, b.z + K.z / 2, { skip: 'b' });
+      paint.box(b.x - K.x / 2, b.x + K.x / 2, G + K.h - 10, G + K.h, b.z - K.z / 2, b.z + K.z / 2 + 4, { skip: 'b' });
+    }
+    return;
+  }
+  const g = new Geo();
+  bins({ paint: g, tyre: g, steel: g }, { BIN: K });
+  for (const b of L.LINK_BINS) {
+    for (let i = 0; i < g.count; i++) {
+      const [p, n] = [g.pos.slice(i * 3, i * 3 + 3), g.nrm.slice(i * 3, i * 3 + 3)];
+      paint.tint = g.col.slice(i * 3, i * 3 + 3);
+      paint.vertex([b.x - p[0], G + p[1], b.z - p[2]], [-n[0], n[1], -n[2]], g.uv.slice(i * 2, i * 2 + 2));
+    }
   }
 }

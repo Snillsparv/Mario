@@ -26,6 +26,8 @@
 //                                            // left out: lane/layout.js DAD_WINGS)
 //   brickSpans(h, face, half) -> [[u0, u1, brick?]]   // a face's spans, split at its brick
 //                                            // ranges (h.brick[face]: white brick to the eaves)
+//   chainWindows(h, face, base) -> [{ u, w, h, sill, kind }]   // a chain house's windows on a
+//                                            // face (its own size, a front window's own kind)
 
 import { makeRng } from '../../../core/math.js';
 
@@ -341,6 +343,19 @@ export function redTreeCrown(T) {
 // A chain house's faces that are drawn: all four, but a wing's end that runs into the main body
 // (`join`: its +u end, the 'right' face, stands inside it).
 export const chainFaces = (h) => (h.join ? ['front', 'back', 'left'] : ['front', 'back', 'left', 'right']);
+
+// A chain house's windows on its front or back (h.windows, h.backWindows: their middles' u),
+// each { u, w, h, sill, kind }: the house's own size (h.win over `base`), a front window's own by
+// its index (h.panes: [{ i, kind, sill?, h? }]; kind 'blinds': the kitchen's, shorter, with
+// venetian blinds; 'frosted': pebbled glass), both looks and the hardware alike (W5).
+export function chainWindows(h, face, base) {
+  const W = { ...base, ...(h.win ?? {}) };
+  const us = face === 'front' ? (h.windows ?? []) : (h.backWindows ?? (h.windows ?? []).map((u) => -u));
+  return us.map((u, i) => {
+    const p = face === 'front' ? (h.panes ?? []).find((q) => q.i === i) : null;
+    return { u, w: p?.w ?? W.w, h: p?.h ?? W.h, sill: p?.sill ?? W.sill, kind: p?.kind ?? null };
+  });
+}
 
 // A face's spans across (-half..half) split where its brick ranges (h.brick[name]: [u0, u1], white
 // brick to the eaves) begin and end: [[u0, u1, brick?]].

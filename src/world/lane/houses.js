@@ -41,7 +41,7 @@
 // named), lining filler, back wall and props (wood; the roofs' tops are walkable).
 
 import { archContour, localBoxPolys, wallFrame } from '../castle/geom.js';
-import { brickSpans, chainFaces } from './real/plan.js';
+import { brickSpans, chainFaces, chainWindows } from './real/plan.js';
 
 const TINT = {
   render: 0xf0ece4,
@@ -218,16 +218,39 @@ function chain(kit, h) {
       boards.panel(f, [[-half, wallH], [half, wallH], [0, h.ridge - y0]], 0, { shade: [0.84, 0.84, 0.95] });
     }
   }
-  // Windows and the door on the front; a row on the back (the front's, or its own).
+  // Windows and the door on the front; a row on the back (the front's, or its own); a house's
+  // own windows (h.win: six lights) with their own kinds (h.panes: the kitchen's blinds, a
+  // frosted one).
   const front = F.face('front').frame;
-  for (const u of h.windows ?? []) chainWindow(drawn, front, u, h.win);
-  for (const u of h.backWindows ?? (h.windows ?? []).map((w) => -w)) chainWindow(drawn, F.face('back').frame, u, h.win);
+  for (const name of ['front', 'back']) for (const o of chainWindows(h, name, WIN.chain)) chainWindow(drawn, F.face(name).frame, o.u, h.win ? o : null, o.kind);
   if (typeof h.door === 'number') {
+    // (A neighbour's own door, `doorSize`: black boards up to its head, a glazed side light in the
+    // same frame, its lantern where it hangs, a white plastic downpipe: W5.)
+    const D = h.doorSize ?? { w: 116, h: 215 };
+    const cs = 12;
     paint.color(TINT.frame);
-    paint.panel(front, rect(h.door - 70, 0, h.door + 70, 225), 1);
+    paint.panel(front, rect(h.door - D.w / 2 - cs, 0, h.door + D.w / 2 + cs, D.h + 10), 1);
     paint.color(TINT.door);
-    paint.panel(front, rect(h.door - 58, 0, h.door + 58, 215), 2);
-    wallLamp(paint, front, h.door + 110, 200);
+    paint.panel(front, rect(h.door - D.w / 2, 0, h.door + D.w / 2, D.h), 2);
+    if (h.doorSize) {
+      paint.color(0x161616);
+      for (const k of [-2, -1, 0, 1, 2]) paint.panel(front, rect(h.door + (k * D.w) / 5.5 - 1.5, 6, h.door + (k * D.w) / 5.5 + 1.5, D.h - 6), 2.5);
+    }
+    if (h.sidelight) {
+      const S = h.sidelight;
+      paint.color(TINT.frame);
+      paint.panel(front, rect(S.u - S.w / 2 - cs, 0, S.u + S.w / 2 + cs, D.h + 10), 1);
+      drawn.glass.color(TINT.glint);
+      drawn.glass.panel(front, rect(S.u - S.w / 2, 30, S.u + S.w / 2, D.h - 10), 2, { shade: [0.8, 0.8, 1.1, 1.1] });
+      paint.color(TINT.frame);
+      for (const k of [1, 2]) paint.panel(front, rect(S.u - S.w / 2, 30 + ((D.h - 40) * k) / 3 - 3, S.u + S.w / 2, 30 + ((D.h - 40) * k) / 3 + 3), 3);
+    }
+    const lamp = h.lantern ?? { u: h.door + 110, v: 200 };
+    wallLamp(paint, front, lamp.u, lamp.v);
+  }
+  for (const u of h.pvc ?? []) {
+    paint.color(TINT.white);
+    paint.panel(front, rect(u - 5, 0, u + 5, wallH - 4), 4);
   }
   if (h.veranda) veranda(kit, F, h);
   gableRoof(drawn, F, h, 'u');
@@ -270,8 +293,11 @@ function garage(kit, h) {
 
 // ---------------------------------------------------------------- the flat-roofed link and carport
 
-// The link between south_1 and the dad's: a block to its flat roof, its front in yellow boards
-// with a dark garage door, a dark fascia round the roof's edge.
+// The link between south_1 and the dad's (W5: as photos 41 and 42 have it): a block to its flat
+// roof in yellow boards; its door wall set back under a deep dark fascia band (L.fascia up to the
+// roof's top, L.out in front of the wall, a dark soffit under it): from the dad's corner a panel
+// of the boards, then a black flat double door up to the fascia (two leaves, a seam between),
+// a black downpipe against south_1's gable. Solid: the block (the fascia drawn only).
 export function link(kit, L) {
   const { boards, paint, solids } = kit;
   const y0 = 22;
@@ -279,10 +305,30 @@ export function link(kit, L) {
   boards.shade = PLINTH_SHADE(y0);
   boards.box(L.x0, L.x1, y0, L.top - L.slab, L.z0, L.z1, { bottom: false, top: false });
   boards.shade = null;
-  paint.color(TINT.garage);
-  const mid = (L.x0 + L.x1) / 2;
-  paint.poly([[mid - 180, y0, L.z0 - 1], [mid + 180, y0, L.z0 - 1], [mid + 180, y0 + 240, L.z0 - 1], [mid - 180, y0 + 240, L.z0 - 1]], { facing: [0, 0, -1] });
-  flatRoof(kit, L.x0, L.x1, L.z0, L.z1, L.top, L.slab);
+  const z = L.z0 - 1;
+  const quad = (b, x0, x1, ya, yb, zz, facing = [0, 0, -1]) => b.poly([[x0, ya, zz], [x1, ya, zz], [x1, yb, zz], [x0, yb, zz]], { facing });
+  // The double door: two black leaves, a dark seam and a frame round them, handles.
+  const [d0, d1] = L.doors;
+  paint.color(TINT.frame);
+  quad(paint, d0 - 6, d1 + 6, y0, L.fascia, z);
+  paint.color(TINT.door, 1.1);
+  const mid = (d0 + d1) / 2;
+  quad(paint, d0, mid - 2, y0 + 2, L.fascia - 4, z - 1);
+  quad(paint, mid + 2, d1, y0 + 2, L.fascia - 4, z - 1);
+  paint.color(0x8a8c8e);
+  for (const x of [mid - 14, mid + 6]) paint.box(x, x + 8, y0 + 100, y0 + 108, z - 6, z - 1);
+  // The downpipe against south_1's gable.
+  paint.color(TINT.door);
+  paint.box(L.pipe - 6, L.pipe + 6, y0, L.top - 4, L.z0 - 14, L.z0 - 2);
+  // The fascia band (its face, its ends) and the soffit under it to the wall.
+  const zf = L.z0 - L.out;
+  paint.color(TINT.fascia);
+  paint.box(L.x0, L.x1, L.fascia, L.top + 4, zf - 4, zf, { top: false, bottom: false });
+  paint.color(TINT.soffit);
+  paint.poly([[L.x0, L.fascia, zf], [L.x1, L.fascia, zf], [L.x1, L.fascia, L.z0], [L.x0, L.fascia, L.z0]], { facing: [0, -1, 0], shade: 0.6 });
+  flatRoof(kit, L.x0, L.x1, zf, L.z1, L.top, L.slab);
+  // (The fascia drawn only: within the camera's margin of the wall, and no low ceiling over
+  // the drive.)
   solids.box(L.x0, L.x1, y0, L.top, L.z0, L.z1, 'stone');
 }
 
@@ -459,11 +505,13 @@ function gableRoof(kit, F, h, axis) {
     paint.color(TINT.fascia);
     const out = axis === 'u' ? F.dir(0, 0, s) : F.dir(s, 0, 0);
     paint.poly([P(-A - o, lo - d, edge), P(rimEnd, lo - d, edge), P(rimEnd, lo, edge), P(-A - o, lo, edge)], { facing: out });
-    // Barge boards up both verges (a wing's far one).
+    // Barge boards up both verges (a wing's far one), in the house's own tint (`verge`).
+    paint.color(h.verge ?? TINT.fascia);
     for (const e of h.join ? [-1] : [-1, 1]) {
       const a = e * (A + o);
       const vout = axis === 'u' ? F.dir(e, 0, 0) : F.dir(0, 0, e);
-      paint.poly([P(a, lo - d - 4, edge), P(a, h.ridge - d - 4, 0), P(a, h.ridge + 3, 0), P(a, lo + 3, edge)], { facing: vout });
+      const deep = h.verge ? 22 : 4;
+      paint.poly([P(a, lo - d - deep, edge), P(a, h.ridge - d - deep, 0), P(a, h.ridge + 3, 0), P(a, lo + 3, edge)], { facing: vout });
     }
   }
 }
@@ -569,20 +617,31 @@ function bayWindow(kit, f, u, W) {
 // A chain house's window: a black frame round a dark pane with a pale glint over its upper half
 // and white curtains drawn to either side; `win` a house's own opening ({ w, h, sill }: the
 // dad's, two casements of three lights: two bars across).
-function chainWindow(kit, f, u, win = null) {
+function chainWindow(kit, f, u, win = null, kind = null) {
   const { paint, glass } = kit;
   const W = win ? { ...WIN.chain, ...win } : WIN.chain;
   const hw = W.w / 2;
   paint.color(TINT.frame);
   paint.panel(f, rect(u - hw - W.frame, W.sill - W.frame, u + hw + W.frame, W.sill + W.h + W.frame), 1);
   room(kit, f, rect(u - hw, W.sill, u + hw, W.sill + W.h), 1.5);
-  glass.color(TINT.pane);
-  glass.panel(f, rect(u - hw, W.sill, u + hw, W.sill + W.h / 2), 2);
-  glass.color(TINT.glint);
-  glass.panel(f, rect(u - hw, W.sill + W.h / 2, u + hw, W.sill + W.h), 2, { shade: [0.8, 0.8, 1.1, 1.1] });
+  if (kind === 'frosted') {
+    // (Pebbled glass: pale and even, no curtains seen through it.)
+    glass.color(0x9aa29e);
+    glass.panel(f, rect(u - hw, W.sill, u + hw, W.sill + W.h), 2, { shade: [0.9, 0.9, 1.05, 1.05] });
+  } else {
+    glass.color(TINT.pane);
+    glass.panel(f, rect(u - hw, W.sill, u + hw, W.sill + W.h / 2), 2);
+    glass.color(TINT.glint);
+    glass.panel(f, rect(u - hw, W.sill + W.h / 2, u + hw, W.sill + W.h), 2, { shade: [0.8, 0.8, 1.1, 1.1] });
+  }
   paint.color(TINT.curtain);
-  paint.panel(f, rect(u - hw, W.sill, u - hw + 22, W.sill + W.h), 3);
-  paint.panel(f, rect(u + hw - 22, W.sill, u + hw, W.sill + W.h), 3);
+  if (kind === 'blinds') {
+    // (The kitchen's venetian blinds: pale slats across it.)
+    for (let v = W.sill + 8; v < W.sill + W.h - 4; v += 12) paint.panel(f, rect(u - hw, v, u + hw, v + 5), 2.5);
+  } else if (kind !== 'frosted') {
+    paint.panel(f, rect(u - hw, W.sill, u - hw + 22, W.sill + W.h), 3);
+    paint.panel(f, rect(u + hw - 22, W.sill, u + hw, W.sill + W.h), 3);
+  }
   paint.color(TINT.frame);
   paint.panel(f, rect(u - 4, W.sill, u + 4, W.sill + W.h), 3);
   if (win) for (const k of [1, 2]) paint.panel(f, rect(u - hw, W.sill + (W.h * k) / 3 - 3, u + hw, W.sill + (W.h * k) / 3 + 3), 3);

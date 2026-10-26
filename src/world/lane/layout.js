@@ -358,24 +358,73 @@ export const LANDING = { x0: 895, x1: 1150, z0: 1190, z1: DAD.z0, top: GROUND + 
 // east gable, white brick to the eaves along the drive (one white wall), its back onto the
 // patio. Downpipes only at their far ends (`pipes`: the eaves' ends, -1 the far one).
 const DAD_TAN = (DAD.ridge - DAD.eave) / (DAD.d / 2);
-const backSlopeZ = (y) => DAD.ridgeZ + (DAD.ridge - y) / DAD_TAN; // (where the main roof's back slope is y high)
-const dadWing = (id, x0, x1, z1, extras) => {
-  const [w, d] = [z1 - DAD.z1, x1 - x0];
-  const ridge = pitchRidge(DAD.eave, d, DAD.pitch);
-  const tan = (ridge - DAD.eave) / (d / 2);
-  const lo = DAD.eave - DAD.overhang * tan;
-  return { id, kit: 'chain', cx: (x0 + x1) / 2, cz: (DAD.z1 + z1) / 2, w, d, yaw: Math.PI / 2, y0: GROUND, eave: DAD.eave, ridge, pitch: DAD.pitch, overhang: DAD.overhang, boards: FALU, roof: DAD.roof, gableEnds: true, win: DAD.win, join: { rim: w / 2 + DAD.z1 - backSlopeZ(lo), apex: w / 2 + DAD.z1 - backSlopeZ(ridge) }, ...extras };
-};
+// (wingOf: a chain house's wing behind it, any house's: W5's neighbours have two each.)
+export function wingOf(main, id, x0, x1, z1, extras = {}) {
+  const tanM = (main.ridge - main.eave) / (main.d / 2);
+  const back = (y) => main.cz + (main.ridge - y) / tanM; // (where the main roof's back slope is y high)
+  const z0 = main.cz + main.d / 2;
+  const [w, d] = [z1 - z0, x1 - x0];
+  const pitch = main.pitch ?? CHAIN.pitch;
+  const overhang = main.overhang ?? CHAIN.overhang;
+  const ridge = pitchRidge(main.eave, d, pitch);
+  const tan = (ridge - main.eave) / (d / 2);
+  const lo = main.eave - overhang * tan;
+  return { id, kit: 'chain', cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, w, d, yaw: Math.PI / 2, y0: main.y0, eave: main.eave, ridge, pitch, overhang, boards: main.boards, roof: main.roof, ...(main.verge !== undefined && { verge: main.verge }), ...(main.plinth !== undefined && { plinth: main.plinth }), gableEnds: true, win: main.win, join: { rim: w / 2 + z0 - back(lo), apex: w / 2 + z0 - back(ridge) }, ...extras };
+}
+const dadWing = (id, x0, x1, z1, extras) => wingOf(DAD, id, x0, x1, z1, { boards: FALU, ...extras });
 export const DAD_WINGS = [
   dadWing('south_dad_west', DAD.x0, -120, 2850, { windows: [-80], backWindows: [], pipes: { front: [-1], back: [] } }),
   dadWing('south_dad_east', 870, DAD.x1, 3280, { windows: [], backWindows: [-250, 250], brick: { front: [[-1e4, 1e4]] }, pipes: { front: [-1], back: [-1] } }),
 ];
 
-// Its neighbours along the chain, west to east: the yellow house (south_1, forward of the dad's)
-// and the flat-roofed link between it and the dad's (set back); the garage row between the dad's
-// and the yellow house to the east (south_2, set back, its wing behind its east end).
-export const SOUTH_1 = chain('south_1', -4040, -1430, 905, 2090, { boards: 0xd8b65e, roof: 0x2a2a2c, door: uS(-4040, -1430, -2434), windows: [-3706, -3236, -2834, -2033, -1699].map((x) => uS(-4040, -1430, x)), gableEnds: true });
-export const LINK = { id: 'link', x0: SOUTH_1.cx + SOUTH_1.w / 2, x1: DAD.x0, z0: 1425, z1: 2830, top: 370, slab: 25, boards: 0xd8b65e };
+// Its neighbours along the chain, west to east (W5: as photos 11-15 and 41-43 have them): the
+// straw-yellow house (south_1, forward of the dad's) and the flat-roofed link between it and the
+// dad's (set back); the garage row between the dad's and the ochre house to the east (south_2,
+// set back, longer). Each a steeper roof than the old 20 degrees (south_1 28, south_2 29: their
+// eaves at 412 and a lip along the front eave, as the dad's, so a standing jump at the front
+// wall still grabs it), white brick gable ends with boards in their triangles, verge boards in
+// their own tint (`verge`), six-light windows (`win`: two casements of three lights; `panes`:
+// a window's own kind by its index, the kitchen's shorter with blinds, a frosted one), white
+// brick to the eaves at the ends of the front (`brick`), a black board door (`doorSize`) with a
+// glazed side light west of it in one dark frame (`sidelight`), a black lantern beyond it
+// (`lantern`), a white plastic downpipe down the front (`pvc`), two wings behind (wingOf: a
+// courtyard between them; their far ends gables); on the roof (`roofKit`: x's) thin vent pipes,
+// a vent cap or a hatch with a ladder up to it (the realistic look's: real/hardware.js).
+const S1 = { x0: -4330, x1: -1430 }; // (W5: 290 further west than W2's: its front's openings, photos 14, 15 and 43, and the aerial's roof)
+const u1 = (x) => uS(S1.x0, S1.x1, x);
+const e1 = (e) => u1(S1.x1 - e); // (from its east end, as photos 14 and 15 read it)
+export const SOUTH_1 = chain('south_1', S1.x0, S1.x1, 905, 2090, {
+  boards: 0xd2bc8a,
+  roof: 0x2e2e30,
+  verge: 0xa4a8ac,
+  pitch: 28,
+  gableEnds: true,
+  eaveLip: 20,
+  win: { w: 175, sill: 172, h: 185 },
+  windows: [551, 1176, 1620, 1934, 2269, 2600].map(e1),
+  panes: [{ i: 0, kind: 'blinds', sill: 190, h: 150 }, { i: 3, kind: 'frosted' }],
+  door: e1(783),
+  doorSize: { w: 145, h: 320 },
+  sidelight: { u: e1(906), w: 70 },
+  lantern: { u: e1(1009), v: 306 },
+  pvc: [e1(974)],
+  brick: { front: [[e1(0), e1(450)], [e1(2715), e1(S1.x1 - S1.x0)]] },
+  backWindows: [-2600, -2950, -3300].map((x) => x - (S1.x0 + S1.x1) / 2),
+  roofKit: { pipes: [-2394, -3504], at: -2864 },
+});
+// (Its east end by the link: the front's last white brick wraps round onto the gable, a round
+// white bulkhead lamp on the gable's open part (GABLE_LAMPS), a black mailbox on the plinth under
+// the kitchen window and another on a post in the hedge's line (MAILBOXES).)
+export const SOUTH_1_WINGS = [
+  wingOf(SOUTH_1, 'south_1_west', S1.x0, S1.x0 + 784, 2480, { windows: [0], backWindows: [0], pipes: { front: [-1], back: [-1] } }),
+  wingOf(SOUTH_1, 'south_1_east', -2287, S1.x1, 2830, { windows: [], backWindows: [0, -250], pipes: { front: [], back: [-1] } }),
+];
+// The link (W5: as photos 41 and 42 have it): its door wall set back at z0, a deep dark fascia
+// band along its flat roof's front edge from the dad's corner to south_1's gable (`fascia`: its
+// underside; `out`: its face that far in front of the door wall), under it from the dad's corner
+// a panel of the house's yellow boards (`panel`: x0..x1) and a black flat double door up to the
+// fascia (`doors`: x0..x1, two leaves), a black downpipe against south_1's gable (`pipe`: its x).
+export const LINK = { id: 'link', x0: SOUTH_1.cx + SOUTH_1.w / 2, x1: DAD.x0, z0: 1425, z1: 2830, top: 352, slab: 25, boards: SOUTH_1.boards, fascia: GROUND + 236, out: 30, panel: [DAD.x0 - 160, DAD.x0], doors: [-1375, DAD.x0 - 160], pipe: -1418 };
 // The garage row between the dad's east wing and south_2 (W4: as photos 33-37 have it): a flat
 // roof from his gable's back corner (z0, the fascia's face, level with his back wall) back over
 // the store room, `top` just under his east wing's eave (its roof meets the wing's), no open bay:
@@ -418,10 +467,36 @@ export const GARAGE = {
   props: [[1990, 2190, 2560, 2630], [2230, 2480, 2575, 2630], [2400, 2480, 2380, 2460], [2405, 2485, 2470, 2550], [1640, 1770, 2420, 2590], [1612, 1650, 2030, 2290], [1612, 1640, 1985, 2020]].map(([x0, x1, z0, z1]) => [x0, x1, z0 + ROOM_Z, z1 + ROOM_Z]),
   propTop: GROUND + 218,
 };
-export const SOUTH_2 = chain('south_2', 2770, 5410, 1980, 3080, { boards: 0xd8b65e, roof: 0x3a302c, door: uS(2770, 5410, 4370), windows: [3250, 3810, 4930].map((x) => uS(2770, 5410, x)), gableEnds: true });
-// Its east wing behind it (ridge along z: turned a quarter, its front toward +x; the west one is
-// W5's).
-export const SOUTH_2_WING = { ...chain('south_2_wing', 4668, 5435, SOUTH_2.cz + SOUTH_2.d / 2, 3858, { boards: 0xd8b65e, roof: 0x3a302c }), w: 3858 - 3080, d: 5435 - 4668, yaw: Math.PI / 2, ridge: pitchRidge(CHAIN.eave, 5435 - 4668, CHAIN.pitch), windows: [0] };
+// south_2 (W5: as photos 29-37 have it): longer and set back, warmer ochre boards over a lower
+// plinth, the gables white brick to the eaves, dark brown verge boards; on the front from the
+// east end: white brick, a window, the door and its side light, the lantern, four windows, white
+// brick at the west end (photos 32, 33 and 35); two wings behind with a courtyard between.
+const S2 = { x0: 2770, x1: 5410 };
+const u2 = (x) => uS(S2.x0, S2.x1, x);
+export const SOUTH_2 = chain('south_2', S2.x0, S2.x1, 1980, 3080, {
+  boards: 0xc9a04f,
+  roof: 0x3a302c,
+  verge: 0x2e241e,
+  pitch: 29,
+  plinth: 115,
+  gableEnds: true,
+  eaveLip: 20,
+  win: { w: 178, sill: 156, h: 207 },
+  windows: [4953, 4261, 3810, 3515, 3160].map(u2),
+  door: u2(4692),
+  doorSize: { w: 160, h: 330 },
+  sidelight: { u: u2(4554), w: 90 },
+  lantern: { u: u2(4423), v: 290 },
+  brick: { front: [[u2(S2.x1), u2(5070)], [u2(3045), u2(S2.x0)]] },
+  backWindows: [3900, 4400].map((x) => x - (S2.x0 + S2.x1) / 2),
+  roofKit: { pipes: [4973, 3700], at: 4290, hatch: true },
+});
+// Its wings (the east one's id the old wing's).
+export const SOUTH_2_WINGS = [
+  wingOf(SOUTH_2, 'south_2_west', S2.x0, 3634, 3436, { windows: [0], backWindows: [], pipes: { front: [-1], back: [-1] } }),
+  wingOf(SOUTH_2, 'south_2_wing', 4668, S2.x1, 3858, { windows: [0], backWindows: [-200, 200], pipes: { front: [-1], back: [-1] } }),
+];
+export const SOUTH_2_WING = SOUTH_2_WINGS[1];
 
 // The dad's front garden (W3: everything on the door's line, as the photos have it): the mossy
 // grass-paver path straight from the road's edge to the door's landing, the pedestal mailbox at
@@ -511,8 +586,8 @@ export const BINS = [{ x: 1680, z: 1552 }, { x: 1680, z: 1676 }]; // (W4 fix: 12
 export const BIN_LEASH = { x0: DAD_DRIVE.x0 + 20 + BIN.x / 2, x1: DAD_DRIVE.x1 - 4 - BIN.x / 2, z0: DAD_DRIVE.z0 + 10 + BIN.z / 2, z1: GARAGE.wall - 110 - BIN.z / 2 };
 // The round black bulkhead lamps (a ribbed cage over a pale glass) on the two gables facing the
 // drive near the garage row: the dad's (x: its wall, out +x) and south_2's (out -x); y their
-// middles.
-export const GABLE_LAMPS = [{ x: DAD.x1, y: 350, z: 2140, out: 1 }, { x: 2770, y: 360, z: 2140, out: -1 }];
+// middles; and a round white one on south_1's east gable by the link (W5: photos 41, 42).
+export const GABLE_LAMPS = [{ x: DAD.x1, y: 350, z: 2140, out: 1 }, { x: 2770, y: 360, z: 2140, out: -1 }, { x: SOUTH_1.cx + SOUTH_1.w / 2, y: 274, z: 1215, out: 1, white: true }];
 // The climber up the gable's back corner and over the fascia's west end (drawn only): x0..x1
 // out from the wall, z0..z1 along it, up to `top`.
 export const CLIMBER = { x0: DAD.x1, x1: DAD.x1 + 100, z0: 2195, z1: 2275, top: 400 };
@@ -521,6 +596,42 @@ export const CLIMBER = { x0: DAD.x1, x1: DAD.x1 + 100, z0: 2195, z1: 2275, top: 
 // slope at (x, z), `h` over the slope.
 export const FLUE = { x: 1460, z: 3245, r: 11, cap: 19, h: 265 };
 export const MOVABLE_BINS = BINS.map((b, i) => ({ id: `bin_${i}`, x: b.x, y: GROUND, z: b.z, w: BIN.x, d: BIN.z, h: BIN.h, leash: BIN_LEASH }));
+// The link's two black bins (W5: photo 42) against its yellow panel and the door's east leaf,
+// their handles and wheels to the wall; they stay put (each a plain box collider, drawn as the
+// dad's).
+export const LINK_BIN = { x: 110, z: 95, h: 155 };
+export const LINK_BINS = [65, 185].map((d) => ({ x: LINK.x1 - d, z: LINK.z0 - 12 - LINK_BIN.z / 2 }));
+
+// south_2's front garden (W5: photos 25 and 29-35; no hedge: the aerial's belt is older than
+// the photos): a low concrete edging flush along the apron's straight south edge (`edging`: x0..x1
+// at z, w deep), grey gravel from there back to the plinth (`gravel`: a hard surface; drawn over
+// in fine stone in the realistic look), a path of concrete slabs from the street to the door
+// (`path`), a raised bed of stacked grey blocks at the west end by the dad's drive (`raised`: its
+// box up to `top`, solid: a step up) with a low ground cover and a dwarf conifer, a bed edged
+// with grey blocks west of the path (`bed`: white flowers, hostas, a dwarf conifer), and at the
+// east end a big rhododendron against the house and a round clipped yew (both solid: an
+// elliptic prism inside each), hostas by the street and along the edging, dwarf conifers
+// (`conifers`: x, z, r, h over the ground or the bed they stand in). Its mailbox: MAILBOXES.
+export const S2_GARDEN = {
+  edging: { x0: APRON.x0 + APRON.sw, x1: APRON.x1 - APRON.se, z: APRON.z1, w: 18 },
+  gravel: { x0: DAD_DRIVE.x1, x1: 4570, z0: APRON.z1 - APRON.sw, z1: SOUTH_2.cz - SOUTH_2.d / 2 },
+  path: { x0: 4570, x1: 4830, z0: APRON.z1 - 10, z1: SOUTH_2.cz - SOUTH_2.d / 2 },
+  raised: { x0: 2800, x1: 3220, z0: APRON.z1 + 22, z1: 1770, top: GROUND + 26 }, // (just under the knee: walked up onto)
+  bed: { x0: 4250, x1: 4560, z0: APRON.z1 + 24, z1: 1520 },
+  rhododendron: { x: 5190, z: 1818, rx: 230, rz: 160, h: 340 },
+  yew: { x: 5029, z: 1384, r: 100, h: 190 },
+  conifers: [{ x: 3095, z: 1640, r: 38, h: 110 }, { x: 4480, z: 1300, r: 30, h: 85 }],
+  hostas: [[5300, 1300], [5370, 1370], [5235, 1385], [4320, 1420], [4410, 1265], [4290, 1290]],
+};
+// The neighbours' mailboxes (W5, drawn only): south_1's black box on its plinth under the kitchen
+// window (`wall`: on its front at u, its foot v over the floor), its black box with a pale lid on
+// a post at the hedge's street face (photo 43), south_2's black box on a black post in its bed
+// west of the path (photo 32); each `w` wide, `h` high, `d` deep, its top at `top`.
+export const MAILBOXES = [
+  { house: 'south_1', wall: true, u: SOUTH_1.windows[0], v: 40, w: 45, h: 95, d: 25 },
+  { x: -2600, z: SOUTH_EDGE + 8, top: GROUND + 175, w: 40, h: 55, d: 30, lid: 0x9a9a9a },
+  { x: 4424, z: 1428, top: GROUND + 206, w: 68, h: 45, d: 53 },
+];
 
 // ---------------------------------------------------------------- the east end
 
@@ -534,17 +645,26 @@ export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: (8022 + 9699) / 
 export const FORECOURT = { x0: APRON.x1, x1: EAST_GARAGE.cx - EAST_GARAGE.d / 2, z0: EAST_GARAGE.cz - EAST_GARAGE.w / 2, z1: EAST_GARAGE.cz + EAST_GARAGE.w / 2 };
 
 // Every house as houses.js builds it.
-export const HOUSES = [...VILLAS, NORTH_WEST, NORTH_WEST_WING, SOUTH_WEST, SOUTH_WEST_WING, SOUTH_1, DAD, ...DAD_WINGS, SOUTH_2, SOUTH_2_WING, EAST_GARAGE, EAST_HOUSE];
+export const HOUSES = [...VILLAS, NORTH_WEST, NORTH_WEST_WING, SOUTH_WEST, SOUTH_WEST_WING, SOUTH_1, ...SOUTH_1_WINGS, DAD, ...DAD_WINGS, SOUTH_2, ...SOUTH_2_WINGS, EAST_GARAGE, EAST_HOUSE];
 
 // ---------------------------------------------------------------- hedges, trees, street furniture
 
-// Hedges (solid leafy boxes, their tops walkable): [x0, x1, z0, z1, y0, top].
+// Hedges (solid leafy boxes, their tops walkable): [x0, x1, z0, z1, y0, top]. south_1's (W5,
+// photos 11-15 and 43): an informal one of small leaves right at the asphalt's edge from beyond
+// its west end to the link (its east end by the link a little lower), its collider's top 190 over
+// the lawn (a single jump still lands on it), its sprigs drawn up to `informal` higher, leaf
+// litter at its foot.
+// West of it along the road a young beech hedge just planted (BEECH_ROW, photo 11): single stems
+// on bamboo canes every `step` in a strip of fresh dark soil behind a narrow gravel shoulder;
+// drawn only (not solid: the garden behind stays open).
 export const HEDGES = [
-  { x0: SOUTH_1.cx - SOUTH_1.w / 2, x1: LINK.x0, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 130, y0: GROUND, top: 187 }, // south_1's front, at the asphalt's edge
+  { x0: -5450, x1: -2300, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 150, y0: GROUND, top: GROUND + 190, informal: 36 }, // south_1's front and on west, at the asphalt's edge (W5: loosely clipped, its ragged top drawn `informal` over the walkable one)
   { x0: -5400, x1: 5800, z0: 4100, z1: 4300, y0: GROUND, top: 242 }, // the south back hedges
   { x0: 7950, x1: 8150, z0: -1600, z1: -1000, y0: GROUND, top: 202 }, // between north_5 and the east house
   { x0: -1300, x1: -500, z0: -960, z1: -880, y0: TERRACE, top: 230 }, // north_3's low box hedge
+  { x0: -2300, x1: LINK.x0, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 150, y0: GROUND, top: GROUND + 160, informal: 22 }, // (W5: its east end by the link a little lower: photo 15)
 ];
+export const BEECH_ROW = { x0: -6080, x1: HEDGES[0].x0 - 20, z: SOUTH_EDGE + 70, step: 52, h: 270, soil: [SOUTH_EDGE + 1, SOUTH_EDGE + 145] };
 // Thuja columns (8-sided, tapering; solid): a tall group on north_1's terrace along its drive's
 // west side, behind the wall.
 export const THUJA = { r: 70, h: 900 };
@@ -654,7 +774,7 @@ export const CARS = [
   // squeeze gaps by the bumpers' slopes. The gap between them on the red door and its strip.)
   { ...parked('cross', 1975, GARAGE.wall - CAR_GAP - CAR_KINDS.cross.l, Math.PI, 0x627d93), id: 'dad_ev', style: 'ev', classicTint: 0x5884a6 },
   parked('suv', 2445, GARAGE.wall - CAR_GAP, 0, 0x3a4c66),
-  parked('cross', (LINK.x0 + LINK.x1) / 2, LINK.z0 - 30, 0, 0xeeeee8),
+  { ...parked('cross', -1140, 1190, 0, 0xeeeee8), style: 'two' }, // (W5: south_1's white crossover nose in on the link's drive, its tail ~220 in from the asphalt's edge, its roof, pillars and rails gloss black: photos 41, 42)
   parked('hatch', garageAt('north_1').x, garageAt('north_1').front + 40, Math.PI, 0xb6babe),
   parked('cross', garageAt('north_2').x, garageAt('north_2').front + 40, Math.PI, 0x45484c),
   parked('hatch', garageAt('north_3').x, garageAt('north_3').front + 40, Math.PI, 0x1f2124),
@@ -722,12 +842,12 @@ export const FLOWER_BEDS = [
   { x0: -1200, x1: -500, z0: -1400, z1: -1100, n: 14, seed: 41 },
   { x0: 1700, x1: 2400, z0: -960, z1: -840, n: 7, seed: 43 },
 ];
-// TV antennas on the chain houses' ridges (x along each ridge; drawn only); the dad's clamped to
-// his east gable's apex (`gable`: its mast on a bracket under the apex, out from the wall).
+// TV antennas on the chain houses' ridges (x along each ridge; drawn only); the dad's and
+// south_2's clamped to their east gables' apexes (`gable`: its mast on a bracket under the apex,
+// out from the wall); none on south_1 (W5: photos 14, 15).
 export const ANTENNAS = [
-  { house: 'south_1', x: -2900 },
   { house: 'south_dad', x: DAD.x1 + 14, gable: true },
-  { house: 'south_2', x: 3800 },
+  { house: 'south_2', x: SOUTH_2.cx + SOUTH_2.w / 2 + 14, gable: true },
 ];
 // Two houses down the side road in the fog (drawn only, out of bounds): `t` along it, `s`
 // across it (s > 0 its west side; the first's near end clear of the west leg drawn on past the

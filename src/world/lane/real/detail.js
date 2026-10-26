@@ -35,7 +35,7 @@
 // shadow casters (LOW_MERGE, LOW_CASTERS), no probes of its own (one paint, one glass).
 
 import { Geo } from './geo.js';
-import { mailbox, kerbs, roadDecals, bedStones, turnSign } from './garden.js';
+import { mailbox, kerbs, roadDecals, bedStones, turnSign, neighbourGround } from './garden.js';
 import { plants, firGeometry, firInstances, FIR_SHAPES } from './foliage.js';
 import { chainHouse, TILE_SEG } from './house.js';
 import { cars, carOf, carClusters } from './cars.js';
@@ -112,6 +112,7 @@ export function buildLaneDetail(L, tier = 'high') {
   roadDecals(kit, L);
   bedStones(kit, L);
   turnSign(kit, L);
+  neighbourGround(kit, L);
   lampposts(kit, L);
   flagpoles(kit, L);
   fences(kit, L);

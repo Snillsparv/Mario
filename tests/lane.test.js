@@ -441,6 +441,53 @@ test('the dad\'s house (W3): its shallow main body, eaves at 412, its 32-degree 
   assert.deepEqual(low.slice(0, 10), [], `${low.length} spots`);
 });
 
+test("the neighbours (W5): south_1 and south_2 under their steeper roofs (28 and 29 degrees, eaves at 412, a lip along the front eave) by raycast on both slopes, each with two wings behind it running into its back slope; the link's door wall set back, its two bins solid; south_2's raised bed a step up from its gravel; the hedge at the asphalt's edge, lower by the link; the young beech row not solid", () => {
+  for (const [h, deg, wings, yard] of [[lane.SOUTH_1, 28, lane.SOUTH_1_WINGS, -2900], [lane.SOUTH_2, 29, lane.SOUTH_2_WINGS, 4150]]) {
+    const tan = (h.ridge - h.eave) / (h.d / 2);
+    assert.ok(Math.abs(Math.atan(tan) * (180 / Math.PI) - deg) < 0.2, `${h.id}'s pitch`);
+    assert.equal(h.eave, 412);
+    const [x0, x1, z0, z1] = [h.cx - h.w / 2, h.cx + h.w / 2, h.cz - h.d / 2, h.cz + h.d / 2];
+    // (The back slope where no wing stands over it: the courtyard's x.)
+    for (const [x, z] of [[x0 + 150, z0 + 120], [h.cx, z0 + 300], [x1 - 150, h.cz - 60], [yard, h.cz + 200], [yard, z1 - 100]]) {
+      const hit = col.raycast(world(x, 2000, z), { x: 0, y: -1, z: 0 }, 3000);
+      const want = h.ridge - Math.abs(z - h.cz) * tan;
+      assert.ok(hit && Math.abs(hit.point.y - O.y - want) < 4, `${h.id}'s roof at (${x}, ${z}): ${hit && hit.point.y - O.y} for ${want.toFixed(0)}`);
+    }
+    assert.ok(Math.abs(col.findFloor(h.cx + O.x, 600, z0 + 2 + O.z).y - O.y - h.eave) < 2, `${h.id}'s front eave`);
+    assert.equal(wings.length, 2);
+    for (const w of wings) {
+      assert.ok(w.join && w.yaw === Math.PI / 2 && Math.abs(w.cz - w.w / 2 - z1) < 1e-6, `${w.id} against ${h.id}'s back wall`);
+      const wt = (w.ridge - w.eave) / (w.d / 2);
+      for (const dx of [-0.3, 0, 0.3]) {
+        const x = w.cx + dx * w.d;
+        const z = w.cz + w.w / 2 - 80;
+        const hit = col.raycast(world(x, 2000, z), { x: 0, y: -1, z: 0 }, 3000);
+        const want = w.ridge - Math.abs(x - w.cx) * wt;
+        assert.ok(hit && Math.abs(hit.point.y - O.y - want) < 4, `${w.id}'s roof at (${x}, ${z}): ${hit && hit.point.y - O.y} for ${want.toFixed(0)}`);
+      }
+    }
+  }
+  // The link: its door wall at z0 (a ray along the drive at 150 up meets it), its fascia drawn
+  // only; its bins solid to their lids.
+  const L = lane.LINK;
+  const door = col.raycast(world((L.doors[0] + L.doors[1]) / 2, 150, L.z0 - 400), { x: 0, y: 0, z: 1 }, 600, { floors: false, ceilings: false });
+  assert.ok(door && Math.abs(door.point.z - O.z - L.z0) < 1, `the link's door wall at ${door && door.point.z - O.z}`);
+  for (const b of lane.LINK_BINS) assert.ok(Math.abs(col.findFloor(b.x + O.x, 600, b.z + O.z).y - O.y - GROUND - lane.LINK_BIN.h) < 1, `a link bin's lid at (${b.x}, ${b.z})`);
+  // south_2's raised bed (a step up from the gravel round it) and the gravel at GROUND.
+  const R = lane.S2_GARDEN.raised;
+  assert.ok(R.top - GROUND < 30, 'the raised bed a step under the knee');
+  assert.equal(col.findFloor((R.x0 + R.x1) / 2 + O.x, 600, (R.z0 + R.z1) / 2 + O.z).y - O.y, R.top);
+  assert.equal(col.findFloor(3600 + O.x, 600, 1600 + O.z).y - O.y, GROUND, 'the gravel');
+  // The hedge right at the asphalt's edge, its walkable top 190 over the lawn, 160 by the link.
+  const [H, E] = [lane.HEDGES[0], lane.HEDGES.find((e) => e.informal && e.x1 === L.x0)];
+  assert.ok(H.z0 === lane.SOUTH_EDGE && E.z0 === lane.SOUTH_EDGE && H.x1 === E.x0, 'one hedge along the edge');
+  assert.equal(col.findFloor(-3000 + O.x, 600, (H.z0 + H.z1) / 2 + O.z).y - O.y, GROUND + 190);
+  assert.equal(col.findFloor(-1800 + O.x, 600, (E.z0 + E.z1) / 2 + O.z).y - O.y, GROUND + 160);
+  // The beech row: nothing to stand on (the garden behind it open).
+  const B = lane.BEECH_ROW;
+  for (let x = B.x0 + 20; x < B.x1; x += B.step) assert.equal(col.findFloor(x + O.x, 600, B.z + O.z).y - O.y, GROUND, `the beech row at ${x}`);
+});
+
 test('55 coins (D1: five in the store room behind the garage doors), each over a floor within 120; the star waits over the dad\'s ridge from the start, idle', () => {
   assert.equal(lane.COINS.length, 55);
   for (const c of lane.COINS) {
