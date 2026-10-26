@@ -154,7 +154,9 @@ test('the weathering in every textured material: its ground map and the strength
       assert.match(m.customProgramCacheKey(), new RegExp(`^real-haze-wear${attr ? '-wa' : ''}${tier.name === 'low' ? '-wl' : ''}(-far)?$`), name);
     }
     for (const kind of ['boards', 'brick', 'render', 'blocks', 'roof', 'tiles', 'granite', 'cobbles', 'asphalt', 'grass']) assert.ok(WEAR_KIND[kind].some((v) => v !== 0), `${kind} weathers`);
-    assert.ok(WEAR_KIND.roof[2] >= 0.8 && WEAR_KIND.tiles[2] >= 0.8, 'moss on the roofs');
+    // (Round 2: a trace only on the roofs: at 0.9 the low WSW sun's "away" faces, the chain roofs'
+    // street slopes, grew green blotches; photos 14, 19, 22 and 40 show clean dark tiles.)
+    assert.ok(WEAR_KIND.roof[2] > 0 && WEAR_KIND.roof[2] <= 0.2 && WEAR_KIND.tiles[2] > 0 && WEAR_KIND.tiles[2] <= 0.2, 'a trace of moss on the roofs, never blotches');
     assert.ok(WEAR_KIND.brick[0] >= 0.8, 'the plinths\' dirt band');
     // The plain ones (paint, the lacquer, glass, leaves) keep theirs.
     for (const name of ['paint', 'carPaint', 'glass', 'foliage', 'metal']) assert.ok(!compiled(D[name]).fragmentShader.includes('uniform vec4 uWear;'), `${name}: no weathering`);

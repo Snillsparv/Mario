@@ -232,48 +232,61 @@ export const VILLAS = [...PAIRS.map((p) => p[0]), ...PAIRS.map((p) => p[1])];
 // it at the pavement), on round its south-west corner to the covered entrance (`west`: u0..u1
 // along its west face, out from it).
 // (`realRoof`: the roof's tint in the realistic look, whose tile set is lighter.)
+// (Round 2: its front 1400, not the aerial's ~1900: photo 07 read against its doors' real widths
+// gives 1360-1550; its west face and porch where they were, its east wall 500 in, so the
+// motorhome stands beside it as photos 04-07 have it, clear of its eave and west of north_1's
+// terrace. Its roof steeper over the narrower house, 44 degrees: its apex where photo 07 has it.)
 const WEST_YAW = Math.atan2(0.574, 0.819);
 const NW_U = [Math.cos(WEST_YAW), -Math.sin(WEST_YAW)];
 const NW_W = [Math.sin(WEST_YAW), Math.cos(WEST_YAW)];
+const NW_IN = 250; // (half the 500 its east wall came in: its middle moved west along its front)
 export const NORTH_WEST = {
   id: 'north_west',
   kit: 'villa',
-  cx: -9448,
-  cz: -1245,
-  w: 1900,
+  cx: Math.round(-9448 - NW_U[0] * NW_IN),
+  cz: Math.round(-1245 - NW_U[1] * NW_IN),
+  w: 1400,
   d: 1860,
   yaw: WEST_YAW,
   y0: GROUND,
   render: 412,
   eave: 412,
-  pitch: 39,
+  pitch: 44,
   kick: 24,
   overhang: 100,
-  roofWindows: [-400, 400],
+  roofWindows: [-140, 140],
   roof: 0x9a9ea2,
   realRoof: 0x46484a,
   trim: 0xf2f0ea,
 };
-// Its wing, behind it (north), lower.
-const NW_WING = { w: 1580, d: 1500 };
+// Its wing, behind it (north), lower (its east wall flush with the house's: 500 narrower with it).
+const NW_WING = { w: 1080, d: 1500 };
 const nwWing = (du, dw) => [NORTH_WEST.cx + NW_U[0] * du + NW_W[0] * dw, NORTH_WEST.cz + NW_U[1] * du + NW_W[1] * dw];
 export const NORTH_WEST_WING = { id: 'north_west_wing', kit: 'villa', cx: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[0], cz: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[1], w: NW_WING.w, d: NW_WING.d, yaw: WEST_YAW, y0: GROUND, render: 412, eave: 412, pitch: 15, overhang: 90, roof: NORTH_WEST.roof, realRoof: NORTH_WEST.realRoof, trim: NORTH_WEST.trim };
-export const NORTH_WEST_DRIVE = { u0: -1410, u1: 1500, w0: NORTH_WEST.d / 2, w1: 1900, cut: [1075, 1250], west: [-1410, -950, -930, NORTH_WEST.d / 2] };
+// (`side`: round 2, the strip beside its east wall the motorhome stands on, u0..u1 from the wall
+// to short of north_1's terrace, back to w0.)
+export const NORTH_WEST_DRIVE = { u0: -1160, u1: 1750, w0: NORTH_WEST.d / 2, w1: 1900, cut: [1325, 1250], west: [-1160, -700, -930, NORTH_WEST.d / 2], side: [700, 1220, 500] };
 // Its outlines (convex, in the house's frame): the drive, its east end's back corner cut off
-// along the first terrace's wall, and the strip along the west face (`west`: u0, u1, w0, w1).
+// along the first terrace's wall, the strip along the west face (`west`: u0, u1, w0, w1) and the
+// one beside the east wall (`side`).
 export const northWestDrive = () => {
   const D = NORTH_WEST_DRIVE;
   const [a, b, c, d] = D.west;
-  return [[[D.u0, D.w0], [D.cut[0], D.w0], [D.u1, D.cut[1]], [D.u1, D.w1], [D.u0, D.w1]], [[a, c], [b, c], [b, d], [a, d]]];
+  const [e, f, g] = D.side;
+  return [[[D.u0, D.w0], [D.cut[0], D.w0], [D.u1, D.cut[1]], [D.u1, D.w1], [D.u0, D.w1]], [[a, c], [b, c], [b, d], [a, d]], [[e, g], [f, g], [f, D.w0], [e, D.w0]]];
 };
-// The motorhome on the drive (W8, photos 01-07: an integrated motorhome, white, its cab toward
-// the bend, +u), lengthwise on the drive's east part: l along its frame's u (along the road), w
-// across it, h tall (3.3 m with its roof's hatches); its cab's windscreen sloping from the roof's
-// edge `cab` back from its front down to its nose at `nose` over the ground. Solid to its roof
-// and down that slope (a coin spot, reached by a double jump and a grab of its edge; a single
-// running jump at full speed falls short of the edge: its top ~80 over that jump's peak, which
-// grabs an edge up to ~475).
-export const MOTORHOME = { cx: -7841, cz: -527, yaw: WEST_YAW, l: 1090, w: 390, h: 490, cab: 150, nose: 165, tint: 0xeceae4 };
+// The motorhome on the drive (W8, photos 01-07: an integrated motorhome, white): round 2, as
+// photos 04-07 have it, broadside to the street beside the house's east wall (25 clear of its
+// eave's rim: a walkable gap of 125 between them, open at both ends), its cab
+// toward the road (its frame's +u: the house's +w), its rear 380 behind the house's front, its
+// nose 150 short of the pavement's back; the door on its right (+w: toward the house). l along
+// its frame's u, w across it, h tall (3.3 m with its roof's hatches); its cab's windscreen sloping
+// from the roof's edge `cab` back from its front down to its nose at `nose` over the ground.
+// Solid to its roof and down that slope (a coin spot, reached by a double jump and a grab of its
+// edge; a single running jump at full speed falls short of the edge: its top ~80 over that jump's
+// peak, which grabs an edge up to ~475; the windscreen too steep to stand on).
+const MH = { u: 1020, w: 1091 }; // (its middle in the house's frame; its east side 15 short of north_1's terrace's corner)
+export const MOTORHOME = { cx: Math.round(NORTH_WEST.cx + NW_U[0] * MH.u + NW_W[0] * MH.w), cz: Math.round(NORTH_WEST.cz + NW_U[1] * MH.u + NW_W[1] * MH.w), yaw: WEST_YAW - Math.PI / 2, l: 1090, w: 390, h: 490, cab: 150, nose: 165, tint: 0xeceae4 };
 
 // Falu red as the photos have it (W1): a cool, deep red (hue ~2 deg), the blue close to the green,
 // so it stays red in the house's shade instead of turning brown.

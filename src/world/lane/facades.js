@@ -100,9 +100,12 @@ export function dormerOf(h) {
   return { ...D, u0: D.u - D.w / 2, u1: D.u + D.w / 2, wf, foot, wb, yb: h.eave + (h.d / 2 - wb) * t };
 }
 export const WEST_FRONTS = {
+  // (Round 2: along its 1400 front as photo 07 reads it against the doors' real widths: the
+  // split-face panel at its south-west corner, the wide door, a narrow pier, the single door, and
+  // split-face again from there to its south-east corner.)
   north_west: {
-    rough: [[-950, -680]],
-    doors: [{ u: -480, w: 400, h: 338, tint: 0xeceae4 }, { u: -200, w: 136, h: 344, tint: 0xeceae4 }],
+    rough: [[-700, -462], [138, 700]],
+    doors: [{ u: -250, w: 400, h: 338, tint: 0xeceae4 }, { u: 55, w: 136, h: 344, tint: 0xeceae4 }],
     ribs: 15,
     porch: { u0: -930, u1: -180, posts: [-860, -250], out: 84, door: { u: -560, w: 150, h: 236 } },
     trim: 0xf2f0ea,

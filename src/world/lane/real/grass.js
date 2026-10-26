@@ -225,7 +225,8 @@ export function lawnMask(L) {
   rect({ x0: L.FOOTWAY.x0, x1: L.FOOTWAY.x1, z0: L.FORECOURT.z1, z1: L.FOOTPATH.z }, 10);
   const NW = L.NORTH_WEST;
   const D = L.NORTH_WEST_DRIVE;
-  footprint({ ...NW, cx: NW.cx, cz: NW.cz }, 2 * Math.max(-D.u0, D.u1) + 60, 2 * D.w1 + 60, 0);
+  const mid = (D.u0 + D.u1) / 2; // (round 2: the drive's own span along the front, the house's middle moved west)
+  footprint({ ...NW, cx: NW.cx + Math.cos(NW.yaw) * mid, cz: NW.cz - Math.sin(NW.yaw) * mid }, D.u1 - D.u0 + 60, 2 * D.w1 + 60, 0);
   for (const h of L.HEDGES) rect(h, 12);
   for (const b of L.FLOWER_BEDS) rect(b, 10);
   for (const p of L.PLOTS_N) rect({ x0: p.drive[0], x1: p.drive[1], z0: L.villaOf(p).front, z1: L.wallZAt(p.drive[0]) }, 10);

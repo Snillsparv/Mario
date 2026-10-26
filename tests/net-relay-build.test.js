@@ -194,6 +194,45 @@ test('the chunk plan moved no module into a parent chunk', () => {
   assert.deepEqual(planLog, []);
 });
 
+// The realistic look's worker hands its builders an explicit pick of the layout's exports (round
+// 2: the module's namespace kept the play-only tables in its chunk, ~2 kB). A builder reading an
+// export the pick lacks would only fail in the browser, so: every layout export the modules the
+// worker imports read off the layout object they are handed (`L.X`, `layout.X`, `lane.X`, a
+// destructuring of it, or a table destructured in a parameter) is in the pick, and the play-only
+// tables are not.
+test('the realistic worker\'s layout pick holds every layout export its modules read', async () => {
+  const src = (f) => fs.readFile(path.join(root, f), 'utf8');
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/.*$/gm, '$1').replace(/'(?:[^'\\\n]|\\.)*'/g, "''");
+  const worker = 'src/render/real/laneRealWorker.js';
+  const pick = new Set((await src(worker)).match(/const LAYOUT = \{([^}]*)\}/)[1].split(',').map((n) => n.trim()).filter(Boolean));
+  const exported = new Set([...(await src('src/world/lane/layout.js')).matchAll(/^export (?:const|function|let) ([A-Za-z_][A-Za-z0-9_]*)/gm)].map((m) => m[1]));
+  const seen = new Set();
+  const queue = [worker];
+  const read = new Map();
+  const note = (name, f) => exported.has(name) && read.set(name, [...(read.get(name) ?? []), f]);
+  while (queue.length) {
+    const f = queue.pop();
+    if (seen.has(f)) continue;
+    seen.add(f);
+    const s = await src(f);
+    for (const m of s.matchAll(/^\s*(?:import|export)\s[^;]*?from\s+'(\.[^']+)'/gms)) queue.push(path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1])));
+    if (f === worker || f.endsWith('/lane/layout.js')) continue;
+    const code = strip(s);
+    for (const m of code.matchAll(/\b(?:L|layout|lane)\.([A-Za-z_][A-Za-z0-9_]*)/g)) note(m[1], f);
+    for (const m of code.matchAll(/\{([^{}]*)\}\s*=\s*(?:L|layout|lane)\b(?!\.)/g)) for (const part of m[1].split(',')) note(part.trim().split(/[\s:=]/)[0], f);
+    for (const m of code.matchAll(/(?:function\s*[\w$]*\s*\(|\(\s*)\{([^{}]*)\}\s*[,)]/g)) for (const part of m[1].split(',')) {
+      const name = part.trim().split(/[\s:=]/)[0];
+      if (/^[A-Z][A-Z0-9_]+$/.test(name)) note(name, f);
+    }
+  }
+  assert.ok(seen.size > 20, `${seen.size} modules walked`);
+  const missing = [...read.entries()].filter(([name]) => !pick.has(name)).map(([name, fs]) => `${name} (${[...new Set(fs)].join(', ')})`);
+  assert.deepEqual(missing, [], 'layout exports the worker\'s modules read but its pick lacks');
+  for (const name of pick) assert.ok(exported.has(name), `${name}: a layout export`);
+  assert.ok(read.size >= pick.size - 3, `the pick (${pick.size}) about what is read (${read.size})`);
+  for (const name of ['COINS', 'STAR', 'ONE_UP', 'ENTRIES', 'DOORS', 'RESPAWN', 'POLES', 'BUTTERFLY_SPOTS', 'BIRD_CIRCLES', 'BIRD_TINT', 'PROBE_Y']) assert.ok(!pick.has(name), `${name}: play-only, not in the worker`);
+});
+
 test('vite preview on 127.0.0.1: relay marker, pad page, relay, no unreachable QR target', async (t) => {
   const { server, port } = await startPreview('127.0.0.1');
   t.after(() => server.close());

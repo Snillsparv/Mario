@@ -22,10 +22,36 @@ import { TEXGEN_VERSION, generate } from './texgen/sets.js';
 import { jobKey, detailKey } from './texgen/jobs.js';
 import { openTexCache } from './texCache.js';
 import { buildLaneDetail, detailBuffers } from '../../world/lane/real/detail.js';
-import * as laneLayout from '../../world/lane/layout.js';
+// The layout's exports the realistic builders read, picked by name (round 2): handing them the
+// module's namespace kept every table of layout.js in this chunk, the play-only ones too (the
+// coins, the star, the 1-up, the doors and entries, the respawn, the poles, the butterflies and
+// birds, the probe's height: ~2 kB the worker never reads). tests/net-relay-build.test.js checks
+// that every layout export the worker's modules read is in this pick.
+import {
+  ANTENNAS, APRON, BED, BEECH_ROW, BIN, BINS, BOUNDS, CABINET, CARPORT, CARS, CAR_KINDS, CLIMBER,
+  COLUMN_TREES, DAD, DAD_DRIVE, DAD_PATH, EDGE_FOREST, ENCLOSURE, FENCES, FLAGPOLE, FLAGPOLES,
+  FLOWER_BEDS, FOOTPATH, FOOTWAY, FORECOURT, FOREST, GARAGE, GARDEN_TREES, GROUND, HEDGES, HOOP,
+  HOUSES, IVY, KERB, LAMP, LAMPS, LANDING, LANE_BOSS, LANE_REAL, LINK, LINK_BIN, LINK_BINS,
+  LINK_DRIVE, MAILBOX, MAILBOXES, MOTORHOME, NORTH, NORTH_WEST, NORTH_WEST_DRIVE, PATH_SIGN, PATIO,
+  PAVEMENT, PLOTS_N, POT, RED_TREE, RHODODENDRON, ROAD, ROAD_DRAWN, ROSE, S2_GARDEN, SIDE_ROAD,
+  SIGNS, SOUTH_EDGE, STEPS, THUJA, THUJAS, TRAMPOLINE, TRAMPOLINES, TREES, TURN_SIGN, VILLA_BINS,
+  WIND, bedOutline, footpathAt, groundHeight, inApron, inBed, inBounds, inPolygon, northWestDrive,
+  offRoadHeight, roadDistance, villaOf, wallZAt
+} from '../../world/lane/layout.js';
 
+const LAYOUT = {
+  ANTENNAS, APRON, BED, BEECH_ROW, BIN, BINS, BOUNDS, CABINET, CARPORT, CARS, CAR_KINDS, CLIMBER,
+  COLUMN_TREES, DAD, DAD_DRIVE, DAD_PATH, EDGE_FOREST, ENCLOSURE, FENCES, FLAGPOLE, FLAGPOLES,
+  FLOWER_BEDS, FOOTPATH, FOOTWAY, FORECOURT, FOREST, GARAGE, GARDEN_TREES, GROUND, HEDGES, HOOP,
+  HOUSES, IVY, KERB, LAMP, LAMPS, LANDING, LANE_BOSS, LANE_REAL, LINK, LINK_BIN, LINK_BINS,
+  LINK_DRIVE, MAILBOX, MAILBOXES, MOTORHOME, NORTH, NORTH_WEST, NORTH_WEST_DRIVE, PATH_SIGN, PATIO,
+  PAVEMENT, PLOTS_N, POT, RED_TREE, RHODODENDRON, ROAD, ROAD_DRAWN, ROSE, S2_GARDEN, SIDE_ROAD,
+  SIGNS, SOUTH_EDGE, STEPS, THUJA, THUJAS, TRAMPOLINE, TRAMPOLINES, TREES, TURN_SIGN, VILLA_BINS,
+  WIND, bedOutline, footpathAt, groundHeight, inApron, inBed, inBounds, inPolygon, northWestDrive,
+  offRoadHeight, roadDistance, villaOf, wallZAt
+};
 const cache = openTexCache();
-const DETAILS = { lane: (tier) => buildLaneDetail(laneLayout, tier) };
+const DETAILS = { lane: (tier) => buildLaneDetail(LAYOUT, tier) };
 
 const transfers = (set) => [set.albedo.buffer, set.normal.buffer, set.orm.buffer, ...(set.mips ?? []).map((m) => m.buffer)];
 

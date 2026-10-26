@@ -1722,8 +1722,9 @@ trees' leaves).
   plot's height (`facades.js` `WALL_DRAWN`, `wallDrawnAt(x)`: north_1 85 over the pavement,
   north_2 100, north_3 80, north_4 stepping up from 48 by north_3's steps to 92, north_5 75;
   the step's end drawn where it changes), a planted strip `STRIP` (110) deep behind the coping
-  rising to the terrace's lawn (its plants: lumpy blobs in the classic look, leafy mounds, dark
-  yews, tall grass plumes, heucheras and roses in the realistic one, `bedSpots`), the notches'
+  rising to the terrace's lawn (its plants: lumpy blobs in the classic look, a rose a low green
+  mound with a few deep pink flowers, round 2; leafy mounds, dark yews, tall grass plumes,
+  heucheras and roses in the realistic one, `bedSpots`), the notches'
   sides rising with it from the wall's drawn top; the colliders stay at `TERRACE` (simplified,
   MATCH-PLAN N-walls: the wall tops' coins, the hops up and the steps' ramps unchanged; Jonas on
   a wall top stands among the bed's plants).
@@ -1753,16 +1754,19 @@ trees' leaves).
   (`<id>_west`, set back), `villaPair` from the aerial's readings; `sides` the faces with a
   window, not where the other block stands; north_3 a balcony on its east block's west gable,
   solid, its middle 500 along it (W6: dark-stained wood); north_4 the basketball hoop, see "Props"); **north_west**
-  (W8, photos 02-07: white ribbed blockwork to its eaves at 412, a steep mid-grey pyramid roof,
-  `pitch` 39 up to 1165, its eaves kicked out flatter (`kick` 24°: `hipOf`'s `knee`, the hips'
+  (W8, photos 02-07: white ribbed blockwork to its eaves at 412, a steep mid-grey hipped roof,
+  `pitch` 44 up to ~1088 (round 2: its front 1400 wide, not the aerial's ~1900: photo 07 read
+  against its doors' real widths; its west face and porch where they were, its east wall 500
+  in, its wing as much narrower, so the motorhome stands beside it), its eaves kicked out flatter (`kick` 24°: `hipOf`'s `knee`, the hips'
   caps bending there) over a deep white boxed soffit, white fascias, gutters and round
   downpipes (`trim`), the realistic look's roof its own darker tint (`realRoof`), two roof
   windows; no window on its front: `lane/facades.js WEST_FRONTS` a split-face panel at its
-  south-west corner, one wide white ribbed sectional door and a single one, the ribs a shaded
+  south-west corner, one wide white ribbed sectional door and a single one, split-face again on
+  to its south-east corner, the ribs a shaded
   line under each course on every face (both looks, the classic build's), a covered entrance on
   its west face (two white posts at the soffit's edge, solid prisms, a glazed door); a low wing
-  behind it; its drive and a strip round its south-west corner to the porch grey slate crazy
-  paving: the classic look's flagstones tinted grey, the realistic look's stones a seeded
+  behind it; its drive, a strip round its south-west corner to the porch and one beside its east
+  wall (`NORTH_WEST_DRIVE.side`, round 2: the motorhome's) grey slate crazy paving: the classic look's flagstones tinted grey, the realistic look's stones a seeded
   Voronoi of the outlines in the worker (`real/street.js crazyPaving`, in the `patch` material:
   no draw call; the drive's own face under them the joints, `REAL_GROUND.flags`; W8 fix: each
   stone cut at the pavement's back, `PAVEMENT.to` off the road's nearest segment, as the
@@ -1770,13 +1774,18 @@ trees' leaves).
   estate nose in at its wide door (in the north drives' probe cluster: `cluster`, plainer:
   `far`), a clipped hedge along the pavement west of its drive (`LINE_HEDGES`), its white
   picnic table and shed, a black box mailbox on a post (`GARDEN_THINGS`)) with the **motorhome**
-  on its drive (an integrated motorhome, its cab toward the bend: a full-width windscreen sloping
-  straight from the roof's peaked edge `cab` 150 back down to its nose at `nose` 165, framed
-  windows, the door on the road side, swoosh decals, roof hatches, a ladder; 490 tall (W8 fix:
-  at W8's 400 a single running jump from full speed grabbed its edge; it grabs an edge up to
-  ~475); solid to its roof and down the windscreen's slope (one convex prism, the realistic
-  look's the same): a running double jump grabs its edge, a single one falls short from a
-  standstill or at full speed, lane-routes). **Chain houses** (south_west and its wing, south_1
+  on its drive (an integrated motorhome; round 2, as photos 04-07 have it: broadside to the
+  street beside the house's east wall, 25 clear of its eave's rim (a walkable gap of 125 to the
+  wall, open at both ends), its cab toward the road, its nose 150 short of the pavement's back,
+  `yaw` WEST_YAW − π/2: a full-width windscreen sloping straight from the roof's peaked edge
+  `cab` 150 back down to its nose at `nose` 165, framed windows, the door on its right (toward
+  the house), swoosh decals, roof hatches, a ladder; 490 tall (W8 fix: at W8's 400 a single
+  running jump from full speed grabbed its edge; it grabs an edge up to ~475); solid to its roof
+  and down the windscreen's slope (one convex prism, the realistic look's the same; the slope's
+  normal ~0.42 up, no step): a running double jump from the drive beside it lands on its roof, a
+  single one from the ground round it falls short from a standstill or at full speed, at its
+  nose from the road too; north_1's terrace corner, 150 up and 25 off its side, is the one
+  place a single jump reaches it, lane-routes). **Chain houses** (south_west and its wing, south_1
   and its two wings, `DAD` and his, south_2 and its two, east_house): a white brick plinth (135),
   boards to the eaves at 412 (or white brick gable ends with boards in their triangles),
   black-framed windows with a pale glint and white curtains, a black front door with a little
@@ -1965,7 +1974,8 @@ trees' leaves).
   the corner house (W7, photos 05, 08, 11: three white stems leaning out of one foot under a
   broad golden crown, 1950 tall, moved to (−5500, 1700) where photos 05 and 08's rays meet), a
   Virginia creeper by the double garage (W8, photos 29, 30: a deep red curtain hanging from a
-  pergola beam on a post, from the garage's south pillar into the east house's garden; drawn
+  pergola beam on a post, from the garage's south pillar into the east house's garden; the
+  classic look's twelve thin strands of uneven length with gaps, round 2; drawn
   only but its post (solid, W8 fix: it stands in the walkable garden), its red leaves fallen
   under it; the red shrub's collider gone: in the realistic look the
   shrub's draws from the plants' shared stream go into nothing, so every plant after keeps its
@@ -3175,7 +3185,11 @@ look's worker (`laneRealWorker.js`) as typed arrays: `world/lane/real/detail.js`
 (`buildLaneDetail(layout, tier)`, a `{ area, tier }` job: `textureStore.detail`) builds pure
 geometry with `geo.js` (`Geo`: non-indexed positions, normals, world-unit uvs, linear colours
 and a `sway` weight; quads, boxes, cylinders and arcs of them, ellipsoids, lofts) from
-`layout.js` alone, one buffer set per material, and `look.js` wraps them in meshes (the group
+`layout.js` alone (round 2: the worker hands it an explicit pick of layout.js's exports, its
+`LAYOUT`, not the module's namespace, so the play-only tables (the coins, the star, the 1-up,
+the doors and entries, the respawn, the poles, the butterflies and birds, the probe's height)
+stay out of its chunk; tests/net-relay-build.test.js checks every export the worker's modules
+read is in the pick), one buffer set per material, and `look.js` wraps them in meshes (the group
 `lane-detail` in the realistic part) in its detail catalogue (`DETAIL`). Nothing of it runs on
 the main thread but the upload. Since B1 the detail also carries its **movers** (`detail.movers.
 bins`: one wheelie bin in its own frame, origin at its foot's middle, `street.js bins`, in one
@@ -3740,8 +3754,10 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   kind, `setWear`): a dirt band at the foot of every wall and kerb (its height over the ground
   from the map 40 out along the wall), rain streaks (faint anywhere, strong drips hanging from
   the sills and eaves), a greener tint in the drips on the faces turned from the sun, moss in
-  patches on faces turned up and away from the sun (the roofs' north slopes, the kerbs' tops,
-  the copings, the paver path, the trunks' north sides), the asphalt's wheel track down the
+  patches on faces turned up and away from the sun (the kerbs' tops, the copings, the paver
+  path, the trunks' north sides; on the roofs a trace only, 0.12: round 2, at 0.9 the low WSW
+  sun put the chain roofs' street slopes "away" and grew green blotches the photos' clean dark
+  tiles never show), the asphalt's wheel track down the
   street's middle and round the turning area (darker, smoother: the map's B), the lawns'
   yellowed and damp patches (A: along the hedges). All from world positions and the
   interpolated normal (the normal-mapped one made the streaks speckle); uniforms prefixed `uWear`

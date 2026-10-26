@@ -13,8 +13,8 @@
 // the routes round the street, each collecting exactly its coins: down the path from the front
 // door, onto the mailbox's roof (a single jump), along the street both ways, onto north_2's hedge
 // (W6: a jump from the pavement), north_3's wall top (a hop) and up north_3's steps, up the side yard between north_2 and north_3, onto
-// the motorhome's roof (a double jump; a single one falls short from anywhere in front of it, at
-// full speed too),
+// the motorhome's roof (a double jump; a single one from the ground round it falls short, at
+// full speed and at its nose too; round 2: from north_1's terrace beside it a single one),
 // round the junction's lamppost and up it, round the turning area, up north_4's drive, along the
 // footpath, and along south_1's hedge top (a single jump up onto it). And the details: the
 // trampoline (with the jump button held every bounce rises to 852, a 'boing' each time, and takes
@@ -295,49 +295,87 @@ test('west: along the street (five coins), a jump onto north_2\'s hedge on its b
   assert.equal(y.coins(), 3, 'the side yard');
 });
 
-test('the motorhome: a running double jump from the drive in front of it grabs its roof\'s edge (its three coins); a single jump falls short from anywhere in front of it, from a standstill or at full speed', () => {
+// (Round 2: the motorhome broadside to the street beside north_west's east wall, as photos 04-07
+// have it, its cab toward the road: the rule re-derived in its own frame, u along it (+u its nose,
+// toward the road), w across it (+w its right side, toward the house). Single jumps from the
+// ground round it: from the drive on either side, at its nose from the pavement and the road
+// (its windscreen too steep to stand on: no step up it), from the yard at its back; standing and
+// at the run-ups each side allows (the estate at the wide door and north_1's terrace bound
+// them; the road gives full speed). From north_1's terrace beside its back half (150 up, 25 off
+// its side) a single jump does reach its roof: the photos' place puts it against that terrace's
+// corner, and the garden above it is the one step up to it.)
+test('the motorhome: a running double jump from the drive beside it lands on its roof (its three coins); a single jump from the ground round it falls short from a standstill or at full speed, at its nose too; from north_1\'s terrace beside it a single jump reaches it', () => {
   const M = lane.MOTORHOME;
-  const yaw = M.yaw + Math.PI; // facing it from the road side (its frame's -w)
-  const at = (w, u = 0) => [M.cx + Math.cos(M.yaw) * u + Math.sin(M.yaw) * w, M.cz - Math.sin(M.yaw) * u + Math.cos(M.yaw) * w];
-  const start = (w) => {
-    const [x, z] = at(w);
+  const at = (u, w) => [M.cx + Math.cos(M.yaw) * u + Math.sin(M.yaw) * w, M.cz - Math.sin(M.yaw) * u + Math.cos(M.yaw) * w];
+  const local = (q) => {
+    const [dx, dz] = [q.x - M.cx, q.z - M.cz];
+    return [dx * Math.cos(M.yaw) - dz * Math.sin(M.yaw), dx * Math.sin(M.yaw) + dz * Math.cos(M.yaw)];
+  };
+  const heading = (du, dw) => Math.atan2(Math.cos(M.yaw) * du + Math.sin(M.yaw) * dw, -Math.sin(M.yaw) * du + Math.cos(M.yaw) * dw);
+  const roof = GROUND + M.h;
+  const start = (u, w, yaw) => {
+    const [x, z] = at(u, w);
     return hero(x, lane.groundHeight(x, z), z, yaw);
   };
-  for (const w of [450, 500, 600, 700, 800]) {
-    const h = start(w);
+  // Standing single jumps at it, from each side.
+  for (const [u, w, du, dw] of [[100, 300], [100, 500], [300, 400], [300, 650], [100, -300], [300, -450], [450, -600], [700, 0], [800, -100], [-700, 0], [-800, 120]].map(([u, w]) => [u, w, ...(Math.abs(u) > M.l / 2 ? [-Math.sign(u), 0] : [0, -Math.sign(w)])])) {
+    const yaw = heading(du, dw);
+    const h = start(u, w, yaw);
     h.rest(1);
     jump(h, yaw, { after: 30 });
-    assert.ok(h.at().y < GROUND + M.h - 100, `single from ${w}: not on its roof ${JSON.stringify(h.at())}`);
+    assert.ok(h.at().y < roof - 100, `single from (${u}, ${w}): not on its roof ${JSON.stringify(h.at())}`);
   }
-  // At full speed (W8 fix: the run-up from the road, the jump at any point of it, along its
-  // length): never a grab of its roof's edge, never on its roof.
-  const wOf = (q) => (q.x - M.cx) * Math.sin(M.yaw) + (q.z - M.cz) * Math.cos(M.yaw);
-  for (const u of [-300, 0, 300]) {
-    for (let from = 400; from <= 880; from += 40) {
-      const [x, z] = at(1500, u);
-      const r = hero(x, lane.groundHeight(x, z), z, yaw);
-      r.rest(1);
-      for (let t = 0; t < 300 && wOf(r.at()) > from; t++) r.tick({ stickY: 1 }, yaw);
-      const speed = r.p.forwardVel;
+  // Running ones: along lines at it from each side's ground, the take-off at every point of the
+  // run-up; never a grab of its roof's edge, never on its roof.
+  const runs = [
+    ...[80, 260, 440].map((u) => ({ u, w: 1040, axis: 1, dir: -1, offs: [900, 300], least: 500 })), // (the drive between it and the estate)
+    ...[300, 450].map((u) => ({ u, w: -720, axis: 1, dir: 1, offs: [-690, -300] })), // (the drive's east part, short of north_1's terrace)
+    ...[-120, 0, 120].map((w) => ({ u: 1700, w, axis: 0, dir: -1, offs: [1400, 620], least: 1100 })), // (from the road at its nose)
+    ...[-120, 120].map((w) => ({ u: -1150, w, axis: 0, dir: 1, offs: [-1050, -650] })), // (the yard behind it)
+  ];
+  let fastest = 0;
+  for (const r of runs) {
+    const yaw = r.axis ? heading(0, r.dir) : heading(r.dir, 0);
+    for (let from = r.offs[0]; r.dir * (r.offs[1] - from) >= 0; from += r.dir * 50) {
+      const h = start(r.u, r.w, yaw);
+      h.rest(1);
+      const along = () => local(h.at())[r.axis];
+      for (let t = 0; t < 300 && r.dir * (from - along()) > 0; t++) {
+        h.tick({ stickY: 1 }, yaw);
+        assert.ok(h.at().y < GROUND + 1, `the run-up on the ground: ${JSON.stringify(h.at())}`);
+      }
+      const speed = h.p.forwardVel;
+      if (r.least !== undefined && r.dir * (from - r.least) >= 0) assert.ok(speed > 28, `full speed by ${from}: ${speed}`);
+      fastest = Math.max(fastest, speed);
       let grab = null;
       for (let t = 0; t < 120; t++) {
-        r.tick({ stickY: 1, A: true }, yaw);
-        if (!grab && /ledge/.test(r.p.action)) grab = r.at();
+        h.tick({ stickY: 1, A: true }, yaw);
+        if (!grab && /ledge/.test(h.p.action)) grab = h.at();
       }
-      assert.ok(speed > 28, `the run-up at full speed: ${speed}`);
-      assert.ok(!grab && r.at().y < GROUND + M.h - 100, `running single from ${from} at ${u}: no grab, not on its roof ${JSON.stringify(grab ?? r.at())}`);
+      assert.ok(!grab && h.at().y < roof - 100, `running single from ${from} on (${r.u}, ${r.w}): no grab, not on its roof ${JSON.stringify(grab ?? h.at())}`);
     }
   }
-  const h = start(600);
+  assert.ok(fastest > 31, `full speed reached: ${fastest}`);
+  // From north_1's terrace beside its back half: a standing single jump grabs its roof's edge.
+  const t = start(-250, -320, heading(0, 1));
+  assert.equal(t.at().y, TERRACE, 'on the terrace');
+  t.rest(1);
+  let hung = false;
+  t.tick({ stickY: 1 }, heading(0, 1));
+  for (let k = 0; k < 90 && !hung; k++) {
+    t.tick({ stickY: 1, A: true }, heading(0, 1));
+    hung = /ledge/.test(t.p.action);
+  }
+  assert.ok(hung, `from the terrace: a grab of its roof's edge ${JSON.stringify(t.at())}`);
+  // A running double jump from the drive beside it lands on its roof; along its roof, its coins.
+  const yaw = heading(0, -1);
+  const h = start(100, 1060, yaw);
   h.rest(1);
   jump(h, yaw, { after: 0 });
   jump(h, yaw, { after: 0 });
   h.rest(30);
-  assert.ok(Math.abs(h.at().y - GROUND - M.h) < 1, `double: on its roof ${JSON.stringify(h.at())}`);
-  // Along its roof: its coins.
-  const [x0, z0] = at(0, -360);
-  const [x1, z1] = at(0, 360);
-  h.walk([[x0, z0], [x1, z1]], 0.4);
+  assert.ok(Math.abs(h.at().y - roof) < 1, `double: on its roof ${JSON.stringify(h.at())}`);
+  h.walk([at(-360, 0), at(360, 0)], 0.4);
   assert.equal(h.coins(), 3, "the motorhome's roof");
 });
 

@@ -170,14 +170,16 @@ export function sunShadowChunk(shader) {
 }
 
 // The weathering's strengths per kind: (the dirt band, the streaks, the moss, the ground's own:
-// the asphalt's wheel track over 0, the lawn's colour under 0).
+// the asphalt's wheel track over 0, the lawn's colour under 0). (Round 2: the roofs' moss a trace
+// only, in the noise's darkest patches: the low WSW sun puts the chain roofs' street slopes "away"
+// from it, where 0.9 grew green blotches the photos' clean dark tiles never show.)
 export const WEAR_KIND = Object.freeze({
   boards: [0.55, 0.55, 0.05, 0],
   brick: [0.9, 0.45, 0.3, 0],
   render: [0.8, 0.7, 0.25, 0],
   blocks: [0.9, 0.5, 0.7, 0],
-  roof: [0, 0.35, 0.9, 0],
-  tiles: [0, 0.35, 0.9, 0],
+  roof: [0, 0.35, 0.12, 0],
+  tiles: [0, 0.35, 0.12, 0],
   granite: [0.5, 0, 0.6, 0],
   cobbles: [0.4, 0, 0.8, 0],
   path: [0.3, 0, 0.6, 0],

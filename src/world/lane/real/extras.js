@@ -118,8 +118,9 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   const [hl, hw] = [M.l / 2, M.w / 2];
   const top = G + M.h;
   // The body: rounded sections along it (u); W8: an integrated motorhome (photos 01-07), its cab
-  // toward the bend (+u): the roof's edge a little peaked over a full-width windscreen sloping
-  // straight down to a short white nose (the slope the collider's: lane/props.js motorhome).
+  // toward the road (+u; round 2: broadside to the street): the roof's edge a little peaked over
+  // a full-width windscreen sloping straight down to a short white nose (the slope the
+  // collider's: lane/props.js motorhome).
   const section = (u, y0, y1, half, r) => {
     const pts = [];
     for (const [cw, cy, a0] of [[half - r, y0 + r, -Math.PI / 2], [half - r, y1 - r, 0], [-half + r, y1 - r, Math.PI / 2], [-half + r, y0 + r, Math.PI]]) {
@@ -144,7 +145,7 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   paint.color(M.tint);
   paint.loft(stations.map(([u, a, b, h, r]) => section(u, a, b, h, r)).map((s) => s.slice().reverse()), { capStart: true, capEnd: true });
   // The windscreen on the cab's slope, the framed windows along both sides, the swoosh, the
-  // stripe, the door on the road side (+w) behind the cab.
+  // stripe, the door on its right (+w, toward the house) behind the cab.
   const slope = (k, w) => {
     const [u0, y0] = [hl - M.cab + 12, cab(0.08)];
     const [u1, y1] = [hl - 16, cab(0.9)];
@@ -179,12 +180,12 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
       else paint.quad(q[1], q[0], q[3], q[2]);
     }
   }
-  const road = side(1);
+  const right = side(1); // (its door side)
   paint.color(0xe2e4e0);
-  fbox(paint, road, hl - 340, hl - 260, G + 52, G + 360, 0, 1.2, 'k');
-  carGlass.quad(road.at(hl - 328, G + 260, 1.8), road.at(hl - 272, G + 260, 1.8), road.at(hl - 272, G + 330, 1.8), road.at(hl - 328, G + 330, 1.8));
+  fbox(paint, right, hl - 340, hl - 260, G + 52, G + 360, 0, 1.2, 'k');
+  carGlass.quad(right.at(hl - 328, G + 260, 1.8), right.at(hl - 272, G + 260, 1.8), right.at(hl - 272, G + 330, 1.8), right.at(hl - 328, G + 330, 1.8));
   metal.color(0xb0aca4);
-  fbox(metal, road, hl - 282, hl - 270, G + 170, G + 178, 1, 3, 'k');
+  fbox(metal, right, hl - 282, hl - 270, G + 170, G + 178, 1, 3, 'k');
   // The nose: headlights, a dark grille band, the bumper.
   const front = wallFrame(F.at(hl + 0.5, 0, 0), F.dir(1, 0, 0));
   paint.color(0x8a8e90);

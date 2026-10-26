@@ -569,8 +569,9 @@ function gardenTree(kit, layout, t) {
     return;
   }
   if (t.kind === 'creeper') {
-    // (W8: the pergola's dark beam on its post, the creeper's red leaves hanging from it in
-    // ragged sheets with gaps; drawn only, the post solid.)
+    // (W8: the pergola's dark beam on its post, the creeper's red leaves hanging from it; round
+    // 2, photo 29 and jD: as strands of leaves of uneven length with gaps between them, not
+    // sheets; drawn only, the post solid.)
     const [a, b] = [t.from, t.to];
     wood.color(0x3a2a20);
     wood.solid(beamPolys([a[0], t.top, a[1]], [b[0], t.top, b[1]], [0, 1, 0], 14, 14));
@@ -579,12 +580,17 @@ function gardenTree(kit, layout, t) {
     solids.solid(post, 'wood'); // (W8 fix: its post solid, in the walkable garden)
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     const n = [(b[1] - a[1]) / len, (a[0] - b[0]) / len];
-    for (let k = 0; k < 6; k++) {
-      const [t0, t1] = [k / 6 + 0.02, (k + 1) / 6 - 0.02];
-      const drop = 120 + ((k * 53) % 110);
-      const P = (q, y, s) => [a[0] + (b[0] - a[0]) * q + n[0] * s, y, a[1] + (b[1] - a[1]) * q + n[1] * s];
-      render.color(TINT.shrub[k % 2]);
-      for (const s of [-1, 1]) render.poly([P(t0, t.top, s * 9), P(t1, t.top, s * 9), P(t1, t.top - drop, s * 12), P(t0, t.top - drop * 0.8, s * 12)], { facing: [n[0] * s, 0, n[1] * s] });
+    // (Twelve strands, each a thin three-sided column of leaf clumps (its profile beaded),
+    // 120..330 long: a ragged bottom.)
+    for (let k = 0; k < 12; k++) {
+      const q = (k + 0.5 + 0.3 * Math.sin(k * 2.7)) / 12;
+      const s = 7 * Math.sin(k * 1.9);
+      const [x, z] = [a[0] + (b[0] - a[0]) * q + n[0] * s, a[1] + (b[1] - a[1]) * q + n[1] * s];
+      const L = 120 + ((k * 71) % 211);
+      const r = 17 + ((k * 7) % 9);
+      const y = (f) => t.top - 4 - L * f;
+      render.color(TINT.shrub[k % 2], 0.8 + 0.12 * (k % 3));
+      render.lathe(x, z, [[0, y(1)], [r * 0.75, y(0.9)], [r * 0.45, y(0.72)], [r, y(0.55)], [r * 0.5, y(0.36)], [r * 0.9, y(0.18)], [0, y(0)]], 3, { flat: true, a0: k });
     }
     return;
   }
@@ -765,16 +771,25 @@ function dadsGarden(kit, layout) {
 }
 
 // The planted strips behind the terraces' low bed walls (W6: facades.js bedSpots, a plant every
-// ~140): lumpy blobs, leafy greens and dark yews in leaves, the purple heucheras and pink roses in
-// render's plain white (the leaf texture would brown them), tan grass plumes tall and narrow.
-const BED_TINTS = [0x8aa040, 0x4a5a2a, 0xb09868, 0x7a3a4a, 0xd88aa0];
+// ~140): lumpy blobs, leafy greens and dark yews in leaves, the purple heucheras in render's plain
+// white (the leaf texture would brown them), tan grass plumes tall and narrow; a rose a low green
+// mound with three small deep pink flowers on it (round 2: not a pink ball).
+const BED_TINTS = [0x8aa040, 0x4a5a2a, 0xb09868, 0x7a3a4a, 0x5e7a34];
 function beds(kit, layout) {
   const { leaves, render } = kit.drawn('plants');
   for (const p of bedSpots(layout, terraceSpans(layout), 140)) {
-    const b = p.kind >= 3 ? render : leaves;
+    const b = p.kind === 3 ? render : leaves;
     b.color(BED_TINTS[p.kind]);
-    const [r, ry] = [[36, 26], [40, 52], [22, 62], [28, 16], [30, 26]][p.kind];
-    blob(b, p.x, p.z, p.y + ry * p.s * 0.7, r * p.s, ry * p.s, p.x * 0.01, 5);
+    const [r, ry] = [[36, 26], [40, 52], [22, 62], [28, 16], [34, 18]][p.kind];
+    const cy = p.y + ry * p.s * 0.7;
+    blob(b, p.x, p.z, cy, r * p.s, ry * p.s, p.x * 0.01, 5);
+    if (p.kind !== 4) continue;
+    render.color(0xc23a62);
+    for (let i = 0; i < 3; i++) {
+      const a = p.x * 0.013 + i * 2.1;
+      const [d, y] = [r * p.s * (i ? 0.8 : 0.1), cy + ry * p.s * (i ? 0.6 : 0.98)]; // (on the mound's skin)
+      render.lathe(p.x + Math.sin(a) * d, p.z + Math.cos(a) * d, [[0, y - 7], [7, y], [0, y + 7]], 4, { flat: true, a0: a });
+    }
   }
 }
 
@@ -1333,10 +1348,11 @@ function trampoline(kit, layout) {
 
 // ---------------------------------------------------------------- the motorhome, fences
 
-// The motorhome on the north-west villa's drive (W8, photos 01-07: an integrated one, its cab
-// toward the bend, +u): a white box on a dark skirt, its front a full-width windscreen sloping
-// from the roof's peaked edge down to a short white nose with the headlights, framed windows
-// along both sides, the door on the road side (+w) behind the cab, dark red swoosh decals, two
+// The motorhome on the north-west villa's drive (W8, photos 01-07: an integrated one; round 2:
+// broadside to the street, its cab toward the road, +u): a white box on a dark skirt, its front a
+// full-width windscreen sloping from the roof's peaked edge down to a short white nose with the
+// headlights, framed windows along both sides, the door on its right (+w, toward the house)
+// behind the cab, dark red swoosh decals, two
 // roof hatches, a small window and the ladder in its back; four dark wheels; solid from the
 // ground to its roof (a coin spot) and down its windscreen's slope to the nose (one convex
 // prism, the realistic look's too).
@@ -1368,7 +1384,7 @@ function motorhome(kit, layout) {
   const cab = wallFrame(f.at(hl, GROUND, 0), f.dir(1, 0, 0));
   quad(cab, -hw + 6, 40, hw - 6, 70, 1.5, 0x8a8e90);
   for (const s of [-1, 1]) quad(cab, s > 0 ? hw - 72 : -hw + 22, 92, s > 0 ? hw - 22 : -hw + 72, 118, 1.5, 0xe8eaec);
-  // Along both sides: the framed windows, the swoosh, the skirt's stripe; the door on the road side.
+  // Along both sides: the framed windows, the swoosh, the skirt's stripe; the door on its right.
   for (const s of [-1, 1]) {
     const fr = wallFrame(f.at(0, GROUND, s * hw), f.dir(0, 0, s));
     const U = (u) => s * u; // (the frame's u runs the other way on the far side)
@@ -1382,9 +1398,9 @@ function motorhome(kit, layout) {
     paint.color(0x8a2a2a);
     for (const [u0, u1, dv] of [[-hl + 260, -hl + 600, 30], [-hl + 540, -hl + 760, -20]]) paint.panel(fr, [[U(u0), 176], [U(u1), 176 + dv], [U(u1), 186 + dv], [U(u0), 186]], 1.3);
   }
-  const road = wallFrame(f.at(0, GROUND, hw), f.dir(0, 0, 1));
-  quad(road, hl - 340, 52, hl - 260, 360, 1.1, 0xe4e6e2);
-  quad(road, hl - 328, 260, hl - 272, 330, 1.8, 0x23282e);
+  const right = wallFrame(f.at(0, GROUND, hw), f.dir(0, 0, 1));
+  quad(right, hl - 340, 52, hl - 260, 360, 1.1, 0xe4e6e2);
+  quad(right, hl - 328, 260, hl - 272, 330, 1.8, 0x23282e);
   // The roof's hatches; the back's window and the ladder.
   paint.color(0xe0e0dc);
   for (const u of [-hl + 220, -hl + 560]) paint.solid(box(u - 40, u + 40, top, top + 14, -45, 45));

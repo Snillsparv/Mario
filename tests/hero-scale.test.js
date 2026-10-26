@@ -67,10 +67,12 @@ function vertices(model) {
 // running double jump at the motorhome's roof.
 function hang(name) {
   if (name === 'motorhome') {
+    // (Round 2: broadside to the street, its cab toward the road: from the yard behind it, at its
+    // back's edge (975 behind its middle, along it).)
     const M = lane.MOTORHOME;
-    const yaw = M.yaw + Math.PI;
-    const x = M.cx + Math.sin(M.yaw) * 600;
-    const z = M.cz + Math.cos(M.yaw) * 600;
+    const yaw = M.yaw + Math.PI / 2; // (along its +u)
+    const x = M.cx - Math.cos(M.yaw) * 975;
+    const z = M.cz + Math.sin(M.yaw) * 975;
     const h = hero(x, lane.groundHeight(x, z), z, yaw);
     h.tick({}, yaw);
     for (let jump = 0; jump < 2 && h.p.action !== 'ledge_hang'; jump++) {
