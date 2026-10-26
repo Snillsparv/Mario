@@ -356,12 +356,16 @@ export function soilSet(n = 256, { seed = 91 } = {}) {
 }
 
 // Granite (the kerbs): a light grey speckled with black mica and white and pale pink feldspar.
-export function graniteSet(n = 256, { seed = 51 } = {}) {
+// `fine` (W7, the lane's kerbs: photos 16, 23, 24): finer grains (x1.5), a fifth as much black
+// mica, the greys lighter (every other set's bytes unchanged).
+export function graniteSet(n = 256, { seed = 51, fine = 0 } = {}) {
   const h = field(n);
   const col = rgbField(n);
   const rough = field(n);
   const c = { f1: 0, f2: 0, id: 0 };
-  const grains = makeCells(48, seed);
+  const grains = makeCells(fine ? 72 : 48, seed);
+  const mica = fine ? 0.04 : 0.18;
+  const lift = fine ? 1.12 : 1;
   const mottleNoise = makeFbm(8, 3, seed + 4);
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
@@ -371,11 +375,11 @@ export function graniteSet(n = 256, { seed = 51 } = {}) {
       const k = c.id;
       const m = mottleNoise(s, t);
       const v = 0.85 + 0.3 * m;
-      const [r, g, b] = k < 0.18 ? [0.04, 0.04, 0.045] : k < 0.35 ? [0.5, 0.42, 0.4] : k < 0.6 ? [0.42, 0.42, 0.42] : [0.28, 0.28, 0.29];
+      const [r, g, b] = k < mica ? [0.04, 0.04, 0.045] : k < 0.35 ? [0.5, 0.42, 0.4] : k < 0.6 ? [0.42, 0.42, 0.42] : fine ? [0.34, 0.34, 0.35] : [0.28, 0.28, 0.29];
       const i = y * n + x;
-      setRgb(col, i, r * v, g * v, b * v);
+      setRgb(col, i, r * v * lift, g * v * lift, b * v * lift);
       h[i] = (c.f2 - c.f1) * 0.6 + m * 0.6;
-      rough[i] = k < 0.18 ? 0.35 : 0.62;
+      rough[i] = k < mica ? 0.35 : 0.62;
     }
   }
   return pack(n, { col, h, strength: 0.8, ao: null, rough });

@@ -9,7 +9,8 @@
 //                       // apron (plan.js roadPieces, kerbRuns), none at the drives (an asphalt
 //                       // bevel up into them), along the south edge (the asphalt's bevelled
 //                       // edge up to the lawns) or along the dad's corner bed
-//   roadDecals(kit, L)  // mended patches, a sealed crack, manhole and drain covers
+//   (W7: the road's wear, the covers and the south edge's look are the classic build's faces,
+//   lane/build.js surface, drawn in both looks)
 //   bedStones(kit, L)   // the corner bed's field stones (where the classic ones lie)
 //   turnSign(kit, L)    // the turning area's sign at the bed's corner (its face: sign.js)
 //   neighbourGround(kit, L)   // W5: south_2's gravel, the beech row's and the beds' soil, the
@@ -156,7 +157,9 @@ function carvedBird({ bird, gloss, metal }, o) {
 
 // ---------------------------------------------------------------- the ground's things
 
-const KERB = { stone: 150, joint: 0.8, chamfer: 3, lift: 1.5 };
+// (W7, photos 12, 16, 17, 23, 24: light fine-grained stones ~0.75 m long with dark joints, a
+// slim top (24 of the kerb's 30: the pavement behind it) with a rounded arris to the road.)
+const KERB = { stone: 110, joint: 1.1, chamfer: 6, lift: 1.5, top: 24 };
 
 // The kerbs (lane/build.js kerbs: the same runs, plan.js kerbRuns): along each run of the
 // road's edge, granite stones about KERB.stone long with a joint between them, a chamfered
@@ -164,34 +167,42 @@ const KERB = { stone: 150, joint: 0.8, chamfer: 3, lift: 1.5 };
 // along the south edge none (the road's asphalt bevelled up to the lawn: lane/build.js kerbs
 // draws it in both looks); along the dad's corner bed none (its soil's dark face, the field
 // stones over it: bedStones).
-export function kerbs({ granite, core, patch }, L) {
+export function kerbs({ granite, core, patch, tier }, L) {
   const G = L.GROUND;
   const stone = (p0, q0, n, drop) => {
     // (Its faces wound for a run with the road on its left; the apron's pieces run the other way:
     // turned round.)
     const [p, q] = (q0[0] - p0[0]) * n[1] - (q0[1] - p0[1]) * n[0] < 0 ? [q0, p0] : [p0, q0];
     const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-    const count = Math.max(1, Math.round(len / KERB.stone));
+    const round = !drop && tier !== 'low';
+    const count = Math.max(1, Math.round(len / (tier === 'low' ? 150 : KERB.stone)));
     const top = G + (drop ? 0.3 : KERB.lift);
     const ch = drop ? 1 : KERB.chamfer;
-    const w = L.KERB.w;
+    const tw = drop ? L.KERB.w : KERB.top;
     for (let k = 0; k < count; k++) {
       const t0 = k / count;
       const t1 = (k + 1) / count;
       const at = (t, d, y) => [p[0] + (q[0] - p[0]) * t + n[0] * d, y, p[1] + (q[1] - p[1]) * t + n[1] * d];
       const j = KERB.joint / len;
-      // (No joint at the run's own ends: there it meets the next run's stone or a bevel's end
-      // flush, no slit through to the void under the lawn.)
-      const [a, b] = [k ? t0 + j : t0, k + 1 < count ? t1 - j : t1];
-      granite.color(drop ? 0x8a8884 : 0xd8d6d2);
-      // The road face, the chamfer, the top; the joints' ends in shade.
+      const tone = 0.95 + 0.08 * Math.abs(Math.sin(k * 2.71 + p[0] * 0.01));
+      granite.color(drop ? 0x8a8884 : 0xdcdad6, tone);
+      // The road face, the rounded arris (two facets on high and mid), the top; the stones meet
+      // flush (W7: no gap to see the pale pavement through), each joint a dark line drawn a hair
+      // out over the face and the top; the run's own ends closed.
+      const [a, b] = [t0, t1];
+      const r = ch * 0.29;
       granite.quad(at(b, 0, -2), at(a, 0, -2), at(a, 0, top - ch), at(b, 0, top - ch));
-      granite.quad(at(b, 0, top - ch), at(a, 0, top - ch), at(a, ch, top), at(b, ch, top));
-      granite.quad(at(b, ch, top), at(a, ch, top), at(a, w, top), at(b, w, top));
-      granite.quad(at(a, 0, -2), at(a, w, -2), at(a, w, top), at(a, 0, top), { shade: 0.6 });
-      granite.quad(at(b, w, -2), at(b, 0, -2), at(b, 0, top), at(b, w, top), { shade: 0.6 });
-      // The joint's back, dark (a joint, not the sky through it).
-      if (k + 1 < count) granite.quad(at(t1 + j, w, -2), at(t1 - j, w, -2), at(t1 - j, w, top), at(t1 + j, w, top), { shade: 0.3 });
+      if (round) granite.quad(at(b, 0, top - ch), at(a, 0, top - ch), at(a, r, top - r), at(b, r, top - r));
+      granite.quad(at(b, round ? r : 0, round ? top - r : top - ch), at(a, round ? r : 0, round ? top - r : top - ch), at(a, ch, top), at(b, ch, top));
+      granite.quad(at(b, ch, top), at(a, ch, top), at(a, tw, top), at(b, tw, top));
+      if (k + 1 < count) {
+        granite.rgb(0.035, 0.034, 0.032);
+        const o = (t, d, y) => at(t, d, y).map((v, i) => v - (i === 0 ? n[0] : i === 2 ? n[1] : 0) * (d < 0.5 ? 0.5 : 0));
+        granite.quad(o(t1 + j, 0, -1), o(t1 - j, 0, -1), o(t1 - j, 0, top - ch), o(t1 + j, 0, top - ch));
+        granite.quad(at(t1 + j, ch, top + 0.5), at(t1 - j, ch, top + 0.5), at(t1 - j, tw, top + 0.5), at(t1 + j, tw, top + 0.5));
+      }
+      if (k === 0) granite.quad(at(a, 0, -2), at(a, tw, -2), at(a, tw, top), at(a, 0, top), { shade: 0.6 });
+      if (k + 1 === count) granite.quad(at(b, tw, -2), at(b, 0, -2), at(b, 0, top), at(b, tw, top), { shade: 0.6 });
     }
   };
   const runs = kerbRuns(L, roadPieces(L));
@@ -225,46 +236,6 @@ export function kerbs({ granite, core, patch }, L) {
     core.rgb(0.035, 0.024, 0.017);
     const top = G + L.BED.raise;
     core.quad([q[0], -2, q[1]], [p[0], -2, p[1]], [p[0], top, p[1]], [q[0], top, q[1]]);
-  }
-}
-
-// The road's wear: mended patches (darker, smoother asphalt: the patch material, a little
-// glossy), a sealed crack wandering across
-// the straight, manhole covers and drain grates by the kerbs.
-export function roadDecals({ patch, paint, metal }, L) {
-  patch.color(0x818185); // (darker than the worn road round them: sealed)
-  for (const [x, z, w, d] of [[-700, 220, 420, 160], [900, -120, 260, 300], [-1900, 60, 600, 120], [-3300, -260, 380, 220], [1900, 150, 300, 180], [3300, -500, 340, 260]]) {
-    patch.quad([x + w, 0.6, z], [x, 0.6, z], [x, 0.6, z + d], [x + w, 0.6, z + d], { uvs: [[x + w, z], [x, z], [x, z + d], [x + w, z + d]] });
-  }
-  const R = makeRng(77);
-  paint.rgb(0.012, 0.012, 0.013);
-  let [x, z] = [-1500, -330];
-  for (let i = 0; i < 26; i++) {
-    const nx = x + 60 + R() * 30;
-    const nz = z + (R() - 0.45) * 40;
-    paint.quad([nx, 0.7, nz - 1.6], [x, 0.7, z - 1.6], [x, 0.7, z + 1.6], [nx, 0.7, nz + 1.6]);
-    [x, z] = [nx, nz];
-  }
-  // Covers: rings of cast iron, raised and sunk by turns.
-  metal.color(0x2a2826);
-  for (const [mx, mz, r] of [[450, 160, 45], [-2500, -120, 45], [3500, -250, 45]]) {
-    for (let ring = 0; ring < 4; ring++) {
-      const [ra, rb] = [(r * ring) / 4, (r * (ring + 1)) / 4];
-      const y = ring % 2 ? 1.1 : 0.8;
-      for (let i = 0; i < 20; i++) {
-        const [a, b] = [(i / 20) * Math.PI * 2, ((i + 1) / 20) * Math.PI * 2];
-        metal.quad([mx + Math.cos(b) * ra, y, mz + Math.sin(b) * ra], [mx + Math.cos(a) * ra, y, mz + Math.sin(a) * ra], [mx + Math.cos(a) * rb, y, mz + Math.sin(a) * rb], [mx + Math.cos(b) * rb, y, mz + Math.sin(b) * rb], { shade: ring % 2 ? 1.2 : 0.8 });
-      }
-    }
-  }
-  // Drain grates along the kerbs: bars across a dark slot.
-  // (Off the drives' mouths; z from the straight's centreline.)
-  for (const [gx, s] of [[-1900, 1], [1150, -1], [-3000, 1], [2200, -1]]) {
-    const gz = L.ROAD.line.at(-1)[1] + s * (L.ROAD.half - 30);
-    paint.rgb(0.01, 0.01, 0.01);
-    paint.quad([gx + 40, 0.7, gz - 20], [gx - 40, 0.7, gz - 20], [gx - 40, 0.7, gz + 20], [gx + 40, 0.7, gz + 20]);
-    metal.color(0x2a2826);
-    for (let k = -35; k <= 35; k += 10) metal.box(gx + k - 2.5, gx + k + 2.5, 0.5, 1.4, gz - 20, gz + 20, { skip: 'b' });
   }
 }
 

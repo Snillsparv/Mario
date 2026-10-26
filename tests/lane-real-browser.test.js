@@ -353,9 +353,15 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     assert.ok(lum(gta.wallAo[0]) < lum(gta.wallNoAo[0]), `the wall's foot darker with it: ${gta.wallAo} vs ${gta.wallNoAo}`);
     // (The bloom is mixed in: its share is the glow's, so far from the sun the sky darkens by
     // it, round the sun it brightens relative to that.)
+    // (W7: the forest's taller crowns in the south-west, the ring outside the boundary, now stand
+    // in front of the ring's point left of the sun at its height: the halo is read on the ring's
+    // points on the sky, those no darker without the bloom than the sky's top corners, three at
+    // least.)
     const ratio = gta.glow.map((p, i) => p / gta.noGlow[i]);
     const far = Math.max(ratio.at(-1), ratio.at(-2));
-    for (const r of ratio.slice(0, -2)) assert.ok(r > far + 0.01, `a halo round the sun: ${ratio.map((x) => x.toFixed(3))}`);
+    const onSky = gta.noGlow.slice(0, -2).map((p) => p >= Math.min(...gta.noGlow.slice(-2)));
+    assert.ok(onSky.filter(Boolean).length >= 3, `the ring round the sun on the sky: ${gta.noGlow}`);
+    for (const [i, r] of ratio.slice(0, -2).entries()) if (onSky[i]) assert.ok(r > far + 0.01, `a halo round the sun: ${ratio.map((x) => x.toFixed(3))}`);
     assert.deepEqual(gta.far, [true, 1], 'the far shadow map taken once');
     // G2: the probes (the cars' clusters' at 128, the windows' at 256), all taken; the
     // weathering's ground map; the contact shadows, the clutter, the sign.
@@ -412,16 +418,17 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
     // (On the turning area, the trampoline's sign beyond him, the camera behind him.)
     // (W2: 522 in front of the trampoline's sign, looking at it along 2.47, from the layout.)
     const TS = lane.SIGNS.find((x) => x.id === 'trampoline');
-    const sign = await page.evaluate(([x, z]) => {
+    // (W7: the sign up on north_5's terrace beside its steps: Jonas on the terrace, its y.)
+    const sign = await page.evaluate(([x, z, y]) => {
       const g = window.__game;
-      g.player.teleport(x - 60000, 40, z, 2.47);
+      g.player.teleport(x - 60000, y + 18, z, 2.47);
       g.player.setAction('idle');
       g.camera.reset(g.player);
       g.step(15);
       return g.areas.current.def.layout.SIGNS.find((x) => x.id === 'trampoline');
-    }, [TS.x - 522 * Math.sin(2.47), TS.z - 522 * Math.cos(2.47)]);
+    }, [TS.x - 522 * Math.sin(2.47), TS.z - 522 * Math.cos(2.47), TS.y]);
     // Two points on the board's face either side of the writing (local x ±76, 125 up).
-    const boardAt = [-76, 76].map((u) => [sign.x + Math.cos(sign.yaw) * u + Math.sin(sign.yaw) * 21, 22 + 125, sign.z - Math.sin(sign.yaw) * u + Math.cos(sign.yaw) * 21]);
+    const boardAt = [-76, 76].map((u) => [sign.x + Math.cos(sign.yaw) * u + Math.sin(sign.yaw) * 21, sign.y + 125, sign.z - Math.sin(sign.yaw) * u + Math.cos(sign.yaw) * 21]);
     const shirtAt = () =>
       page.evaluate(() => {
         const p = window.__game.player.pos;

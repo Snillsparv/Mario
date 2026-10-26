@@ -200,7 +200,8 @@ export function clutter(kit, L, ground) {
       const d = Math.sqrt(R()) * r;
       const [px, pz] = [x + Math.sin(a) * d, z + Math.cos(a) * d];
       const h = lawnAt(px, pz);
-      if (h !== null) leaf(px, h + 0.8, pz, 4 + R() * 3.5, red);
+      // (W7: none under the trampoline's mat, beside north_5's cherry.)
+      if (h !== null && !L.TRAMPOLINES.some((T) => Math.hypot(px - T.x, pz - T.z) < T.r + 30)) leaf(px, h + 0.8, pz, 4 + R() * 3.5, red);
     }
   };
   for (const t of L.TREES) under(t.x, t.z, t.r * 0.9, 520);

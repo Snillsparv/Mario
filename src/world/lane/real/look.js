@@ -147,11 +147,12 @@ function detailGroup(detail, M) {
     mesh.instanceColor = new THREE.InstancedBufferAttribute(set.colors, 3);
     add(mesh, name, casts);
   };
-  for (const { material, buffers } of parts) {
+  parts.forEach(({ material, buffers }, i) => {
     const geo = geometryOf(buffers);
     instanced(geo, material, { matrices, colors }, material, cast);
-    instanced(geo, material, far, `${material}-far`, false);
-  }
+    // (The far tree line's own plainer spruce, W7: detail.js.)
+    instanced(far.parts ? geometryOf(far.parts[i].buffers) : geo, material, far, `${material}-far`, false);
+  });
   // (On high the edge's firs, nearest the street, a spruce of their own.)
   for (const { material, buffers } of edge?.parts ?? []) instanced(geometryOf(buffers), material, edge, `${material}-edge`, cast);
   return group;

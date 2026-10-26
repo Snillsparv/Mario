@@ -37,7 +37,7 @@ export const DETAIL = {
   render: { set: 'render', cover: 300 },
   roof: { set: 'tiles', cover: 270, color: 5 },
   tiles: { set: 'tiles', opts: { relief: 0 }, cover: 270, color: 5 },
-  granite: { set: 'granite', cover: 120, color: 1.35 },
+  granite: { set: 'granite', opts: { fine: 1 }, cover: 120, color: 1.2 }, // (W7: the kerbs' light fine-grained granite)
   patch: { set: 'asphalt', cover: 420, color: 3.1, normalScale: 0.5, roughness: 0.88 }, // (sealed: darker, a little smoother)
   bark: { set: 'bark', cover: 120, normalScale: 1.6 },
   birch: { set: 'bark', opts: { birch: 1 }, cover: 140 },

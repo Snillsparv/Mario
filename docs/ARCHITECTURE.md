@@ -1663,6 +1663,24 @@ trees' leaves).
   down to under the road; `lane-corner` probes a point just inside every end from all round in
   both looks. Out past the junction the road runs on into the fog with the side road (drawn
   only).
+* **The street's wear and its edges** (W7, photos 09, 12, 13, 17-24, 41-44; `lane/surface.js`,
+  data and outlines in the lane's chunk, never main (the worker only its `SHOULDER`, for the
+  grass); `build.js surface` draws them in both looks, every flat piece in the asphalt's mesh,
+  casting no shadow in the realistic look, the edging's boards in `boards`): the kerb's
+  granite stones ~0.75 m (110) long, light and fine-grained, a tone each (realistic: flush, a
+  rounded arris, a slim 24 top of the kerb's 30, each joint a dark line drawn a hair out over the
+  face and the top); `streetWear(L)`: blobby mended patches along the road from the junction and
+  on the apron (~20 % of all the asphalt, a fifth darker), meandering sealant bands a shade
+  darker still, five near-black crack seals (one 15 m along the bend's south third, photo 09),
+  the seam a quarter in from the south edge west of the dad's (two layings, photos 43, 44), nine
+  cast-iron covers (two side by side at the bend, two at the side road's mouth, two in the
+  straight's south half by the dad's, two on the apron's line and one in its middle; none west of
+  the link, photo 12), the dark round patch with its small square grate (photos 33, 34) and five
+  gullies at the north kerb only; along the south edge a ragged strip of leaf litter down the
+  bevel and onto the road (not where a hedge stands at the edge: its own), the dad's lawn's
+  weathered grey timber edging (`EDGING`, 18 wide, joints every 300), small concrete edging
+  stones and a moss strip along its west edge by the link's drive, and the bend's light gravel
+  shoulder (`SHOULDER`); all drawn only (the GROUND step under them stays the walk-up collider).
 * **The terraces** (`NORTH`, `PLOTS_N`, `STEPS`, `wallZAt`, `flatZAt`, `backZAt`): the five
   villas' gardens behind a retaining wall of split-face blocks (a paler coping along its top)
   from the pavement up to `TERRACE` 150; the wall's face follows the polyline `NORTH.wall`
@@ -1822,9 +1840,16 @@ trees' leaves).
   blue-grey, `dadDrive`, in both looks), his two cars on it deep by the doors (see "Props").
 * **Props** (`props.js`): lampposts L1, L2, L3, L5 and L7 (W2: where the photos have them: L1 at
   the junction, three along the pavement, L7 on the footpath; L4 and L6, which they do not show,
-  gone; grey, a flat head out on an arm that leaves the post `LAMP.root` 60 under its cap and
-  rises to the head, so nothing is drawn where he stands on the cap; every one a climbable pole,
-  no collider of its own: R fixes, the dad: "I want to climb ALL the lampposts"), the turning
+  gone; W7, photos 05, 09, 12, 24: 735 tall (`LAMP.top`, ~4.75 m over the pavement), a slim grey
+  pole on a concrete collar, a short bracket that leaves it `LAMP.root` 18 under its cap out to a
+  flat oval light grey luminaire 100 out (`LAMP.arm`), so nothing is drawn where he stands on the
+  cap; L2 at the R1 place of photo 09's reading by the bend, x −6930, beside its grey cabinet (W2
+  had it 790 east, in north_1's drive's mouth); every one a climbable pole, no collider of its
+  own: R fixes, the dad: "I want to climb ALL the lampposts"), at their feet the kerbside
+  furniture (W7, `lane/surface.js KERBSIDE`, solid boxes and thin prisms: a grey metal cabinet on a
+  concrete footing with a white marker post by L2, a grey-green one with a gabled lid on a dark
+  plinth by L3, a pale blue-grey one and a white bollard with a grey cap at L5's foot, a small
+  white box by L1; a blank sign plate clamped on L5's pole facing east, its back dark grey), the turning
   area's sign (`TURN_SIGN`, R fixes, as in the dad's photo; W3: taller, at the red-leaf bed's
   north-east corner by the asphalt, (1520, 395), facing the street's way in (west): a grey post
   16 thick up to 492, a yellow plate 84 × 130 with a red rim, its foot at 350, a small blank
@@ -1854,7 +1879,9 @@ trees' leaves).
   beech hedge (`BEECH_ROW`, W5, photo 11: single stems on bamboo canes in a strip of dark soil,
   drawn only, not solid), the link's two black bins (`LINK_BINS`, static, box colliders) and
   north_2's three (W6: `VILLA_BINS`, black, black and green, in a row on its drive along its
-  bed's east end, their fronts to the drive: box colliders), north_3's white picket bin enclosure
+  bed's east end, their fronts to the drive: box colliders; W7, photos 09, 34: three more out on
+  the pavement against the wall for collection, two at north_4's drive's mouth, one by north_1's
+  steps, facing the street), north_3's white picket bin enclosure
   at its drive's mouth (`ENCLOSURE`, W6, photo 17: solid, a white mailbox on its street face),
   the neighbours' mailboxes (`MAILBOXES`, drawn only: W6 also north_2's tall green parcel box at
   its steps and north_5's two white boxes on weathered posts in its bed), south_2's front garden (`S2_GARDEN`, W5:
@@ -1870,8 +1897,14 @@ trees' leaves).
   the hostas at the corner; the edging in the kerbs' light grey in both looks), thujas (a row of
   five on north_1's terrace, steep frustum colliders), the two big trees out past the junction
   (lumpy canopies; drawn only: a tree's trunk collider only inside the boundary), the garden trees
-  (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, a birch behind the
-  corner house, a red-leaved shrub by the double garage; trunks and the shrub solid), cosmos beds
+  (`GARDEN_TREES`: an apple tree hung with red apples on north_4's terrace, the big birch east of
+  the corner house (W7, photos 05, 08, 11: three white stems leaning out of one foot under a
+  broad golden crown, 1950 tall, moved to (−5500, 1700) where photos 05 and 08's rays meet), a
+  red-leaved shrub by the double garage, a round broadleaf in the side yard between north_1 and
+  north_2 (W7, the aerial), the ornamental cherry on north_5's terrace between its trampoline and
+  its arched door (W7, photos 27, 28: a grey trunk forking at 195 into three leaning limbs, a
+  broad open crown, yellow-green, orange-tipped, to 1150, clear of the trampoline's bounce);
+  trunks and the shrub solid), cosmos beds
   on north_3's and north_4's terraces (`FLOWER_BEDS`: tufts of leaves with pink and white
   flowers, drawn only), the mailbox (W3: one anthracite pedestal box standing on the lawn, 60 ×
   45, its eaves at 182 under a gable lid to 204, its gable toward the street: the letter flap
@@ -1904,10 +1937,21 @@ trees' leaves).
   perch, a hop from the van's roof lands on it), the **trampoline** (see below), the motorhome
   (its cab's windscreen, headlights and bumper, a door on its road side, a stripe down both
   sides, a ladder up its back), the footpath's cabinet, the blue sign (a white walking figure
-  on it) and its barrier, the forest's firs and birches on the bank (`FOREST`, 34 firs,
-  skerries/props.js `fir()`, and 10 birches, white bark ringed dark under yellowing canopies)
-  and a ring of firs round the outside of the boundary (`EDGE_FOREST`, 70 seeded spots), drawn
-  only, so the camera never looks out on nothing; none in its `clear` sector south of the dad's
+  on it) and its barrier, the forest (W7, photos 01, 09, 12, 24-31, 41-44: a tall continuous mixed
+  canopy, `real/spots.js forestSpots`, the realistic look's spots too): on the bank behind the
+  north gardens four jittered rows of crowns that touch (`FOREST.rows`), each a kind drawn by
+  `FOREST.mix` (~40 % oaks and aspens, ~15 % birches, ~30 % Scots pines, ~15 % spruces), their
+  tops 2350-3020 over the street (16-20 m: their cards under the shadows' box's top, look.js `FAR_TOP` 3200), the
+  named ones (`FOREST.special`: a tall pine right behind north_1, one beyond the double garage, a
+  big broadleaf by the footpath south-east of the turning area), a tree in each side yard
+  between the villas (`FOREST.yards`: their trunks solid, off every route), and the ring round
+  the outside of the boundary (`EDGE_FOREST`, 62 seeded spots, its own mix, tops 1900-2900; in
+  its `low` sector south-east of the turning area, where photo 31 looks out beyond the footpath,
+  7-9 m broadleaves with a few pines and birches, no spruce, their crowns ×0.72);
+  classic: spruces skerries/props.js `fir()`, birches, broadleaves (a short trunk under two
+  golden-green blobs) and pines (a tall orange-brown trunk under a flat dark crown), one blob for
+  those deep in the bank and round the outside; drawn only but the side yards' trunks, so the
+  camera never looks out on nothing; none in its `clear` sector south of the dad's
   side (W4: x −1100 … 5000 beyond z 4300, the sky the photos show over the garage row and his roof
   from the drive; those spots drawn and dropped, the others where they were, as in the realistic
   look's far tree line), only one columnar tree far behind the garage row (`COLUMN_TREES`, out of
@@ -1965,13 +2009,14 @@ trees' leaves).
   over its workbench (the lane's chunk's: "The garage doors"); no red coins.
 * **Signs** (`SIGNS`): `sparrow_mailbox` (`post: false`: the mailbox is the sign, no signpost is
   drawn, its own collider within reach of the read; read from the street side), `lane_corner` at
-  the junction facing up the lane, `lane_footpath` beside the blue sign, `trampoline` at the
-  turning area's rim. Only "Jonas" is named.
+  the junction facing up the lane, `lane_footpath` beside the blue sign, `trampoline` up on north_5's
+  terrace beside the top of its steps, facing the street (W7: off the pavement and the north
+  kerb's sight line, photo 24; its size kept: the shared signpost kit). Only "Jonas" is named.
 * **Poles** (`POLES`, nine, each with its own side, `camYaw`): L1 (looking along the west leg),
   F1, F2 (west up the lane), F3, the red-leaf tree (the roof ahead), then (R fixes) L2 (looking
   west to the junction), L3, L5 (looking east up the lane), L7 (from by the double garage):
   their sides across their arms (he climbs past an arm's root on his own side of the post);
-  every lamppost a pole to its cap (`LAMP.top`, 1050), a handstand on top; each flagpole to its
+  every lamppost a pole to its cap (`LAMP.top`, 735 since W7), a handstand on top; each flagpole to its
   own height. Falls from them count from their foot.
 * **Look** (`LANE_ATMOSPHERE`): the grounds' sky dome (`def.sky`) paler (`def.skyPale` 0.45:
   `world/sky.js setPale`, its blue mixed toward its brightest channel, the cartoon clouds kept:
@@ -2208,7 +2253,9 @@ trees' leaves).
   front eave (its lip, at three places along the front; W5: and the neighbours', south_2's
   raised bed walked up onto, the beech row walked through), the red-leaf tree's flip (and let go at
   once, down in the garden), and the routes round the street, each collecting exactly its coins
-  (W6: north_2's hedge top from the pavement and from the terrace behind it); the
+  (W6: north_2's hedge top from the pavement and from the terrace behind it; W7: the pavement
+  walked from the west end to the turning area past every kerbside cabinet, post, street bin and
+  side-yard trunk with none of them in the way, and no tree over a coin); the
   trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
   and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
   perch from the van's roof, the dad's cars as steps up to the garage row: the crossover's
@@ -3132,10 +3179,25 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   dwarf conifers, hostas, the raised bed's ground cover, white flowers in the bed), each its
   own stream; dark
   cores where a real bush
-  is dense; bark trunks and limbs. The forest's **firs** are one spruce (`firGeometry`) instanced where
+  is dense; bark trunks and limbs. W7's forest (`forestTree`, photos 01, 09, 12, 24-31, 41-44:
+  `spots.js forestSpots`' broadleaves, birches and Scots pines, each its own stream, into the
+  foliage, core, bark and birch meshes: no draw call more): crowns of big cards over a few blobs
+  (`FOREST_CARDS` 215 / 240 / 290 a card on high / mid / low for the bank's, seen from the street
+  40-120 m off through the haze; `NEAR_CARDS` 185 / 210 / 270, a little denser and ragged, for the
+  ring round the outside, the side yards' and the named trees, seen nearer), a bank tree's far
+  side (away from the lane) left bare, golden-green oaks and aspens on one low olive core, airy
+  golden birches without one, the pines a tall trunk grey-brown low and orange-brown up into a flat
+  irregular crown of clumps; trunks of 6 / 5 / 4 sides, limbs only in the near ones; behind the
+  bank's front row its canopy masses (`canopyMasses`: low opaque olive mounds every 700 along the
+  band, their tops under the crowns', so the sky never shows through between them). The big birch
+  east of the corner house (`bigBirch`: three white stems under a broad crown) and the side yard's
+  broadleaf and north_5's cherry (`gardenBroad`: the cherry forking low into three crooked limbs,
+  an open crown, no core). The forest's **firs** (W7: now its spruces only, ~15 % of the bank's and
+  ~30 % of the ring's trees) are one spruce (`firGeometry`) instanced where
   `spots.js forestSpots` plants them (the classic forest draws its cones from the same list),
   plus a far tree line where the ground ends in the haze (`extras.js treeLine`, casting none;
-  neither in `EDGE_FOREST.clear`, W4).
+  neither in `EDGE_FOREST.clear`, W4; W7: a plainer spruce of its own, `FIR_SHAPES.C`, six
+  whorls, on every tier: the same materials, no draw call more).
   Since the R fixes each whorl is a dense **skirt**: an opaque drooping star of five branch tips
   (`fir-core`, the twig set's texture tiled on it, a twig a branch, its stem out along it; dark
   under it) reaching ~0.6 of the branches' reach and hanging over the whorl below (its droop
@@ -3262,7 +3324,8 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   up the terraces (R fixes: a fallen leaf had found their ramp), or where
   the ground steps; B the road's wheel track, A where a lawn lies damp by the hedges: the
   weathering's ground map, below) and shrinks it to nothing off the lawns and toward the grid's
-  radius (760 on high: no pop); its blades lighter toward their tips, longer in damp and unmown
+  radius (735 on high, W7: its far ring ~6 % fewer clumps, the plan's lever for the forest; no
+  pop); its blades lighter toward their tips, longer in damp and unmown
   patches, tinted with the lawn's own slow change of colour. The cells are ordered nearest the
   grid's middle first, so drawing the first n of them (`reach(share)`: the governor's) is a disc
   of a shorter reach.
@@ -3270,9 +3333,11 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   flap under it, a blank enamel plate in the gable, the lower door in thin seams, its lock, a
   concrete pad) and its bird, blue-grey (white breast, yellow beak, glossy eyes, raised wings, a
   wide spiky tail fan), drawn at its carving's size and scaled about its feet to the real one's;
-  **granite kerbs** (`kerbs`: stones ~150 long
-  with joints and a chamfer along every run of the road's edge (each joint backed dark and none
-  at a run's own ends, W2 fixes: the sky showed through them from low down), the turning area round: `plan.js
+  **granite kerbs** (`kerbs`: W7, light fine-grained stones ~110 long (150 on low), flush, a
+  rounded arris (one facet on low), a slim 24 top, each joint a dark line drawn a hair out over
+  the face and the top, the run's own ends closed (W2 fixes: the sky showed through open joints
+  and ends from low down; W7: open joints showed the pale pavement as white ticks)
+  along every run of the road's edge, the turning area round: `plan.js
   kerbRuns` gives both builds the same exact runs; at the drives an asphalt bevel up into them
   instead, in `patch`, closed at its ends as the classic one is, `plan.js bevelEnds`; along the
   red-leaf bed its soil's dark face); W5 `neighbourGround`: south_2's gravel in fine stone (the
@@ -3288,8 +3353,13 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   edges in `steel`, its face in `enamel` (the reflective sheeting's sheen), the yellow field a
   grid of quads a little grimier toward its foot and rim, the rim, the no-parking sign and the
   lettering each a hair in front: `sign.js signFace`; the small blank blue plate under it).
-  `street.js`: smooth tapered
-  steel lampposts with a curved arm (from 60 under the cap up to the luminaire) and luminaire, white flagpoles with a gilt ball and halyard
+  (W7: the street's wear, its covers and gullies, the south edge's look and the kerbside
+  furniture are no longer the worker's: the classic build's faces, `lane/build.js surface` and
+  `props.js kerbsideProps`, drawn in both looks, light them in the realistic look's meshes, the
+  patches a darker tint of its own asphalt; the old covers had been wound face down and were never
+  seen.) `street.js`: smooth tapered
+  steel lampposts on a concrete collar with a short bracket (W7: from 18 under the cap) out to a
+  flat oval light grey luminaire and its lens, white flagpoles with a gilt ball and halyard
   (the flags their classic waving cloth), real pickets and rails, rounded wheelie bins.
   `extras.js`: the trampoline (W6: its dark grey pad, its black safety net: eight poles bowing
   up to a top hoop, a mesh of thin strands with its door toward the street, poles and hoop only
@@ -3670,7 +3740,7 @@ in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
   brick an orange red (their tints, both looks; no darker odd bricks: the white brick shares the
   set); the render a cool white (the set neutral, the villas' tint 0xf8f8f4); the pan tiles
   matte (the set's roughness ~0.89, no multiplier under it: the north slopes no longer glare);
-  the hedges and thujas olive (their cards' tints); the kerbs' granite lighter (1.35); the
+  the hedges and thujas olive (their cards' tints); the kerbs' granite lighter (1.35; W7: the set's `fine` option, finer lighter grains with little black mica, 1.2); the
   lampposts' steel a neutral weathered grey (0x8e8e8c, roughness 0.6, metalness 0.15).
 * **Measured** (`tests/lane-real-browser.test.js`'s points, 960 × 540, high): the zenith (177,
   191, 228) -> (156, 176, 203); the five views' sky at the top b − r 44-52 (was 64-109); the
@@ -3761,7 +3831,10 @@ the streaks hanging from the dad's sills; the bird on the ridge; the forest edge
 spruce on high; R fixes: the firs dense (each whorl's skirt over half its branches' reach, the
 crown solid all the way up, needles to the top, the trunk inside: the old firs fail it), the
 red-leaf bed's stones along all four edges (W3), no kerb along it; the garage's rust under its pipes' clips and the loggias' boxes of flowers
-(W6; the balcony is bare wood now), not on low), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
+(W6; the balcony is bare wood now), not on low; W7: the mixed forest (the bank's spruces first,
+its shares of broadleaf, pine and spruce, every top under the shadows' box, only the side
+yards' trees inside the boundary and their trunks solid in the classic colliders, the far line's
+plainer spruce), no leaf under the trampoline), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
 tokens; the plugin's output), `tests/real-materials.test.js` (the haze (the sun's glow coming into
 it with the distance: W4 fix) and the clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
 the glass's F0 and premultiplied output, the leaf
@@ -3775,7 +3848,7 @@ and low, the dad's panes lit but not blown out on high and mid (a NaN in the pro
 low tier, `?look=classic`, and the exact restore of the renderer after a visit, with and
 without F2 (the camera's profile and field of view, Jonas's size, the post chain's targets
 freed, the far map kept and taken once); the GTA look: the post chain's draw calls per tier, the
-occlusion's mean neither black nor white and never on the sky, the bloom round the sun, Jonas at
+occlusion's mean neither black nor white and never on the sky, the bloom round the sun (W7: read on the ring's points on the sky, the forest's crowns south-west now in front of one), Jonas at
 0.85 and the camera at 55° in it, 1 and 45° with G; G2: every probe taken (the cars' clusters'
 at 128, the windows' at 256; none on low), the weathering's ground map bound, the contact
 shadows drawn and the drive darker under a car than in front of it, each tier within section
@@ -3784,7 +3857,7 @@ with E2E=1 the built bundle's minified shaders compiling and drawing every look)
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
 own chunk (`laneRealWorker-*.js`, ~116 kB with G2's cars, clutter and hardware and G3's details,
-~173.9 KiB with the photo-match packages' (W6), no three.js, no imports: under 176 KiB); the renderer side's code that the boot does not need is
+~178.9 KiB with the photo-match packages' (W7), no three.js, no imports: under 184 KiB); the renderer side's code that the boot does not need is
 the lazy `realLook` chunk (above: ~47 kB with G1's post chain and G2's weathering and probes, its
 shaders minified since G3; imported by `main` only dynamically, importing only `main`: under 90
 kB; no modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB,
@@ -4956,18 +5029,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,285,591 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,286,190 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 81,994 | 33 kB | 84 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB) |
-| realLook | 49,397 | 18 kB | 60 KiB (from 90) |
-| laneBoss | 101,981 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| lane | 92,268 | 37 kB | 92 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB) |
+| realLook | 49,433 | 18 kB | 60 KiB (from 90) |
+| laneBoss | 102,277 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 178,114 | 73 kB | 176 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB) |
+| laneRealWorker | 183,170 | 76 kB | 184 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

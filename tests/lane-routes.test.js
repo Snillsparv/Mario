@@ -34,6 +34,8 @@ import { Events } from '../src/core/events.js';
 import { MAX_HEALTH } from '../src/player/physics/tuning.js';
 import { PLAYER_RADIUS } from '../src/core/constants.js';
 import { ROOM } from '../src/world/lane/garage.js';
+import { kerbside } from '../src/world/lane/surface.js';
+import { forestSpots } from '../src/world/lane/real/spots.js';
 
 const O = AREA_DEFS.lane.origin;
 const area = buildArea(new THREE.Scene(), AREA_DEFS.lane);
@@ -539,5 +541,23 @@ test('D1, the garage: from the street up the gap between the cars to the red doo
     assert.ok(g.leaves[1].broken && g.leaves[2].broken, 'both leaves');
   } finally {
     g.enter({ pos: { x: 1e7, y: 0, z: 1e7 } });
+  }
+});
+
+test('the pavement (W7): walked along it from north_1 to the turning area past the lampposts (735 tall now), their cabinets and posts and the bins out for collection, each of those solid; the side yards\' trees\' trunks solid, off the side yards\' coins', () => {
+  // (A Jonas in from the kerb: the bins stand 100 out from the wall.)
+  const Z = lane.ROAD.line.at(-1)[1] - lane.PAVEMENT.from - 80;
+  const h = hero(-6400, GROUND, Z, E);
+  h.walk([[4300, Z]], 1, 3000);
+  assert.ok(h.at().x > 4200 && Math.abs(h.at().z - Z) < 60, `along it to ${Math.round(h.at().x)}, ${Math.round(h.at().z)}`);
+  const col = area.collision;
+  const hits = (x, y, z, dir, d) => col.raycast({ x: x + O.x, y: y + O.y, z: z + O.z }, dir, d, { floors: false, ceilings: false });
+  // (From the street side at knee height, toward the wall: each meets its box.)
+  for (const k of kerbside(lane)) assert.ok(hits(k.x, GROUND + 40, k.z + 120, { x: 0, y: 0, z: -1 }, 120), `the ${k.kind} by ${k.lamp} solid`);
+  for (const b of lane.VILLA_BINS.filter((v) => v.yaw === 0)) assert.ok(hits(b.x, GROUND + 40, b.z + 120, { x: 0, y: 0, z: -1 }, 120), `the bin at ${b.x} solid`);
+  const { broad, pines } = forestSpots(lane);
+  for (const t of [...broad, ...pines].filter((s) => s.solid)) {
+    assert.ok(hits(t.x - 150, TERRACE + 60, t.z, { x: 1, y: 0, z: 0 }, 150), `the side yard's tree at ${t.x}, ${t.z} solid`);
+    for (const c of lane.COINS) assert.ok(Math.hypot(c.x - t.x, c.z - t.z) > 200, `the tree at ${t.x}, ${t.z} off the coin at ${c.x}, ${c.z}`);
   }
 });

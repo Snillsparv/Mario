@@ -4,8 +4,10 @@
 //
 //   GRASS = { high, mid }   // side clumps a side, cell units each, radius (blades fade out from
 //                           // 0.7 of it), blades a clump, segs a blade
+//   (W7: high's radius 760 -> 735, its far ring ~6 % fewer clumps where the blades fade out
+//   anyway: the plan's lever for the forest's taller mixed canopy, ~-19k triangles a frame.)
 
 export const GRASS = Object.freeze({
-  high: Object.freeze({ side: 128, cell: 12, radius: 760, blades: 4, segs: 3 }),
+  high: Object.freeze({ side: 128, cell: 12, radius: 735, blades: 4, segs: 3 }),
   mid: Object.freeze({ side: 80, cell: 12, radius: 480, blades: 3, segs: 2 }),
 });

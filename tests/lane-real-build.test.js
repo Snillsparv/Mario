@@ -11,6 +11,7 @@
 // retro row names G there; and the realistic sources stay private and original (no image files,
 // nothing loaded).
 import { test } from 'node:test';
+import { GRASS } from '../src/world/lane/real/grassTiers.js';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import * as THREE from 'three';
@@ -297,7 +298,8 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     const firs = D['lane-detail-fir-leaves'];
     const edge = D['lane-detail-fir-leaves-edge'];
     assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16, `${firs.count} firs`);
-    assert.ok(firs.count + (edge?.count ?? 0) > 90, `${firs.count} + ${edge?.count ?? 0} firs`);
+    // (W7: the forest a mixed canopy, ~15 % of the bank's and ~30 % of the edge's trees spruces: real/spots.js.)
+    assert.ok(firs.count + (edge?.count ?? 0) >= 25, `${firs.count} + ${edge?.count ?? 0} firs`);
     assert.equal(!!edge, tierName === 'high', 'the edge\'s spruce on high');
     if (edge) assert.ok(edge.isInstancedMesh && edge.material === firs.material && edge.castShadow && D['lane-detail-fir-core-edge'].material === D['lane-detail-fir-core'].material, 'the forest\'s materials: no program more');
     assert.equal(firs.castShadow, tierName !== 'low', 'the firs cast but on low');
@@ -313,7 +315,7 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
       const off = (i) => (cells.getX(i) - 63.5) ** 2 + (cells.getY(i) - 63.5) ** 2;
       for (let i = 1; i < cells.count; i++) assert.ok(off(i) >= off(i - 1), 'nearest first');
       const all = grass.geometry.instanceCount;
-      assert.ok(all < 128 * 128 && all > Math.PI * (760 / 12) ** 2, `${all} cells within reach`);
+      assert.ok(all < 128 * 128 && all > Math.PI * (GRASS.high.radius / 12) ** 2, `${all} cells within reach`); // (W7: the radius 735, the far ring's lever)
       look.grass(0.5);
       assert.ok(grass.geometry.instanceCount < all * 0.3 && grass.visible, 'half the reach: a quarter the cells');
       look.grass(0);

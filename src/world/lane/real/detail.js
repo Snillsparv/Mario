@@ -14,8 +14,9 @@
 //             (Float32Arrays, uvs in world units but the leaf cards' atlas uvs); cast: casts the
 //             sun's shadow; sphere: its bounding sphere [x, y, z, r] (as three.js computes it)
 //     firs:   { parts: [{ material, buffers }], matrices, colors, cast, far, edge }   one fir
-//             (unit height and radius) and the forest's instances (a 4 x 4 matrix and a tint
-//             each), far: the tree line's { matrices, colors } (casting none), edge: on high
+//             (unit height and radius) and the forest's spruces (a 4 x 4 matrix and a tint
+//             each), far: the tree line's { matrices, colors, parts } (casting none; W7: its
+//             parts a plainer spruce, FIR_SHAPES.C), edge: on high
 //             the edge's firs, nearest the street, a spruce of their own ({ parts, matrices,
 //             colors }; else null: they are the forest's)
 //     grass:  { clump: buffers }   the lawns' blade clump (grass.js; null on low)
@@ -35,7 +36,7 @@
 // shadow casters (LOW_MERGE, LOW_CASTERS), no probes of its own (one paint, one glass).
 
 import { Geo } from './geo.js';
-import { mailbox, kerbs, roadDecals, bedStones, turnSign, neighbourGround } from './garden.js';
+import { mailbox, kerbs, bedStones, turnSign, neighbourGround } from './garden.js';
 import { plants, firGeometry, firInstances, FIR_SHAPES } from './foliage.js';
 import { chainHouse, TILE_SEG } from './house.js';
 import { cars, carOf, carClusters } from './cars.js';
@@ -46,6 +47,7 @@ import { trampoline, hoop, motorhome, cabinet, treeLine } from './extras.js';
 import { clutter, streetSign } from './clutter.js';
 import { hardware } from './hardware.js';
 import { pieceOf } from './pieces.js';
+import { forestSpots } from './spots.js';
 import { garageRoom } from './garage.js';
 
 // Each material's builder; `cast` false: casts no shadow (the ground's, the glass, the rooms').
@@ -109,7 +111,6 @@ export function buildLaneDetail(L, tier = 'high') {
   }
   mailbox(kit, L);
   kerbs(kit, L);
-  roadDecals(kit, L);
   bedStones(kit, L);
   turnSign(kit, L);
   neighbourGround(kit, L);
@@ -182,11 +183,14 @@ export function buildLaneDetail(L, tier = 'high') {
   // The forest's firs and the far tree line: one fir, instanced (the far ones casting none); on
   // high the edge's firs (nearest the street) a second spruce of their own (FIR_SHAPES.B).
   const fir = firGeometry(tier);
-  const split = tier === 'high' ? L.FOREST.count : Infinity;
+  const split = tier === 'high' ? forestSpots(L).bank : Infinity;
   const { matrices, colors } = firInstances(L, 0, split);
   const parts = (geo) => ['leaves', 'core'].map((k) => ({ material: `fir-${k}`, buffers: geo[k].buffers() }));
-  const firs = { parts: parts(fir), matrices, colors, cast: !low, far: treeLine(L, tier), edge: null };
-  for (const k of ['leaves', 'core']) triangles += (fir[k].count / 3) * ((matrices.length + firs.far.matrices.length) / 16);
+  // (W7: the far tree line, 11.5 to 16 km off in the haze, a plainer spruce of six whorls on
+  // every tier: its own geometry, the same materials, no draw call more.)
+  const far = firGeometry(tier, 7, FIR_SHAPES.C);
+  const firs = { parts: parts(fir), matrices, colors, cast: !low, far: { ...treeLine(L, tier), parts: parts(far) }, edge: null };
+  for (const k of ['leaves', 'core']) triangles += (fir[k].count / 3) * (matrices.length / 16) + (far[k].count / 3) * (firs.far.matrices.length / 16);
   if (split < Infinity) {
     const edge = firGeometry(tier, 11, FIR_SHAPES.B);
     firs.edge = { parts: parts(edge), ...firInstances(L, split) };
@@ -273,6 +277,7 @@ export function detailBuffers(detail) {
   if (detail.firs) {
     for (const p of detail.firs.parts) add(p.buffers);
     out.push(detail.firs.matrices.buffer, detail.firs.colors.buffer, detail.firs.far.matrices.buffer, detail.firs.far.colors.buffer);
+    for (const p of detail.firs.far.parts ?? []) add(p.buffers);
     const edge = detail.firs.edge;
     if (edge) {
       for (const p of edge.parts) add(p.buffers);

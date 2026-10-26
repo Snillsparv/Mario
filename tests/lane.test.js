@@ -700,7 +700,7 @@ for (const [label, prof] of CAMERAS) {
 test('privacy and originality: the course\'s sources name no one but Jonas on its signs, carry no house numbers or licence plates on them, and paint every texture in code (no image files)', () => {
   const dir = new URL('../src/world/lane/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'facades.js', 'garage.js', 'houses.js', 'index.js', 'layout.js', 'props.js', 'textures.js']); // (W6: facades.js, the north villas' programs)
+  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'facades.js', 'garage.js', 'houses.js', 'index.js', 'layout.js', 'props.js', 'surface.js', 'textures.js']); // (W6: facades.js, the north villas' programs; W7: surface.js, the street's wear and kerbside furniture)
   for (const f of files) {
     const src = readFileSync(new URL(f, dir), 'utf8');
     assert.ok(!/\.(png|jpe?g|webp|gif)\b/i.test(src), `${f}: no image files`);

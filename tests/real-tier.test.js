@@ -192,9 +192,9 @@ test('the near shadow camera\'s depth (W1 fix: the low golden-hour sun\'s long s
   const origin = AREA_DEFS.lane.origin;
   const farBox = shadowBox(lane, origin);
   const at = (x, y, z) => new THREE.Vector3(x + origin.x, y + origin.y, z + origin.z);
-  const { firs, birches } = forestSpots(lane);
+  const { firs, birches, broad, pines } = forestSpots(lane); // (W7: the mixed canopy's every tree)
   const tops = [
-    ...[...firs, ...birches].flatMap((t) => [0.5, 0.75, 1].map((k) => at(t.x, t.base + t.h * k, t.z))),
+    ...[...firs, ...birches, ...broad, ...pines].flatMap((t) => [0.5, 0.75, 1].map((k) => at(t.x, t.base + t.h * k, t.z))),
     ...lane.TREES.map((t) => at(t.x, t.h, t.z)),
     ...lane.GARDEN_TREES.map((t) => at(t.x, t.h, t.z)),
     ...lane.LAMPS.map((l) => at(l.x, lane.GROUND + lane.LAMP.top, l.z)),

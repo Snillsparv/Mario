@@ -82,6 +82,7 @@ import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
 import { normals, band, roadPieces, kerbRuns, bevelEnds, BEVEL, terraceSpans } from './real/plan.js';
 import { FACADES, WALL_DRAWN, STRIP, FLOOR_SET, wallDrawnAt } from './facades.js';
+import { surfaceParts, EDGING } from './surface.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -111,6 +112,9 @@ const TINT = {
   slabs: 0xb4b2ac, // (its path's concrete slabs)
   paving: 0xb4b2ac, // (W5 fix: the slabs' bed east of its path, plain grey)
   floor: 0x9a9890, // (the store room's concrete)
+  litter: 0x4a3a2c, // (W7: the south edge's leaf litter, the dad's lawn's timber edging, its moss strip)
+  edging: 0x8a8780,
+  moss: 0x6a6a44,
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
@@ -122,6 +126,7 @@ const UP = [0, 1, 0];
 export const LIGHT = { ambient: 0.64, diffuse: 0.55, maxBright: 1.1, tint: [1.1, 1.0, 0.86] };
 const GROUND_RECT = { x0: -16000, x1: 16000, z0: -8000, z1: 10000, tile: 2000 };
 const KERB_LIFT = 1.5; // the kerbs' tops over the lawn and the pavement beside them
+const KERB_STONE = 110; // (W7: a kerb stone's length)
 // The bank: up to its top over NORTH.bank, on a little higher `beyond`, then rising on `far`
 // more to `crest` over its top, out in the fog.
 const BANK = { beyond: 2600, far: 200, out: 9000, crest: 2600 };
@@ -181,6 +186,7 @@ export function* laneSteps(layout, { look = 'classic', materials = null, replace
   ground(kit, layout, road);
   yield;
   kerbs(kit.drawn('kerbs'), layout, road, kit);
+  surface(kit, layout, road);
   terraces(kit, layout);
   yield;
   bank(kit, layout);
@@ -550,12 +556,57 @@ function kerbs(kit, L, road, all = kit) {
     const b = kind === 'kerb' ? blocks : cobbles;
     const top = kind === 'kerb' ? G + KERB_LIFT : G + L.BED.raise;
     b.color(kind === 'kerb' ? TINT.kerb : TINT.bedEdge);
-    b.poly([[p[0], -2, p[1]], [q[0], -2, q[1]], [q[0], top, q[1]], [p[0], top, p[1]]], { facing: [-nx, 0, -nz], shade: 0.82 });
-    if (kind === 'kerb') {
-      const w = L.KERB.w;
-      b.poly([[p[0], top, p[1]], [q[0], top, q[1]], [q[0] + nx * w, top, q[1] + nz * w], [p[0] + nx * w, top, p[1] + nz * w]], { facing: UP, shade: 1.05 });
+    if (kind !== 'kerb') {
+      b.poly([[p[0], -2, p[1]], [q[0], -2, q[1]], [q[0], top, q[1]], [p[0], top, p[1]]], { facing: [-nx, 0, -nz], shade: 0.82 });
+      continue;
+    }
+    // (W7, photos 12, 16, 23, 24: light granite stones ~0.75 m long, their joints read in the
+    // tone each has.)
+    const w = L.KERB.w;
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const count = Math.max(1, Math.round(len / KERB_STONE));
+    for (let k = 0; k < count; k++) {
+      const [a, c] = [k / count, (k + 1) / count].map((t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+      const tone = 0.94 + 0.1 * Math.abs(Math.sin(a[0] * 0.37 + a[1] * 0.71));
+      b.poly([[a[0], -2, a[1]], [c[0], -2, c[1]], [c[0], top, c[1]], [a[0], top, a[1]]], { facing: [-nx, 0, -nz], shade: 0.82 * tone });
+      b.poly([[a[0], top, a[1]], [c[0], top, c[1]], [c[0] + nx * w, top, c[1] + nz * w], [a[0] + nx * w, top, a[1] + nz * w]], { facing: UP, shade: 1.05 * tone });
     }
   }
+}
+
+// The road's wear and the south edge's look (W7, lane/surface.js surfaceParts), drawn in both
+// looks (the realistic look's meshes light them: its asphalt's patches a darker tint of the same
+// asphalt): the mended patches and the sealant bands a shade darker over the asphalt, the crack
+// seals near black, the covers, the gullies by the north kerb and the round patch with its grate;
+// along the south edge a ragged strip of leaf litter down the bevel, the dad's lawn's weathered
+// timber edging (boards, its joints dark), the small concrete edging stones and the moss strip
+// along its west edge by the link's drive, the bend's light gravel shoulder.
+function surface(kit, L, road) {
+  const { asphalt, boards: wood, blocks, grass } = kit;
+  const G = L.GROUND;
+  const real = kit.look === 'real';
+  const T = real ? REAL_GROUND : TINT;
+  const { parts, boards, stones } = surfaceParts(L, kerbRuns(L, road));
+  // (Each piece's builder and tint: all in the asphalt, flat (no shadow cast in the realistic
+  // look), its darker tints, the iron and the litter dark; the moss in the lawn's.)
+  const k = real ? 2.2 : 1;
+  const by = { patch: [T.road, 0.74], band: [T.road, 0.64], seal: [0x1c1c1c, k], cover: [0x4a3e36, k], sump: [T.road, 0.56], slot: [0x141414, k], bar: [0x4a4846, k], litter: [TINT.litter, k], moss: [TINT.moss, 1, grass], gravel: [T.gravel, 1.08] };
+  for (const { k: kind, pts, up, fan, shade = 1 } of parts) {
+    const [tint, f = 1, b = asphalt] = by[kind];
+    b.color(tint, f * shade);
+    if (!fan) b.poly(pts, { facing: up ?? UP });
+    else {
+      const c = [0, 1, 2].map((i) => pts.reduce((a, q) => a + q[i] / pts.length, 0));
+      b.poly([c, ...pts, pts[0]], { facing: UP });
+    }
+  }
+  // The dad's lawn's timber edging (weathered grey boards, dark joints) and its west edge's stones.
+  const z0 = L.SOUTH_EDGE;
+  wood.color(TINT.edging);
+  for (const [x0, x1] of boards) wood.box(x0, x1, G - 6, G + 2.5, z0 - 2, z0 + EDGING.w, { bottom: false, faceShade: (nn) => (nn[1] > 0.5 ? 1.08 : 0.8) });
+  const V = EDGING.west;
+  blocks.color(TINT.kerb);
+  for (const [za, zb] of stones) blocks.box(V.x, V.x + V.w, G - 2, G + 3, za, zb, { bottom: false });
 }
 
 // ---------------------------------------------------------------- the terraces

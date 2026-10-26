@@ -611,6 +611,9 @@ export const VILLA_BINS = [
   ...[-985, -1100, -1215].map((z, i) => ({ x: PLOTS_N[1].drive[0] + 52, z, yaw: Math.PI / 2, tint: i === 2 ? 0x2e4a32 : null })),
   // (north_5's two dark ones at its drive's end by its arched door, photos 28, 29.)
   ...[95, 210].map((d) => ({ x: PLOTS_N[4].drive[1] - 52, z: VILLAS[4].front + d, yaw: -Math.PI / 2, tint: null })),
+  // (W7, photos 09, 34: put out on the pavement for collection, against the wall: two at
+  // north_4's drive's mouth east of L5, one at north_1's beside its steps.)
+  ...[2880, 2995, -5870].map((x) => ({ x, z: NORTH.wallZ + 6 + LINK_BIN.z / 2, yaw: 0, tint: null })),
 ];
 export const ENCLOSURE = { x0: PLOTS_N[2].drive[0] + 6, x1: PLOTS_N[2].drive[0] + 106, z0: NORTH.wallZ - 75, z1: NORTH.wallZ - 12, top: GROUND + 185 };
 
@@ -718,8 +721,28 @@ export const TREES = [
 // fix: far enough that photos 33 and 35 no longer show it over south_2's roof, near enough that
 // the haze leaves it near as dark as 37 has it; photo 36, which shows none, has it near its
 // edge), its outline as 37 has it: r its crown's widest, h its height).
-export const FOREST = { count: 34, birches: 10, x0: -9600, x1: 9300, z0: NORTH.flat0 - 150, z1: NORTH.flat0 - 1850, slope: NORTH.slope, seed: 0x5ba77 };
-export const EDGE_FOREST = { count: 70, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 } };
+// W7 (photos 01, 09, 12, 24-31, 41-44: real/spots.js): a tall continuous mixed canopy, the kinds
+// drawn by `mix` (broadleaf, birch, pine, spruce), the tops `top` over the street (16-20 m), in
+// `rows` along the band (each [from, to] a share of its depth and its spacing), the side yards'
+// (`yards`: x, z, kind, top; solid trunks: photos 12, 24, 27, 28 show them over the roofs) and the named ones (`special`: the tall pine right behind
+// north_1, one beyond the double garage, the big broadleaf by the footpath south-east of the
+// turning area); the ring outside by its own mix (`low`: lower and smaller south-east of the
+// turning area beyond the footpath's barrier, where photo 31 looks out over far low trees, 7-9 m
+// broadleaves and a few pines and birches: its own tops, least height and mix).
+export const FOREST = {
+  x0: -11600,
+  x1: 9300,
+  z0: NORTH.flat0 - 90,
+  z1: NORTH.flat0 - 1750,
+  slope: NORTH.slope,
+  seed: 0x5ba77,
+  rows: [[0, 0.1, 660], [0.18, 0.38, 700], [0.46, 0.7, 760], [0.76, 1, 860]],
+  mix: [0.42, 0.13, 0.3, 0.15],
+  top: [2350, 3020],
+  yards: [[-5300, -3700, 'broad', 2500], [-1900, -3150, 'pine', 2750], [1250, -3500, 'broad', 2600], [4600, -3650, 'pine', 2800]],
+  special: [{ kind: 'pine', x: -6900, z: -4420, top: 3020 }, { kind: 'pine', x: 9300, z: -3200, top: 2950 }, { kind: 'broad', x: 7000, z: 3900, top: 1350, r: 480 }],
+};
+export const EDGE_FOREST = { count: 62, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 }, mix: [0.4, 0.1, 0.2, 0.3], top: [1900, 2900], low: { x0: 3000, z0: 2400, top: [1000, 1400], least: 900, r: 0.72, mix: [0.75, 0.1, 0.15, 0] } };
 export const COLUMN_TREES = [{ x: 1415, z: 6000, r: 230, h: 1650 }];
 
 // Lampposts (grey, an arm and a flat lamp head) where the photos have them, every one a climbable
@@ -727,11 +750,14 @@ export const COLUMN_TREES = [{ x: 1415, z: 6000, r: 230, h: 1650 }];
 // cap): the arm leaves the post `root` under the top and rises out to the lamp head (clear of him
 // as he climbs past it on his side of the post and stands on the cap), out along its yaw over the
 // street: L1 at the junction (the west leg's pavement's back edge), L2 at the bend's east end,
-// L3 east of north_2's drive, L5 by north_4, L7 down the footpath.
-export const LAMP = { r: 14, top: 1050, arm: 150, root: 60, collider: 30 };
+// L3 east of north_2's drive, L5 by north_4, L7 down the footpath. (W7, photos 05, 09, 12, 24:
+// 735 tall, ~4.75 m over the pavement, a short bracket from just under the cap out to a flat
+// oval luminaire; L2 at the R1 place of photo 09's reading, by the bend west of north_1's drive
+// beside its grey cabinet: W2 had it 790 east, in that drive's mouth.)
+export const LAMP = { r: 14, top: 735, arm: 100, root: 18, collider: 30 };
 export const LAMPS = [
   { id: 'L1', x: -11070, z: 1630, yaw: 1.95 },
-  { id: 'L2', x: -6145, z: -570, yaw: 0 },
+  { id: 'L2', x: -6930, z: -565, yaw: 0 },
   { id: 'L3', x: -2250, z: -720, yaw: 0 },
   { id: 'L5', x: 2200, z: -720, yaw: 0 },
   { id: 'L7', ...footpathAt(800, 300), yaw: -2.2 },
@@ -856,11 +882,18 @@ export const ONE_UP = { x: TRAMPOLINE.x, y: 1020, z: TRAMPOLINE.z };
 // ---------------------------------------------------------------- gardens, the forest's edge
 
 // A tree or two in the gardens (drawn by props.js, their trunks solid): an apple tree on
-// north_4's terrace, a birch behind the corner house, a red-leaved shrub by the double garage.
+// north_4's terrace, the big birch east of the corner house (W7, photos 05, 08, 11: three stems,
+// a broad golden crown over its roof, at R1 of their rays' meeting), a red-leaved shrub by the
+// double garage, a round broadleaf in the side yard between north_1 and north_2 (the aerial),
+// the ornamental cherry on north_5's terrace between its trampoline and its arched door (photos
+// 27, 28: a grey trunk forking low into leaning limbs, a broad open crown over its bed and its
+// drive's west edge, clear of the trampoline's bounce).
 export const GARDEN_TREES = [
   { kind: 'apple', x: 2185, z: -2011, r: 480, h: 850 },
-  { kind: 'birch', x: -5550, z: 3300, r: 380, h: 1500 },
+  { kind: 'birch', x: -5500, z: 1700, r: 460, h: 1950, stems: 3 },
   { kind: 'shrub', x: 6750, z: 120, r: 160, h: 260 },
+  { kind: 'broad', x: -4990, z: -2220, r: 320, h: 950 },
+  { kind: 'cherry', x: 5900, z: -2050, r: 340, h: 1000 },
 ];
 // Flower beds on the terraces (cosmos: tufts of leaves with pink and white flowers): north_3's
 // behind its box hedge, north_4's along its wall.
@@ -1175,7 +1208,8 @@ export const COINS = [
 // Signs: the dad's mailbox (post: false, the mailbox is the sign: no signpost drawn, its own
 // collider within the sign's box), read from the street; the corner sign at the junction facing
 // up the lane; the footpath's beside the blue sign, facing the turning area; the trampoline's on
-// the pavement's end short of north_5's steps.
+// north_5's terrace beside the top of its steps, facing the street (W7: off the pavement and the
+// north kerb's sight line, photo 24; read from every side as before).
 export const SIGNS = [
   {
     id: 'sparrow_mailbox',
@@ -1203,10 +1237,10 @@ export const SIGNS = [
   },
   {
     id: 'trampoline',
-    x: 4450,
-    y: GROUND,
-    z: -680,
-    yaw: -0.96,
+    x: 4790,
+    y: TERRACE,
+    z: -1250,
+    yaw: 0,
     pages: ['Up the steps: a trampoline!', 'Jump onto it and keep the jump button held to bounce sky high.'],
   },
 ];

@@ -211,19 +211,31 @@ test('the tile courses lie in the classic roof planes (the colliders Jonas walks
   }
 });
 
-test('the firs stand where the classic forest\'s cones stood, the classic build drawing the same spots; on high the edge\'s firs a second spruce (more tiers, a hanging skirt, gaps)', (t) => {
-  const { firs } = forestSpots(lane);
+test('the firs stand where the classic forest\'s cones stood, the classic build drawing the same spots; on high the edge\'s firs a second spruce (more tiers, a hanging skirt, gaps); W7: a mixed canopy, its tops under the shadows\' box, the side yards\' trunks solid', (t) => {
+  const { firs, bank, broad, pines, birches } = forestSpots(lane);
   // (On high the bank's firs, then the edge's, a spruce of their own; on low one set.)
   const all = new Float32Array([...high.firs.matrices, ...high.firs.edge.matrices]);
-  assert.equal(high.firs.matrices.length / 16, lane.FOREST.count, 'the bank\'s');
+  assert.equal(high.firs.matrices.length / 16, bank, 'the bank\'s');
   assert.equal(all.length / 16, firs.length);
   assert.equal(low.firs.edge, null, 'one spruce on low');
   assert.equal(low.firs.matrices.length / 16, firs.length);
-  assert.deepEqual([...low.firs.matrices.slice(0, 16 * lane.FOREST.count)], [...high.firs.matrices].map((v) => v), 'the same places on every tier');
-  assert.deepEqual([...low.firs.colors.slice(3 * lane.FOREST.count)], [...high.firs.edge.colors], 'each its own tint');
-  // (W4: none of the edge's in its clear sector over the garage row: their spots skipped.)
+  assert.deepEqual([...low.firs.matrices.slice(0, 16 * bank)], [...high.firs.matrices].map((v) => v), 'the same places on every tier');
+  assert.deepEqual([...low.firs.colors.slice(3 * bank)], [...high.firs.edge.colors], 'each its own tint');
+  // (W4: none of the forest in the edge's clear sector over the garage row; W7: the mix, the
+  // photos' ~55 % broadleaf, ~30 % pine, ~15 % spruce on the bank, every top 16-21 m over the
+  // street and under the shadows' box's top, only the side yards' trees inside the boundary and
+  // their trunks solid.)
   const C = lane.EDGE_FOREST.clear;
-  assert.ok(firs.length >= lane.FOREST.count + lane.EDGE_FOREST.count - 15 && firs.every((t) => !(t.x > C.x0 && t.x < C.x1 && t.z > C.z0)), `${firs.length} firs`);
+  const trees = [...firs, ...broad, ...pines, ...birches];
+  assert.ok(trees.length >= 110 && trees.every((s) => !(s.x > C.x0 && s.x < C.x1 && s.z > C.z0)), `${trees.length} trees`);
+  const share = (list) => list.length / trees.length;
+  assert.ok(share(broad) + share(birches) > 0.45 && share(pines) > 0.2 && share(firs) < 0.35, `broadleaf ${share(broad) + share(birches)}, pine ${share(pines)}, spruce ${share(firs)}`);
+  assert.ok(trees.every((s) => s.base + s.h <= lane.FOREST.top[1] + 1), 'under the shadows\' box');
+  const yard = trees.filter((s) => s.solid);
+  assert.equal(yard.length, lane.FOREST.yards.length);
+  assert.ok(trees.every((s) => s.solid || !lane.inBounds(s.x, s.z)), 'the rest outside the boundary');
+  const classicCols = buildLane(lane).colliders;
+  for (const s of yard) assert.ok(classicCols.some((c) => c.terrain === 'wood' && Array.from({ length: c.positions.length / 3 }, (_, i) => Math.hypot(c.positions[i * 3] - s.x, c.positions[i * 3 + 2] - s.z)).some((d) => d < 45)), `the side yard's trunk at ${s.x}, ${s.z} solid`);
   // The edge's spruce: more tiers, its lowest branches hanging lower, under 1.6 x the forest's.
   const count = (parts) => parts.find((p) => p.material === 'fir-leaves').buffers.position.length / 9;
   const lowest = (parts) => {
@@ -236,6 +248,8 @@ test('the firs stand where the classic forest\'s cones stood, the classic build 
   t.diagnostic(`fir leaves: forest ${a}, edge ${b} triangles`);
   assert.ok(b > a && b < 1.6 * a, `the edge's spruce ${b} triangles, the forest's ${a}`);
   assert.ok(lowest(high.firs.edge.parts) < lowest(high.firs.parts) - 0.03, 'a hanging skirt');
+  // (W7: the far tree line the low tier's plainer spruce on high: fewer triangles, the same materials.)
+  assert.ok(count(high.firs.far.parts) < a, 'the far line plainer');
   firs.forEach((s, i) => {
     const m = all.subarray(i * 16, i * 16 + 16);
     assert.deepEqual([m[12], m[13], m[14]].map((v) => v.toFixed(3)), [s.x, s.base, s.z].map((v) => Math.fround(v).toFixed(3)));

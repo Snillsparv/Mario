@@ -18,7 +18,7 @@ import { add, mul } from './geo.js';
 import { frameOf } from './house.js';
 
 const STEEL = 0x8e8e8c; // (weathered galvanized: a neutral grey)
-const HEAD = 0x4a4e50;
+const HEAD = 0xa8acae; // (W7: the photos' light grey luminaires)
 const WHITE = 0xf2f2f0;
 const GOLD = 0xe8b84a;
 
@@ -32,28 +32,33 @@ function lathe(g, x, z, profile, sides) {
   g.loft(rings);
 }
 
-export function lampposts({ steel, paint, gloss }, L) {
+export function lampposts({ steel, paint, gloss, granite, tier }, L) {
   const { LAMP } = L;
   for (const { x, z, yaw } of L.LAMPS) {
     const y0 = L.groundHeight(x, z);
+    // (W7, photos 05, 09, 12, 24: a slim galvanised pole tapering a little, on a concrete collar;
+    // a short bracket from just under the cap out to a flat oval luminaire, light grey, its
+    // clear lens under it.)
+    granite.color(0x9a9890);
+    lathe(granite, x, z, [[LAMP.r + 17, y0 - 6], [LAMP.r + 17, y0 + 7], [LAMP.r + 14, y0 + 10], [LAMP.r + 2, y0 + 11]], 12);
     steel.color(STEEL);
-    lathe(steel, x, z, [[LAMP.r + 9, y0 - 10], [LAMP.r + 9, y0 + 55], [LAMP.r + 4, y0 + 70], [LAMP.r + 1, y0 + 80], [LAMP.r - 5, LAMP.top - 30], [LAMP.r - 6, LAMP.top - 6], [0, LAMP.top]], 16);
-    // The arm: out along yaw from under the pole's cap (LAMP.root), curving up to the head.
+    lathe(steel, x, z, [[LAMP.r + 3, y0 - 10], [LAMP.r + 3, y0 + 42], [LAMP.r + 1, y0 + 50], [LAMP.r - 5, LAMP.top - 24], [LAMP.r - 6, LAMP.top - 5], [0, LAMP.top]], tier === 'low' ? 10 : 14);
     const [ax, az] = [Math.sin(yaw), Math.cos(yaw)];
-    const at = (t) => [x + ax * LAMP.arm * t, LAMP.top - LAMP.root + (LAMP.root + 4) * Math.sin(t * Math.PI * 0.5), z + az * LAMP.arm * t];
-    for (let k = 0; k < 4; k++) steel.tube(at(k / 4), at((k + 1) / 4), 6, 5.5, 10);
-    // The luminaire: a flat rounded head, its diffuser under it.
-    const end = at(1);
+    const y = LAMP.top - LAMP.root;
+    const at = (t) => [x + ax * (LAMP.arm - 26) * t, y + 4 * Math.sin(t * Math.PI * 0.5), z + az * (LAMP.arm - 26) * t];
+    for (let k = 0; k < 2; k++) steel.tube(at(k / 2), at((k + 1) / 2), 4.5, 4, 8);
+    // The luminaire: a flat rounded oval (36 long either way of its middle, 15 across), the lens.
+    const mid = [x + ax * LAMP.arm, y, z + az * LAMP.arm];
     const fw = [ax, 0, az];
     const side = [az, 0, -ax];
     paint.color(HEAD);
-    const ring = (w, y, k) => Array.from({ length: 12 }, (_, i) => {
+    const ring = (yy, k) => Array.from({ length: 12 }, (_, i) => {
       const a = (i / 12) * Math.PI * 2;
-      return add(add([end[0], y, end[2]], mul(fw, Math.cos(a) * 50 * k + 10)), mul(side, -Math.sin(a) * w * k));
+      return add(add([mid[0], yy, mid[2]], mul(fw, Math.cos(a) * 36 * k)), mul(side, -Math.sin(a) * 15 * k));
     });
-    paint.loft([ring(24, end[1] - 16, 0.9), ring(24, end[1] - 10, 1), ring(24, end[1] + 2, 0.92), ring(24, end[1] + 6, 0.5), ring(24, end[1] + 7, 0.01)], { capStart: false });
+    paint.loft([ring(y - 6, 0.92), ring(y - 3, 1), ring(y + 5, 0.94), ring(y + 8, 0.55), ring(y + 9, 0.01)], { capStart: false });
     gloss.color(0xe8e8e4);
-    gloss.loft([ring(24, end[1] - 16.5, 0.86), ring(24, end[1] - 16.5, 0.01)]);
+    gloss.loft([ring(y - 6.5, 0.86), ring(y - 6.5, 0.01)]);
   }
 }
 

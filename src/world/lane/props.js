@@ -55,11 +55,14 @@ import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
 import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses, BEVEL, terraceSpans } from './real/plan.js';
 import { bedSpots } from './facades.js';
+import { kerbside, PLATE } from './surface.js';
 import { signFace } from './real/sign.js';
 
 const TINT = {
   lamp: 0x8c9092,
-  lampHead: 0x4a4e50,
+  lampHead: 0xb0b4b4, // (W7: the photos' light grey luminaires)
+  collar: 0x9a9890, // (their concrete collars)
+  plateBack: 0x4a4c50,
   signBack: 0x9a9c9e,
   flag: 0xf2f2f0,
   gold: 0xe8b84a,
@@ -74,6 +77,10 @@ const TINT = {
   fruit: 0xc8342a,
   birch: 0xa0a840,
   bark: 0xe8e4da,
+  oak: [0x8a9038, 0x9a9440, 0x70883a], // (W7: the forest's broadleaves, golden-green in the low sun)
+  pine: 0x9a6040, // (the Scots pines' orange-brown upper bark)
+  pineCrown: 0x4e5e2c,
+  cherry: [0x9a9a3c, 0xa88a3a, 0x8a9a40], // (the cherry's yellow-green, orange-tipped leaves)
   redLeaf: [0x7a3236, 0x5a2a2a, 0x6e3a40, 0xa05a38], // the red-leaf tree's tones (purple-reds, browns: W3)
   ivy: 0x3a4a22,
   climber: 0x333a22, // (the gable's back corner's: W4)
@@ -150,6 +157,7 @@ export function buildProps(kit, layout) {
 // buildProps a few builders at a time (a generator: lane/build.js laneSteps).
 export function* propsSteps(kit, layout) {
   for (const l of layout.LAMPS) lamppost(kit, layout, l);
+  kerbsideProps(kit, layout);
   for (const f of layout.FLAGPOLES) flagpole(kit, layout, f);
   layout.BINS.forEach((b, i) => bin(kit, layout, b, i));
   yield;
@@ -194,25 +202,60 @@ export function* propsSteps(kit, layout) {
 
 // ---------------------------------------------------------------- street furniture
 
-// A lamppost: a grey eight-sided pole on a wider foot, an arm out along its yaw at the top and a
-// flat lamp head; a prism collider unless it is a climbable pole (layout.POLES).
+// A lamppost: a slim grey eight-sided pole on a concrete collar, a short bracket out along its yaw
+// from just under the cap to a flat oval luminaire (W7, photos 05, 09, 12, 24: light grey, its
+// lens under it); a prism collider unless it is a climbable pole (layout.POLES).
 function lamppost(kit, layout, { x, z, yaw }) {
   const { paint, solids } = kit.drawn('posts');
   const { LAMP, POLES } = layout;
   const y0 = layout.groundHeight(x, z);
+  paint.color(TINT.collar);
+  paint.lathe(x, z, [[LAMP.r + 16, y0 - 4], [LAMP.r + 15, y0 + 9], [0, y0 + 10]], 8, { flat: true });
   paint.color(TINT.lamp);
-  paint.lathe(x, z, [[LAMP.r + 8, y0 - 10], [LAMP.r + 8, y0 + 60], [LAMP.r, y0 + 80], [LAMP.r - 3, LAMP.top], [0, LAMP.top]], 8, { flat: true });
+  paint.lathe(x, z, [[LAMP.r + 3, y0 - 10], [LAMP.r + 3, y0 + 45], [LAMP.r, y0 + 55], [LAMP.r - 4, LAMP.top], [0, LAMP.top]], 8, { flat: true });
   const ax = Math.sin(yaw);
   const az = Math.cos(yaw);
-  const end = [x + ax * LAMP.arm, LAMP.top + 10, z + az * LAMP.arm];
-  // (The arm out from under the cap, rising to the head: a short level beam, then a sloping one.)
   const y = LAMP.top - LAMP.root;
-  paint.solid(orientedBoxPolys([x + ax * 22, 0, z + az * 22], [ax, 0, az], 44, y - 8, y + 8, 10));
-  paint.solid(beamPolys([x + ax * 40, y, z + az * 40], [end[0], LAMP.top - 4, end[2]], [az, 0, -ax], 10, 14));
+  paint.solid(beamPolys([x + ax * 6, y, z + az * 6], [x + ax * (LAMP.arm - 30), y + 3, z + az * (LAMP.arm - 30)], [az, 0, -ax], 8, 8));
   paint.color(TINT.lampHead);
-  paint.solid(orientedBoxPolys([end[0], 0, end[2]], [ax, 0, az], 90, LAMP.top - 24, LAMP.top - 4, 44), { faceShade: (n) => (n[1] < -0.5 ? 1.6 : 1) });
+  paint.solid(orientedBoxPolys([x + ax * LAMP.arm, 0, z + az * LAMP.arm], [ax, 0, az], 72, y - 6, y + 8, 30), { faceShade: (n) => (n[1] < -0.5 ? 1.4 : 1) });
   if (POLES.some((p) => p.x === x && p.z === z)) return;
   solids.solid(prismPolys(x, z, LAMP.collider, 8, y0 - 10, LAMP.top), 'stone');
+}
+
+// The cabinets and posts at the lampposts' feet (W7, lane/surface.js KERBSIDE: a grey metal
+// cabinet by L2 with a white marker post, a grey-green one with a gabled lid by L3, a pale
+// blue-grey one and a white bollard at L5's, a small white box by L1), each solid (a box, a thin
+// prism); the blank sign plate clamped on L5's pole facing east; drawn in both looks.
+function kerbsideProps(kit, layout) {
+  const { paint, solids } = kit; // (both looks: plain sheet-metal boxes)
+  const G = layout.GROUND;
+  for (const k of kerbside(layout)) {
+    const [ux, uz] = [Math.cos(k.yaw), -Math.sin(k.yaw)];
+    if (k.kind === 'post') {
+      paint.color(k.tint);
+      paint.lathe(k.x, k.z, [[k.w / 2, G - 4], [k.w / 2, G + k.h - 6], [0, G + k.h]], 6, { flat: true });
+      if (k.cap) paint.color(k.cap).lathe(k.x, k.z, [[k.w / 2 + 1, G + k.h - 14], [k.w / 2 + 1, G + k.h - 4], [0, G + k.h - 2]], 6, { flat: true });
+      solids.solid(prismPolys(k.x, k.z, k.w / 2 + 4, 6, G - 4, G + k.h), 'stone');
+      continue;
+    }
+    const top = G + k.h;
+    if (k.foot) paint.color(k.foot).solid(orientedBoxPolys([k.x, 0, k.z], [ux, 0, uz], k.w + 10, G - 4, G + 10, k.d + 10));
+    paint.color(k.tint);
+    paint.solid(orientedBoxPolys([k.x, 0, k.z], [ux, 0, uz], k.w, G + (k.foot ? 10 : 0), top, k.d), { faceShade: (n) => (n[1] > 0.5 ? 1.08 : 0.92) });
+    // (A gabled lid: a slab over it, a ridge along it.)
+    if (k.gable) {
+      paint.solid(orientedBoxPolys([k.x, 0, k.z], [ux, 0, uz], k.w + 4, top, top + 5, k.d + 4));
+      paint.solid(orientedBoxPolys([k.x, 0, k.z], [ux, 0, uz], k.w + 2, top + 5, top + 12, k.d * 0.45));
+    }
+    solids.solid(orientedBoxPolys([k.x, 0, k.z], [ux, 0, uz], k.w + 10, G - 4, top, k.d + 10), 'stone');
+  }
+  const P = PLATE;
+  const l = layout.LAMPS.find((p) => p.id === P.lamp);
+  paint.color(TINT.plateBack);
+  paint.solid(orientedBoxPolys([l.x + P.out * (layout.LAMP.r + 2), 0, l.z], [0, 0, 1], P.w, G + P.y0, G + P.y0 + P.h, 3));
+  paint.color(TINT.white);
+  paint.solid(orientedBoxPolys([l.x + P.out * (layout.LAMP.r + 4), 0, l.z], [0, 0, 1], P.w - 6, G + P.y0 + 3, G + P.y0 + P.h - 3, 1));
 }
 
 // The turning area's sign at the bed's corner by the asphalt (TURN_SIGN): a grey post, the plate
@@ -474,8 +517,32 @@ function gardenTree(kit, layout, t) {
   const { wood, render, paint, solids } = drawn;
   const y0 = layout.groundHeight(t.x, t.z);
   if (t.kind === 'birch') {
-    birch(drawn, t.x, t.z, y0, t.h, t.r, 7);
-    solids.solid(prismPolys(t.x, t.z, 30, 6, y0 - 10, y0 + t.h * 0.6), 'wood');
+    // (W7: the big one's three stems leaning out from one foot under one broad crown.)
+    const stems = t.stems ?? 1;
+    for (let k = 0; k < stems; k++) {
+      const a = (k / stems) * Math.PI * 2 + 0.6;
+      const lean = stems > 1 ? 0.07 : 0;
+      birchTrunk(drawn, t.x, t.z, y0, t.h * (1 - k * 0.06), t.r * 0.8, [Math.sin(a) * lean, Math.cos(a) * lean]);
+    }
+    canopy(drawn, t.x, t.z, y0 + t.h * 0.36, y0 + t.h, t.r, TINT.birch, 7, stems > 1 ? 5 : 4);
+    solids.solid(prismPolys(t.x, t.z, stems > 1 ? 45 : 30, 6, y0 - 10, y0 + t.h * 0.6), 'wood');
+    return;
+  }
+  if (t.kind === 'broad' || t.kind === 'cherry') {
+    // The side yard's round broadleaf; the cherry's grey trunk forking low into leaning limbs
+    // under a broad open crown, yellow-green with orange tips (W7).
+    const cherry = t.kind === 'cherry';
+    const fork = y0 + (cherry ? 195 : t.h * 0.4);
+    wood.color(cherry ? TINT.redTrunk : TINT.trunk);
+    wood.lathe(t.x, t.z, [[cherry ? 22 : 30, y0 - 10], [cherry ? 18 : 24, fork], [0, fork + 20]], 6, { flat: true });
+    if (cherry) {
+      for (let k = 0; k < 3; k++) {
+        const a = k * 2.1 + 0.4;
+        wood.solid(beamPolys([t.x, fork - 10, t.z], [t.x + Math.sin(a) * t.r * 0.55, y0 + t.h * 0.62, t.z + Math.cos(a) * t.r * 0.55], [Math.cos(a), 0, -Math.sin(a)], 14, 14));
+      }
+    }
+    canopy(drawn, t.x, t.z, y0 + t.h * (cherry ? 0.5 : 0.36), y0 + t.h, t.r, cherry ? TINT.cherry : TINT.oak, Math.round(t.x + t.z), 4);
+    solids.solid(prismPolys(t.x, t.z, cherry ? 30 : 36, 6, y0 - 10, fork), 'wood');
     return;
   }
   if (t.kind === 'shrub') {
@@ -505,15 +572,21 @@ function gardenTree(kit, layout, t) {
   solids.solid(prismPolys(t.x, t.z, 40, 8, y0 - 10, c0 + 100), 'wood');
 }
 
-// A birch (a garden's, or the forest's): white bark with dark rings, slender, under a tall
-// yellowing canopy of four blobs.
-function birch(kit, x, z, base, h, r, seed) {
+// A birch's trunk (a garden's): white bark with dark rings, slender, leaning `lean` (dx, dz a unit
+// up) under its canopy.
+function birchTrunk(kit, x, z, base, h, r, lean = [0, 0]) {
   const { wood } = kit;
   const t = r * 0.1;
   wood.color(TINT.bark);
   const ring = (k) => [[t * (1 - k * 0.4), base + h * k, 1], [t * (1 - k * 0.4), base + h * k, 0.45], [t * (1 - k * 0.4), base + h * (k + 0.03), 0.45], [t * (1 - k * 0.4), base + h * (k + 0.03), 1]];
+  const before = wood.pos.length;
   wood.lathe(x, z, [[t * 1.1, base - 10, 1], ...ring(0.18), ...ring(0.4), ...ring(0.58), [t * 0.5, base + h * 0.85], [0, base + h * 0.86]], 6, { flat: true });
-  canopy(kit, x, z, base + h * 0.36, base + h, r, TINT.birch, seed, 4);
+  // (Leant: each vertex out by its height over the foot.)
+  if (lean[0] || lean[1]) for (let i = before; i < wood.pos.length; i += 3) {
+    const up = wood.pos[i + 1] - base;
+    wood.pos[i] += lean[0] * up;
+    wood.pos[i + 2] += lean[1] * up;
+  }
 }
 
 // The dad's front garden (W3): the red-leaf bed (BED: fallen russet leaves on its soil, a
@@ -704,10 +777,17 @@ function neighbours(kit, layout) {
   }
   // (W6: north_2's three, turned to its drive; north_3's white picket enclosure, its mailbox.)
   for (const b of layout.VILLA_BINS) {
-    const [hx, hz, y1] = [K.z / 2, K.x / 2, G + K.h];
+    // (Turned to their drive, or W7's out on the pavement fronts to the street, yaw 0.)
+    const side = Math.abs(Math.sin(b.yaw)) > 0.5;
+    const [hx, hz, y1] = side ? [K.z / 2, K.x / 2, G + K.h] : [K.x / 2, K.z / 2, G + K.h];
     bp.color(b.tint ?? TINT.bin);
-    bp.box(b.x - hx + 6, b.x + hx, G, y1 - 10, b.z - hz + 4, b.z + hz - 4, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
-    bp.box(b.x - hx - 3, b.x + hx + 4, y1 - 10, y1, b.z - hz, b.z + hz, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+    if (side) {
+      bp.box(b.x - hx + 6, b.x + hx, G, y1 - 10, b.z - hz + 4, b.z + hz - 4, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+      bp.box(b.x - hx - 3, b.x + hx + 4, y1 - 10, y1, b.z - hz, b.z + hz, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+    } else {
+      bp.box(b.x - hx + 4, b.x + hx - 4, G, y1 - 10, b.z - hz + 6, b.z + hz, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+      bp.box(b.x - hx, b.x + hx, y1 - 10, y1, b.z - hz - 3, b.z + hz + 4, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+    }
     bs.box(b.x - hx, b.x + hx, G, y1, b.z - hz, b.z + hz, 'stone');
   }
   const N = layout.ENCLOSURE;
@@ -1357,19 +1437,36 @@ function footpathProps(kit, layout) {
 
 // ---------------------------------------------------------------- the forest, the side road
 
-// The forest on the bank behind the north gardens (a seeded scatter of firs and birches over
-// FOREST's band) and a ring of firs round the outside of the boundary (EDGE_FOREST: each a seeded
-// way out from a seeded point on one of its edges, kept off the road drawn on past it), all drawn
-// only: the boundary's walls stand inside them. Where they stand is world/lane/real/spots.js's
-// (the realistic look plants the same trees).
+// The forest on the bank behind the north gardens, in the side yards and round the outside of the
+// boundary (W7: world/lane/real/spots.js's mixed canopy, the realistic look plants the same trees):
+// spruces (skerries/props.js fir()), birches, broadleaves (a short trunk under two golden-green
+// blobs) and Scots pines (a tall orange-brown trunk under a flat dark crown), drawn only but the
+// side yards' trunks (solid, off every route): the boundary's walls stand inside the rest.
 function forest(kit, layout) {
-  const { leaves, wood } = kit.drawn('forest');
-  const { firs, birches } = forestSpots(layout);
-  const plant = (t) => fir({ leaves, wood }, t.x, t.z, t.base, t.h, t.r, { a0: t.a0, solid: false });
-  // (In the order the classic forest was always drawn: the bank's firs, its birches, the edge's.)
-  firs.slice(0, layout.FOREST.count).forEach(plant);
-  for (const t of birches) birch({ leaves, wood }, t.x, t.z, t.base, t.h, t.r, t.seed);
-  firs.slice(layout.FOREST.count).forEach(plant);
+  const { leaves, wood, solids } = kit.drawn('forest');
+  const { firs, birches, broad, pines } = forestSpots(layout);
+  for (const t of firs) fir({ leaves, wood }, t.x, t.z, t.base, t.h, t.r, { a0: t.a0, solid: false });
+  for (const t of [...birches, ...broad, ...pines]) {
+    const pine = pines.includes(t);
+    const rng = makeRng(t.seed);
+    const trunk = pine ? 0.86 : 0.5;
+    wood.color(pine ? TINT.pine : birches.includes(t) ? TINT.bark : TINT.trunk);
+    wood.lathe(t.x, t.z, [[t.r * (pine ? 0.07 : 0.09), t.base - 10], [t.r * 0.05, t.base + t.h * trunk]], 5, { flat: true });
+    const tint = pine ? TINT.pineCrown : birches.includes(t) ? TINT.birch : TINT.oak[t.seed % TINT.oak.length];
+    leaves.shade = (px, y) => 0.7 + 0.4 * Math.min(1, Math.max(0, (y - t.base - t.h * 0.4) / (t.h * 0.6)));
+    // (Two blobs: the crown and a lump off it; a pine's flat, at its top; one deep in the bank
+    // and round the outside, where the front rows hide them.)
+    const F = layout.FOREST;
+    const front = t.solid || (t.z > F.z0 + F.slope * t.x - 600 && t.z < F.z0 + F.slope * t.x + 400);
+    const blobs = pine ? [[0, 0, 0.9, 1, 0.1], [1, 0.45, 0.8, 0.6, 0.08]] : [[0, 0, 0.66, 0.85, 0.32], [1, 0.42, 0.8, 0.6, 0.2]];
+    for (const [k, off, up, rr, ry] of front ? blobs : blobs.slice(0, 1)) {
+      const a = rng() * 6.3;
+      leaves.color(tint, 0.92 + rng() * 0.16);
+      blob(leaves, t.x + Math.sin(a) * t.r * off, t.z + Math.cos(a) * t.r * off, t.base + t.h * up, t.r * rr, t.h * ry, a + k, 5);
+    }
+    leaves.shade = null;
+    if (t.solid) solids.solid(prismPolys(t.x, t.z, 40, 8, t.base, t.base + t.h * 0.4), 'wood');
+  }
 }
 
 // Two houses down the side road in the fog (SIDE_BLOCKS): plain chain houses (houses.js) along

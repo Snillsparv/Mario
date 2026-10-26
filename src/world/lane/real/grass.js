@@ -26,6 +26,8 @@ import { makeRng } from '../../../core/math.js';
 import { frameOf } from './house.js';
 import { GRASS } from './grassTiers.js';
 import { STRIP } from '../facades.js';
+import { forestSpots } from './spots.js';
+import { SHOULDER } from '../surface.js';
 
 export { GRASS }; // (its data lives in grassTiers.js, which the realLook chunk imports)
 
@@ -216,6 +218,11 @@ export function lawnMask(L) {
   for (const t of L.THUJAS) disc(t.x, t.z, L.THUJA.r + 20);
   for (const t of L.TREES) disc(t.x, t.z, 90);
   for (const t of L.GARDEN_TREES) disc(t.x, t.z, t.kind === 'shrub' ? t.r + 20 : 60);
+  // (W7: the side yards' forest trees, the bend's gravel shoulder on the lawn by the south edge;
+  // the kerbside furniture stands on the pavement.)
+  const F = forestSpots(L);
+  for (const t of [...F.broad, ...F.pines]) if (t.solid) disc(t.x, t.z, 60);
+  clear((x, z) => x > SHOULDER.x0 && x < SHOULDER.x1 && L.roadDistance(x, z) < L.ROAD.half + SHOULDER.w + 10, SHOULDER.x0, SHOULDER.x1, -1000, 1000);
   // The dad's front garden (W3): the bed (its outline and its stones' row round it), the
   // rhododendron, the ivy mound, the rose, the mailbox, the landing.
   const bed = L.BED;

@@ -31,7 +31,7 @@ const PINNED = {
     'pavers:{"cols":16,"seed":73,"setts":0.4}': 'ea3bb603bba6a7d7', // (W6: the villas' drives' granite setts in arcs, a new option: every other set's bytes unchanged; the old cobbles' were 7af87ac8440e7746)
     'pavers:{"moss":0.24,"olive":1}': 'e39383ae37fa23f7', // (W3: the dad's path mossed over, olive; the plain set's bytes unchanged: 8c283e6c89994825)
     'tiles:{"relief":0}': '880063751491c992',
-    'granite:{}': '2e69c35083fd3dbd',
+    'granite:{"fine":1}': 'f4976a1725f5f61a', // (W7: the kerbs' light fine-grained granite, a new option: every other set's bytes unchanged; the plain set's were 2e69c35083fd3dbd)
     'bark:{}': '98e8c8d71d224033',
     'bark:{"birch":1}': '2d7cafb7589aa3df',
     'leaves:{}': '5ec91de4f9973683',
