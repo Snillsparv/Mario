@@ -315,7 +315,7 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
       const off = (i) => (cells.getX(i) - 63.5) ** 2 + (cells.getY(i) - 63.5) ** 2;
       for (let i = 1; i < cells.count; i++) assert.ok(off(i) >= off(i - 1), 'nearest first');
       const all = grass.geometry.instanceCount;
-      assert.ok(all < 128 * 128 && all > Math.PI * (GRASS.high.radius / 12) ** 2, `${all} cells within reach`); // (W7: the radius 735, the far ring's lever)
+      assert.ok(all < 128 * 128 && all > Math.PI * (GRASS.high.radius / 12) ** 2, `${all} cells within reach`); // (W7: the radius 735, the far ring's lever; W8: 725)
       look.grass(0.5);
       assert.ok(grass.geometry.instanceCount < all * 0.3 && grass.visible, 'half the reach: a quarter the cells');
       look.grass(0);

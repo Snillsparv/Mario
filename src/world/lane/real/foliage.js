@@ -30,6 +30,7 @@ import { Geo, add, mul, sub, dot, cross, norm } from './geo.js';
 import { forestSpots } from './spots.js';
 import { redTreeStems, redTreeCrown, ivyMasses, climberMasses, terraceSpans } from './plan.js';
 import { bedSpots } from '../facades.js';
+import { LINE_HEDGES, SMALL_PLANTS } from '../ends.js';
 
 // The leaf atlas's cells (texgen/sets.js LEAF_CELLS: each half the atlas a side).
 const CELL = { rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] };
@@ -186,7 +187,7 @@ export function plants(kit, L) {
     kit.bark.tube([t.x, y0 - 10, t.z], [t.x, top, t.z], 60, 36, 8);
     const blobs = ragged(canopyBlobs(t.x, t.z, y0 + t.h * 0.32, y0 + t.h, t.r, Math.round(t.x * 7 + t.z)), 6, Math.round(t.x * 3 - t.z), kit.tier);
     limbs(kit.bark, [t.x, top - 20, t.z], blobs, 26);
-    canopy(kit, R, blobs, { size: 130, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * (DENSE[kit.tier] ?? 1) });
+    canopy(kit, R, blobs, { size: 130, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * ({ high: 1.2, low: 0.8 }[kit.tier] ?? DENSE[kit.tier] ?? 1) }); // (W8: on high 1.2x, not DENSE's 1.4x, on low 0.8x: the plan's levers, out past the junction now)
   }
   for (const t of L.GARDEN_TREES) gardenTree(kit, R, L, t);
   redTree(kit, R, L);
@@ -221,6 +222,8 @@ export function plants(kit, L) {
   for (const t of L.COLUMN_TREES ?? []) column(kit, L, t);
   // (W5: the neighbours', each its own stream: the others' kept.)
   for (const h of L.HEDGES) if (h.informal) hedge(kit, null, h, L);
+  lineHedges(kit, L);
+  smallPlants(kit, L);
   beechRow(kit, L);
   southGarden(kit, L);
   beds(kit, L);
@@ -510,6 +513,86 @@ function hedge(kit, R, h, L) {
   }
 }
 
+// The hedges along a line (W8, layout LINE_HEDGES: each its own stream): cards over its face
+// toward the street (`side`; both, the clipped one), its top and its ends round a dark core.
+const LINE_HEDGE = { clipped: [1.4, 1.2, 0.45], thuja: [0.6, 0.62, 0.3], beech: [1.2, 0.95, 0.45], dark: [0.66, 0.72, 0.34] };
+const LINE_STEP = { high: 40, mid: 52, low: 100 };
+function lineHedges({ foliage, core, tier }, L) {
+  for (const h of LINE_HEDGES) {
+    const R = makeRng(7301 + Math.round(h.from[0]));
+    const [a, b] = [h.from, h.to];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const d = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+    const n = [d[1], -d[0]]; // (its left seen from `from`)
+    const P = (t, s, y) => [a[0] + d[0] * t + n[0] * s, y, a[1] + d[1] * t + n[1] * s];
+    const half = h.depth / 2;
+    const step = (LINE_STEP[tier] ?? LINE_STEP.high) * (h.kind === 'thuja' ? 1.1 : 1);
+    const size = Math.max(50, step * 1.6) * (h.kind === 'thuja' ? 1.1 : 1);
+    const T = LINE_HEDGE[h.kind];
+    const card = (c, nn, sz = size) => {
+      const k = 0.8 + 0.35 * R();
+      foliage.rgb(T[0] * k, T[1] * k, T[2] * k);
+      cluster(foliage, R, c, norm(nn), sz, CELL.hedge, 1.5, 1);
+    };
+    const jit = () => (R() - 0.5) * step;
+    const [y0, top] = [L.GROUND + 12, h.top + 6];
+    for (let t = step / 2; t < len; t += step) {
+      for (const s of h.side ? [h.side] : [-1, 1]) for (let y = y0; y <= top; y += step) card(P(Math.min(len, Math.max(0, t + jit())), s * (half - 4 - R() * 6), y + jit() * 0.5), [n[0] * s, 0.1, n[1] * s]);
+      for (let s = -half + step / 2; s < half; s += step) card(P(t + jit(), s + jit() * 0.4, top - 6 + R() * 8), [0, 1, 0]);
+    }
+    if (tier !== 'low') for (const [t, e] of [[0, -1], [len, 1]]) for (let s = -half + 10; s < half; s += step) for (let y = y0; y <= top; y += step) card(P(t + e * (4 + R() * 6), s, y), [d[0] * e, 0.1, d[1] * e]);
+    core.rgb(...HEDGE_CORE);
+    const c = (t, s, y) => P(t, s * (half - 8), y);
+    const [lo, hi, t0, t1] = [L.GROUND - 4, top - 14, 8, len - 8];
+    core.quad(c(t1, 1, lo), c(t0, 1, lo), c(t0, 1, hi), c(t1, 1, hi));
+    core.quad(c(t0, -1, lo), c(t1, -1, lo), c(t1, -1, hi), c(t0, -1, hi));
+    core.quad(c(t0, -1, hi), c(t1, -1, hi), c(t1, 1, hi), c(t0, 1, hi));
+    core.quad(c(t0, 1, lo), c(t0, -1, lo), c(t0, -1, hi), c(t0, 1, hi));
+    core.quad(c(t1, -1, lo), c(t1, 1, lo), c(t1, 1, hi), c(t1, -1, hi));
+  }
+}
+
+// The small plants (W8, layout SMALL_PLANTS: their own stream): leafy shells without a core, the
+// grasses' tall pale tufts.
+const SMALL = {
+  maple: { cell: CELL.red, tints: [[1, 0.95, 0.95], [0.85, 0.8, 0.85]], count: 46, size: 44 },
+  grass: { cell: CELL.tree, tints: [[2.1, 1.75, 1.0], [1.8, 1.5, 0.85]], count: 26, size: 48, below: 0.3 },
+  gold: { cell: CELL.tree, tints: [[2.3, 1.4, 0.45], [2.0, 1.15, 0.4], [1.6, 1.3, 0.5]], count: 60, size: 50 },
+  box: { cell: CELL.hedge, tints: [[0.75, 0.82, 0.4]], count: 24, size: 38 },
+  conifer: { cell: CELL.hedge, tints: [[0.55, 0.6, 0.3]], count: 28, size: 40 },
+};
+function smallPlants(kit, L) {
+  const R = makeRng(9127);
+  for (const p of SMALL_PLANTS) {
+    const S = SMALL[p.kind];
+    shell(kit, R, { c: [p.x, L.GROUND + p.h * 0.5, p.z], r: [p.r, p.h * 0.5, p.r], count: S.count, size: S.size, cell: S.cell, tints: S.tints, below: S.below ?? -0.6, sway: 2, core: null });
+  }
+}
+
+// The Virginia creeper's curtain (W8, photos 29, 30): the pergola's dark beam on its post, deep
+// red leaf cards hanging from it in ragged sheets, longer here and shorter there, with gaps.
+function creeper(kit, t, y0, reds) {
+  const R = makeRng(4417);
+  const [a, b] = [t.from, t.to];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const n = [(b[1] - a[1]) / len, (a[0] - b[0]) / len];
+  kit.bark.color(0x4a3a30);
+  kit.bark.tube([a[0], t.top, a[1]], [b[0], t.top, b[1]], 7, 7, 4, { caps: true });
+  kit.bark.tube([b[0], y0 - 4, b[1]], [b[0], t.top + 6, b[1]], 6, 6, 4, { caps: true });
+  const count = Math.round((kit.tier === 'low' ? 90 : kit.tier === 'mid' ? 150 : 210) * (len / 500));
+  for (let i = 0; i < count; i++) {
+    const q = R();
+    const drop = (0.35 + 0.65 * Math.pow(R(), 0.7)) * (240 + 60 * Math.sin(q * 11.3)); // (a curtain down to the wall's top, photos 29, 30)
+    const y = t.top - 6 - Math.pow(R(), 0.8) * drop;
+    const s = (R() - 0.5) * 30;
+    const c = [a[0] + (b[0] - a[0]) * q + n[0] * s, y, a[1] + (b[1] - a[1]) * q + n[1] * s];
+    const tint = reds[Math.floor(R() * reds.length)];
+    const k = 0.75 + 0.4 * R();
+    kit.foliage.rgb(tint[0] * k * 1.25, tint[1] * k * 0.55, tint[2] * k * 0.6);
+    cluster(kit.foliage, R, c, norm([n[0] * (R() < 0.5 ? -1 : 1), -0.2, n[1] * (R() < 0.5 ? -1 : 1)]), 40 + R() * 20, CELL.red, 2, 1);
+  }
+}
+
 function thuja(kit, R, L, { x, z }) {
   const { r, h } = L.THUJA;
   const y0 = L.groundHeight(x, z);
@@ -548,11 +631,15 @@ function gardenTree(kit, R, L, t) {
     return;
   }
   const reds = [[1, 0.95, 0.95], [0.85, 0.8, 0.85], [1.1, 1, 0.9]];
-  if (t.kind === 'shrub') {
+  if (t.kind === 'shrub' || t.kind === 'creeper') {
+    // (W8: the creeper where the red shrub stood: the shrub's draws from the shared stream into
+    // nothing, so every plant after keeps its leaves; the creeper from its own.)
+    const into = t.kind === 'creeper' ? { foliage: new Geo(), core: new Geo(), tier: kit.tier } : kit;
     for (const [dx, dz, s] of [[0, 0, 1], [t.r * 0.45, -t.r * 0.3, 0.7]]) {
       const [r, h] = [t.r * s, t.h * s];
-      shell(kit, R, { c: [t.x + dx, y0 + h * 0.48, t.z + dz], r: [r, h * 0.55, r], count: Math.round(160 * s), size: 46, cell: CELL.red, tints: reds, below: -0.75, sway: 2, core: CORE.red });
+      shell(into, R, { c: [t.x + dx, y0 + h * 0.48, t.z + dz], r: [r, h * 0.55, r], count: Math.round(160 * s), size: 46, cell: CELL.red, tints: reds, below: -0.75, sway: 2, core: CORE.red });
     }
+    if (t.kind === 'creeper') creeper(kit, t, y0, reds);
     return;
   }
   // The apple tree: a short trunk, limbs, a broad canopy hung with red apples.

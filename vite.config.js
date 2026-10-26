@@ -24,11 +24,14 @@ const TARGET = 'es2022';
 //     imports only its ancestors (never a sibling, never a shared chunk), and holds no three.js;
 //   * two module workers of their own (new Worker(new URL(...)), not imports): the title logo's
 //     and the realistic look's (render/real/laneRealWorker.js: the pure code the realistic
-//     Sparrow Lane needs, kept out of main; no three.js, under 184 KiB: from 160 when the
+//     Sparrow Lane needs, kept out of main; no three.js, under 196 KiB: from 160 when the
 //     photo-match packages' realistic builders took it to 163.5 KiB in W5, from 168 when W6's
 //     north villas' kit, beds and net took it to 173.9 KiB, from 176 when W7's mixed forest of
-//     card crowns, its garden trees and its lampposts took it to 178.9 KiB; 179.8 KiB after its fix
-//     round).
+//     card crowns, its garden trees and its lampposts took it to 178.9 KiB (179.8 KiB after its
+//     fix round), from 184 when W8's two ends (the motorhome, the dormer, the gables' panels, the
+//     crazy paving, the hedges along lines, the far cars, lane/ends.js's data) took it to 194.1
+//     KiB). The `lane` chunk's cap (104 KiB, from 92: W8's two ends' classic builders for both
+//     looks and lane/ends.js, their data, moved out of main, at 103.3 KiB) is the build test's.
 // Without the plan Rolldown would carve main itself into shared chunks as soon as a third lazy
 // chunk shares game modules with it. A module two siblings need is hoisted into their parent,
 // one needed on two branches into main; the build prints each hoist ("chunk-plan: main also

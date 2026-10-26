@@ -37,6 +37,7 @@
 
 import { add, mul, sub, dot, cross, norm } from './geo.js';
 import { brickSpans, chainFaces, chainWindows } from './plan.js';
+import { GABLES, dormerOf } from '../facades.js';
 
 export function wallFrame(origin, out) {
   const l = Math.hypot(out[0], out[2]);
@@ -161,6 +162,9 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
       holes.front.push(side);
     }
   }
+  // (W8: a gable's own windows: facades.js GABLES.)
+  const gables = GABLES[h.id] ?? {};
+  for (const [name, G] of Object.entries(gables)) for (const o of G.windows) holes[name].push({ u0: o.u - o.w / 2, u1: o.u + o.w / 2, v0: o.sill, v1: o.sill + o.h, bars: o.bars });
   // The walls: the plinth (or the gable end, or a face's brick ranges: h.brick) in white brick, 2
   // proud, the boards over it, the gables' triangles; the flashing on the plinth's top. (A wing's
   // end inside the main body is not drawn: lane/houses.js chainFaces.)
@@ -202,11 +206,29 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
       g.wearAt = null;
     }
   }
+  // (W8: a gable's panels, boards proud of its brick round its windows (a shiplap panel's
+  // courses dark lines across it); the windows in them.)
+  for (const [name, G] of Object.entries(gables)) {
+    const { f } = F.face(name);
+    const wins = holes[name].filter((o) => o.bars !== undefined);
+    const casing = wins.map((o) => ({ u0: o.u0 - WIN.casing, u1: o.u1 + WIN.casing, v0: o.v0 - WIN.casing, v1: o.v1 + WIN.casing }));
+    for (const P of G.panels) {
+      kit.boards.color(P.tint);
+      band(kit.boards, f, P.u0, P.u1, Math.max(P.v0, -4), Math.min(P.v1, top), 3, casing, { L, eave: top });
+      for (const [u, s] of [[P.u0, -1], [P.u1, 1]]) kit.boards.quad(f.at(u, P.v0, s > 0 ? 3 : 0), f.at(u, P.v0, s > 0 ? 0 : 3), f.at(u, Math.min(P.v1, top), s > 0 ? 0 : 3), f.at(u, Math.min(P.v1, top), s > 0 ? 3 : 0));
+      if (P.v0 > 0) kit.boards.quad(f.at(P.u0, P.v0, 0), f.at(P.u1, P.v0, 0), f.at(P.u1, P.v0, 3), f.at(P.u0, P.v0, 3));
+      if (!P.shiplap || kit.tier === 'low') continue;
+      kit.paint.color(0x2a0c0a);
+      for (let v = P.v0 + 14; v < Math.min(P.v1, top) - 4; v += 18) band(kit.paint, f, P.u0, P.u1, v, v + 1.6, 3.3, casing);
+    }
+    for (const o of wins) windowAt(kit, f, { ...o, u: (o.u0 + o.u1) / 2, w: o.u1 - o.u0 }, { bars: kit.tier === 'low' ? 0 : o.bars, mullion: o.bars > 0 });
+  }
   const front = F.face('front').f;
   const backF = F.face('back').f;
   const bars = kit.tier === 'low' ? 0 : 2;
-  for (const o of wins.front) windowAt(kit, front, o, { bars, curtains: !o.kind, blinds: o.kind === 'blinds', frosted: o.kind === 'frosted' });
-  for (const o of wins.back) windowAt(kit, backF, o, { bars });
+  const frame = h.frame ?? TINT.black;
+  for (const o of wins.front) windowAt(kit, front, o, { bars, curtains: !o.kind, blinds: o.kind === 'blinds', frosted: o.kind === 'frosted', frame });
+  for (const o of wins.back) windowAt(kit, backF, o, { bars, frame });
   if (side) windowAt(kit, front, side, { bars, mullion: false, curtains: false, net: true });
   if (!dad && typeof h.door === 'number') doorAt(kit, front, h.door, h);
   // (A white plastic downpipe down the front from the gutter, a shoe at its foot: W5.)
@@ -219,26 +241,60 @@ export function chainHouse(kit, L, h, { tiled = false, seg = TILE_SEG[kit.tier] 
     kit.metal.tube(front.at(u, 12, 7), front.at(u, 4, 17), 5, 5, 6, { caps: true });
   }
   gableRoof(kit, F, h, tiled, seg);
+  const D = dormerOf(h);
+  if (D) dormer(kit, L, F, h, D, y0, frame);
+}
+
+// A shed dormer on the front slope (W8, facades.js DORMERS: the east house's): its face in boards
+// with real openings for its windows, its cheeks, its tiled roof rising back into the main roof,
+// a white fascia and a gutter along its front.
+function dormer(kit, L, F, h, D, y0, frame) {
+  const f = wallFrame(F.at(D.u, y0, D.wf), F.dir(0, 0, 1));
+  const [hw, v0, v1] = [D.w / 2, D.foot - y0, D.top - y0];
+  const holes = D.windows.map((u) => ({ u0: u - D.win / 2, u1: u + D.win / 2, v0: v0 + D.sill, v1: v0 + D.sill + D.high }));
+  kit.boards.color(D.boards);
+  band(kit.boards, f, -hw, hw, v0 - 8, v1, 0, holes, { L, eave: v1 });
+  for (const [u, e] of [[D.u0, -1], [D.u1, 1]]) {
+    const t = [F.at(u, D.foot - 8, D.wf), F.at(u, D.top, D.wf), F.at(u, D.yb, D.wb)];
+    if (dot(cross(sub(t[1], t[0]), sub(t[2], t[0])), F.dir(e, 0, 0)) >= 0) kit.boards.tri(t[0], t[1], t[2]);
+    else kit.boards.tri(t[0], t[2], t[1]);
+  }
+  for (const o of holes) windowAt(kit, f, o, { bars: 0, mullion: kit.tier !== 'low', frame });
+  const o = 30;
+  const k = Math.tan((D.pitch * Math.PI) / 180);
+  const [e0, e1] = [F.at(D.u0 - o, D.top + 4 - o * k, D.wf + o), F.at(D.u1 + o, D.top + 4 - o * k, D.wf + o)];
+  const [r0, r1] = [F.at(D.u0 - o, D.yb + 4, D.wb), F.at(D.u1 + o, D.yb + 4, D.wb)];
+  kit.roof.color(h.realRoof ?? h.roof);
+  const ex = norm(sub(e1, e0));
+  const up = norm(sub(r0, e0));
+  const uv = (p) => [dot(sub(p, e0), ex), dot(sub(p, e0), up)];
+  kit.roof.quad(e0, e1, r1, r0, { uvs: [e0, e1, r1, r0].map(uv) });
+  kit.paint.color(0xeceae4);
+  kit.paint.quad(F.at(D.u0 - o, D.top - 22, D.wf + o), F.at(D.u1 + o, D.top - 22, D.wf + o), e1, e0);
+  kit.paint.color(TINT.soffit);
+  kit.paint.quad(F.at(D.u1 + o, D.top - 22, D.wf + o), F.at(D.u0 - o, D.top - 22, D.wf + o), F.at(D.u0, D.top - 22, D.wf), F.at(D.u1, D.top - 22, D.wf), { shade: 0.6 });
+  kit.metal.color(0xe8e6e0);
+  kit.metal.tube(F.at(D.u0 - o, D.top - 30, D.wf + o + 10), F.at(D.u1 + o, D.top - 30, D.wf + o + 10), 8, 8, 6, { a0: 0, arc: Math.PI });
 }
 
 // A window in the opening o of wall frame f (its glass 10 in, the casing proud).
-function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = false, blinds = false, frosted = false } = {}) {
+function windowAt(kit, f, o, { bars = 2, mullion = true, curtains = true, net = false, blinds = false, frosted = false, frame = TINT.black } = {}) {
   const { paint, glass, cloth, core, metal } = kit;
   const { u0, u1, v0, v1 } = o;
   const cs = WIN.casing;
   const R = -WIN.reveal;
-  paint.color(TINT.black);
+  paint.color(frame);
   // The casing: over the top and down the sides, 3 proud.
   fbox(paint, f, u0 - cs, u1 + cs, v1, v1 + cs, 0, 3, 'k');
   fbox(paint, f, u0 - cs, u0, v0, v1, 0, 3, 'kt');
   fbox(paint, f, u1, u1 + cs, v0, v1, 0, 3, 'kt');
   // The reveal: the opening's sides and head, into the wall to the frame.
-  paint.color(TINT.black, 1.4);
+  paint.color(frame, frame === TINT.black ? 1.4 : 0.85);
   paint.quad(f.at(u0, v0, R), f.at(u0, v0, 0), f.at(u0, v1, 0), f.at(u0, v1, R));
   paint.quad(f.at(u1, v0, 0), f.at(u1, v0, R), f.at(u1, v1, R), f.at(u1, v1, 0));
   paint.quad(f.at(u0, v1, 0), f.at(u1, v1, 0), f.at(u1, v1, R), f.at(u0, v1, R));
   // The frame and the casements (6 wide), their glazing bars.
-  paint.color(TINT.black);
+  paint.color(frame);
   const fr = 6;
   const sash = (a, b) => {
     fbox(paint, f, a, b, v1 - fr, v1, R, R + 3, 'k');
@@ -416,18 +472,18 @@ function gableRoof(kit, F, h, tiled, seg) {
     // (Wound to face out: the side's order flips with s.)
     const slope = s > 0 ? [e0, e1, r1, r0] : [e1, e0, r0, r1];
     if (tiled && seg && !J) {
-      kit.tiles.color(h.roof);
+      kit.tiles.color(h.realRoof ?? h.roof);
       tileCourses(kit.tiles, e0, e1, up, len, seg);
       kit.shadow.quad(...slope.map((p) => sub(p, mul(F.dir(0, 1, s * tan), 3 + TILE.SINK))));
     } else {
-      kit.roof.color(h.roof);
+      kit.roof.color(h.realRoof ?? h.roof);
       const ex = norm(sub(e1, e0));
       const uv = (p) => [dot(sub(p, e0), ex), dot(sub(p, e0), up)];
       kit.roof.quad(...slope, { uvs: slope.map(uv) });
     }
     // The soffit under the overhang (dark), the fascia along the eave.
     const dn = (p) => [p[0], p[1] - T, p[2]];
-    kit.paint.color(TINT.soffit);
+    kit.paint.color(h.soffit ?? TINT.soffit);
     kit.paint.quad(...[slope[1], slope[0], slope[3], slope[2]].map(dn), { shade: 0.6 });
     kit.paint.color(TINT.fascia);
     const fa = add(e0, mul(out, 1));
@@ -465,13 +521,13 @@ function gableRoof(kit, F, h, tiled, seg) {
       const deep = h.verge ? 40 : 22; // (the neighbours' verge boards broad, in their own tint: W5)
       const board = [[p[0], p[1] - deep, p[2]], [q[0], q[1] - deep, q[2]], [q[0], q[1] + 3, q[2]], [p[0], p[1] + 3, p[2]]];
       kit.paint.quad(...((e > 0) !== (s > 0) ? [board[1], board[0], board[3], board[2]] : board));
-      kit.tiles.color(h.roof, 0.85);
+      kit.tiles.color(h.realRoof ?? h.roof, 0.85);
       kit.tiles.tube(add(p, [0, -5, 0]), add(q, [0, -5, 0]), 7, 7, 5, { a0: Math.PI, arc: Math.PI, caps: true });
     }
   }
   // (Low on the ridge, its top 2 over the collider's ridge line Jonas stands on: his feet sink
   // no deeper there than on the rolls' crowns.)
-  kit.tiles.color(h.roof, 0.9);
+  kit.tiles.color(h.realRoof ?? h.roof, 0.9);
   const [ra, rb] = [F.at(-A - o - 4, h.ridge - 10, 0), F.at(J ? ridgeEnd : A + o + 4, h.ridge - 10, 0)];
   kit.tiles.tube(ra, rb, 12, 12, 8, { a0: Math.PI, arc: Math.PI, caps: true });
   // The ridge tiles' joints: thin dark rings every RIDGE_TILE (on low none on a wing's ridge,

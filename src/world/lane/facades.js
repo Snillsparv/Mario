@@ -43,6 +43,13 @@
 //                    villa's front (lane/build.js block: under the house, behind every door at
 //                    the floor), so no recess shows the lawn's top crossing it
 
+//   WEST_FRONTS[id]  the west end's villa (W8, north_west: photos 04-07): white ribbed blockwork
+//                    to its eaves, no window on its front; on the front from its south-west corner
+//                    `rough` split-face panels (u0, u1, floor to soffit), its white ribbed sectional
+//                    `doors` ({ u, w, h, tint }), the ribs' `ribs` pitch, a covered entrance on its
+//                    west face (`porch`: u0..u1 along it, the soffit's posts `out` from the wall at
+//                    `posts`, a glazed door), the trim's tint (soffits, fascias, gutters, pipes:
+//                    white)
 export const FRAME = 0x34363a;
 export const GARAGE_SET = 22;
 export const DOOR_SET = 8;
@@ -61,6 +68,44 @@ export const FACADES = {
   north_3_west: WEST([0]),
   north_4_west: WEST([-200, 250]),
   north_5_west: { windows: [[-209, 150, 470, 150], [-440, 40, 420, 200]], render: 260, pipes: [-1] },
+};
+
+// (W8: a chain house's gable faces' own panels { u0, u1, v0, v1, tint, shiplap? } proud of the
+// brick and windows { u, w, h, sill, bars: the transoms } in them: south_west's street gable,
+// photos 05, 06, 08.)
+export const GABLES = {
+  south_west: {
+    left: {
+      panels: [{ u0: -1268, u1: -828, v0: -4, v1: 390, tint: 0xd8dad8 }, { u0: -358, u1: 200, v0: 150, v1: 390, tint: 0x8a2c28, shiplap: true }],
+      windows: [{ u: -1150, w: 170, h: 78, sill: 300, bars: 0 }, { u: -950, w: 170, h: 78, sill: 300, bars: 0 }, { u: -150, w: 250, h: 210, sill: 160, bars: 1 }],
+    },
+  },
+};
+// (W8: a chain house's shed dormer on its front slope, the east house's, photos 25, 29, 30: `u`
+// its middle along the front, `w` wide, its face `set` back up the slope from the eave line, up
+// to `top`, its roof rising back at `pitch` degrees into the main roof; its windows at `windows`
+// (`win` wide, `high`, their sills `sill` over its foot), its boards' tint. dormerOf(h): its
+// corners in the house's frame: u0, u1, the face's w and foot, the roof's back line (w, y).)
+export const DORMERS = { east_house: { u: 260, w: 1100, set: 205, top: 1000, pitch: 10, windows: [-330, 0, 330], win: 165, high: 130, sill: 95, boards: 0xd8c08a } };
+export function dormerOf(h) {
+  const D = DORMERS[h.id];
+  if (!D) return null;
+  const t = (h.ridge - h.eave) / (h.d / 2);
+  const wf = h.d / 2 - D.set;
+  const foot = h.eave + D.set * t;
+  const k = Math.tan((D.pitch * Math.PI) / 180);
+  // (The dormer's roof y = top + (wf - w) k meets the main roof y = eave + (d/2 - w) t.)
+  const wb = (D.top + wf * k - h.eave - (h.d / 2) * t) / (k - t);
+  return { ...D, u0: D.u - D.w / 2, u1: D.u + D.w / 2, wf, foot, wb, yb: h.eave + (h.d / 2 - wb) * t };
+}
+export const WEST_FRONTS = {
+  north_west: {
+    rough: [[-950, -680]],
+    doors: [{ u: -480, w: 400, h: 338, tint: 0xeceae4 }, { u: -200, w: 136, h: 344, tint: 0xeceae4 }],
+    ribs: 15,
+    porch: { u0: -930, u1: -180, posts: [-860, -250], out: 84, door: { u: -560, w: 150, h: 236 } },
+    trim: 0xf2f0ea,
+  },
 };
 
 // An opening's outline (u, v) on its wall, counter-clockwise seen from outside from its foot's
@@ -102,22 +147,28 @@ export function hipOf(h) {
   const t = Math.tan((pitch * Math.PI) / 180);
   const [a, b] = [h.w / 2, h.d / 2];
   const o = P ? [ROOF.front, ROOF.side, ROOF.side, ROOF.side] : Array(4).fill(h.overhang ?? 60);
-  const Y = P ? h.eave + ROOF.lift : h.eave - o[0] * t;
+  // (W8: a bell-cast eave, north_west's (photos 05, 07): the slopes through the walls' tops at the
+  // pitch, kicked out flatter, at `kick` degrees, over the overhang.)
+  const k = !P && h.kick ? Math.tan((h.kick * Math.PI) / 180) : 0;
+  const Y = P ? h.eave + ROOF.lift : h.eave - o[0] * (k || t);
   const [U0, U1, W0, W1] = [-a - o[3], a + o[1], -b - o[2], b + o[0]];
   const [A, B, cu, cw] = [(U1 - U0) / 2, (W1 - W0) / 2, (U0 + U1) / 2, (W0 + W1) / 2];
-  const ridge = Y + Math.min(A, B) * t;
+  const ridge = k ? h.eave + Math.min(a, b) * t : Y + Math.min(A, B) * t;
   const along = A >= B;
   const r = Math.abs(A - B);
   const R0 = along ? [cu - r, ridge, cw] : [cu, ridge, cw - r];
   const R1 = along ? [cu + r, ridge, cw] : [cu, ridge, cw + r];
   const rim = [[U0, Y, W1], [U1, Y, W1], [U1, Y, W0], [U0, Y, W0]];
-  const up = (du, dw) => [du * t, 1, dw * t];
+  const up = (du, dw, s = t) => [du * s, 1, dw * s];
+  // (Kicked: the pitched slopes from the walls' tops, `knee`, and a flatter ring out to the rim.)
+  const knee = k ? [[-a, h.eave, b], [a, h.eave, b], [a, h.eave, -b], [-a, h.eave, -b]] : rim;
   const slopes = along
-    ? [[[rim[0], rim[1], R1, R0], up(0, 1)], [[rim[1], rim[2], R1], up(1, 0)], [[rim[2], rim[3], R0, R1], up(0, -1)], [[rim[3], rim[0], R0], up(-1, 0)]]
-    : [[[rim[0], rim[1], R1], up(0, 1)], [[rim[1], rim[2], R0, R1], up(1, 0)], [[rim[2], rim[3], R0], up(0, -1)], [[rim[3], rim[0], R1, R0], up(-1, 0)]];
+    ? [[[knee[0], knee[1], R1, R0], up(0, 1)], [[knee[1], knee[2], R1], up(1, 0)], [[knee[2], knee[3], R0, R1], up(0, -1)], [[knee[3], knee[0], R0], up(-1, 0)]]
+    : [[[knee[0], knee[1], R1], up(0, 1)], [[knee[1], knee[2], R0, R1], up(1, 0)], [[knee[2], knee[3], R0], up(0, -1)], [[knee[3], knee[0], R1, R0], up(-1, 0)]];
+  if (k) [[0, 1], [1, 0], [0, -1], [-1, 0]].forEach(([du, dw], i) => slopes.push([[rim[i], rim[(i + 1) % 4], knee[(i + 1) % 4], knee[i]], up(du, dw, k)]));
   // Each slope's height at (u, w) (the roof the lowest of them).
   const planes = [(u, w) => Y + (W1 - w) * t, (u) => Y + (U1 - u) * t, (u, w) => Y + (w - W0) * t, (u) => Y + (u - U0) * t];
-  return { t, a, b, o, Y, U0, U1, W0, W1, ridge, R0, R1, rim, slopes, planes, along, deep: !!P };
+  return { t, a, b, o, Y, U0, U1, W0, W1, ridge, R0, R1, rim, knee, slopes, planes, along, deep: !!P };
 }
 
 // The roof's collider: the walls up to the slopes and the slopes inside the walls (each the wall

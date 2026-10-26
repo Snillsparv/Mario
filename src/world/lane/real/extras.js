@@ -17,6 +17,9 @@
 
 import { makeRng } from '../../../core/math.js';
 import { frameOf, fbox, wallFrame } from './house.js';
+import { add, mul, norm, sub, dot, cross } from './geo.js';
+import { OLD_DRAWN, offTheEnds } from './spots.js';
+import { FORECOURT_WALL } from '../ends.js';
 
 const PAD = 0x2a2c30; // (W6: the photos' dark grey pad)
 const MAT = 0x1c2026;
@@ -108,14 +111,15 @@ export function hoop({ paint, steel, cloth }, L) {
   }
 }
 
-export function motorhome({ paint, carGlass, tyre, rim, steel }, L) {
+export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   const M = L.MOTORHOME;
   const G = L.GROUND;
   const F = frameOf({ cx: M.cx, cz: M.cz, yaw: M.yaw, w: M.l, d: M.w });
   const [hl, hw] = [M.l / 2, M.w / 2];
   const top = G + M.h;
-  // The body: rounded sections along it (u), the cab end (-u) a sloping screen under the bed's
-  // overhang.
+  // The body: rounded sections along it (u); W8: an integrated A-class (photos 01-07), its cab
+  // toward the bend (+u): the roof's edge a little peaked over a full-width windscreen sloping
+  // down to a short white nose.
   const section = (u, y0, y1, half, r) => {
     const pts = [];
     for (const [cw, cy, a0] of [[half - r, y0 + r, -Math.PI / 2], [half - r, y1 - r, 0], [-half + r, y1 - r, Math.PI / 2], [-half + r, y0 + r, Math.PI]]) {
@@ -126,35 +130,79 @@ export function motorhome({ paint, carGlass, tyre, rim, steel }, L) {
     }
     return pts;
   };
+  const nose = G + 165;
   const stations = [
-    [-hl, G + 45, G + 300, hw - 20, 30],
-    [-hl + 15, G + 45, G + 320, hw - 5, 30],
-    [-hl + 60, G + 45, top - 40, hw, 30],
-    [-hl + 110, G + 45, top, hw, 34],
-    [hl - 20, G + 45, top, hw, 34],
-    [hl, G + 50, top - 6, hw - 6, 34],
+    [-hl, G + 50, top - 8, hw - 6, 34],
+    [-hl + 18, G + 45, top, hw, 34],
+    [hl - 150, G + 45, top, hw, 34],
+    [hl - 118, G + 45, top - 4, hw - 2, 32],
+    [hl - 60, G + 45, nose + 95, hw - 6, 30],
+    [hl - 16, G + 45, nose + 12, hw - 10, 26],
+    [hl, G + 52, nose - 4, hw - 16, 22],
   ];
-  paint.color(0xf4f4f0);
+  paint.color(M.tint);
   paint.loft(stations.map(([u, a, b, h, r]) => section(u, a, b, h, r)).map((s) => s.slice().reverse()), { capStart: true, capEnd: true });
-  // The window band round its living part, the screen, the door, the stripe.
-  const side = (s) => wallFrame(F.at(0, 0, s * (hw + 0.6)), F.dir(0, 0, s));
+  // The windscreen on the cab's slope, the framed windows along both sides, the swoosh, the
+  // stripe, the door on the road side (+w) behind the cab.
+  const slope = (k, w) => {
+    const [u0, y0] = [hl - 118, top - 6];
+    const [u1, y1] = [hl - 14, nose + 14];
+    const n = norm(F.dir(y0 - y1, u1 - u0, 0));
+    const p = F.at(u0 + (u1 - u0) * k, y0 + (y1 - y0) * k, w);
+    return add(p, mul(n, 4));
+  };
   carGlass.rgb(0.004, 0.005, 0.006);
+  const screen = [slope(0.05, -hw + 26), slope(0.05, hw - 26), slope(0.86, hw - 22), slope(0.86, -hw + 22)];
+  const out = F.dir(1, 1, 0);
+  if (dot(cross(sub(screen[1], screen[0]), sub(screen[3], screen[0])), out) >= 0) carGlass.quad(...screen);
+  else carGlass.quad(screen[1], screen[0], screen[3], screen[2]);
+  const side = (s) => wallFrame(F.at(0, 0, s * (hw + 0.6)), F.dir(0, 0, s));
   for (const s of [-1, 1]) {
     const f = side(s);
-    for (const [a, b] of [[-hl + 150, -hl + 380], [-hl + 470, hl - 160]]) {
-      const [u0, u1] = s > 0 ? [a, b] : [-b, -a];
-      carGlass.quad(f.at(u0, top - 190), f.at(u1, top - 190), f.at(u1, top - 120), f.at(u0, top - 120));
-    }
+    const U = (u) => s * u;
+    const win = (a, b, v0, v1) => {
+      const [u0, u1] = [Math.min(U(a), U(b)), Math.max(U(a), U(b))];
+      paint.color(0xd4d6d4);
+      fbox(paint, f, u0 - 6, u1 + 6, v0 - 6, v1 + 6, 0, 1.4, 'k');
+      carGlass.quad(f.at(u0, v0, 1.6), f.at(u1, v0, 1.6), f.at(u1, v1, 1.6), f.at(u0, v1, 1.6));
+    };
+    for (const [a, b] of [[-hl + 90, -hl + 250], [-hl + 360, -hl + 520], [hl - 420, hl - 330]]) win(a, b, G + 230, G + 300);
+    win(hl - 190, hl - 150, G + 220, G + 300);
     paint.color(0x8a7a68);
-    paint.quad(f.at(-hl + 30, G + 140), f.at(hl - 30, G + 140), f.at(hl - 30, G + 158), f.at(-hl + 30, G + 158));
+    const [a0, a1] = [Math.min(U(-hl + 20), U(hl - 140)), Math.max(U(-hl + 20), U(hl - 140))];
+    paint.quad(f.at(a0, G + 150, 0.4), f.at(a1, G + 150, 0.4), f.at(a1, G + 164, 0.4), f.at(a0, G + 164, 0.4));
+    paint.color(0x7a2224);
+    for (const [u0, u1, dv] of [[-hl + 260, -hl + 600, 30], [-hl + 540, -hl + 760, -20]]) {
+      const q = [f.at(U(u0), G + 176, 0.5), f.at(U(u1), G + 176 + dv, 0.5), f.at(U(u1), G + 186 + dv, 0.5), f.at(U(u0), G + 186, 0.5)];
+      if (s > 0) paint.quad(q[0], q[1], q[2], q[3]);
+      else paint.quad(q[1], q[0], q[3], q[2]);
+    }
   }
-  const cab = wallFrame(F.at(-hl - 0.5, 0, 0), F.dir(-1, 0, 0));
-  carGlass.quad(cab.at(-hw + 40, G + 170), cab.at(hw - 40, G + 170), cab.at(hw - 44, G + 280), cab.at(-hw + 44, G + 280));
   const road = side(1);
-  paint.color(0xd8dad6);
-  paint.quad(road.at(-hl + 250, G + 60), road.at(-hl + 340, G + 60), road.at(-hl + 340, G + 330), road.at(-hl + 250, G + 330));
+  paint.color(0xe2e4e0);
+  fbox(paint, road, hl - 320, hl - 240, G + 52, G + 330, 0, 1.2, 'k');
+  carGlass.quad(road.at(hl - 308, G + 230, 1.8), road.at(hl - 252, G + 230, 1.8), road.at(hl - 252, G + 300, 1.8), road.at(hl - 308, G + 300, 1.8));
+  metal.color(0xb0aca4);
+  fbox(metal, road, hl - 262, hl - 250, G + 150, G + 158, 1, 3, 'k');
+  // The nose: headlights, a dark grille band, the bumper.
+  const front = wallFrame(F.at(hl + 0.5, 0, 0), F.dir(1, 0, 0));
+  paint.color(0x8a8e90);
+  paint.quad(front.at(-hw + 18, G + 50), front.at(hw - 18, G + 50), front.at(hw - 18, G + 78), front.at(-hw + 18, G + 78));
+  paint.color(0x2a2c30);
+  paint.quad(front.at(-hw + 70, G + 100, 0.2), front.at(hw - 70, G + 100, 0.2), front.at(hw - 70, G + 120, 0.2), front.at(-hw + 70, G + 120, 0.2));
+  metal.color(0xe8eaec);
+  for (const s of [-1, 1]) {
+    const [u0, u1] = s > 0 ? [hw - 68, hw - 22] : [-hw + 22, -hw + 68];
+    metal.quad(front.at(u0, G + 96, 0.4), front.at(u1, G + 96, 0.4), front.at(u1, G + 122, 0.4), front.at(u0, G + 122, 0.4));
+  }
+  // The roof's hatches.
+  paint.color(0xe0e0dc);
+  for (const u of [-hl + 220, -hl + 560]) {
+    const c = F.at(u, top, 0);
+    paint.box(c[0] - 34, c[0] + 34, top - 2, top + 14, c[2] - 34, c[2] + 34);
+  }
   // Wheels in dark arches.
-  for (const u of [-hl + 140, hl - 160]) {
+  for (const u of [-hl + 170, hl - 230]) {
     for (const s of [-1, 1]) {
       const c = F.at(u, G + 42, s * (hw - 12));
       const o = F.dir(0, 0, s * 12);
@@ -164,25 +212,43 @@ export function motorhome({ paint, carGlass, tyre, rim, steel }, L) {
       rim.tube([c[0] + o[0], c[1], c[2] + o[2]], [c[0] + o[0] * 1.08, c[1], c[2] + o[2] * 1.08], 24, 24, 12, { caps: true });
     }
   }
-  // The ladder up its back.
-  const back = wallFrame(F.at(hl, 0, 0), F.dir(1, 0, 0));
+  // The back: a small window, the ladder.
+  const back = wallFrame(F.at(-hl, 0, 0), F.dir(-1, 0, 0));
+  carGlass.quad(back.at(-60, G + 250, 0.6), back.at(20, G + 250, 0.6), back.at(20, G + 300, 0.6), back.at(-60, G + 300, 0.6));
   steel.color(0x9a9ea0);
-  for (const u of [50, 100]) steel.tube(back.at(u, G + 100, 10), back.at(u, top + 30, 10), 3, 3, 6);
-  for (const v of [120, 220, 320, 420]) steel.tube(back.at(47, G + v, 10), back.at(103, G + v, 10), 2.5, 2.5, 6);
+  for (const u of [60, 110]) steel.tube(back.at(u, G + 100, 10), back.at(u, top + 20, 10), 3, 3, 6);
+  for (const v of [120, 200, 280, 360]) steel.tube(back.at(57, G + v, 10), back.at(113, G + v, 10), 2.5, 2.5, 6);
 }
 
+// (W8: the light grey mailbox on the forecourt wall's pillar, photos 29-31: a folded steel box
+// under a curved lid, its slot and a lock, blank.)
 export function cabinet({ steel, metal }, L) {
-  const { CABINET: C, FOOTPATH: P, GROUND: G } = L;
-  const f = frameOf({ cx: C.x, cz: C.z, yaw: Math.atan2(P.dir[1], -P.dir[0]) });
-  const front = wallFrame(f.at(0, 0, 20), f.dir(0, 0, 1));
-  steel.color(0x8a8e8a);
-  fbox(steel, front, -40, 40, G + 60, G + 200, -40, 0);
-  fbox(steel, front, -43, 43, G + 200, G + 206, -43, 3);
-  // The doors' seams and a lock.
+  const C = L.CABINET;
+  const W = FORECOURT_WALL;
+  const d = [W.to[0] - W.from[0], W.to[1] - W.from[1]];
+  const f = frameOf({ cx: C.x, cz: C.z, yaw: Math.atan2(d[0], d[1]) });
+  const y = W.pillarTop;
+  const front = wallFrame(f.at(25, 0, 0), f.dir(1, 0, 0));
+  steel.color(0xcdc8c2);
+  fbox(steel, front, -37, 37, y, y + 42, -50, 0, 'b');
+  // The lid: an arc across it, its ends closed.
+  const arc = Array.from({ length: 7 }, (_, i) => [-25 + (50 * i) / 6, y + 42 + Math.sin((i / 6) * Math.PI) * 12]);
+  for (let i = 0; i < 6; i++) {
+    const [p, q] = [arc[i], arc[i + 1]];
+    steel.quad(f.at(q[0], q[1], -39), f.at(p[0], p[1], -39), f.at(p[0], p[1], 39), f.at(q[0], q[1], 39));
+  }
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 6; i++) {
+      const [p, q] = [arc[i], arc[i + 1]];
+      const t = [f.at(0, y + 42, s * 39), f.at(p[0], p[1], s * 39), f.at(q[0], q[1], s * 39)];
+      if (s > 0) steel.tri(t[0], t[2], t[1]);
+      else steel.tri(t[0], t[1], t[2]);
+    }
+  }
   metal.rgb(0.03, 0.03, 0.03);
-  for (const u of [-38, 0, 38]) metal.quad(front.at(u - 0.8, G + 64, 0.3), front.at(u + 0.8, G + 64, 0.3), front.at(u + 0.8, G + 196, 0.3), front.at(u - 0.8, G + 196, 0.3));
+  metal.quad(front.at(-24, y + 30, 0.3), front.at(24, y + 30, 0.3), front.at(24, y + 34, 0.3), front.at(-24, y + 34, 0.3));
   metal.color(0xb0aca4);
-  fbox(metal, front, 6, 12, G + 125, G + 140, 0, 2, 'k');
+  fbox(metal, front, 20, 26, y + 12, y + 20, 0, 2, 'k');
 }
 
 // The far tree line: firs in a ring out where the lane's ground ends in the haze, so no edge of
@@ -203,9 +269,9 @@ export function treeLine(L, tier) {
     // (Not on the road on into the fog, not up the forest's bank (it rises on past its heights),
     // not off the lane's ground; none in the edge forest's clear sector, W4: the sky over the
     // garage row from the dad's drive (its spots dropped, the others where they were).)
-    if (L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 600 || z < -6000 || Math.abs(x) > 15500 || z > 9500) continue;
+    if (L.roadDistance(x, z, OLD_DRAWN(L)) < L.ROAD.half + 600 || z < -6000 || Math.abs(x) > 15500 || z > 9500) continue;
     placed++;
-    if (clear && x > clear.x0 && x < clear.x1 && z > clear.z0) continue;
+    if ((clear && x > clear.x0 && x < clear.x1 && z > clear.z0) || offTheEnds(L, x, z, 600)) continue;
     const base = L.groundHeight(x, z) - 10;
     const [c, s] = [Math.cos(turn * Math.PI * 2), Math.sin(turn * Math.PI * 2)];
     matrices.set([c * r, 0, -s * r, 0, 0, h, 0, 0, s * r, 0, c * r, 0, x, base, z, 1], n * 16);

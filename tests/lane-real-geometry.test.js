@@ -27,7 +27,8 @@ import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
 import { roadPieces, inside } from '../src/world/lane/real/plan.js';
-import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET } from '../src/world/lane/facades.js';
+import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET, WEST_FRONTS } from '../src/world/lane/facades.js';
+import { FAR_LAMPS, LAYBY } from '../src/world/lane/ends.js';
 
 const t0 = performance.now();
 const high = buildLaneDetail(lane, 'high');
@@ -127,7 +128,9 @@ test('the walls are open at every window and door of the chain houses and the vi
         if (P.oriel) openings.push([front, P.oriel.u, P.oriel.v0 + 40, P.oriel.v0 + 200]);
         for (const o of [P.niche, P.door].filter(Boolean)) openings.push([front, o.u, 10, o.h - o.w / 2 - 10]);
         if (P.garage) openings.push([front, P.garage.u, 10, P.garage.h - 60]);
-      } else for (const name of ['left', 'right']) openings.push([frameOf(h).face(name).f, 0, h.eave - y0 - 220, h.eave - y0 - 40]);
+      } else if (!WEST_FRONTS[h.id]) for (const name of ['left', 'right']) openings.push([frameOf(h).face(name).f, 0, h.eave - y0 - 220, h.eave - y0 - 40]);
+      // (W8: north_west's white blockwork closed but for its glazed porch door, facades.js
+      // WEST_FRONTS: its doors drawn proud of the wall, no window in it.)
     }
     for (const u of h.kit === 'chain' ? (h.windows ?? []) : []) openings.push([front, u, 170, 300]);
     for (const u of h.kit === 'chain' ? (h.backWindows ?? (h.windows ?? []).map((w) => -w)) : []) openings.push([back, u, 170, 300]);
@@ -442,7 +445,7 @@ test('the cars\' bodies and tyres are closed: every edge of each shared by exact
     }
     cars(kit, lane);
     for (const c of lane.CARS) if (c.id) carOf(kit, lane, c); // (the dad's, drawn last by detail.js)
-    assert.equal(pieces.length, lane.CARS.length * 5, `${tier}: a body and four tyres a car`);
+    assert.equal(pieces.length, (lane.CARS.length + (tier === 'high' ? LAYBY.cars.length : 0)) * 5, `${tier}: a body and four tyres a car`); // (W8: and the lay-by's two on high, drawn only)
     for (const { name, p } of pieces) {
       const key = (i) => `${p[i]},${p[i + 1]},${p[i + 2]}`;
       const edges = new Map();
@@ -541,7 +544,7 @@ test('every car sits flat on its drive: each tyre\'s patch on the drawn surface 
 test('the cars\' bonnets and roofs lie on the colliders Jonas stands on (within 4), their parts in the probes\' clusters, no plate or badge on either end', () => {
   const clusters = carClusters(lane);
   assert.equal(clusters.length, 4, 'the dad\'s drive, the west link, the north drives, the east end');
-  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5, 6], [7]]); // (W2: the van on north_4's drive with the north drives)
+  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5, 6, 8], [7]]); // (W2: the van on north_4's drive with the north drives; W8: north_west's estate, far west, in theirs, their probe where it was)
   assert.deepEqual(high.probes.map((p) => p.name), ['car0', 'car1', 'car2', 'car3', 'north']);
   assert.deepEqual(low.probes, [], 'no probes on low');
   for (const [k, g] of clusters.entries()) {
@@ -695,8 +698,10 @@ test('the clutter lies on the ground: every fallen leaf within 2 of the ground (
   for (let i = 0; i < kit.paint.col.length; i++) assert.ok(kit.paint.col[i] < 0.01, 'black');
   assert.equal(kit.lamp.count + kit.gloss.count + kit.metal.count, 0, 'no lettering, no reflectors');
   const y0 = lane.groundHeight(STREET_SIGN.x, STREET_SIGN.z);
-  assert.ok(Math.min(...kit.steel.pos.filter((_, i) => i % 3 === 1)) < y0, 'its post in the ground');
-  assert.ok(lane.roadDistance(STREET_SIGN.x, STREET_SIGN.z) > lane.ROAD.half + lane.KERB.w + 40, 'on the verge');
+  // (W8, photos 01, 02: clamped on lamppost B out on the curve, no post of its own.)
+  if (STREET_SIGN.on) assert.ok(FAR_LAMPS.some((l) => l.x === STREET_SIGN.x && l.z === STREET_SIGN.z), 'on lamppost B');
+  else assert.ok(Math.min(...kit.steel.pos.filter((_, i) => i % 3 === 1)) < y0, 'its post in the ground');
+  assert.ok(lane.roadDistance(STREET_SIGN.x, STREET_SIGN.z, lane.ROAD_DRAWN) > lane.ROAD.half + lane.KERB.w + 40, 'on the verge');
 });
 
 test('the walls\' weathering: a wear attribute on the houses\' walls (how far under the sill or eave over it, how high over the ground, the streaks\' length), in range; none on the other meshes but theirs', () => {

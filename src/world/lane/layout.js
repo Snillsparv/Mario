@@ -62,7 +62,9 @@ export const TERRACE = 150;
 export const ROAD = {
   half: 430,
   line: [[-11712, 3179], [-7263, 230], [-7018, 92], [-6755, -8], [-6481, -69], [-6200, -90], [2766, -90]],
-  beyond: 2860, // drawn on past the junction into the fog (out of bounds)
+  // (W8, photos 01-03 and the aerial: drawn on past the junction curving left into the through
+  // road, out of bounds: its centreline from the line's first point on.)
+  beyond: [[-12700, 3830], [-13150, 4380], [-13600, 4950], [-13860, 5650], [-14000, 6500], [-14000, 7400], [-13800, 8400]],
 };
 // The road's south edge along the straight (the lawns' and drives' front edge).
 export const SOUTH_EDGE = ROAD.line.at(-1)[1] + ROAD.half;
@@ -220,11 +222,16 @@ export const VILLAS = [...PAIRS.map((p) => p[0]), ...PAIRS.map((p) => p[1])];
 
 // ---------------------------------------------------------------- the west end
 
-// The first villa up the hill (north_west): white render to its eaves, a light grey hipped roof
-// with two roof windows, a double garage facing the west leg (its front: yaw, as the house kit
-// turns it: local +w looks (sin yaw, cos yaw)), and a low wing behind it (its east wall flush
-// with the house's); a flagstone drive in front of it out to the pavement (NORTH_WEST_DRIVE, in
-// its frame: u along the front, w out toward the road; lane/build.js cuts it at the pavement).
+// The first villa up the hill (north_west): white ribbed blockwork to its eaves (W8, photos
+// 04-07: its front's openings, lane/facades.js WEST_FRONTS), a steep mid-grey pyramid roof of
+// concrete pan tiles (39 degrees, its eaves kicked out flatter: `kick`; white boxed soffits and
+// fascias, `trim`) with two roof windows, its doors facing the west leg (its front: yaw, as the
+// house kit turns it: local +w looks (sin yaw, cos yaw)), and a low wing behind it (its east wall
+// flush with the house's); a drive of grey slate crazy paving in front of it out to the pavement
+// (NORTH_WEST_DRIVE, in its frame: u along the front, w out toward the road; lane/build.js cuts
+// it at the pavement), on round its south-west corner to the covered entrance (`west`: u0..u1
+// along its west face, out from it).
+// (`realRoof`: the roof's tint in the realistic look, whose tile set is lighter.)
 const WEST_YAW = Math.atan2(0.574, 0.819);
 const NW_U = [Math.cos(WEST_YAW), -Math.sin(WEST_YAW)];
 const NW_W = [Math.sin(WEST_YAW), Math.cos(WEST_YAW)];
@@ -237,62 +244,79 @@ export const NORTH_WEST = {
   d: 1860,
   yaw: WEST_YAW,
   y0: GROUND,
-  render: 462,
-  eave: 462,
-  pitch: 25,
-  overhang: 90,
-  garage: 0,
-  garages: [-450, 450],
+  render: 412,
+  eave: 412,
+  pitch: 39,
+  kick: 24,
+  overhang: 100,
   roofWindows: [-400, 400],
-  roof: 0xa4a6a8,
+  roof: 0x9a9ea2,
+  realRoof: 0x46484a,
+  trim: 0xf2f0ea,
 };
 // Its wing, behind it (north), lower.
 const NW_WING = { w: 1580, d: 1500 };
 const nwWing = (du, dw) => [NORTH_WEST.cx + NW_U[0] * du + NW_W[0] * dw, NORTH_WEST.cz + NW_U[1] * du + NW_W[1] * dw];
-export const NORTH_WEST_WING = { id: 'north_west_wing', kit: 'villa', cx: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[0], cz: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[1], w: NW_WING.w, d: NW_WING.d, yaw: WEST_YAW, y0: GROUND, render: 412, eave: 412, pitch: 15, overhang: 90, roof: 0xa4a6a8 };
-export const NORTH_WEST_DRIVE = { u0: -950, u1: 1500, w0: NORTH_WEST.d / 2, w1: 1900, cut: [1075, 1250] };
-// Its outline (convex, in the house's frame): its east end's back corner cut off along the
-// first terrace's wall.
+export const NORTH_WEST_WING = { id: 'north_west_wing', kit: 'villa', cx: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[0], cz: nwWing((NORTH_WEST.w - NW_WING.w) / 2, -(NORTH_WEST.d + NW_WING.d) / 2)[1], w: NW_WING.w, d: NW_WING.d, yaw: WEST_YAW, y0: GROUND, render: 412, eave: 412, pitch: 15, overhang: 90, roof: NORTH_WEST.roof, realRoof: NORTH_WEST.realRoof, trim: NORTH_WEST.trim };
+export const NORTH_WEST_DRIVE = { u0: -1410, u1: 1500, w0: NORTH_WEST.d / 2, w1: 1900, cut: [1075, 1250], west: [-1410, -950, -930, NORTH_WEST.d / 2] };
+// Its outlines (convex, in the house's frame): the drive, its east end's back corner cut off
+// along the first terrace's wall, and the strip along the west face (`west`: u0, u1, w0, w1).
 export const northWestDrive = () => {
   const D = NORTH_WEST_DRIVE;
-  return [[D.u0, D.w0], [D.cut[0], D.w0], [D.u1, D.cut[1]], [D.u1, D.w1], [D.u0, D.w1]];
+  const [a, b, c, d] = D.west;
+  return [[[D.u0, D.w0], [D.cut[0], D.w0], [D.u1, D.cut[1]], [D.u1, D.w1], [D.u0, D.w1]], [[a, c], [b, c], [b, d], [a, d]]];
 };
-// The motorhome on the drive (a white box with a dark window band on four dark wheels),
-// lengthwise on the drive's east part beside the garage: l along its frame's u (along the road),
-// w across it, h tall; solid to its roof (a coin spot, reached by a double jump and a grab of its
-// edge; a running jump from the drive falls short: its top stands more than 160 over that
+// The motorhome on the drive (W8, photos 01-07: an integrated A-class, white, its cab toward the
+// bend, +u), lengthwise on the drive's east part: l along its frame's u (along the road), w
+// across it, h tall (2.9 m); solid to its roof (a coin spot, reached by a double jump and a grab
+// of its edge; a running jump from the drive falls short: its top stands more than 160 over that
 // jump's peak).
-export const MOTORHOME = { cx: -7841, cz: -527, yaw: WEST_YAW, l: 1090, w: 390, h: 500 };
+export const MOTORHOME = { cx: -7841, cz: -527, yaw: WEST_YAW, l: 1090, w: 390, h: 400, tint: 0xeceae4 };
 
 // Falu red as the photos have it (W1): a cool, deep red (hue ~2 deg), the blue close to the green,
 // so it stays red in the house's shade instead of turning brown.
 const FALU = 0x7a2422;
 
-// The corner house south of the west leg (south_west): red boards over white brick, a black
-// gable roof, a glazed veranda on its west gable (veranda: along u past the gable, flat roof at
-// `top`; the photos' veranda is the house's west of the side road: W8), a back wing behind its
-// east part; a brown picket fence along its street side.
+// The corner house south of the west leg (south_west, W8: photos 03-08): its ridge across it, a
+// very wide low gable (14 degrees) to the street, the frame turned so (yaw: its u runs away from
+// the street, its front (+w) is its west eave side toward the side road; its street gable the
+// left face, u from its east end): white brick to the eaves under red boards in the gables'
+// triangles, deep white soffits (`soffit`) under black verge boards; on the street gable
+// (lane/facades.js GABLES) a weathered white board bay at its east end with two clerestory
+// windows under the verge, and a red shiplap panel round a big window of four lights; its west
+// side white brick at its north end (`brick`),
+// then red boards, windows and a glazed door onto the patio (its things: lane/ends.js); a back wing behind its
+// east part; a brown picket fence along its street side and on round the bend (FENCES).
 const pitchRidge = (eave, d, deg) => Math.round(eave + (d / 2) * Math.tan((deg * Math.PI) / 180));
 export const SOUTH_WEST = {
   id: 'south_west',
   kit: 'chain',
   cx: -7809,
   cz: 2530,
-  w: 2536,
-  d: 1568,
-  yaw: Math.PI + WEST_YAW,
+  w: 1568,
+  d: 2536,
+  yaw: WEST_YAW - Math.PI / 2,
   y0: GROUND,
   eave: 412,
-  ridge: pitchRidge(412, 1568, 20),
+  ridge: pitchRidge(412, 2536, 14),
+  overhang: 55,
   boards: FALU,
   roof: 0x2c2c2e,
-  door: -360,
-  windows: [-900, 180, 720],
-  veranda: { depth: 450, top: 352 },
+  soffit: 0xeeece6,
+  gableEnds: true,
+  brick: { front: [[-784, -262]] },
+  windows: [-60, 250, 540],
+  panes: [{ i: 2, w: 110, sill: 8, h: 230 }],
+  backWindows: [-420, 300],
 };
 export const SOUTH_WEST_WING = { id: 'south_west_wing', kit: 'chain', cx: -6743, cz: 3237, w: 1574, d: 813, yaw: Math.PI + WEST_YAW, y0: GROUND, eave: 412, ridge: pitchRidge(412, 813, 20), boards: FALU, roof: 0x2c2c2e, windows: [-400, 400] };
-// Fences (FENCES): [u0, w0, u1, w1] in a house's frame, `h` high; their colliders are slabs.
-export const FENCES = [{ house: 'south_west', kind: 'picket', from: [1700, 1090], to: [-550, 1090], h: 110 }];
+// Fences (FENCES): from [u, w] to [u, w] in a house's frame (or, with no house, [x, z]), `h`
+// high; their colliders are slabs. (W8, photos 06, 08, 09: the picket fence on round the bend's
+// south edge behind its gravel shoulder, to the young beeches.)
+const bend = [[-7982, 1321], [-6996, 667], [-6800, 557], [-6608, 484], [-6406, 439], [-6200, 423]];
+// (W8, photos 02, 03: the veranda house's two-rail fence along the leg's edge and round the curve.)
+const curve = [[-10857, 3201], [-11441, 3588], [-12430, 4239], [-12771, 4690], [-13215, 5254], [-13401, 5820]];
+export const FENCES = [{ house: 'south_west', kind: 'picket', from: [-1090, 1700], to: [-1090, -550], h: 110 }, ...bend.slice(1).map((to, i) => ({ kind: 'picket', from: bend[i], to, h: 110 })), ...curve.slice(1).map((to, i) => ({ kind: 'rail', from: curve[i], to, h: 100 }))];
 
 // ---------------------------------------------------------------- the dad's side (south)
 
@@ -662,14 +686,25 @@ export const MAILBOXES = [
 
 // ---------------------------------------------------------------- the east end
 
-// A double garage behind its forecourt east of the turning area (east_garage: white render, a
-// white vertical-board gable toward the apron, two dark panel doors in it; its ridge along x) in
-// front of a one-and-a-half storey house (east_house, drawn and solid, mostly out of reach).
-export const EAST_GARAGE = { id: 'east_garage', kit: 'garage', cx: (6579 + 7853) / 2, cz: (-1179 - 113) / 2, w: 1066, d: 1274, yaw: -Math.PI / 2, y0: GROUND, eave: 412, ridge: pitchRidge(412, 1066, 35), doors: [-260, 260] };
-export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: (8022 + 9699) / 2, cz: (-906 + 1473) / 2, w: 2379, d: 1677, yaw: -Math.PI / 2, y0: GROUND, eave: 522, ridge: pitchRidge(522, 1677, 40), boards: 0xd8b65e, roof: 0x2c2c2e, door: 0, windows: [-770, 770], plinth: 135 };
-// The forecourt in front of the double garage (asphalt at GROUND, from the apron's east kerb to
-// the garage's doors, as wide as the garage) and north_5's drive on from its north-west corner.
-export const FORECOURT = { x0: APRON.x1, x1: EAST_GARAGE.cx - EAST_GARAGE.d / 2, z0: EAST_GARAGE.cz - EAST_GARAGE.w / 2, z1: EAST_GARAGE.cz + EAST_GARAGE.w / 2 };
+// A double garage behind its forecourt east of the turning area (east_garage, W8: photos 25,
+// 29-31: a wide flat gable, 23 degrees, its side eaves `overhang` out past the walls, its verges
+// `verges`, broad white fascias and barge boards, red-brown clay pantiles; its front: split-face
+// block `pillars` at its corners up to a white `beam` across them, cream boards in the gable over
+// it, two tall anthracite ribbed doors (`door`'s size at `doors`) in white casings either side of
+// a white render `pier` with a wallbox and its coiled cable; its ridge along x) in front of a
+// one-and-a-half storey house (east_house: white brick, a steep red-brown roof, a broad shed
+// dormer on its west slope (lane/facades.js DORMERS), white window frames, a black door; drawn
+// and solid, mostly out of reach). (`realRoof`: the realistic look's tint.)
+export const EAST_GARAGE = { id: 'east_garage', kit: 'garage', cx: (6579 + 7853) / 2, cz: (-1179 - 113) / 2, w: 1066, d: 1274, yaw: -Math.PI / 2, y0: GROUND, eave: 509, ridge: 735, overhang: 173, verges: 60, roof: 0x7a4c36, realRoof: 0x4a2c20, doors: [-232, 232], door: { w: 400, h: 346 }, pier: 31, pillars: [447, 533], beam: 409 };
+export const EAST_HOUSE = { id: 'east_house', kit: 'chain', cx: (8022 + 9699) / 2, cz: (-906 + 1473) / 2, w: 2379, d: 1677, yaw: -Math.PI / 2, y0: GROUND, eave: 450, ridge: pitchRidge(450, 1677, 45), boards: 0xd8c08a, gableBoards: 0xe8e2d0, roof: 0x7a4c36, realRoof: 0x4a2c20, verge: 0xf0eee8, frame: 0xf2f0ea, gableEnds: true, brick: { front: [[-1e4, 1e4]], back: [[-1e4, 1e4]] }, door: -250, doorSize: { w: 110, h: 225 }, windows: [216, 616, 966], backWindows: [-500, 500], plinth: 135 };
+// The forecourt in front of the double garage (from the apron's east kerb to the garage's
+// doors, as wide as the garage, at GROUND): its first strip asphalt (`setts`: where the setts
+// begin, the footway's east edge), then granite setts to the doors and down to its retaining
+// wall on the south (W8, photos 29, 30: `wall` from the garage's south-west corner to its square
+// pillar at the footway, 0.3 m thick, 0.7 m high, its top walkable; the mailbox on the pillar:
+// CABINET), a lighter strip of setts down the garage's axis (`strip` either side of it); north_5's
+// drive on from its north-west corner.
+export const FORECOURT = { x0: APRON.x1, x1: EAST_GARAGE.cx - EAST_GARAGE.d / 2, z0: EAST_GARAGE.cz - EAST_GARAGE.w / 2, z1: EAST_GARAGE.cz + EAST_GARAGE.w / 2, setts: APRON.x1 + 210, strip: 23 };
 
 // Every house as houses.js builds it.
 export const HOUSES = [...VILLAS, NORTH_WEST, NORTH_WEST_WING, SOUTH_WEST, SOUTH_WEST_WING, SOUTH_1, ...SOUTH_1_WINGS, DAD, ...DAD_WINGS, SOUTH_2, ...SOUTH_2_WINGS, EAST_GARAGE, EAST_HOUSE];
@@ -705,9 +740,10 @@ export const THUJAS = [
   { x: -6740, z: -1190 },
 ];
 // Big broad-leaved trees off the junction, at the forest's edge north-west of the curve (outside
-// the play space: drawn only, no collider): r the canopy's radius, h its top.
+// the play space: drawn only, no collider): r the canopy's radius, h its top. (W8, photos 02, 03:
+// the first a big spreading broadleaf by the gravel path's foot, east of where it stood.)
 export const TREES = [
-  { x: -12570, z: 1760, r: 750, h: 1900 },
+  { x: -12200, z: 2000, r: 820, h: 1900 },
   { x: -13910, z: -1820, r: 800, h: 2000 },
 ];
 // The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` firs and
@@ -783,10 +819,11 @@ export const WIND = { dir: [-0.97, 0.24], amp: 34, k: 0.012, speed: 4.2 };
 export const MAILBOX = { x: 840, z: 465, yaw: Math.PI, post: 0, body: [60, 45, 160] };
 MAILBOX.eaves = GROUND + MAILBOX.post + MAILBOX.body[2];
 MAILBOX.ridge = MAILBOX.eaves + 22;
-// The grey electrical cabinet on a white brick pillar by the footpath, and the blue round
+// The light grey mailbox (W8: a box under a curved lid, blank) on the forecourt wall's square
+// pillar at the footway (photos 29-31; CABINET, its yaw along the wall), and the blue round
 // pedestrian sign on its grey post at the footpath's mouth, its west side; the low barrier
 // across it.
-export const CABINET = footpathAt(60, 520);
+export const CABINET = { x: 5455, z: 231 }; // (the pillar's middle, just past the wall's end)
 export const PATH_SIGN = footpathAt(100, 300);
 
 // ---------------------------------------------------------------- cars, the hoop, the trampoline
@@ -834,6 +871,9 @@ export const CARS = [
   // north_4's van, nose in beside its garage door (the hoop's perch from its roof: HOOP).
   parked('van', garageAt('north_4').x - 130, garageAt('north_4').front + 40, Math.PI, 0x24272b),
   { kind: 'estate', x: FORECOURT.x1 - 5 - CAR_KINDS.estate.l / 2, z: EAST_GARAGE.cz + 260, yaw: Math.PI / 2, tint: 0x8e9296 },
+  // (W8: north_west's white estate nose in at its wide door, photos 04-07; in the north drives'
+  // probe cluster, `cluster`: no probe of its own; out at the west end, `far`: plainer.)
+  { kind: 'estate', x: -9069, z: 132, yaw: Math.PI + WEST_YAW, tint: 0xe4e2dc, cluster: 'north', far: true },
 ];
 
 // STOMPWATT, the lane's boss (objects/laneBoss/LaneBoss.js, in the lane's lazy chunk): the dad's
@@ -884,15 +924,16 @@ export const ONE_UP = { x: TRAMPOLINE.x, y: 1020, z: TRAMPOLINE.z };
 
 // A tree or two in the gardens (drawn by props.js, their trunks solid): an apple tree on
 // north_4's terrace, the big birch east of the corner house (W7, photos 05, 08, 11: three stems,
-// a broad golden crown over its roof, at R1 of their rays' meeting), a red-leaved shrub by the
-// double garage, a round broadleaf in the side yard between north_1 and north_2 (the aerial),
+// a broad golden crown over its roof, at R1 of their rays' meeting), a Virginia creeper hanging
+// as a deep red curtain from a pergola beam (`from` the double garage's south pillar `to` a post
+// in the east house's garden, at `top`; W8, photos 29, 30: drawn only), a round broadleaf in the side yard between north_1 and north_2 (the aerial),
 // the ornamental cherry on north_5's terrace between its trampoline and its arched door (photos
 // 27, 28: a grey trunk forking low into leaning limbs, a broad open crown over its bed and its
 // drive's west edge, clear of the trampoline's bounce).
 export const GARDEN_TREES = [
   { kind: 'apple', x: 2185, z: -2011, r: 480, h: 850 },
   { kind: 'birch', x: -5500, z: 1700, r: 460, h: 1950, stems: 3 },
-  { kind: 'shrub', x: 6750, z: 120, r: 160, h: 260 },
+  { kind: 'creeper', x: 6750, z: 120, r: 160, h: 260, from: [6622, -150], to: [6800, 330], top: GROUND + 386 },
   { kind: 'broad', x: -4990, z: -2220, r: 320, h: 950 },
   { kind: 'cherry', x: 5900, z: -2050, r: 340, h: 1000 },
 ];
@@ -909,13 +950,9 @@ export const ANTENNAS = [
   { house: 'south_dad', x: DAD.x1 + 14, gable: true },
   { house: 'south_2', x: SOUTH_2.cx + SOUTH_2.w / 2 + 14, gable: true },
 ];
-// Two houses down the side road in the fog (drawn only, out of bounds): `t` along it, `s`
-// across it (s > 0 its west side; the first's near end clear of the west leg drawn on past the
-// junction, which crosses the side road's west side at t ~0).
-export const SIDE_BLOCKS = [
-  { t: 1500, s: 1430, w: 1600, d: 1100, tint: 0xece6d8 },
-  { t: 3350, s: 1500, w: 1500, d: 1100, tint: 0xd8b65e },
-];
+// A house down the side road in the fog (drawn only, out of bounds): `t` along it, `s` across
+// it (s > 0 its west side).
+export const SIDE_BLOCKS = [{ t: 3350, s: 1500, w: 1500, d: 1100, tint: 0xd8b65e }];
 
 // Butterflies over the dad's lawn and north_3's flower beds (ObjectManager), and small brown
 // birds (BIRD_TINT) circling over the forest.
@@ -978,10 +1015,7 @@ export const inBounds = (x, z) => inPolygon(BOUNDS, x, z);
 // ---------------------------------------------------------------- heights
 
 // The road's centreline as drawn: on past the junction into the fog, and the side road.
-const [W0, W1] = ROAD.line;
-const westDir = [(W0[0] - W1[0]) / Math.hypot(W0[0] - W1[0], W0[1] - W1[1]), (W0[1] - W1[1]) / Math.hypot(W0[0] - W1[0], W0[1] - W1[1])];
-export const ROAD_BEYOND = [W0[0] + westDir[0] * ROAD.beyond, W0[1] + westDir[1] * ROAD.beyond];
-export const ROAD_DRAWN = [ROAD_BEYOND, ...ROAD.line];
+export const ROAD_DRAWN = [...ROAD.beyond.slice().reverse(), ...ROAD.line];
 
 // Distance from (x, z) to the road's centreline (its polyline; `line`: another, ROAD_DRAWN).
 export function roadDistance(x, z, line = ROAD.line) {

@@ -29,6 +29,7 @@ import { buildArea } from '../src/world/area.js';
 import { AREA_DEFS } from '../src/world/areas.js';
 import * as lane from '../src/world/lane/layout.js';
 import { hipOf, wallDrawnAt } from '../src/world/lane/facades.js';
+import { FORECOURT_WALL, GARDEN_THINGS, LINE_HEDGES } from '../src/world/lane/ends.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { CameraController } from '../src/camera/CameraController.js';
@@ -119,7 +120,12 @@ const meshes = [];
 area.root.traverse((o) => o.isMesh && meshes.push(o));
 const mesh = (name) => meshes.find((m) => m.name === name);
 
-test('budgets: at most 15 meshes named lane-* with baked colours (13 and the movers: the bins, instanced, and the charger\'s cable), under 42k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
+// (45k triangles, from 42k, W8: the two ends as the photos have them, both looks drawing them in
+// the classic build's meshes: north_west's ribbed front and doors, the motorhome, south_west's
+// gable panels and windows, the bend's fence, the hedges along lines, the double garage's front
+// and roof, the east house's dormer, the forecourt's wall, the veranda house, the lay-by's cars,
+// lamppost B, the far houses: ~42.2k, the classic look's frame stays a small one.)
+test('budgets: at most 15 meshes named lane-* with baked colours (13 and the movers: the bins, instanced, and the charger\'s cable), under 45k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
   assert.ok(meshes.length <= 15, `${meshes.length} meshes`);
   assert.ok(mesh('lane-bins').isInstancedMesh && mesh('lane-bins').count === 2 && mesh('lane-cable'), 'the movers');
   let tris = 0;
@@ -130,7 +136,7 @@ test('budgets: at most 15 meshes named lane-* with baked colours (13 and the mov
     assert.ok(g.attributes.position.count > 0, `${m.name} has vertices`);
     tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
   }
-  assert.ok(tris < 42000, `${tris} triangles`);
+  assert.ok(tris < 45000, `${tris} triangles`);
   const colliders = area.parts.flatMap((p) => p.colliders);
   const colliderTris = colliders.reduce((n, c) => n + c.positions.length / 9, 0);
   assert.ok(colliderTris < 6500, `${colliderTris} collider triangles`);
@@ -204,7 +210,7 @@ test('the details: the 1-up high over the trampoline, butterflies over the dad\'
 });
 
 test('the cars parked on the drives: each on its drive and solid (a floor on its roof and on its bonnet), none in the way to the bins, the coins or the drives\' mouths', () => {
-  assert.equal(lane.CARS.length, 8);
+  assert.equal(lane.CARS.length, 9); // (W8: north_west's white estate at its wide door)
   for (const c of lane.CARS) {
     const K = lane.CAR_KINDS[c.kind];
     const y0 = lane.groundHeight(c.x, c.z);
@@ -483,6 +489,37 @@ test("the north villas (W6): each block under its drawn hipped roof (the front h
   });
 });
 
+// (W8: the two ends' new solids, each where the photos have it, deliberately: the hedges along
+// lines and the forecourt wall walkable boxes, the garden things, north_west's estate; none on the
+// pavement, the footway or the drives' mouths.)
+test('W8: the two ends\' new solids (the hedges along lines, the forecourt wall, its pillar and mailbox, the garden things, north_west\'s estate) solid to their walkable tops, and the pavement along the west leg and the footway past the wall clear at GROUND', () => {
+  const floor = (x, z) => col.findFloor(x + O.x, 3000, z + O.z).y - O.y;
+  for (const h of LINE_HEDGES) {
+    const [x, z] = [(h.from[0] + h.to[0]) / 2, (h.from[1] + h.to[1]) / 2];
+    assert.ok(Math.abs(floor(x, z) - h.top) < 1, `the ${h.kind} hedge's top at ${floor(x, z)}`);
+    // (Behind the pavement's back, or the bend's fence: none on a way.)
+    for (const [px, pz] of [h.from, h.to]) assert.ok(lane.roadDistance(px, pz) - h.depth / 2 > 520, `the ${h.kind} hedge off the street at (${px}, ${pz})`);
+  }
+  const W = FORECOURT_WALL;
+  assert.ok(Math.abs(floor((W.from[0] + W.to[0]) / 2, (W.from[1] + W.to[1]) / 2) - W.top) < 0.01, 'the forecourt wall\'s top');
+  assert.ok(floor(lane.CABINET.x, lane.CABINET.z) > W.pillarTop, 'the mailbox on its pillar');
+  for (let x = lane.FOOTWAY.x0 + 20; x < lane.FOOTWAY.x1; x += 40) assert.equal(floor(x, lane.FORECOURT.z1 + 30), GROUND, `the footway at x ${x}`);
+  for (const t of GARDEN_THINGS) {
+    const top = { picnic: 122, table: 114, parasol: 114, postbox: 185, shed: t.h }[t.kind]; // (the parasol through the table)
+    assert.ok(Math.abs(floor(t.x, t.z) - GROUND - (top ?? 0)) < 0.01, `the ${t.kind} at ${floor(t.x, t.z)}`);
+  }
+  const car = lane.CARS.find((c) => c.cluster);
+  assert.ok(Math.abs(floor(car.x, car.z) - GROUND - lane.CAR_KINDS[car.kind].roof) < 0.01, 'north_west\'s estate\'s roof');
+  // The pavement along the west leg (its middle, 550 from the road's) at GROUND all the way.
+  const [A, B] = lane.ROAD.line;
+  const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+  const [dx, dz] = [(B[0] - A[0]) / len, (B[1] - A[1]) / len];
+  for (let t = 300; t < len - 100; t += 100) {
+    const [x, z] = [A[0] + dx * t + dz * 550, A[1] + dz * t - dx * 550];
+    if (lane.inBounds(x, z)) assert.equal(floor(x, z), GROUND, `the pavement at (${Math.round(x)}, ${Math.round(z)})`);
+  }
+});
+
 test("the neighbours (W5): south_1 and south_2 under their steeper roofs (28 and 29 degrees, eaves at 412, a lip along the front eave) by raycast on both slopes, each with two wings behind it running into its back slope; the link's door wall set back, its two bins solid; south_2's raised bed a step up from its gravel; the hedge at the asphalt's edge, lower by the link; the young beech row not solid", () => {
   for (const [h, deg, wings, yard] of [[lane.SOUTH_1, 28, lane.SOUTH_1_WINGS, -2900], [lane.SOUTH_2, 29, lane.SOUTH_2_WINGS, 4150]]) {
     const tan = (h.ridge - h.eave) / (h.d / 2);
@@ -700,7 +737,7 @@ for (const [label, prof] of CAMERAS) {
 test('privacy and originality: the course\'s sources name no one but Jonas on its signs, carry no house numbers or licence plates on them, and paint every texture in code (no image files)', () => {
   const dir = new URL('../src/world/lane/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'facades.js', 'garage.js', 'houses.js', 'index.js', 'layout.js', 'props.js', 'surface.js', 'textures.js']); // (W6: facades.js, the north villas' programs; W7: surface.js, the street's wear and kerbside furniture)
+  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'ends.js', 'facades.js', 'garage.js', 'houses.js', 'index.js', 'layout.js', 'props.js', 'surface.js', 'textures.js']); // (W6: facades.js, the north villas' programs; W7: surface.js, the street's wear and kerbside furniture; W8: ends.js, the two ends' garden things, hedges and far houses)
   for (const f of files) {
     const src = readFileSync(new URL(f, dir), 'utf8');
     assert.ok(!/\.(png|jpe?g|webp|gif)\b/i.test(src), `${f}: no image files`);

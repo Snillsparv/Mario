@@ -28,7 +28,7 @@
 // them (the grass stops short of a wall). No overhead wires and no road markings: the photos show
 // none (a cul-de-sac with buried cables, an unmarked street).
 
-import { roadPieces, normals, inside } from './plan.js';
+import { roadPieces, normals, inside, fenceEnds } from './plan.js';
 import { frameOf } from './house.js';
 import { makeRng } from '../../../core/math.js';
 
@@ -44,7 +44,9 @@ const GRIT = { high: 24, mid: 48, low: 96 }; // the grit's pieces along them, pe
 
 // The street name sign: on the verge on the lane's north side, just in from the junction, its
 // plate along the lane.
-export const STREET_SIGN = Object.freeze({ x: -10834, z: 1583, yaw: Math.atan2(0.834, -0.553), top: 250, plate: [112, 26] });
+// (W8, photos 01, 02: clamped on lamppost B at the curve, ~500 up, no post of its own: `on` its
+// pole's middle.)
+export const STREET_SIGN = Object.freeze({ x: -13700, z: 4180, yaw: 0.885 + 2.4, top: 513, plate: [112, 26], on: true });
 
 export function clutter(kit, L, ground) {
   const R = makeRng(4243);
@@ -67,8 +69,7 @@ export function clutter(kit, L, ground) {
   });
   // (Nor under a fence: the corner house's rails cross the side road's far end.)
   const fences = L.FENCES.map((f) => {
-    const F = frameOf(L.HOUSES.find((h) => h.id === f.house));
-    const [a, b] = [F.at(f.from[0], 0, f.from[1]), F.at(f.to[0], 0, f.to[1])];
+    const [a, b] = fenceEnds(L, f);
     return [a[0], a[2], b[0], b[2]];
   });
   const byFence = (x, z) => fences.some(([ax, az, bx, bz]) => {
@@ -205,14 +206,15 @@ export function clutter(kit, L, ground) {
     }
   };
   for (const t of L.TREES) under(t.x, t.z, t.r * 0.9, 520);
-  for (const t of L.GARDEN_TREES) if (t.kind !== 'shrub') under(t.x, t.z, t.r * 1.1, t.kind === 'birch' ? 200 : 260);
+  for (const t of L.GARDEN_TREES) if (t.kind !== 'shrub') under(t.x, t.z, t.r * 1.1, t.kind === 'birch' ? 200 : t.kind === 'creeper' ? 110 : 260, t.kind === 'creeper'); // (W8: the creeper's red leaves under it)
   // The dad's path and his lawn's edge along it (photo 40's leaves).
   const P = L.DAD_PATH;
   for (let i = 0; i < Math.round(70 * share); i++) {
     const x = P.x0 - 40 + R() * (P.x1 - P.x0 + 80);
     const z = P.z0 + 20 + R() * (P.z1 - P.z0 - 40);
     const onPath = x > P.x0 && x < P.x1;
-    if (onPath || lawnAt(x, z) !== null) leaf(x, G + (onPath ? 1.2 : 0.8), z, 3.5 + R() * 3.5, R() < 0.5);
+    const edging = Math.min(Math.abs(x - P.x0), Math.abs(x - P.x1)) < 12; // (none on its edging's top)
+    if (!edging && (onPath || lawnAt(x, z) !== null)) leaf(x, G + (onPath ? 1.2 : 0.8), z, 3.5 + R() * 3.5, R() < 0.5);
   }
 
   // ---------------------------------------------------------------- weeds by the walls
@@ -281,9 +283,10 @@ export function clutter(kit, L, ground) {
 export function streetSign({ steel, enamel, paint }, L) {
   const S = STREET_SIGN;
   const y0 = L.groundHeight(S.x, S.z);
-  // The post, a cap.
+  // The post, a cap (none on a lamppost: `on`).
   steel.color(0x8a8e92);
-  steel.cyl('y', y0 - 6, y0 + S.top, S.x, S.z, 3.6, 8, { caps: true });
+  if (!S.on) steel.cyl('y', y0 - 6, y0 + S.top, S.x, S.z, 3.6, 8, { caps: true });
+  const k = S.on ? 15 : 0; // (in front of the lamppost's pole)
   // The plate: a white enamel box (both faces blank) on the post's top, its edges black.
   const [w, h] = S.plate;
   const [ux, uz] = [Math.sin(S.yaw + Math.PI / 2), Math.cos(S.yaw + Math.PI / 2)]; // (along the plate)
@@ -300,7 +303,7 @@ export function streetSign({ steel, enamel, paint }, L) {
     g.quad(c(0, 0, 0), c(1, 0, 0), c(1, 0, 1), c(0, 0, 1));
   };
   // (In front of the post: it is bolted to it behind the plate.)
-  const [t0, t1] = [4, 5.6];
+  const [t0, t1] = [4 + k, 5.6 + k];
   enamel.color(0xf4f4f0);
   box(enamel, -w / 2, w / 2, v0, v0 + h, t0, t1);
   // The border: a black band round each face, just proud of it.
@@ -322,7 +325,7 @@ export function streetSign({ steel, enamel, paint }, L) {
   steel.color(0x6a6e72);
   for (const v of [v0 + 4, v0 + h - 7]) {
     const q = (u, t) => at(u, v, t);
-    for (const [a, b] of [[3, 4], [-4, -3]]) {
+    for (const [a, b] of [[3 + k, 4 + k], [-4 - k, -3 - k]]) {
       steel.quad(q(-4.5, a), q(4.5, a), at(4.5, v + 3, a), at(-4.5, v + 3, a));
       steel.quad(q(4.5, b), q(-4.5, b), at(-4.5, v + 3, b), at(4.5, v + 3, b));
     }

@@ -83,6 +83,7 @@ import { propsSteps, waveFlags, dadCar } from './props.js';
 import { normals, band, roadPieces, kerbRuns, bevelEnds, BEVEL, terraceSpans } from './real/plan.js';
 import { FACADES, WALL_DRAWN, STRIP, FLOOR_SET, wallDrawnAt } from './facades.js';
 import { surfaceParts, EDGING } from './surface.js';
+import { LAYBY, GRAVEL_PATH, FORECOURT_WALL } from './ends.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -105,7 +106,8 @@ const TINT = {
   bed: 0x6a5a3a, // (W6: the planted strip behind them, dark soil under the plants)
   steps: 0xc8c2b8,
   cobbles: 0xa8a49e, // (W6: the villas' drives' grey granite setts)
-  flags: 0xd8d4cc,
+  flags: 0x9a9894, // (W8: north_west's grey slate crazy paving, photos 05-07)
+  setts: 0xa09a90, // (W8: the double garage's grey-brown granite setts, photo 29)
   railing: 0x2a2a2a,
   patio: 0xa8a6a0,
   gravel: 0xb0aa9e, // (south_2's grey gravel: W5)
@@ -119,7 +121,7 @@ const TINT = {
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
-const REAL_GROUND = { ...TINT, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea, litter: 0xb8a896, sand: 0xffe8d0 };
+const REAL_GROUND = { ...TINT, flags: 0x5a5856, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea, litter: 0xb8a896, sand: 0xffe8d0 };
 
 const UP = [0, 1, 0];
 // Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
@@ -409,9 +411,11 @@ const at = (outline, y) => outline.map(([x, z]) => [x, y, z]);
 // pavement (along the west leg, the bend and the straight, then narrowing over the apron's kerb S
 // to the terraces' wall), the drives and the notches' cobbles, the dad's grass-paver path, his
 // drive (darker under the carport's edge, the store room's concrete floor behind its door wall)
-// and the link's, the double garage's forecourt east of the apron and the footway behind its east
-// kerb, the north-west villa's flagstones (cut at the pavement), the footpath, the dad's patio,
-// south_2's gravel and its slab path (W5).
+// and the link's, the double garage's forecourt east of the apron (W8: its setts to the doors and
+// the forecourt wall) and the footway behind its east kerb, the north-west villa's flagstones
+// (cut at the pavement; W8: the realistic look's crazy paving over them, the worker's), the
+// footpath, the dad's patio, south_2's gravel and its slab path (W5), the lay-by and the gravel
+// path out past the junction (W8).
 function hardSurfaces(L, road, tints) {
   const out = [];
   const pavement = [];
@@ -465,14 +469,29 @@ function hardSurfaces(L, road, tints) {
   add(rectOf(SG.gravel.x0, SG.gravel.x1, SG.gravel.z0, SG.gravel.z1), 'asphalt', tints.gravel);
   add(rectOf(SG.path.x0, SG.path.x1, SG.path.z0, SG.path.z1), 'cobbles', tints.slabs);
   add(rectOf(SG.paving.x0, SG.paving.x1, SG.paving.z0, SG.paving.z1), 'asphalt', tints.paving, 1, [...road, foot]); // (a plain hard grey, as light as the pavement in the realistic look, which lays its slabs over it: the joints and the curve's edge in it)
+  // (W8, photos 29, 30: the double garage's forecourt asphalt to the footway's edge, then granite
+  // setts to the doors and down to its retaining wall, a lighter strip of them down the garage's
+  // axis.)
   const C = L.FORECOURT;
-  add(rectOf(C.x0, C.x1, C.z0, C.z1), 'asphalt', tints.drive);
+  add(rectOf(C.x0, C.setts, C.z0, C.z1), 'asphalt', tints.drive);
+  const [ax, az] = [L.EAST_GARAGE.cz - C.strip, L.EAST_GARAGE.cz + C.strip];
+  const [wa, wb] = [FORECOURT_WALL.from, FORECOURT_WALL.to];
+  const wallZ = (x) => wa[1] + ((x - wa[0]) * (wb[1] - wa[1])) / (wb[0] - wa[0]) - FORECOURT_WALL.thick / 2;
+  add(rectOf(C.setts, C.x1, C.z0, ax), 'cobbles', tints.setts);
+  add(rectOf(C.setts, C.x1, ax, az), 'cobbles', tints.setts, 1.18);
+  add([[C.setts, az], [C.x1, az], [C.x1, wallZ(C.x1)], [C.setts, wallZ(C.setts)]], 'cobbles', tints.setts);
   const F = frame(L.NORTH_WEST);
-  add(L.northWestDrive().map(([u, w]) => {
+  for (const outline of L.northWestDrive()) add(outline.map(([u, w]) => {
     const p = F.at(u, 0, w);
     return [p[0], p[2]];
   }), 'cobbles', tints.flags, 1, cutPave);
   add(foot, 'asphalt', tints.footpath);
+  // (W8: out past the junction the lay-by on the curve's outside; the gravel path north from the
+  // side road's mouth to the forest.)
+  add(LAYBY.pts, 'asphalt', tints.drive);
+  const GP = GRAVEL_PATH;
+  const [gx, gz] = [GP.dir[1] * GP.half, -GP.dir[0] * GP.half];
+  add([[GP.x - gx, GP.z - gz], [GP.x + gx, GP.z + gz], [GP.x + gx + GP.dir[0] * GP.len, GP.z + gz + GP.dir[1] * GP.len], [GP.x - gx + GP.dir[0] * GP.len, GP.z - gz + GP.dir[1] * GP.len]], 'asphalt', tints.gravel, 1, cutPave);
   // The footway: from the forecourt down behind the east kerb to the footpath's east edge.
   const W = L.FOOTWAY;
   const [ex, ez] = fp(0, -FP.half);

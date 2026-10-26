@@ -34,7 +34,7 @@
 import { add, mul, sub, norm } from './geo.js';
 import { frameOf, fbox, wallWear, streakLength, wallFrame, lamp } from './house.js';
 import { boxPlants } from './foliage.js';
-import { FACADES, FRAME, ROOF, GARAGE_SET, DOOR_SET, hipOf, outlineOf } from '../facades.js';
+import { FACADES, FRAME, ROOF, GARAGE_SET, DOOR_SET, WEST_FRONTS, hipOf, outlineOf } from '../facades.js';
 
 const WHITE = 0xf6f4ee;
 const WIN = { w: 220, sill: 520, h: 200, frame: 12 };
@@ -494,7 +494,8 @@ function westVilla(kit, L, h) {
   const wallH = h.eave - y0;
   const garages = (h.garages ?? []).map((u) => ({ u0: u - 274, u1: u + 274, v1: 264 }));
   const W = { ...WIN, sill: wallH - 230 };
-  const faces = { front: [-550, 0, 550], back: [], left: [0], right: [0] };
+  // (W8: north_west's walls blank: its doors, ribs, panels and porch lane/houses.js westFront's.)
+  const faces = WEST_FRONTS[h.id] ? { front: [], back: [], left: [], right: [] } : { front: [-550, 0, 550], back: [], left: [0], right: [0] };
   const proud = (u) => garages.some((g) => g.u0 < u + W.w / 2 + W.frame && g.u1 > u - W.w / 2 - W.frame && g.v1 > W.sill - W.frame);
   for (const name of ['front', 'back', 'left', 'right']) {
     const { f, half } = F.face(name);
@@ -519,17 +520,38 @@ export function villaHouses(kit, L) {
 export function garageDoors({ paint, metal }, L) {
   for (const h of L.HOUSES) {
     if (FACADES[h.id]) continue;
+    const P = WEST_FRONTS[h.id];
+    if (P) {
+      // (W8: north_west's white ribbed sectional doors, flush in their white casings.)
+      const f = frameOf(h).face('front').f;
+      for (const d of P.doors) {
+        const [u0, u1] = [d.u - d.w / 2, d.u + d.w / 2];
+        paint.color(WHITE);
+        surround(paint, f, [[u0, 0], [u1, 0], [u1, d.h], [u0, d.h]], 10, 0, 2.4);
+        paint.color(d.tint);
+        paint.quad(f.at(u0, 0, 1), f.at(u1, 0, 1), f.at(u1, d.h, 1), f.at(u0, d.h, 1));
+        paint.color(d.tint, 0.72);
+        for (let v = 20; v < d.h - 8; v += 20) paint.quad(f.at(u0, v - 1.2, 1.3), f.at(u1, v - 1.2, 1.3), f.at(u1, v + 1.2, 1.3), f.at(u0, v + 1.2, 1.3));
+        metal.color(0xb0aca4);
+        if (d.w > 200) metal.quad(f.at(d.u - 30, 40, 2), f.at(d.u + 30, 40, 2), f.at(d.u + 30, 47, 2), f.at(d.u - 30, 47, 2));
+        else metal.quad(f.at(u1 - 22, 150, 2), f.at(u1 - 10, 150, 2), f.at(u1 - 10, 158, 2), f.at(u1 - 22, 158, 2));
+      }
+      continue;
+    }
     const villa = h.kit === 'villa';
     const doors = villa ? (h.garages ?? []) : h.kit === 'garage' ? h.doors : [];
-    const [w, ht, tint] = villa ? [520, 250, 0x5a6a72] : [440, 240, 0x3a3e42];
+    if (!doors.length) continue;
+    // (W8: the double garage's tall anthracite doors, finely ribbed: photos 25, 29.)
+    const [w, ht, tint] = villa ? [520, 250, 0x5a6a72] : [h.door.w, h.door.h, 0x2c2e33];
+    const n = villa ? 4 : Math.round(ht / 23);
     const f = frameOf(h).face('front').f;
     for (const u of doors) {
       const [u0, u1] = [u - w / 2, u + w / 2];
       paint.color(WHITE);
-      surround(paint, f, [[u0, 0], [u1, 0], [u1, ht], [u0, ht]], 14, 0, 3);
-      // Four sections, each a shallow panel bevelled top and bottom.
-      for (let k = 0; k < 4; k++) {
-        const [v0, v1] = [(ht * k) / 4, (ht * (k + 1)) / 4];
+      surround(paint, f, [[u0, 0], [u1, 0], [u1, ht], [u0, ht]], villa ? 14 : 12, 0, 3);
+      // Four sections (the double garage's ribs), each a shallow panel bevelled top and bottom.
+      for (let k = 0; k < n; k++) {
+        const [v0, v1] = [(ht * k) / n, (ht * (k + 1)) / n];
         paint.color(tint, 1.1);
         paint.quad(f.at(u0, v0 + 3, 1), f.at(u1, v0 + 3, 1), f.at(u1, v1 - 3, 1), f.at(u0, v1 - 3, 1));
         paint.color(tint, 0.6);
@@ -554,8 +576,9 @@ export function hipTrim({ metal, paint, tiles, tier }, L) {
     const [R0, R1] = [at(R.R0), at(R.R1)];
     const { a, b } = R;
     // The gutters round the rim (each side out from the roof's middle), a downpipe with a swan
-    // neck from the gutter back to the wall at each programmed front corner (else both).
-    metal.color(P ? ROOF.gutter : 0x2a2c2e);
+    // neck from the gutter back to the wall at each programmed front corner (else both; W8:
+    // north_west's white, `trim`).
+    metal.color(P ? ROOF.gutter : (h.trim ?? 0x2a2c2e));
     const mid = F.at(0, R.Y, 0);
     for (let i = 0; i < 4; i++) {
       const [p, q] = [rim[i], rim[(i + 1) % 4]];
@@ -586,9 +609,14 @@ export function hipTrim({ metal, paint, tiles, tier }, L) {
     }
     // The caps: rounded tiles along the hips (from the rim's corners to the ridge's ends) and the
     // ridge.
-    tiles.color(h.roof, 0.9);
+    tiles.color(h.realRoof ?? h.roof, 0.9);
     const ends = R.along ? [R0, R1, R1, R0] : [R1, R1, R0, R0];
-    for (let i = 0; i < 4; i++) tiles.tube(add(rim[i], [0, 3, 0]), add(ends[i], [0, 3, 0]), 11, 11, 6, { a0: Math.PI, arc: Math.PI, caps: true });
+    // (A kicked eave's hips bend at the walls' corners: rim to knee, then on up.)
+    const knee = R.knee.map(at);
+    for (let i = 0; i < 4; i++) {
+      if (R.knee !== R.rim) tiles.tube(add(rim[i], [0, 3, 0]), add(knee[i], [0, 3, 0]), 11, 11, 6, { a0: Math.PI, arc: Math.PI, caps: true });
+      tiles.tube(add(knee[i], [0, 3, 0]), add(ends[i], [0, 3, 0]), 11, 11, 6, { a0: Math.PI, arc: Math.PI, caps: true });
+    }
     if (Math.hypot(...sub(R0, R1)) > 1) tiles.tube(add(R0, [0, 3, 0]), add(R1, [0, 3, 0]), 13, 13, 8, { a0: Math.PI, arc: Math.PI, caps: true });
   }
 }

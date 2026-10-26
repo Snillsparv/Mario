@@ -28,6 +28,7 @@ import { GRASS } from './grassTiers.js';
 import { STRIP } from '../facades.js';
 import { forestSpots } from './spots.js';
 import { SHOULDER } from '../surface.js';
+import { LINE_HEDGES, GRAVEL_PATH, GARDEN_THINGS, FORECOURT_WALL } from '../ends.js';
 
 export { GRASS }; // (its data lives in grassTiers.js, which the realLook chunk imports)
 
@@ -203,6 +204,24 @@ export function lawnMask(L) {
   for (const h of L.HOUSES) footprint(h, h.w + (h.veranda ? 2 * h.veranda.depth : 0), h.d);
   for (const r of [L.LINK, L.CARPORT, L.DAD_PATH, L.DAD_DRIVE, L.LINK_DRIVE, L.PATIO]) rect(r, 10);
   rect(L.FORECOURT, 10);
+  // (W8: the forecourt's setts on down to its wall, the wall and its pillar; the hedges along a
+  // line; the gravel path north from the side road's mouth; the shed and the picnic table.)
+  const strip = ([ax, az], [bx, bz], half) => {
+    const [ex, ez] = [bx - ax, bz - az];
+    const l2 = ex * ex + ez * ez;
+    clear((x, z) => {
+      const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2));
+      return Math.hypot(x - ax - ex * t, z - az - ez * t) < half + m;
+    }, Math.min(ax, bx) - half, Math.max(ax, bx) + half, Math.min(az, bz) - half, Math.max(az, bz) + half);
+  };
+  const FW = FORECOURT_WALL;
+  rect({ x0: L.FORECOURT.setts, x1: L.FORECOURT.x1, z0: L.FORECOURT.z1, z1: Math.max(FW.from[1], FW.to[1]) }, 10);
+  strip(FW.from, FW.to, FW.thick / 2 + 12);
+  disc(L.CABINET.x, L.CABINET.z, FW.pillar * 0.75);
+  for (const h of LINE_HEDGES) strip(h.from, h.to, h.depth / 2 + 12);
+  const GP = GRAVEL_PATH;
+  strip([GP.x, GP.z], [GP.x + GP.dir[0] * GP.len, GP.z + GP.dir[1] * GP.len], GP.half + 6);
+  for (const t of GARDEN_THINGS) if (t.kind === 'shed' || t.kind === 'picnic') disc(t.x, t.z, t.kind === 'shed' ? 380 : 170);
   rect({ x0: L.FOOTWAY.x0, x1: L.FOOTWAY.x1, z0: L.FORECOURT.z1, z1: L.FOOTPATH.z }, 10);
   const NW = L.NORTH_WEST;
   const D = L.NORTH_WEST_DRIVE;

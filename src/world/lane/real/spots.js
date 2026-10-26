@@ -25,6 +25,7 @@
 // in its `low` sector, south-east, lower trees by that sector's own mix, tops and least height).
 
 import { makeRng } from '../../../core/math.js';
+import { VERANDA_HOUSE, BACKDROP, LAYBY } from '../ends.js';
 
 // Crown sizes per kind: r [min, max] (a spruce's its skirt's radius; a pine's its flat crown's),
 // and the least height.
@@ -82,13 +83,17 @@ export function forestSpots(L) {
     const nz = -(q[0] - p[0]) / lengths[k];
     const x = p[0] + (q[0] - p[0]) * t + nx * away;
     const z = p[1] + (q[1] - p[1]) * t + nz * away;
-    if (L.inBounds(x, z) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 300 || (x > F.x0 && z < band(x, 0))) continue;
+    if (L.inBounds(x, z) || L.roadDistance(x, z, OLD_DRAWN(L)) < L.ROAD.half + 300 || (x > F.x0 && z < band(x, 0))) continue;
     const lo = E.low && x > E.low.x0 && z > E.low.z0 ? E.low : null;
     const kind = pick(lo?.mix ?? E.mix, er());
     const top = tops(lo ? lo.top : E.top, er);
     // (In the clear sector the spot is drawn and dropped: the ring's others keep their places.)
     const c = E.clear;
-    if (!(c && x > c.x0 && x < c.x1 && z > c.z0)) {
+    const cleared = c && x > c.x0 && x < c.x1 && z > c.z0;
+    if (!cleared && offTheEnds(L, x, z)) {
+      er(); // (W8: dropped with plant's own two draws: the ring's later spots keep their trees)
+      er();
+    } else if (!cleared) {
       plant(kind, x, z, top, er, {}, lo ? Math.min(lo.least, KINDS[kind].h) : KINDS[kind].h);
       if (lo) into[kind].at(-1).r *= lo.r;
     }
@@ -96,4 +101,20 @@ export function forestSpots(L) {
   }
   MEMO.set(L, out);
   return out;
+}
+
+// (W8: the road drawn on past the junction as it ran before (straight, 2860 on) decides which
+// spots of the ring and the far tree line are drawn at all, so their trees keep their places; the
+// spots on the curve it runs on now, its lay-by, by the veranda house and the far houses are
+// drawn and dropped, as the clear sector's.)
+export function OLD_DRAWN(L) {
+  const [[ax, az], [bx, bz]] = L.ROAD.line;
+  const l = Math.hypot(ax - bx, az - bz);
+  return [[ax + ((ax - bx) / l) * 2860, az + ((az - bz) / l) * 2860], ...L.ROAD.line];
+}
+export function offTheEnds(L, x, z, pad = 300) {
+  if (L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + pad) return true;
+  const near = (h, r) => Math.hypot(x - h.cx, z - h.cz) < Math.hypot(h.w, h.d) / 2 + r;
+  if (near(VERANDA_HOUSE, pad) || BACKDROP.some((h) => near(h, pad))) return true;
+  return LAYBY.pts.some(([px, pz]) => Math.hypot(x - px, z - pz) < 600);
 }

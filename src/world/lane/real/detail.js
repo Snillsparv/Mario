@@ -41,7 +41,7 @@ import { plants, firGeometry, firInstances, FIR_SHAPES } from './foliage.js';
 import { chainHouse, TILE_SEG } from './house.js';
 import { cars, carOf, carClusters } from './cars.js';
 import { grassClump, lawnMask } from './grass.js';
-import { lampposts, flagpoles, fences, bins } from './street.js';
+import { lampposts, flagpoles, fences, bins, crazyPaving } from './street.js';
 import { villaHouses, garageDoors, hipTrim } from './villas.js';
 import { trampoline, hoop, motorhome, cabinet, treeLine } from './extras.js';
 import { clutter, streetSign } from './clutter.js';
@@ -117,6 +117,7 @@ export function buildLaneDetail(L, tier = 'high') {
   lampposts(kit, L);
   flagpoles(kit, L);
   fences(kit, L);
+  crazyPaving(kit, L);
   plants(kit, L);
   // (Tile courses: on high the dad's and his neighbours' roofs, the neighbours' rolls at mid's
   // segments; on mid the dad's only: LANE_REAL.tiles, tilesMid.)

@@ -11,11 +11,18 @@
 //                       // the handle side: the dad's two are movers, detail.js): a tapering body
 //                       // with rounded corners, the lid over its rim, the hinge bar and handle,
 //                       // two wheels
+//   crazyPaving(kit, L) // north_west's drive and the strip along its west face (W8, photos 05-07):
+//                       // irregular grey slate flags (a seeded Voronoi of the outlines, each
+//                       // stone shrunk off its neighbours: the joints the drive's own dark face
+//                       // under them), a few pale, dark and rusty ones; bigger stones on low
 //
-// kit: detail.js's Geo per material (steel, paint, boards, enamel, gloss, tyre).
+// kit: detail.js's Geo per material (steel, paint, boards, enamel, gloss, tyre, patch).
 
 import { add, mul } from './geo.js';
 import { frameOf } from './house.js';
+import { fenceEnds } from './plan.js';
+import { makeRng } from '../../../core/math.js';
+import { FAR_LAMPS } from '../ends.js';
 
 const STEEL = 0x8e8e8c; // (weathered galvanized: a neutral grey)
 const HEAD = 0xa8acae; // (W7: the photos' light grey luminaires)
@@ -34,7 +41,7 @@ function lathe(g, x, z, profile, sides) {
 
 export function lampposts({ steel, paint, gloss, granite, tier }, L) {
   const { LAMP } = L;
-  for (const { x, z, yaw } of L.LAMPS) {
+  for (const { x, z, yaw } of [...L.LAMPS, ...FAR_LAMPS]) { // (W8: and lamppost B out past the junction)
     const y0 = L.groundHeight(x, z);
     // (W7, photos 05, 09, 12, 24: a slim galvanised pole tapering a little, on a concrete collar;
     // a short bracket from just under the cap out to a flat oval luminaire, light grey, its
@@ -88,10 +95,9 @@ export function flagpoles({ steel, paint, gloss }, L) {
 // (On low the pickets on the street side of the rails only, without their narrow ends.)
 export function fences({ boards, tier }, L) {
   const y0 = L.GROUND;
-  for (const { house, kind, from, to, h } of L.FENCES) {
-    const F = frameOf(L.HOUSES.find((o) => o.id === house));
-    const a = F.at(from[0], 0, from[1]);
-    const b = F.at(to[0], 0, to[1]);
+  for (const f of L.FENCES) {
+    const { kind, h } = f;
+    const [a, b] = fenceEnds(L, f);
     const len = Math.hypot(b[0] - a[0], b[2] - a[2]);
     const d = [(b[0] - a[0]) / len, 0, (b[2] - a[2]) / len];
     const n = [-d[2], 0, d[0]];
@@ -127,9 +133,11 @@ export function fences({ boards, tier }, L) {
     if (kind === 'picket') {
       // Pickets 8 wide with 10 between, either side of the rails.
       // (s < 0: the side away from the house, its street side.)
-      const low = tier === 'low';
-      for (let t = 4; t + 8 < len; t += 18) {
-        for (const s of low ? [-1] : [-1, 1]) piece(t, t + 8, s > 0 ? 4 : -6.5, s > 0 ? 6.5 : -4, y0 + 2, y0 + h - 6, true, !low);
+      // (W8: one side only on mid, and the bend's (no house) on every tier; on low a picket every
+      // 50: the two ends' fences are long.)
+      const low = tier !== 'high' || !f.house;
+      for (let t = 4; t + 8 < len; t += tier === 'low' ? 50 : 18) {
+        for (const s of low ? [-1] : [-1, 1]) piece(t, t + 8, s > 0 ? 4 : -6.5, s > 0 ? 6.5 : -4, y0 + 2, y0 + h - 6, true, tier === 'high' && !!f.house);
       }
     }
   }
@@ -175,6 +183,70 @@ export function bins({ paint, tyre, steel }, L) {
       tyre.tube([wx - s * 4, G + 13, back + 6], [wx + s * 6, G + 13, back + 6], 13, 13, 12, { caps: true });
       steel.color(0x6a6e70);
       steel.tube([wx - s * 10, G + 13, back + 6], [wx + s * 8, G + 13, back + 6], 2.5, 2.5, 6);
+    }
+  }
+}
+
+// A convex polygon [[u, w]] cut to where s(p) >= 0 (s linear).
+function cut(poly, s) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const [p, q] = [poly[i], poly[(i + 1) % poly.length]];
+    const [sp, sq] = [s(p), s(q)];
+    if (sp >= 0) out.push(p);
+    if (sp * sq < 0) {
+      const k = sp / (sp - sq);
+      out.push([p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]);
+    }
+  }
+  return out;
+}
+
+export function crazyPaving({ patch, tier }, L) {
+  const F = frameOf(L.NORTH_WEST);
+  const step = { high: 92, mid: 120 }[tier] ?? 260; // (W8: the stones larger on mid, larger still on low: the plan's levers)
+  const J = 1.6; // (half a joint)
+  const y = L.GROUND + 0.8;
+  const R = makeRng(0x5f1a9);
+  const UP = [0, 1, 0];
+  for (const outline of L.northWestDrive()) {
+    const us = outline.map((p) => p[0]);
+    const ws = outline.map((p) => p[1]);
+    const seeds = [];
+    // (A jittered grid with a quarter of its points left out: stones of every size, 0.3 .. 0.8 m.)
+    for (let u = Math.min(...us) - step / 2; u <= Math.max(...us) + step; u += step) {
+      for (let w = Math.min(...ws) - step / 2; w <= Math.max(...ws) + step; w += step) {
+        const p = [u + (R() - 0.5) * step * 0.95, w + (R() - 0.5) * step * 0.95];
+        if (R() > 0.27) seeds.push(p);
+      }
+    }
+    for (const a of seeds) {
+      let cell = outline;
+      for (const b of seeds) {
+        if (b === a || Math.abs(b[0] - a[0]) > step * 2.2 || Math.abs(b[1] - a[1]) > step * 2.2) continue;
+        const [nx, nw] = [b[0] - a[0], b[1] - a[1]];
+        const l = Math.hypot(nx, nw);
+        const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        cell = cut(cell, (p) => -((p[0] - m[0]) * nx + (p[1] - m[1]) * nw) / l - J);
+        if (cell.length < 3) break;
+      }
+      if (cell.length < 3) continue;
+      const c = cell.reduce((s, p) => [s[0] + p[0] / cell.length, s[1] + p[1] / cell.length], [0, 0]);
+      const area = cell.reduce((s, p, i) => s + p[0] * cell[(i + 1) % cell.length][1] - cell[(i + 1) % cell.length][0] * p[1], 0) / 2;
+      if (Math.abs(area) < 120) continue;
+      const pts = cell.map(([u, w]) => F.at(u, y, w));
+      // (Slate grey, each stone its own shade; a few pale, dark, blue-grey or rusty ones.)
+      const r = R();
+      const v = 0.9 + R() * 0.2;
+      const tint = r < 0.08 ? [1.2, 1.18, 1.14] : r < 0.11 ? [0.98, 0.8, 0.68] : r < 0.2 ? [0.68, 0.67, 0.66] : r < 0.4 ? [0.84, 0.87, 0.9] : [0.9, 0.88, 0.86];
+      patch.rgb(tint[0] * v, tint[1] * v, tint[2] * v);
+      const C = F.at(c[0], y, c[1]);
+      for (let i = 0; i < pts.length; i++) {
+        let [p, q] = [pts[i], pts[(i + 1) % pts.length]];
+        // (Counter-clockwise seen from above.)
+        if ((p[0] - C[0]) * (q[2] - C[2]) - (p[2] - C[2]) * (q[0] - C[0]) > 0) [p, q] = [q, p];
+        patch.tri(C, p, q, { n: [UP, UP, UP], uvs: [[C[0], C[2]], [p[0], p[2]], [q[0], q[2]]] });
+      }
     }
   }
 }

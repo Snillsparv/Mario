@@ -39,6 +39,7 @@
 // (layout.js: the van tall and short-nosed, the estate's long roof, the SUV's square tail).
 
 import { sub, cross, dot, norm } from './geo.js';
+import { LAYBY } from '../ends.js';
 
 // Per kind: a crossover (black flares and cladding, skid plates), its ground clearance, the
 // bonnet's leading edge's and the tail's radii, the plan's corner radii at the nose and tail,
@@ -71,6 +72,8 @@ const LOD = {
   high: { stations: 46, sides: 30, spokes: 10, arch: 14, fine: true, wrap: true },
   mid: { stations: 22, sides: 16, spokes: 5, arch: 6, fine: false, wrap: true },
   low: { stations: 16, sides: 10, spokes: 5, arch: 6, fine: false, wrap: false, tread: true }, // (W5: the plan's lever for low: rounder wheels' cost spent on the neighbours)
+  far: { stations: 8, sides: 6, spokes: 5, arch: 3, fine: false, wrap: false, tread: true }, // (W8: a car out at an end, `far`: this on every tier, but north_west's estate low's on high)
+  plainLow: { stations: 16, sides: 8, spokes: 4, arch: 6, fine: false, wrap: false, tread: true },
 };
 const WHEEL = 0.9; // the wheels to the bodies' scale (the classic ones are a size up: a real
 // crossover's wheel is ~0.7 of its bonnet's height across)
@@ -81,7 +84,9 @@ const ARCH = 7; // the arch's clearance round the tyre
 // the dad's drive, the link's (the dad's side west of it), the north drives (north_4's van
 // with them: in view wherever they are), the east end (the estate on the double garage's
 // forecourt).
-const clusterOf = (L, c) => (c.z > 0 ? (c.x >= L.DAD_DRIVE.x0 ? 0 : 1) : c.x < L.FORECOURT.x0 ? 2 : 3);
+// (W8: a car with `cluster` 'north' joins the north drives' wherever it stands, its probe placed
+// by theirs: north_west's.)
+const clusterOf = (L, c) => (c.cluster === 'north' ? 2 : c.z > 0 ? (c.x >= L.DAD_DRIVE.x0 ? 0 : 1) : c.x < L.FORECOURT.x0 ? 2 : 3);
 const PROBE_OVER = 40; // a cluster's probe this far over its highest roof
 
 const TYRE = [0.026, 0.026, 0.028];
@@ -113,9 +118,11 @@ export function carClusters(L) {
     groups.get(r).push(i);
   });
   return [...groups.values()].map((cars) => {
-    const x = cars.reduce((s, i) => s + L.CARS[i].x, 0) / cars.length;
-    const z = cars.reduce((s, i) => s + L.CARS[i].z, 0) / cars.length;
-    const top = Math.max(...cars.map((i) => L.groundHeight(L.CARS[i].x, L.CARS[i].z) + L.CAR_KINDS[L.CARS[i].kind].roof));
+    const own = cars.filter((i) => !L.CARS[i].cluster);
+    const at = own.length ? own : cars;
+    const x = at.reduce((s, i) => s + L.CARS[i].x, 0) / at.length;
+    const z = at.reduce((s, i) => s + L.CARS[i].z, 0) / at.length;
+    const top = Math.max(...at.map((i) => L.groundHeight(L.CARS[i].x, L.CARS[i].z) + L.CAR_KINDS[L.CARS[i].kind].roof));
     return { cars, at: [x, top + PROBE_OVER, z] };
   });
 }
@@ -125,6 +132,10 @@ export function cars(kit, L) {
   const cluster = new Map();
   carClusters(L).forEach((g, k) => g.cars.forEach((i) => cluster.set(i, k)));
   L.CARS.forEach((c, i) => c.id || car(kit, L, c, cluster.get(i)));
+  // (W8: the lay-by's two out on the curve, drawn only, far, in north_west's estate's cluster;
+  // on high only: the plan's levers for mid and low, ~8k triangles with their shadows.)
+  const k = cluster.get(L.CARS.findIndex((c) => c.cluster));
+  if (kit.tier === 'high') for (const c of LAYBY.cars) car(kit, L, { ...c, far: true }, k);
 }
 
 // One car (in its cluster's paint and glass). The dad's car returns its cuts (pieces.js: where
@@ -163,7 +174,9 @@ function car(kit, L, c, probe) {
   // (W6: the cars but the dad's two a tier plainer on high and mid: the link's and the north
   // drives' at mid's detail on high, at low's on mid; the plan's levers for the north villas.)
   const plain = !c.id && !(c.x >= L.DAD_DRIVE.x0 && c.x <= L.DAD_DRIVE.x1 && c.z > 0);
-  const D = LOD[plain ? { high: 'mid', mid: 'low' }[kit.tier] ?? kit.tier : kit.tier] ?? LOD.high;
+  // (W8: the plain cars on low with eight-sided wheels, the dad's two kept round: the plan's
+  // low-tier lever for the two ends' new things.)
+  const D = c.far ? (c.cluster && kit.tier === 'high' ? LOD.low : LOD.far) : plain && kit.tier === 'low' ? LOD.plainLow : (LOD[plain ? { high: 'mid', mid: 'low' }[kit.tier] ?? kit.tier : kit.tier] ?? LOD.high);
   const { y0, R, axles, at: W0, fw, ac } = carFrame(L, c);
   const paint = kit[`carPaint@${probe}`] ?? kit.carPaint;
   const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;

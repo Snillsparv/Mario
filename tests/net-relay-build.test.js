@@ -4,7 +4,7 @@
 // its parent, only dynamically, statically importing nothing but its ancestors, no three.js of
 // its own, each under its cap), beside its two module workers (the title logo's, and the
 // realistic look's with the pure code main does not carry: no three.js, no chunk of its own,
-// under 184 KiB); pad.html is built on its own next to it (no QR library: it never draws one);
+// under 196 KiB); pad.html is built on its own next to it (no QR library: it never draws one);
 // the preview server carries the relay (marker, pad-info, WebSocket) and offers the pad page only
 // at addresses a phone can reach; with E2E=1 the built bundle's (minified) shaders compile and
 // draw every look in headless Chromium.
@@ -69,8 +69,13 @@ const CHUNKS = {
   // 92 KiB, from 84, W7: the street's wear and edges and the kerbside furniture (lane/surface.js:
   // their data and outlines, the classic build drawing them for both looks so the worker carries
   // none of it), the mixed forest's classic crowns, the garden trees: 92,268 B, 90.1 KiB; its fix
-  // round, the south edge's tones and the beeches' verge: 92,472 B, 90.3 KiB.)
-  lane: { parent: 'main', cap: 92 * KiB, min: 40000 },
+  // round, the south edge's tones and the beeches' verge: 92,472 B, 90.3 KiB. 104 KiB, from 92,
+  // W8: the two ends, both looks' classic builders (north_west's ribbed front, porch and kicked
+  // eaves, the A-class motorhome, south_west's gables, the double garage's front, the east house's
+  // dormer, the forecourt wall and mailbox, the hedges along lines, the garden things and small
+  // plants, the veranda house, the lay-by, lamppost B and the far houses) and their data,
+  // lane/ends.js, moved here out of main: 105,746 B, 103.3 KiB, over the plan's +2 kB.)
+  lane: { parent: 'main', cap: 104 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
   // (110 KiB, from 100: what moves in the dad's drive, the bins, STOMPWATT and the garage doors,
@@ -147,8 +152,12 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   // card crowns (broadleaves, birches, Scots pines, the canopy masses), the garden trees, the
   // lampposts' new heads, the kerbs' stones (the street's wear is the classic build's, not the
   // worker's): 183,170 B, 178.9 KiB; its fix round, the leafy skins on the canopy masses and the
-  // bank's broadleaves' cores: 184,148 B, 179.8 KiB.)
-  assert.ok(size('laneRealWorker') < 184 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
+  // bank's broadleaves' cores: 184,148 B, 179.8 KiB. 196 KiB, from 184, W8: the two ends'
+  // realistic builders (the A-class motorhome, the kicked hips' trim, the dormer, the gables'
+  // panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars,
+  // the mailbox on its pillar) and lane/ends.js's data: 198,766 B, 194.1 KiB, over the plan's
+  // +3 kB.)
+  assert.ok(size('laneRealWorker') < 196 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');
   assert.ok(!/addData/.test(src.main) && /addData/.test(src.PhonePanel), "the QR code library only in the phone panel's chunk");

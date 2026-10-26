@@ -28,6 +28,8 @@
 //                                            // ranges (h.brick[face]: white brick to the eaves)
 //   chainWindows(h, face, base) -> [{ u, w, h, sill, kind }]   // a chain house's windows on a
 //                                            // face (its own size, a front window's own kind)
+//   fenceEnds(L, f) -> [a, b]                // a fence's (layout FENCES) ends in the world, [x, 0, z]:
+//                                            // in its house's frame, or (no house) given as [x, z]
 
 import { makeRng } from '../../../core/math.js';
 
@@ -400,4 +402,11 @@ export function climberMasses(L) {
     { c: [(C.x0 + C.x1) / 2 - 10, G + h * 0.42, zf + 14], r: [(C.x1 - C.x0) / 2 - 6, h * 0.42, 16] },
     { c: [C.x0 + 40, C.top - 22, zf - 6], r: [48, 30, 18] },
   ];
+}
+
+export function fenceEnds(L, f) {
+  if (!f.house) return [f.from, f.to].map(([x, z]) => [x, 0, z]);
+  const h = L.HOUSES.find((o) => o.id === f.house);
+  const [c, sn] = [Math.cos(h.yaw ?? 0), Math.sin(h.yaw ?? 0)];
+  return [f.from, f.to].map(([u, w]) => [h.cx + u * c + w * sn, 0, h.cz - u * sn + w * c]);
 }
