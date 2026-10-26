@@ -1677,7 +1677,11 @@ trees' leaves).
   wall back to the villa's garage door, block walls either side (W6: granite setts laid in arcs;
   north_2's open asphalt behind a two-row strip of setts across its mouth, `FACADES` `drive`); the
   steps five drawn steps on a smooth `not_slippery` ramp up from the pavement, a dark railing on
-  their drive side. **W6, the bed walls** (photos 10, 13, 16, 17, 23, 28): the walls' fronts are
+  their drive side; behind the drive notch the terrace's lawn is drawn from `FLOOR_SET` (80)
+  behind the villa's front (`facades.js`; under the house, behind every door at its floor: the
+  realistic look's garage doors, niches and board doors stand back 22, 35 … 60 and 8 in their
+  openings, W6 fix: the lawn's top had crossed them at `TERRACE`; the collider's top unchanged).
+  **W6, the bed walls** (photos 10, 13, 16, 17, 23, 28): the walls' fronts are
   drawn lower than their colliders, low stacked-slab bed walls of warm grey under a coping, each
   plot's height (`facades.js` `WALL_DRAWN`, `wallDrawnAt(x)`: north_1 85 over the pavement,
   north_2 100, north_3 80, north_4 stepping up from 48 by north_3's steps to 92, north_5 75;
@@ -3067,15 +3071,17 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   corners): in each window a white casing proud of the wall, a reveal, a frame with a mullion and
   a transom, the glass over a dim room box, a stone sill (one a garage door's frame would cross,
   at the west end, stands proud instead); W6, the north villas' kit from their programs
-  (`lane/facades.js` `FACADES`; frames dark): the garage's opening with its segmental or rounded
-  head (the wall filled back round any head: `outlineOf`), a slim white trim and a white reveal,
-  the sectional door set back 22 in it with fine ribs (13 apart on high, 18 on mid, four plain
-  sections on low) and a black seal; the canted oriel over it (its cheeks and front glazed in dark
-  posts and rails over a dark panel, up to the soffit, a foot of four brick courses stepping in
-  to the wall; a box bay with its front glazed and one course on low) over an opening into the
-  room; the open loggia (a brick rowlock ring, its reveal and vault lined in brown boards or
-  white render, its back in shade, a stone sill; dark bars across it or an iron box of flowers,
-  not on low); north_2's round-headed window under its ring behind an iron flower grille; the
+  (`lane/facades.js` `FACADES`; frames dark): the garage's opening with its segmental, rounded
+  or flat head (the wall filled back round any head: `outlineOf`), a slim white trim and a white
+  reveal, the sectional door set back 22 in it (`GARAGE_SET`) with fine ribs (13 apart on high,
+  18 on mid, four plain sections on low) on a plate in their joints' shade (W6 fix: the joints'
+  steps had shown what is behind the door) and a black seal; the canted oriel over it (its
+  cheeks and front glazed in dark posts and rails over a dark panel, up to the soffit, a foot of
+  four brick courses stepping in to the wall; a box bay with its front glazed and one course on
+  low) over an opening into the room; the open loggia (a brick rowlock ring, its reveal and vault
+  lined in brown boards or white render, its back in shade, a stone sill; dark bars across it or
+  an iron box of flowers, not on low); north_2's round-headed window under its ring behind an
+  iron flower grille; the
   niches (white returns, a board door filling them set back, grooves between its boards on high
   and mid, a handle each leaf, a light threshold); plain board doors in dark frames with a vent
   grille over them; white globe lamps on dark brackets and black lanterns; north_3's balcony in

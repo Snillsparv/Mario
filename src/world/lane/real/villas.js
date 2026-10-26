@@ -5,7 +5,7 @@
 //   villaHouses(kit, L)    // the walls (white render to the upper floor, brick over it, a white
 //                          // band between) with openings cut for every opening of the block's
 //                          // program (lane/facades.js FACADES, W6: photos 9-13, 16, 17, 23, 25-29):
-//                          // the garage's (its segmental or rounded head, a white reveal, the
+//                          // the garage's (its segmental, rounded or flat head, a white reveal, the
 //                          // ribbed sectional door set back in it), a canted oriel over it (glass
 //                          // on its three faces in dark frames, a dark panel under the glass, a
 //                          // corbelled brick foot; a box bay on low), a round-headed window under a
@@ -34,7 +34,7 @@
 import { add, mul, sub, norm } from './geo.js';
 import { frameOf, fbox, wallWear, streakLength, wallFrame, lamp } from './house.js';
 import { boxPlants } from './foliage.js';
-import { FACADES, FRAME, ROOF, hipOf, outlineOf } from '../facades.js';
+import { FACADES, FRAME, ROOF, GARAGE_SET, DOOR_SET, hipOf, outlineOf } from '../facades.js';
 
 const WHITE = 0xf6f4ee;
 const WIN = { w: 220, sill: 520, h: 200, frame: 12 };
@@ -360,8 +360,8 @@ function boardDoor(kit, f, d, dark) {
   const pts = outline(d.u, 0, d.w / 2, d.h, false);
   paint.color(dark);
   surround(paint, f, pts, 8, 0, 2);
-  lining(paint, f, pts, 0, -8);
-  door(kit, f, pts, d.u, d.w, d.h, -8, d.tint);
+  lining(paint, f, pts, 0, -DOOR_SET);
+  door(kit, f, pts, d.u, d.w, d.h, -DOOR_SET, d.tint);
   if (!d.vent) return;
   paint.color(0x8a8c8e);
   fbox(paint, f, d.u - 15, d.u + 15, d.h + 22, d.h + 42, 0, 2, 'k');
@@ -370,18 +370,21 @@ function boardDoor(kit, f, d, dark) {
 }
 
 // The garage's opening (g: facades.js): a slim white trim, its white reveal, the sectional door
-// set back in it: fine horizontal ribs under the head (on high and mid; four plain sections on
-// low), the head's part plain; a black seal at its foot.
+// set back GARAGE_SET in it: fine horizontal ribs under the head (on high and mid; four plain
+// sections on low) on a plate in the ribs' joints' shade (the joints' steps never show through
+// to what is behind the door), the head's part plain; a black seal at its foot.
 function garage(kit, f, g) {
   const { paint, render, tier } = kit;
   const pts = outlineOf(g.u, 0, g.w, g.h, g);
-  const D = -22;
+  const D = -GARAGE_SET;
   paint.color(WHITE);
   surround(paint, f, pts, 7, 0, 1.5);
   render.color(0xf0ece4, 0.85);
   lining(render, f, pts, 0, D);
   const spring = g.h - (g.rise || g.round || 0);
   const [u0, u1] = [g.u - g.w / 2, g.u + g.w / 2];
+  paint.color(g.tint, 0.55);
+  paint.quad(f.at(u0, 0, D), f.at(u1, 0, D), f.at(u1, spring, D), f.at(u0, spring, D));
   paint.color(g.tint);
   const head = pts.slice(2);
   if (head.length > 2) fan(paint, f, [[u1, spring], ...head.slice(1, -1), [u0, spring]], D);

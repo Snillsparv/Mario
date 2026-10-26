@@ -81,7 +81,7 @@ import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
 import { normals, band, roadPieces, kerbRuns, bevelEnds, BEVEL, terraceSpans } from './real/plan.js';
-import { FACADES, WALL_DRAWN, STRIP, wallDrawnAt } from './facades.js';
+import { FACADES, WALL_DRAWN, STRIP, FLOOR_SET, wallDrawnAt } from './facades.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -633,13 +633,15 @@ function terraces(kit, L) {
 // slabs drawn lower than the terrace (facades.js wallDrawnAt: each plot's height, stepping where
 // it changes) under a coping, a planted strip STRIP deep rising behind it to the terrace's top
 // (its plants the props' and the realistic look's); solid as before (its front to TERRACE: the
-// wall tops' coins and the hops up unchanged), its sides and back too.
-function block(kit, L, { a, b, za, zb, notch }) {
+// wall tops' coins and the hops up unchanged), its sides and back too. Behind a drive's notch
+// its lawn drawn from FLOOR_SET behind the villa's front (under the house: the realistic look's
+// garage doors and niches are set back in their openings, and its top crossed them there).
+function block(kit, L, { a, b, za, zb, notch, kind }) {
   const { grass, blocks, solids } = kit;
   const top = L.NORTH.top;
   const [ba, bb] = [L.flatZAt(a), L.flatZAt(b)];
   const y0 = -100;
-  const S = notch ? 0 : STRIP;
+  const S = notch ? (kind === 'drive' ? FLOOR_SET : 0) : STRIP;
   const footprint = [[a, za - S], [b, zb - S], [b, bb], [a, ba]];
   grass.color(TINT.lawn);
   grass.poly(at(footprint, top), { facing: UP });

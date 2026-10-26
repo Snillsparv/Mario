@@ -6,7 +6,8 @@
 //   FACADES[id]      a villa block's program (the east blocks, `<id>_west` the set-back ones):
 //                    u along its front from the middle (+ east), v over its floor
 //       garage       the sectional door's opening: w wide, h to its crown, a segmental head
-//                    `rise` high (or `round`: its top corners rounded), the door's tint
+//                    `rise` high (or `round`: its top corners rounded; neither: a flat head, as
+//                    north_2's, photo 13), the door's tint
 //       oriel        a canted oriel over the garage: w at the wall, `front` its front face, `out`
 //                    standing out (its cheeks at 45 degrees and more), from v0 up to the soffit, its
 //                    glass from v0 + 20; on a corbelled brick base
@@ -36,14 +37,22 @@
 //                    each plot's height over GROUND from x on (photos 10, 13, 16, 17, 23, 28: low
 //                    stacked-slab bed walls, stepping up by north_4), a planted strip `STRIP` deep
 //                    behind the coping rising to the terrace
+//   GARAGE_SET, DOOR_SET   how far the realistic look sets a garage's door and a board door back
+//                    in their openings (a niche's door its `depth`)
+//   FLOOR_SET        the terraces' lawn behind a drive's notch drawn from this far behind its
+//                    villa's front (lane/build.js block: under the house, behind every door at
+//                    the floor), so no recess shows the lawn's top crossing it
 
 export const FRAME = 0x34363a;
+export const GARAGE_SET = 22;
+export const DOOR_SET = 8;
+export const FLOOR_SET = 80;
 export const ROOF = { pitch: 34, front: 200, side: 90, fascia: 30, lift: 20, tint: 0x4e3b2f, soffit: 0x4e3626, board: 0x3e2a1e, gutter: 0x5a4535 };
 
 const WEST = (windows) => ({ windows, pipes: [-1] });
 export const FACADES = {
   north_1: { garage: { u: 250, w: 380, h: 290, rise: 45, tint: 0x8696a0 }, oriel: { u: 200, w: 260, front: 120, out: 60, v0: 470 }, loggia: { u: -347, w: 200, sill: 560, crown: 770, depth: 100, box: true }, door: { u: -150, w: 130, h: 300, tint: 0x35261c }, lamps: [[470, 270, 'wall'], [-560, 740, 'globe']], pipes: [1] },
-  north_2: { drive: 'asphalt', garage: { u: 265, w: 383, h: 336, rise: 40, tint: 0x3c3e42 }, oriel: { u: 267, w: 280, front: 130, out: 65, v0: 503 }, arch: { u: -371, w: 162, sill: 513, crown: 775, grille: true }, niche: { u: -259, w: 157, h: 342, depth: 35, tint: 0x121418, leaves: 1 }, lamps: [[521, 335, 'globe']], pipes: [-1] },
+  north_2: { drive: 'asphalt', garage: { u: 265, w: 383, h: 336, tint: 0x3c3e42 }, oriel: { u: 267, w: 280, front: 130, out: 65, v0: 503 }, arch: { u: -371, w: 162, sill: 513, crown: 775, grille: true }, niche: { u: -259, w: 157, h: 342, depth: 35, tint: 0x121418, leaves: 1 }, lamps: [[521, 335, 'globe']], pipes: [-1] },
   north_3: { garage: { u: 250, w: 360, h: 320, rise: 45, tint: 0x3a3838 }, oriel: { u: 160, w: 260, front: 120, out: 60, v0: 470 }, loggia: { u: -400, w: 200, sill: 507, crown: 765, depth: 100, box: true }, door: { u: -400, w: 120, h: 320, tint: 0x353335, vent: true }, lamps: [[490, 280, 'lantern']], pipes: [-1] },
   north_4: { garage: { u: 300, w: 382, h: 343, round: 55, tint: 0x3a302e }, oriel: { u: 318, w: 261, front: 120, out: 70, v0: 490 }, loggia: { u: -404, w: 171, sill: 538, crown: 759, depth: 100, bars: 4, boards: true }, door: { u: -321, w: 156, h: 345, tint: 0x574239, vent: true }, lamps: [[528, 304, 'globe']], pipes: [-1, 1], frame: 0x4a3428 },
   north_5: { niche: { u: -432, w: 195, h: 360, depth: 60, tint: 0x574137, leaves: 2 }, windows: [-430, 150], lamps: [[-290, 250, 'wall']], pipes: [-1, 1] },

@@ -27,7 +27,7 @@ import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
 import { roadPieces, inside } from '../src/world/lane/real/plan.js';
-import { FACADES } from '../src/world/lane/facades.js';
+import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET } from '../src/world/lane/facades.js';
 
 const t0 = performance.now();
 const high = buildLaneDetail(lane, 'high');
@@ -956,5 +956,73 @@ test('W4 fix: the columnar tree is a lacy poplar (photo 37), not a frustum: leaf
     assert.ok(Math.max(...band(0.8, 0.9)) < t.r * 0.8, `${tier}: slim above`);
     // No core: nothing of the dark cores' mesh in its crown.
     assert.equal(near(positionsOf(d, 'core')).filter(([, y]) => y > t.h * 0.2).length, 0, `${tier}: no solid core`);
+  }
+});
+
+test('W6 fix: nothing but its door in a recess at the floor: no lawn crossing a garage\'s, a niche\'s or a board door\'s opening in either build (the terraces\' lawn behind a drive drawn from FLOOR_SET behind its villa\'s front, under the house), the garages\' ribs on a plate (no joint shows what is behind the door), north_2\'s garage flat-headed (photo 13)', () => {
+  assert.ok(!FACADES.north_2.garage.rise && !FACADES.north_2.garage.round, 'north_2\'s garage: a flat head');
+  // Each programmed villa's openings at the floor: its x range and how deep its door stands back.
+  const recesses = [];
+  for (const plot of lane.PLOTS_N) {
+    const h = lane.villaOf(plot);
+    const P = FACADES[h.id];
+    for (const [o, depth] of [[P.garage, GARAGE_SET], [P.niche, P.niche?.depth], [P.door, DOOR_SET]]) {
+      if (!o) continue;
+      const [x0, x1] = [h.cx + o.u - o.w / 2, h.cx + o.u + o.w / 2];
+      assert.ok(x0 > plot.drive[0] && x1 < plot.drive[1], `${h.id}: its opening at the floor over its drive (${x0} .. ${x1})`);
+      assert.ok(depth > 0 && depth < FLOOR_SET - 10, `${h.id}: its door ${depth} back, the lawn ${FLOOR_SET}`);
+      recesses.push({ id: h.id, x0, x1, front: h.front, depth });
+    }
+  }
+  assert.ok(recesses.length >= 9, `the floors' openings (${recesses.length})`);
+  // A lawn triangle at the terrace's height over (x, z)?
+  const covers = (p, x, z) => {
+    for (let i = 0; i < p.length; i += 9) {
+      if (![1, 4, 7].every((k) => Math.abs(p[i + k] - lane.TERRACE) < 1)) continue;
+      const t = [0, 3, 6].map((k) => [p[i + k] - x, p[i + k + 2] - z]);
+      const s = [0, 1, 2].map((k) => t[k][0] * t[(k + 1) % 3][1] - t[k][1] * t[(k + 1) % 3][0]);
+      if (s.every((q) => q > 0) || s.every((q) => q < 0)) return true;
+    }
+    return false;
+  };
+  for (const look of ['classic', 'real']) {
+    const part = buildLane(lane, { look, materials: {} });
+    let grass = null;
+    part.object3D.traverse((o) => o.isMesh && o.name === 'lane-grass' && (grass = o.geometry));
+    assert.ok(grass, `${look}: the lawn`);
+    const g = grass.index ? grass.toNonIndexed() : grass;
+    const p = g.attributes.position.array;
+    for (const r of recesses) {
+      for (const k of [0.1, 0.5, 0.9]) for (const d of [0.5, r.depth / 2, r.depth - 0.5]) assert.ok(!covers(p, r.x0 + (r.x1 - r.x0) * k, r.front - d), `${look}: ${r.id}'s lawn across its opening ${d.toFixed(1)} in`);
+    }
+    // (The lawn still reaches the villa's walls beside and behind it: under the house, past them.)
+    for (const plot of lane.PLOTS_N) assert.ok(covers(p, (plot.drive[0] + plot.drive[1]) / 2, lane.villaOf(plot).front - FLOOR_SET - 20), `${look}: ${plot.id}'s lawn under its house`);
+  }
+  // The garages' plates: on the door's plane, under every joint between its ribs.
+  for (const [tier, d] of [['high', high], ['low', low]]) {
+    const paint = positionsOf(d, 'paint');
+    for (const plot of lane.PLOTS_N) {
+      const h = lane.villaOf(plot);
+      const gd = FACADES[h.id].garage;
+      if (!gd) continue;
+      const f = frameOf(h).face('front').f;
+      const o = f.at(0, 0, 0);
+      const local = (i) => [(paint[i] - o[0]) * f.right[0] + (paint[i + 2] - o[2]) * f.right[2], paint[i + 1] - o[1], (paint[i] - o[0]) * f.out[0] + (paint[i + 2] - o[2]) * f.out[2]];
+      const tris = [];
+      for (let i = 0; i < paint.length; i += 9) {
+        const t = [0, 3, 6].map((k) => local(i + k));
+        if (t.every(([, , w]) => Math.abs(w + GARAGE_SET) < 0.05)) tris.push(t);
+      }
+      const spring = gd.h - (gd.rise || gd.round || 0);
+      for (const v of [3, spring * 0.26, spring * 0.51, spring * 0.77, spring - 3]) {
+        for (const u of [gd.u - gd.w * 0.4, gd.u + 7.3, gd.u + gd.w * 0.4]) {
+          const hit = tris.some((t) => {
+            const s = [0, 1, 2].map((k) => (t[k][0] - u) * (t[(k + 1) % 3][1] - v) - (t[k][1] - v) * (t[(k + 1) % 3][0] - u));
+            return s.every((q) => q > 0) || s.every((q) => q < 0);
+          });
+          assert.ok(hit, `${tier}: ${h.id}'s garage door's plate at (${u.toFixed(0)}, ${v.toFixed(0)})`);
+        }
+      }
+    }
   }
 });
