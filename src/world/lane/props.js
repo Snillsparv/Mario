@@ -53,7 +53,8 @@ import { makeRng } from '../../core/math.js';
 import { fir } from '../courseKit.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
-import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses, BEVEL } from './real/plan.js';
+import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses, BEVEL, terraceSpans } from './real/plan.js';
+import { bedSpots } from './facades.js';
 import { signFace } from './real/sign.js';
 
 const TINT = {
@@ -105,7 +106,7 @@ const TINT = {
   shadow: 0x3a3a3a,
   hoop: 0xe8642a,
   mat: 0x1c2026,
-  pad: 0x2f62b0,
+  pad: 0x2a2c30, // (W6: the photos' dark grey pad)
   picket: 0x5a3a2a,
   rail: 0x8a6a4a,
   cabinet: 0x8a8e8a,
@@ -161,6 +162,7 @@ export function* propsSteps(kit, layout) {
   yield;
   dadsGarden(kit, layout);
   neighbours(kit, layout);
+  beds(kit, layout);
   turnSign(kit, layout);
   mailbox(kit, layout);
   // (A car with an id, the dad's: its collider here, named; drawn last, below.)
@@ -343,9 +345,10 @@ function bin(kit, layout, { x, z }, i) {
 function hedge(kit, h, layout) {
   const { leaves, render, solids } = kit.drawn('plants');
   const { x0, x1, z0, z1, y0, top } = h;
+  const foot = h.foot ?? y0; // (W6: north_2's drawn from its bed wall's top, under its collider's foot)
   leaves.color(TINT.hedge);
-  leaves.shade = (x, y) => 0.75 + 0.25 * Math.min(1, (y - y0) / Math.max(1, top - y0));
-  leaves.box(x0, x1, y0 - 4, top, z0, z1, { bottom: false, top: false });
+  leaves.shade = (x, y) => 0.75 + 0.25 * Math.min(1, (y - foot) / Math.max(1, top - foot));
+  leaves.box(x0, x1, foot - 4, top, z0, z1, { bottom: false, top: false });
   leaves.shade = null;
   const crown = 16;
   const alongX = x1 - x0 >= z1 - z0;
@@ -655,6 +658,20 @@ function dadsGarden(kit, layout) {
   paint.lathe(Fl.x, Fl.z, [[Fl.r, foot - 24], [Fl.r, cap - 12], [Fl.cap, cap - 12], [Fl.cap, cap - 6], [Fl.cap * 0.5, cap + 4], [0, cap + 6]], 8);
 }
 
+// The planted strips behind the terraces' low bed walls (W6: facades.js bedSpots, a plant every
+// ~140): lumpy blobs, leafy greens and dark yews in leaves, the purple heucheras and pink roses in
+// render's plain white (the leaf texture would brown them), tan grass plumes tall and narrow.
+const BED_TINTS = [0x8aa040, 0x4a5a2a, 0xb09868, 0x7a3a4a, 0xd88aa0];
+function beds(kit, layout) {
+  const { leaves, render } = kit.drawn('plants');
+  for (const p of bedSpots(layout, terraceSpans(layout), 140)) {
+    const b = p.kind >= 3 ? render : leaves;
+    b.color(BED_TINTS[p.kind]);
+    const [r, ry] = [[36, 26], [40, 52], [22, 62], [28, 16], [30, 26]][p.kind];
+    blob(b, p.x, p.z, p.y + ry * p.s * 0.7, r * p.s, ry * p.s, p.x * 0.01, 5);
+  }
+}
+
 // The neighbours' things (W5): the young beech hedge west of south_1's (single stems on bamboo
 // canes in a strip of dark soil, a few leaves up each: drawn only), the link's two black bins
 // (box colliders), the mailboxes (MAILBOXES: drawn only), south_2's front garden: its flush
@@ -685,6 +702,22 @@ function neighbours(kit, layout) {
     bp.box(b.x - hx, b.x + hx, y1 - 10, y1, b.z - hz - 3, b.z + hz + 4, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
     bs.box(b.x - hx, b.x + hx, G, y1, b.z - hz, b.z + hz, 'stone');
   }
+  // (W6: north_2's three, turned to its drive; north_3's white picket enclosure, its mailbox.)
+  for (const b of layout.VILLA_BINS) {
+    const [hx, hz, y1] = [K.z / 2, K.x / 2, G + K.h];
+    bp.color(b.tint ?? TINT.bin);
+    bp.box(b.x - hx + 6, b.x + hx, G, y1 - 10, b.z - hz + 4, b.z + hz - 4, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.1 : 0.9) });
+    bp.box(b.x - hx - 3, b.x + hx + 4, y1 - 10, y1, b.z - hz, b.z + hz, { faceShade: (n) => (n[1] > 0.5 ? 1.15 : 0.8) });
+    bs.box(b.x - hx, b.x + hx, G, y1, b.z - hz, b.z + hz, 'stone');
+  }
+  const N = layout.ENCLOSURE;
+  bp.color(0xeeece6);
+  bp.box(N.x0, N.x1, G, N.top, N.z0, N.z1, { bottom: false, faceShade: (n) => (n[1] > 0.5 ? 1.05 : 0.92) });
+  bp.color(0x9a9890);
+  for (let x = N.x0 + 9; x < N.x1 - 4; x += 11) bp.box(x, x + 3, G + 12, N.top - 8, N.z1, N.z1 + 0.6, { bottom: false });
+  bp.color(0xc8ced2);
+  bp.box((N.x0 + N.x1) / 2 - 22, (N.x0 + N.x1) / 2 + 22, N.top - 95, N.top - 15, N.z1, N.z1 + 30);
+  bs.box(N.x0, N.x1, G, N.top, N.z0, N.z1, 'wood');
   // The mailboxes.
   const { paint: mp } = kit.drawn('mailbox');
   for (const m of layout.MAILBOXES) {
@@ -694,7 +727,8 @@ function neighbours(kit, layout) {
       mp.solid(localBoxPolys(f, m.u - m.w / 2, m.u + m.w / 2, m.v, m.v + m.h, 2, 2 + m.d), { faceShade: (n) => (n[1] > 0.5 ? 1.2 : 1) });
       continue;
     }
-    mp.box(m.x - 3, m.x + 3, G, m.top - m.h, m.z - 3, m.z + 3, { bottom: false });
+    mp.box(m.x - 3, m.x + 3, m.y0 ?? G, m.top - m.h, m.z - 3, m.z + 3, { bottom: false });
+    mp.color(m.tint ?? 0x18191b);
     mp.box(m.x - m.w / 2, m.x + m.w / 2, m.top - m.h, m.top - (m.lid ? 6 : 0), m.z - m.d / 2, m.z + m.d / 2);
     if (m.lid) {
       mp.color(m.lid);
@@ -1169,6 +1203,19 @@ function trampoline(kit, layout) {
     paint.solid(beamPolys([T.x + sx * (T.r - 5), y0, T.z + sz * (T.r - 5)], [T.x + sx * (T.r - 25), T.y - 28, T.z + sz * (T.r - 25)], [sz, 0, -sx], 12, 12));
   }
   solids.solid(prismPolys(T.x, T.z, T.r, 12, y0 - 5, T.y), 'grass');
+  // (W6: its black safety net's eight poles and top hoop, drawn only: photos 27, 28.)
+  paint.color(0x1a1b1d);
+  const top = T.y + 236;
+  for (let i = 0; i < 8; i++) {
+    const a = ((i + 0.5) / 8) * Math.PI * 2;
+    const [sx, sz] = [Math.sin(a), Math.cos(a)];
+    paint.solid(beamPolys([T.x + sx * (T.r - 8), T.y - 28, T.z + sz * (T.r - 8)], [T.x + sx * (T.r - 10), top, T.z + sz * (T.r - 10)], [sz, 0, -sx], 7, 7));
+  }
+  for (let i = 0; i < 16; i++) {
+    const [a, b] = [(i / 16) * Math.PI * 2, ((i + 1) / 16) * Math.PI * 2];
+    const [p, q] = [[T.x + Math.sin(a) * (T.r - 10), top, T.z + Math.cos(a) * (T.r - 10)], [T.x + Math.sin(b) * (T.r - 10), top, T.z + Math.cos(b) * (T.r - 10)]];
+    paint.solid(orientedBoxPolys([(p[0] + q[0]) / 2, 0, (p[2] + q[2]) / 2], [q[0] - p[0], 0, q[2] - p[2]], Math.hypot(q[0] - p[0], q[2] - p[2]) + 2, top - 3, top + 3, 6));
+  }
 }
 
 // ---------------------------------------------------------------- the motorhome, fences

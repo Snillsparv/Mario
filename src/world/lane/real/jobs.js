@@ -28,7 +28,7 @@ export const CATALOGUE = {
   render: { set: 'render', cover: 300 },
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
   roof: { set: 'tiles', cover: 270, color: 5 },
-  cobbles: { set: 'pavers', opts: { cols: 10, seed: 73 }, cover: 240, color: 1.6 },
+  cobbles: { set: 'pavers', opts: { cols: 16, seed: 73, setts: 0.4 }, cover: 240, color: 1.5 }, // (W6: the villas' drives' granite setts in arcs, ~15 a sett)
   path: { set: 'pavers', opts: { moss: 0.24, olive: 1 }, cover: 240, color: [1.05, 0.82, 0.72], vertexColors: false }, // (mossed over: olive, W3)
 };
 export const DETAIL = {

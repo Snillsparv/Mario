@@ -14,14 +14,15 @@
 // the soffits, a letter slot and a doorbell at the front doors (none at the dad's: his mailbox;
 // his bell beside it), concrete splash blocks under the downpipes' shoes, an outdoor socket and
 // a hose reel on the dad's east gable by the drive, window handles, two pot plants on the dad's
-// inner sills. On the villas: a satellite dish on north_2's wall, lamps beside the front doors,
-// a seal under the garage doors; on the double garage gutters along its eaves (their brackets
+// inner sills (W6: the villas' lamps and seals are their kit's, villas.js; no dish on north_2's
+// front); on the double garage gutters along its eaves (their brackets
 // on high), a downpipe at each front corner and faint rust streaks under the pipes' clips (not on
 // low); and the terraces' walls a coping of stones standing 4 proud with joints.
 
-import { frameOf, fbox, lamp } from './house.js';
+import { frameOf, fbox } from './house.js';
 import { makeRng } from '../../../core/math.js';
 import { terraceSpans, chainWindows } from './plan.js';
+import { WALL_DRAWN, wallDrawnAt } from '../facades.js';
 
 const CHAIN = { overhang: 60, thick: 18, plinth: 135, win: { w: 150, sill: 170, h: 130 }, door: { w: 116, h: 215 } };
 // The dad's roof vents (W3): the hood's and the two pipes' x.
@@ -36,7 +37,6 @@ export function hardware(kit, L) {
   for (const h of L.HOUSES) if (h.kit === 'chain') chainHardware(kit, L, h, fine, R, finest);
   for (const a of L.ANTENNAS) antenna(kit, L, a, fine);
   for (const m of L.MAILBOXES ?? []) mailbox(kit, L, m);
-  villaHardware(kit, L, fine);
   for (const h of L.HOUSES) if (h.kit === 'garage') garageGutters(kit, L, h, fine, finest, R);
   coping(kit, L);
 }
@@ -329,9 +329,10 @@ function mailbox({ paint, steel }, L, m) {
     fbox(paint, f, m.u - m.w / 2 + 6, m.u + m.w / 2 - 6, m.v + m.h - 18, m.v + m.h - 14, 2 + m.d, 3 + m.d, 'k');
     return;
   }
-  steel.color(0x1c1d1f);
-  steel.cyl('y', L.GROUND - 4, m.top - m.h, m.x, m.z, 3, 6, { caps: true });
+  steel.color(m.y0 ? 0x8a7a68 : 0x1c1d1f); // (W6: north_5's weathered wooden posts)
+  steel.cyl('y', (m.y0 ?? L.GROUND) - 4, m.top - m.h, m.x, m.z, m.y0 ? 5 : 3, 6, { caps: true });
   const [x0, x1, z0, z1] = [m.x - m.w / 2, m.x + m.w / 2, m.z - m.d / 2, m.z + m.d / 2];
+  paint.color(m.tint ?? 0x18191b);
   paint.box(x0, x1, m.top - m.h, m.top - (m.lid ? 6 : 0), z0, z1);
   if (m.lid) {
     paint.color(m.lid);
@@ -375,73 +376,32 @@ function antenna({ steel, paint }, L, { house, x, gable }, fine) {
   }
 }
 
-function villaHardware(kit, L, fine) {
-  for (const h of L.HOUSES) {
-    if (h.kit !== 'villa') continue;
-    const F = frameOf(h);
-    const front = F.face('front').f;
-    // A lamp beside the front door, at the steps.
-    if (h.door !== undefined) {
-      const at = F.at(h.door, 0, h.d / 2 + 10);
-      const v = Math.max(0, L.groundHeight(at[0], at[2]) - (h.y0 ?? L.GROUND));
-      lamp(kit, front, h.door + 95, v + 165);
-    }
-    // A black seal under each garage door.
-    kit.paint.color(0x0e0e0e);
-    for (const u of h.garages ?? (h.garage !== undefined ? [h.garage] : [])) fbox(kit.paint, front, u - 260, u + 260, 0, 4, 0.5, 1.6, 'k');
-    // The satellite dish on north_2's wall under its eaves.
-    if (fine && h.id === 'north_2') dish(kit, front, h.w / 2 - 260, h.eave - (h.y0 ?? L.GROUND) - 150);
-  }
-}
-
-// A satellite dish on wall frame f at (u, v): a wall bracket, an arm out, the dish (a shallow
-// bowl, grey-white, facing up toward the south-west sky), the receiver on its arm.
-function dish({ paint, steel }, f, u, v) {
-  steel.color(0x8a8e92);
-  fbox(steel, f, u - 8, u + 8, v - 20, v + 20, 0, 3, 'k');
-  steel.tube(f.at(u, v, 3), f.at(u, v + 8, 34), 2.2, 2.2, 6, { caps: true });
-  // The bowl: rings round its axis (out of the wall and up), a loft from the rim to the middle.
-  const c = f.at(u, v + 16, 40);
-  const ax = norm3(f.dir(0.25, 0.45, 1));
-  const ex = norm3(cross([0, 1, 0], ax));
-  const ey = cross(ax, ex);
-  const ringAt = (r, d) => Array.from({ length: 14 }, (_, i) => {
-    const a = (i / 14) * Math.PI * 2;
-    return [c[0] + ex[0] * Math.cos(a) * r + ey[0] * Math.sin(a) * r + ax[0] * d, c[1] + ex[1] * Math.cos(a) * r + ey[1] * Math.sin(a) * r + ax[1] * d, c[2] + ex[2] * Math.cos(a) * r + ey[2] * Math.sin(a) * r + ax[2] * d];
-  });
-  paint.color(0xd8d8d4);
-  paint.loft([ringAt(34, 9), ringAt(26, 4.5), ringAt(14, 1), ringAt(0.5, 0)]);
-  paint.loft([ringAt(0.5, -1), ringAt(14, 0), ringAt(26, 3.5), ringAt(34, 8)]);
-  // The receiver's arm and its head in front of the bowl.
-  const tip = [c[0] + ax[0] * 40 - ey[0] * 6, c[1] + ax[1] * 40 - ey[1] * 6, c[2] + ax[2] * 40 - ey[2] * 6];
-  steel.tube([c[0] - ey[0] * 30, c[1] - ey[1] * 30, c[2] - ey[2] * 30], tip, 1.2, 1.2, 4);
-  paint.color(0x3a3c3e);
-  paint.ellipsoid(tip, ex, ey, ax, 4, 4, 6, 6, 4);
-}
-const norm3 = (a) => {
-  const l = Math.hypot(a[0], a[1], a[2]) || 1;
-  return [a[0] / l, a[1] / l, a[2] / l];
-};
-
 // The terraces' walls' coping (lane/build.js terraces: their fronts along the wall's line but at
-// the drives' notches and the steps: plan.js terraceSpans): stones 60 long standing 4 proud of the face, 1.5 over the
-// top Jonas walks on, joints between them.
+// the drives' notches and the steps: plan.js terraceSpans), W6: on the low bed walls' drawn tops
+// (facades.js wallDrawnAt), irregular flat slabs 60 .. 110 long and 13 thick, standing 4 proud of
+// the face, a little out of line, joints between them.
 function coping({ granite }, L) {
-  const top = L.NORTH.top;
+  const R = makeRng(2390);
   for (const { spans } of terraceSpans(L)) {
     for (const { a: xa, b: xb, kind } of spans) {
       if (kind !== 'wall') continue;
-      for (let x = xa; x < xb - 1; x += 60) {
-        const x1 = Math.min(xb, x + 59.2);
+      for (let x = xa; x < xb - 1; ) {
+        let x1 = Math.min(xb, x + 60 + R() * 50);
+        const top = L.GROUND + wallDrawnAt(x + 1) + 1.5;
+        // (A slab ends where the wall's drawn height steps.)
+        for (const [bx] of WALL_DRAWN) if (bx > x + 1 && bx < x1) x1 = bx;
+        const out = 3 + R() * 3;
+        const t = 11 + R() * 4;
         const [za, zb] = [L.wallZAt(x + 0.01), L.wallZAt(x1 - 0.01)];
-        // Its front (toward the street, +z), its top, its ends.
-        granite.color(0xcfcbc2, 0.9 + 0.12 * Math.abs(Math.sin(x * 0.37)));
+        granite.color(0xc8c2b8, 0.86 + 0.16 * R());
         const F = (xx, zz, y) => [xx, y, zz];
-        granite.quad(F(x, za + 4, top - 14), F(x1, zb + 4, top - 14), F(x1, zb + 4, top + 1.5), F(x, za + 4, top + 1.5));
-        granite.quad(F(x, za + 4, top + 1.5), F(x1, zb + 4, top + 1.5), F(x1, zb - 30, top + 1.5), F(x, za - 30, top + 1.5));
-        granite.quad(F(x, za - 30, top - 14), F(x, za + 4, top - 14), F(x, za + 4, top + 1.5), F(x, za - 30, top + 1.5), { shade: 0.7 });
-        granite.quad(F(x1, zb + 4, top - 14), F(x1, zb - 30, top - 14), F(x1, zb - 30, top + 1.5), F(x1, zb + 4, top + 1.5), { shade: 0.7 });
-        granite.quad(F(x, za, top - 14), F(x1, zb, top - 14), F(x1, zb + 4, top - 14), F(x, za + 4, top - 14), { shade: 0.5 });
+        const xe = x1 - 0.8;
+        granite.quad(F(x, za + out, top - t), F(xe, zb + out, top - t), F(xe, zb + out, top), F(x, za + out, top));
+        granite.quad(F(x, za + out, top), F(xe, zb + out, top), F(xe, zb - 30, top), F(x, za - 30, top));
+        granite.quad(F(x, za - 30, top - t), F(x, za + out, top - t), F(x, za + out, top), F(x, za - 30, top), { shade: 0.7 });
+        granite.quad(F(xe, zb + out, top - t), F(xe, zb - 30, top - t), F(xe, zb - 30, top), F(xe, zb + out, top), { shade: 0.7 });
+        granite.quad(F(x, za, top - t), F(xe, zb, top - t), F(xe, zb + out, top - t), F(x, za + out, top - t), { shade: 0.5 });
+        x = x1;
       }
     }
   }

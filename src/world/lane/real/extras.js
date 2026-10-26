@@ -2,7 +2,8 @@
 // builds them in the worker in place of lane/props.js's; their colliders stay the classic ones):
 //
 //   trampoline(kit, L)  // a steel tube frame on six legs, the dark woven mat sagging a touch in
-//                       // its ring of springs, a padded blue cover over them
+//                       // its ring of springs, a padded dark grey cover over them, the black
+//                       // safety net round it (W6: poles, a top hoop, a mesh of strands)
 //   hoop(kit, L)        // north_5's: a black post, the white board on its arm, the orange ring
 //                       // and its white net of strands
 //   motorhome(kit, L)   // a rounded white body (its cab end's sloping screen under the bed's
@@ -17,7 +18,7 @@
 import { makeRng } from '../../../core/math.js';
 import { frameOf, fbox, wallFrame } from './house.js';
 
-const BLUE = 0x2f62b0;
+const PAD = 0x2a2c30; // (W6: the photos' dark grey pad)
 const MAT = 0x1c2026;
 
 // A ring of points round (x, z) at y, radius r, `sides` round (counter-clockwise seen from
@@ -27,7 +28,7 @@ const ring = (x, y, z, r, sides) => Array.from({ length: sides }, (_, i) => {
   return [x + Math.cos(a) * r, y, z + Math.sin(a) * r];
 });
 
-export function trampoline({ paint, steel }, L) {
+export function trampoline({ paint, steel, tier }, L) {
   const T = L.TRAMPOLINE;
   const y0 = L.groundHeight(T.x, T.z);
   const pad = 45;
@@ -44,8 +45,39 @@ export function trampoline({ paint, steel }, L) {
   // The mat, sagging a touch in its middle; the pad's cover in blue over the springs.
   paint.color(MAT);
   paint.loft([ring(T.x, T.y - 2, T.z, mat, 24), ring(T.x, T.y - 5, T.z, mat * 0.5, 24), ring(T.x, T.y - 6, T.z, 1, 24)]);
-  paint.color(BLUE);
+  paint.color(PAD);
   paint.loft([ring(T.x, T.y - 26, T.z, T.r, 24), ring(T.x, T.y - 6, T.z, T.r + 1, 24), ring(T.x, T.y + 1, T.z, T.r - 10, 24), ring(T.x, T.y + 1, T.z, mat + 8, 24), ring(T.x, T.y - 1, T.z, mat, 24)]);
+  net({ paint, steel, tier }, T);
+}
+
+// The safety net (W6, photos 27, 28: drawn only, the bounce to the 1-up is never blocked): eight
+// black poles from the frame bowing out and up to a top hoop NET over the mat, between them a
+// see-through black mesh of thin upright strands (not on low), its door gap toward the street.
+export const NET = 236;
+function net({ paint, steel, tier }, T) {
+  const top = T.y + NET;
+  const r = T.r - 6;
+  const at = (a, y, rr) => [T.x + Math.sin(a) * rr, y, T.z + Math.cos(a) * rr];
+  steel.color(0x1a1b1d);
+  const low = tier === 'low';
+  for (let i = 0; i < 8; i++) {
+    const a = ((i + 0.5) / 8) * Math.PI * 2;
+    const pts = low ? [at(a, T.y - 28, T.r - 8), at(a, top, r - 4)] : [at(a, T.y - 28, T.r - 8), at(a, T.y + 40, r + 10), at(a, T.y + 150, r + 6), at(a, top, r - 4)];
+    for (let k = 0; k + 1 < pts.length; k++) steel.tube(pts[k], pts[k + 1], 3.5, 3.5, low ? 3 : 5);
+  }
+  const hoop = ring(T.x, top, T.z, r - 4, low ? 12 : 24);
+  for (let i = 0; i < hoop.length; i++) steel.tube(hoop[i], hoop[(i + 1) % hoop.length], 2.5, 2.5, low ? 3 : 4);
+  if (low) return;
+  paint.color(0x0c0d0e);
+  const radius = (y) => r + 8 - 12 * Math.max(0, (y - T.y - 150) / (NET - 150));
+  const door = (a) => Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.22;
+  for (let i = 0; i < 56; i++) {
+    const a = (i / 56) * Math.PI * 2;
+    if (door(a)) continue;
+    const [p, q] = [at(a, T.y + 4, radius(T.y)), at(a, top, radius(top))];
+    const t = [Math.cos(a) * 0.9, 0, -Math.sin(a) * 0.9];
+    paint.quad([p[0] - t[0], p[1], p[2] - t[2]], [p[0] + t[0], p[1], p[2] + t[2]], [q[0] + t[0], q[1], q[2] + t[2]], [q[0] - t[0], q[1], q[2] - t[2]]);
+  }
 }
 
 export function hoop({ paint, steel, cloth }, L) {

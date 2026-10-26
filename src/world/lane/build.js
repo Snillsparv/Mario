@@ -81,6 +81,7 @@ import { frame, house, link, carport } from './houses.js';
 import { doorLeaf, frontDoor } from './door.js';
 import { propsSteps, waveFlags, dadCar } from './props.js';
 import { normals, band, roadPieces, kerbRuns, bevelEnds, BEVEL, terraceSpans } from './real/plan.js';
+import { FACADES, WALL_DRAWN, STRIP, wallDrawnAt } from './facades.js';
 
 // World units per texture repeat (projected UVs; the cloth's UVs are set per face).
 export const REPEAT = { asphalt: 600, grass: 480, blocks: 240, brick: 180, render: 300, boards: 300, roof: 260, cobbles: 160, leaves: 260, wood: 300, cloth: 1 };
@@ -98,10 +99,11 @@ const TINT = {
   backLawn: 0xb38f47,
   bank: 0x775e2c,
   path: 0x9c9466, // the grass-paver path: grass tinted a mossy olive (W3)
-  walls: 0xc2b8a8,
-  coping: 0xd8d0c2,
+  walls: 0x9a9088, // (W6: the bed walls' warm grey slabs, photos 13, 23, 28)
+  coping: 0xb0a89e,
+  bed: 0x6a5a3a, // (W6: the planted strip behind them, dark soil under the plants)
   steps: 0xc8c2b8,
-  cobbles: 0xb8ae9e,
+  cobbles: 0xa8a49e, // (W6: the villas' drives' grey granite setts)
   flags: 0xd8d4cc,
   railing: 0x2a2a2a,
   patio: 0xa8a6a0,
@@ -432,7 +434,11 @@ function hardSurfaces(L, road, tints) {
   for (const p of L.PLOTS_N) {
     const v = L.villaOf(p);
     const [d0, d1] = p.drive;
-    add([[d0, L.wallZAt(d0 + 0.01)], [d1, L.wallZAt(d1 - 0.01)], [d1, v.front], [d0, v.front]], 'cobbles', tints.cobbles, 1, cutPave);
+    const [w0, w1] = [L.wallZAt(d0 + 0.01), L.wallZAt(d1 - 0.01)];
+    // (W6: north_2's open asphalt behind a two-row strip of setts across its mouth: photos 13, 16.)
+    const strip = FACADES[p.id]?.drive === 'asphalt' ? 30 : 0;
+    add([[d0, w0], [d1, w1], [d1, strip ? w1 - strip : v.front], [d0, strip ? w0 - strip : v.front]], 'cobbles', tints.cobbles, 1, cutPave);
+    if (strip) add([[d0, w0 - strip], [d1, w1 - strip], [d1, v.front], [d0, v.front]], 'asphalt', tints.drive, 1, cutPave);
   }
   add(rectOf(L.DAD_PATH.x0, L.DAD_PATH.x1, L.DAD_PATH.z0, L.DAD_PATH.z1), 'path', tints.path);
   for (const piece of L.drivePieces()) add(piece, 'asphalt', tints.dadDrive);
@@ -623,27 +629,53 @@ function terraces(kit, L) {
 
 // One terrace block from x a to b, its front from (a, za) to (b, zb), back to the flat's end, from
 // under the ground up to the terrace: its top (grass) and, unless it stands behind a notch (the
-// villa's front or the steps' ramp hides it there), its front (blocks under a paler coping);
-// solid (its sides and back too).
+// villa's front or the steps' ramp hides it there), its front: W6, a low bed wall of stacked
+// slabs drawn lower than the terrace (facades.js wallDrawnAt: each plot's height, stepping where
+// it changes) under a coping, a planted strip STRIP deep rising behind it to the terrace's top
+// (its plants the props' and the realistic look's); solid as before (its front to TERRACE: the
+// wall tops' coins and the hops up unchanged), its sides and back too.
 function block(kit, L, { a, b, za, zb, notch }) {
   const { grass, blocks, solids } = kit;
   const top = L.NORTH.top;
   const [ba, bb] = [L.flatZAt(a), L.flatZAt(b)];
   const y0 = -100;
-  const footprint = [[a, za], [b, zb], [b, bb], [a, ba]];
+  const S = notch ? 0 : STRIP;
+  const footprint = [[a, za - S], [b, zb - S], [b, bb], [a, ba]];
   grass.color(TINT.lawn);
   grass.poly(at(footprint, top), { facing: UP });
-  solids.face(at(footprint, top), UP, 'grass');
+  solids.face(at([[a, za], [b, zb], [b, bb], [a, ba]], top), UP, 'grass');
   const out = [-(zb - za), 0, b - a]; // (toward the street)
   const front = (ya, yb) => [[a, ya, za], [b, ya, zb], [b, yb, zb], [a, yb, za]];
   if (!notch) {
-    blocks.color(TINT.walls);
-    blocks.poly(front(0, top - 16), { facing: out, shade: [0.86, 0.86, 1, 1] });
-    blocks.color(TINT.coping);
-    blocks.poly(front(top - 16, top + 1), { facing: out });
-    const l = Math.hypot(b - a, zb - za);
-    const [ix, iz] = [(-out[0] / l) * 30, (-out[2] / l) * 30];
-    blocks.poly([[a, top + 1, za], [b, top + 1, zb], [b + ix, top + 1, zb + iz], [a + ix, top + 1, za + iz]], { facing: UP, shade: 1.04 });
+    const zAt = (x) => za + ((zb - za) * (x - a)) / (b - a);
+    // The pieces between the drawn heights' breaks.
+    const xs = [a, ...WALL_DRAWN.map(([x]) => x).filter((x) => x > a + 1 && x < b - 1), b];
+    for (let i = 0; i + 1 < xs.length; i++) {
+      const [x0, x1] = [xs[i], xs[i + 1]];
+      const [z0, z1] = [zAt(x0), zAt(x1)];
+      const wt = L.GROUND + wallDrawnAt((x0 + x1) / 2);
+      const face = (ya, yb) => [[x0, ya, z0], [x1, ya, z1], [x1, yb, z1], [x0, yb, z0]];
+      blocks.color(TINT.walls);
+      blocks.poly(face(0, wt - 12), { facing: out, shade: [0.86, 0.86, 1, 1] });
+      blocks.color(TINT.coping);
+      blocks.poly(face(wt - 12, wt + 1), { facing: out });
+      blocks.poly([[x0, wt + 1, z0], [x1, wt + 1, z1], [x1, wt + 1, z1 - 30], [x0, wt + 1, z0 - 30]], { facing: UP, shade: 1.04 });
+      // The planted strip: from the coping's back up to the terrace's lawn.
+      grass.color(TINT.bed);
+      grass.poly([[x0, wt + 1, z0 - 30], [x1, wt + 1, z1 - 30], [x1, top, z1 - S], [x0, top, z0 - S]], { facing: [0, S - 30, top - wt] });
+      // Where the next piece's wall stands higher or lower: the step's end.
+      if (i + 2 < xs.length) {
+        const wn = L.GROUND + wallDrawnAt((x1 + xs[i + 2]) / 2);
+        if (Math.abs(wn - wt) > 0.5) {
+          const [lo, hi] = wn > wt ? [wt, wn] : [wn, wt];
+          const facing = [wn > wt ? -1 : 1, 0, 0];
+          blocks.color(TINT.coping, 0.9);
+          blocks.poly([[x1, lo + 1, z1], [x1, hi + 1, z1], [x1, hi + 1, z1 - 30], [x1, lo + 1, z1 - 30]], { facing });
+          grass.color(TINT.bed, 0.8);
+          grass.poly([[x1, lo + 1, z1 - 30], [x1, hi + 1, z1 - 30], [x1, top, z1 - S]], { facing });
+        }
+      }
+    }
   }
   solids.face(front(y0, top), out, 'stone');
   solids.face([[a, y0, za], [a, y0, ba], [a, top, ba], [a, top, za]], [-1, 0, 0], 'stone');
@@ -651,10 +683,17 @@ function block(kit, L, { a, b, za, zb, notch }) {
   solids.face([[a, y0, ba], [b, y0, bb], [b, top, bb], [a, top, ba]], [L.NORTH.slope, 0, -1], 'stone');
 }
 
-// A terrace block's side showing at x between z0 and z1 (blocks), facing `s` along x.
+// A terrace block's side showing at x between z0 and z1 (blocks), facing `s` along x: its top
+// (W6) as low as the bed wall's drawn top at its street end, rising with the planted strip to
+// the terrace behind it.
 function side(kit, L, x, z0, z1, s) {
+  const top = L.NORTH.top;
+  const ze = Math.max(z0, z1);
+  const zs = Math.min(z0, z1);
+  const wt = Math.min(top, L.GROUND + wallDrawnAt(x - s * 2));
+  const zr = Math.max(zs, ze - STRIP);
   kit.blocks.color(TINT.walls);
-  kit.blocks.poly([[x, 0, z0], [x, 0, z1], [x, L.NORTH.top, z1], [x, L.NORTH.top, z0]], { facing: [s, 0, 0], shade: [0.82, 0.82, 0.95, 0.95] });
+  kit.blocks.poly([[x, 0, zs], [x, 0, ze], [x, wt, ze], [x, top, zr], [x, top, zs]], { facing: [s, 0, 0], shade: [0.82, 0.82, 0.95, 0.95, 0.95] });
 }
 
 // A villa's steps from the street up to its terrace: a smooth ramp collider (not slippery)

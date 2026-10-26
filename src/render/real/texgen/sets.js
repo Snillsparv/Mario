@@ -256,36 +256,47 @@ export function grassSet(n = 512, { seed = 61, leaves = 0.6 } = {}) {
 
 // Concrete pavers: `cols` square slabs a side with mossy green joints (the dad's grass-paver
 // path at 4, `moss` more of it creeping over the slabs, `olive` its tint toward a yellow-olive:
-// W3; cobbles at 10).
-export function paversSet(n = 512, { cols = 4, seed = 71, moss: mossBias = 0, olive = 0 } = {}) {
+// W3; cobbles at 10). `setts` (W6, the villas' drives: photos 10, 17, 26): small granite setts
+// in running bond laid in two shallow arcs across the tile (their rise `setts` of a sett), grey
+// with a few rust-pink ones, dark grey joints, no moss.
+export function paversSet(n = 512, { cols = 4, seed = 71, moss: mossBias = 0, olive = 0, setts = 0 } = {}) {
   const h = field(n);
   const col = rgbField(n);
   const rough = field(n);
   const cw = n / cols;
-  const jw = cw * 0.07;
+  const jw = cw * (setts ? 0.1 : 0.07);
   const mossNoise = makeFbm(8, 4, seed + 2);
   const gritNoise = makeFbm(64, 2, seed);
   const jointNoise = makeFbm(128, 1, seed + 8);
   for (let y = 0; y < n; y++) {
-    const ly = y % cw;
     for (let x = 0; x < n; x++) {
-      const lx = x % cw;
+      let lx = x % cw;
+      let ly = y % cw;
+      let sid = hash(Math.floor(x / cw), Math.floor(y / cw), seed);
+      if (setts) {
+        const yy = (((y + setts * cw * (0.5 - 0.5 * Math.cos((x / n) * Math.PI * 4))) % n) + n) % n;
+        const row = Math.floor(yy / cw);
+        const xx = x + (row % 2 ? cw / 2 : 0) + hash(row, 7, seed) * cw * 0.6;
+        lx = xx % cw;
+        ly = yy % cw;
+        sid = hash(Math.floor(xx / cw) % cols, row, seed);
+      }
       const e = Math.min(lx, cw - lx, ly, cw - ly);
       const slab = smooth(jw * 0.5, jw * 1.3, e);
       const s = x / n;
       const t = y / n;
-      const moss = mossNoise(s, t);
+      const moss = setts ? 0 : mossNoise(s, t);
       const grit = gritNoise(s, t) - 0.5;
-      const sid = hash(Math.floor(x / cw), Math.floor(y / cw), seed);
-      const mossy = smooth(0.48, 0.7, moss + mossBias + (1 - slab) * 0.5 + (e < cw * 0.2 ? 0.08 : 0));
+      const mossy = setts ? 0 : smooth(0.48, 0.7, moss + mossBias + (1 - slab) * 0.5 + (e < cw * 0.2 ? 0.08 : 0));
       const g = 1 + grit * 0.25;
       const k = slab * (1 - mossy * 0.85);
-      const gr = 0.05 + olive * 0.035;
-      const gg = 0.1 + moss * 0.05 - olive * 0.01;
-      const gb = 0.02 + olive * 0.004;
+      const gr = setts ? 0.07 : 0.05 + olive * 0.035;
+      const gg = setts ? 0.066 : 0.1 + moss * 0.05 - olive * 0.01;
+      const gb = setts ? 0.062 : 0.02 + olive * 0.004;
+      const pink = setts && sid > 0.82 ? 0.06 : 0;
       const i = y * n + x;
-      setRgb(col, i, gr + ((0.28 + sid * 0.06) * g - gr) * k, gg + ((0.28 + sid * 0.05) * g - gg) * k, gb + ((0.25 + sid * 0.04) * g - gb) * k);
-      h[i] = slab * 2 + grit * 0.4 + (1 - slab) * jointNoise(s, t) * 1.2;
+      setRgb(col, i, gr + ((0.28 + sid * 0.06 + pink) * g - gr) * k, gg + ((0.28 + sid * 0.05) * g - gg) * k, gb + ((0.25 + sid * 0.04 - pink * 0.3) * g - gb) * k);
+      h[i] = slab * (setts ? 2.6 : 2) + grit * 0.4 + (1 - slab) * jointNoise(s, t) * 1.2;
       rough[i] = 0.85 + 0.1 * mossy;
     }
   }

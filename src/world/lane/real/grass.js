@@ -25,6 +25,7 @@ import { Geo } from './geo.js';
 import { makeRng } from '../../../core/math.js';
 import { frameOf } from './house.js';
 import { GRASS } from './grassTiers.js';
+import { STRIP } from '../facades.js';
 
 export { GRASS }; // (its data lives in grassTiers.js, which the realLook chunk imports)
 
@@ -238,5 +239,9 @@ export function lawnMask(L) {
   const BR = L.BEECH_ROW;
   rect({ x0: BR.x0, x1: BR.x1, z0: BR.soil[0], z1: BR.soil[1] }, 6);
   disc(L.HOOP.x, L.HOOP.z, 40);
+  // (W6: the planted strip behind the terraces' low bed walls: drawn lower than the terrace.)
+  const x0n = L.PLOTS_N[0].x0;
+  const x1n = L.PLOTS_N.at(-1).x1;
+  clear((x, z) => x > x0n && x < x1n && z < L.wallZAt(x) + m && z > L.wallZAt(x) - STRIP - 25 - m, x0n, x1n, -1300 - STRIP, -700);
   return { width: W, height: H, x0, z0, x1, z1, data: mask };
 }

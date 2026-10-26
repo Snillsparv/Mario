@@ -27,6 +27,7 @@ import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
 import { roadPieces, inside } from '../src/world/lane/real/plan.js';
+import { FACADES } from '../src/world/lane/facades.js';
 
 const t0 = performance.now();
 const high = buildLaneDetail(lane, 'high');
@@ -110,15 +111,23 @@ test('the walls are open at every window and door of the chain houses and the vi
     const back = frameOf(h).face('back').f;
     const openings = [];
     if (h.kit === 'villa') {
-      // The upper floor's windows (plain, arched, behind a bay), one on each other face; the
-      // arched door at the garden's floor; the west end's (rendered to its eaves) are over its
-      // garage doors.
+      // (W6: a north villa's program, facades.js: its plain windows and one on each of its
+      // `sides`, the round-headed window, the loggia, the oriel's opening, the niche, the board
+      // door and the garage's opening, each open in the wall; the west end's (rendered to its
+      // eaves) are over its garage doors.)
       const y0 = h.y0 ?? 22;
-      if (h.render < h.eave) {
-        for (const u of [...(h.windows ?? []), ...(h.arches ?? []), ...(h.bays ?? [])]) openings.push([front, u, 530, 600]);
-        for (const name of ['back', 'left', 'right']) openings.push([frameOf(h).face(name).f, 0, 530, 700]);
+      const P = FACADES[h.id];
+      if (P) {
+        for (const w of P.windows ?? []) {
+          const [u, , sill, ht] = Array.isArray(w) ? w : [w, 220, 520, 200];
+          openings.push([front, u, sill + 10, sill + ht - 10]);
+        }
+        for (const name of h.sides ?? []) openings.push([frameOf(h).face(name).f, 0, 530, 700]);
+        for (const o of [P.arch, P.loggia].filter(Boolean)) openings.push([front, o.u, o.sill + 10, o.crown - o.w / 2]);
+        if (P.oriel) openings.push([front, P.oriel.u, P.oriel.v0 + 40, P.oriel.v0 + 200]);
+        for (const o of [P.niche, P.door].filter(Boolean)) openings.push([front, o.u, 10, o.h - o.w / 2 - 10]);
+        if (P.garage) openings.push([front, P.garage.u, 10, P.garage.h - 60]);
       } else for (const name of ['left', 'right']) openings.push([frameOf(h).face(name).f, 0, h.eave - y0 - 220, h.eave - y0 - 40]);
-      if (h.door !== undefined) openings.push([front, h.door, lane.TERRACE - y0 + 5, lane.TERRACE - y0 + 150]);
     }
     for (const u of h.kit === 'chain' ? (h.windows ?? []) : []) openings.push([front, u, 170, 300]);
     for (const u of h.kit === 'chain' ? (h.backWindows ?? (h.windows ?? []).map((w) => -w)) : []) openings.push([back, u, 170, 300]);
@@ -717,7 +726,7 @@ test('the walls\' weathering: a wear attribute on the houses\' walls (how far un
   assert.ok(foot < 0 && foot > -10, `the plinths' feet at the ground (${foot})`);
 });
 
-test('G3\'s details: the double garage\'s downpipes with faint rust under their clips (contact: a rust tint at a streak\'s head fading to nothing at its foot; not on low), the balcony\'s boxes of geraniums (not on low)', () => {
+test('G3\'s details: the double garage\'s downpipes with faint rust under their clips (contact: a rust tint at a streak\'s head fading to nothing at its foot; not on low), the loggias\' iron boxes of flowers (W6; not on low)', () => {
   const mid = buildLaneDetail(lane, 'mid');
   const G = lane.HOUSES.find((h) => h.kit === 'garage');
   const F = frameOf(G);
@@ -745,22 +754,27 @@ test('G3\'s details: the double garage\'s downpipes with faint rust under their 
     assert.ok(r.some((p) => p.rgb[2] < 0.7) && r.some((p) => p.rgb.every((v) => v === 1)), 'from rust at a head to nothing at a foot');
   }
   assert.equal(rust(low).length, 0, 'none on low');
-  // The boxes hung outside the balcony's front rail: geraniums in leafy tufts.
-  const villa = lane.HOUSES.find((h) => h.balcony !== undefined);
-  const left = frameOf(villa).face('left').f;
-  const at = left.at(0, 0, 0);
-  const planted = (d) => {
-    const p = positionsOf(d, 'foliage');
-    let n = 0;
-    for (let i = 0; i < p.length; i += 3) {
-      const w = (p[i] - at[0]) * left.out[0] + (p[i + 2] - at[2]) * left.out[2];
-      const u = (p[i] - at[0]) * left.right[0] + (p[i + 2] - at[2]) * left.right[2];
-      if (w > 140 && w < 190 && Math.abs(u - villa.balcony) < 270 && p[i + 1] > at[1] + 400) n++; // (its middle at `balcony` along the gable)
-    }
-    return n;
-  };
-  assert.ok(planted(high) > 300 && planted(mid) > 200, `the tufts (${planted(high)} / ${planted(mid)} vertices)`);
-  assert.equal(planted(low), 0, 'none on low');
+  // (W6: north_3's balcony dark-stained wood, photo 17: no boxes on it; the flowers in the iron
+  // boxes on the loggias' sills, north_1's and north_3's.) Each loggia box's tufts: not on low.
+  for (const id of ['north_1', 'north_3']) {
+    const villa = lane.HOUSES.find((h) => h.id === id);
+    const l = FACADES[id].loggia;
+    const f = frameOf(villa).face('front').f;
+    const at = f.at(0, 0, 0);
+    const planted = (d) => {
+      const p = positionsOf(d, 'foliage');
+      let n = 0;
+      for (let i = 0; i < p.length; i += 3) {
+        const w = (p[i] - at[0]) * f.out[0] + (p[i + 2] - at[2]) * f.out[2];
+        const u = (p[i] - at[0]) * f.right[0] + (p[i + 2] - at[2]) * f.right[2];
+        const v = p[i + 1] - at[1];
+        if (w > -40 && w < 30 && Math.abs(u - l.u) < l.w / 2 && v > l.sill && v < l.sill + 90) n++;
+      }
+      return n;
+    };
+    assert.ok(planted(high) > 150 && planted(mid) > 100, `${id}'s loggia box's tufts (${planted(high)} / ${planted(mid)} vertices)`);
+    assert.equal(planted(low), 0, `${id}: none on low`);
+  }
 });
 
 test('the dad\'s crossover (CARS style ev): drawn last into every mesh it shares, `hide` at its first vertex in each (hiding from there removes exactly its faces), on every tier', () => {

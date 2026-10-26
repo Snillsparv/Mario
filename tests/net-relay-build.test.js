@@ -4,7 +4,7 @@
 // its parent, only dynamically, statically importing nothing but its ancestors, no three.js of
 // its own, each under its cap), beside its two module workers (the title logo's, and the
 // realistic look's with the pure code main does not carry: no three.js, no chunk of its own,
-// under 168 KiB); pad.html is built on its own next to it (no QR library: it never draws one);
+// under 176 KiB); pad.html is built on its own next to it (no QR library: it never draws one);
 // the preview server carries the relay (marker, pad-info, WebSocket) and offers the pad page only
 // at addresses a phone can reach; with E2E=1 the built bundle's (minified) shaders compile and
 // draw every look in headless Chromium.
@@ -62,8 +62,11 @@ const CHUNKS = {
   // (80 KiB, from 72: the photo-match packages' builders for the neighbours' houses, gardens and
   // hedges. W5 took the chunk to 73,406 B, 71.7 KiB: 322 B under 72, so the plan's allowance for
   // W6 (72 -> 80 KiB) was taken early there; its fix round (the slabs east of south_2's path, the
-  // hedge's east end and clump) took it to 73,774 B, 72.0 KiB, over 72.)
-  lane: { parent: 'main', cap: 80 * KiB, min: 40000 },
+  // hedge's east end and clump) took it to 73,774 B, 72.0 KiB, over 72. 84 KiB, from 80, W6: the
+  // north villas' street faces, roofs and bed walls (lane/facades.js: their programs and the
+  // shapes both looks share, the roof's collider under its deep eaves among them), the classic
+  // kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net: 81,994 B, 80.1 KiB.)
+  lane: { parent: 'main', cap: 84 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
   // (110 KiB, from 100: what moves in the dad's drive, the bins, STOMPWATT and the garage doors,
@@ -133,8 +136,11 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   }
   // (168 KiB, from 160: the photo-match packages' realistic builders (W3-W5: the dad's house and
   // garden, his drive, the neighbours' houses, hedges and gardens; layout.js rides in it too); W5
-  // took it to 167,396 B, 163.5 KiB, over 160; 168,704 B, 164.8 KiB, with W5's fix round.)
-  assert.ok(size('laneRealWorker') < 168 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
+  // took it to 167,396 B, 163.5 KiB, over 160; 168,704 B, 164.8 KiB, with W5's fix round. 176 KiB,
+  // from 168, W6: the north villas' realistic kit (oriels, loggias, niches, segmental garages,
+  // their programs in lane/facades.js), the beds' plants, the bins and the enclosure, the
+  // trampoline's net: 178,114 B, 173.9 KiB.)
+  assert.ok(size('laneRealWorker') < 176 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');
   assert.ok(!/addData/.test(src.main) && /addData/.test(src.PhonePanel), "the QR code library only in the phone panel's chunk");

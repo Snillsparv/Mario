@@ -28,6 +28,7 @@ import { Session } from 'node:inspector/promises';
 import { buildArea } from '../src/world/area.js';
 import { AREA_DEFS } from '../src/world/areas.js';
 import * as lane from '../src/world/lane/layout.js';
+import { hipOf, wallDrawnAt } from '../src/world/lane/facades.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { CameraController } from '../src/camera/CameraController.js';
@@ -441,6 +442,47 @@ test('the dad\'s house (W3): its shallow main body, eaves at 412, its 32-degree 
   assert.deepEqual(low.slice(0, 10), [], `${low.length} spots`);
 });
 
+test("the north villas (W6): each block under its drawn hipped roof (the front hip 34 degrees, the rim over the eave, the eaves drawn only) by raycast; the terraces still solid to TERRACE at their low bed walls; north_2's hedge on its bed wall solid to its walkable top, its three coins over it; north_2's bins and north_3's bin enclosure solid; north_2's car nose out on its drive; nothing over the trampoline's mat", () => {
+  for (const v of lane.VILLAS) {
+    const R = hipOf(v);
+    assert.ok(R.deep && Math.abs(R.t - Math.tan((34 * Math.PI) / 180)) < 1e-9, `${v.id}: a programmed roof`);
+    // (In the walls: the lowest slope over the point; the deep front eave's rim drawn only.)
+    for (const [du, dw] of [[0, 0], [0.3, 0.35], [-0.35, -0.3], [0.4, -0.4]]) {
+      const [u, w] = [du * v.w, dw * v.d];
+      const hit = col.raycast(world(v.cx + u, 3000, v.cz + w), { x: 0, y: -1, z: 0 }, 4000);
+      const want = Math.min(...R.planes.map((p) => p(u, w)));
+      assert.ok(hit && Math.abs(hit.point.y - O.y - want) < 2, `${v.id}'s roof at (${u.toFixed(0)}, ${w.toFixed(0)}): ${hit && (hit.point.y - O.y).toFixed(0)} for ${want.toFixed(0)}`);
+    }
+    const eave = col.raycast(world(v.cx, 3000, v.front + R.o[0] / 2), { x: 0, y: -1, z: 0 }, 4000);
+    assert.ok(!eave || eave.point.y - O.y < v.eave - 100, `${v.id}'s front eave drawn only (${eave && eave.point.y - O.y})`);
+    assert.ok(R.ridge > v.eave + 300, `${v.id}'s ridge ${R.ridge.toFixed(0)}`);
+  }
+  // The bed walls drawn lower; their colliders at TERRACE (a hop's height from the pavement).
+  for (const x of [-6900, -1200, 2400, 4800]) {
+    assert.ok(wallDrawnAt(x) + GROUND < lane.TERRACE - 20, `drawn lower at ${x}`);
+    assert.equal(col.findFloor(x + O.x, 600, lane.wallZAt(x) - 50 + O.z).y - O.y, lane.TERRACE, `the wall top at ${x}`);
+  }
+  const H = lane.HEDGES.find((h) => h.clipped);
+  assert.ok(H.x1 <= lane.PLOTS_N[1].drive[0] && H.z1 < lane.NORTH.wallZ && H.top - lane.TERRACE === 190, 'north_2\'s hedge on its bed wall');
+  for (const x of [H.x0 + 60, (H.x0 + H.x1) / 2, H.x1 - 60]) assert.equal(col.findFloor(x + O.x, 900, (H.z0 + H.z1) / 2 + O.z).y - O.y, H.top, `its top at ${x}`);
+  const on = lane.COINS.filter((c) => c.x > H.x0 && c.x < H.x1 && c.z > H.z0 && c.z < H.z1);
+  assert.ok(on.length === 3 && on.every((c) => c.y === H.top + 60), 'its three coins over it');
+  for (const b of lane.VILLA_BINS) assert.ok(Math.abs(col.findFloor(b.x + O.x, 600, b.z + O.z).y - O.y - GROUND - lane.LINK_BIN.h) < 1, `a bin's lid at (${b.x}, ${b.z})`);
+  const E = lane.ENCLOSURE;
+  assert.equal(col.findFloor((E.x0 + E.x1) / 2 + O.x, 600, (E.z0 + E.z1) / 2 + O.z).y - O.y, E.top, 'the bin enclosure');
+  assert.ok(E.x0 >= lane.PLOTS_N[2].drive[0] && E.z1 < lane.NORTH.wallZ, 'inside north_3\'s drive mouth');
+  const car = lane.CARS.find((c) => c.x > lane.PLOTS_N[1].drive[0] && c.x < lane.PLOTS_N[1].drive[1] && c.z < 0);
+  const K = lane.CAR_KINDS[car.kind];
+  assert.ok(car.yaw === 0 && car.style === 'two' && car.z + K.l / 2 < lane.NORTH.wallZ - 300 && car.z - K.l / 2 > lane.villaOf(lane.PLOTS_N[1]).front, `north_2's car nose out on its drive (${car.z})`);
+  const T = lane.TRAMPOLINE;
+  for (const [dx, dz] of [[0, 0], [120, -80], [-150, 100]]) assert.equal(col.findFloor(T.x + dx + O.x, 2000, T.z + dz + O.z).y - O.y, T.y, 'nothing over the mat');
+  // (Every vertex of the classic meshes finite: the kit's many-cornered outlines shaded per corner.)
+  area.root.traverse((o) => {
+    if (!o.isMesh || !o.name.startsWith('lane-')) return;
+    for (const a of Object.values(o.geometry.attributes)) assert.ok(a.array.every(Number.isFinite), `${o.name}: finite`);
+  });
+});
+
 test("the neighbours (W5): south_1 and south_2 under their steeper roofs (28 and 29 degrees, eaves at 412, a lip along the front eave) by raycast on both slopes, each with two wings behind it running into its back slope; the link's door wall set back, its two bins solid; south_2's raised bed a step up from its gravel; the hedge at the asphalt's edge, lower by the link; the young beech row not solid", () => {
   for (const [h, deg, wings, yard] of [[lane.SOUTH_1, 28, lane.SOUTH_1_WINGS, -2900], [lane.SOUTH_2, 29, lane.SOUTH_2_WINGS, 4150]]) {
     const tan = (h.ridge - h.eave) / (h.d / 2);
@@ -658,7 +700,7 @@ for (const [label, prof] of CAMERAS) {
 test('privacy and originality: the course\'s sources name no one but Jonas on its signs, carry no house numbers or licence plates on them, and paint every texture in code (no image files)', () => {
   const dir = new URL('../src/world/lane/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'garage.js', 'houses.js', 'index.js', 'layout.js', 'props.js', 'textures.js']);
+  assert.deepEqual(files.sort(), ['build.js', 'door.js', 'facades.js', 'garage.js', 'houses.js', 'index.js', 'layout.js', 'props.js', 'textures.js']); // (W6: facades.js, the north villas' programs)
   for (const f of files) {
     const src = readFileSync(new URL(f, dir), 'utf8');
     assert.ok(!/\.(png|jpe?g|webp|gif)\b/i.test(src), `${f}: no image files`);

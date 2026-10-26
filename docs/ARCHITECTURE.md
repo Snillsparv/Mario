@@ -187,7 +187,7 @@ resize); check the card's look in a real-time run (`/?skipTitle=1`).
 | Areas | `src/core/AreaSwitch.js`, `src/world/area.js`, `src/world/areaDefs.js`, `src/world/areas.js`, `src/world/*/index.js` (each area's chunk entry) | AreaDef, Area, AreaSwitch (see "Areas and transitions") |
 | Great Hall | `src/world/hall/*` (layout, builder `hall.js`, its parts `plan.js`, `shell.js`, `features.js`, `bottle.js`, `light.js`, textures) | WorldPart, built by `area.js` |
 | Midsummer Skerries | `src/world/skerries/*` (layout, build, lighthouse, east, props, houses, sea, textures) | WorldParts, built by `area.js` |
-| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures, `garage.js` (the store room's things' data: the lane's chunk and the worker only); `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`, `clutter.js`, `hardware.js`, `garage.js`) | WorldPart, built by `area.js` |
+| Sparrow Lane | `src/world/lane/*` (layout, build, houses, props, door, textures, `garage.js` (the store room's things' data: the lane's chunk and the worker only), `facades.js` (W6: the north villas' street faces, roofs and bed walls: builders' data and shared shapes, the lane's chunk and the worker only); `real/*`, its realistic look: `look.js` on the main thread, `plan.js` and `spots.js` shared with the classic build, the worker's builders `detail.js`, `geo.js`, `house.js`, `villas.js`, `cars.js`, `foliage.js`, `grass.js`, `garden.js`, `street.js`, `extras.js`, `clutter.js`, `hardware.js`, `garage.js`) | WorldPart, built by `area.js` |
 | Realistic look | `src/render/real/*` (RealLook, OutputPass, sky, materials, probe, tier, RealAreas, textureStore, texCache, the worker `laneRealWorker.js`, `texgen/*`) | RealLook, RealAreas (see "Realistic look (Sparrow Lane)") |
 | Critters | `src/objects/Critters.js`, `src/objects/critters/*` (a kind's steps each), `src/objects/critterModel.js` | Critters, built by ObjectManager (see "Critters") |
 | Trampolines | `src/objects/Trampoline.js` (the spring only: its course draws it) | Trampolines, built by ObjectManager (see "Objects") |
@@ -1673,9 +1673,20 @@ trees' leaves).
   −4249 at x −8000, −4879 at 8000), then rise 1 in 4 over 600 to 300 at `backZAt(x)`, the
   forest's edge. Each plot is convex blocks, one per stretch of the wall between its corners and
   the plot's drive notch and steps (`real/plan.js terraceSpans`: `wall`, `steps` and `drive`
-  spans), their backs sloping with `flatZAt` (planar ramp faces); the drive notch cobbles at 22
-  from the wall back to the villa's garage door, block walls either side; the steps five drawn
-  steps on a smooth `not_slippery` ramp up from the pavement, a dark railing on their drive side.
+  spans), their backs sloping with `flatZAt` (planar ramp faces); the drive notch at 22 from the
+  wall back to the villa's garage door, block walls either side (W6: granite setts laid in arcs;
+  north_2's open asphalt behind a two-row strip of setts across its mouth, `FACADES` `drive`); the
+  steps five drawn steps on a smooth `not_slippery` ramp up from the pavement, a dark railing on
+  their drive side. **W6, the bed walls** (photos 10, 13, 16, 17, 23, 28): the walls' fronts are
+  drawn lower than their colliders, low stacked-slab bed walls of warm grey under a coping, each
+  plot's height (`facades.js` `WALL_DRAWN`, `wallDrawnAt(x)`: north_1 85 over the pavement,
+  north_2 100, north_3 80, north_4 stepping up from 48 by north_3's steps to 92, north_5 75;
+  the step's end drawn where it changes), a planted strip `STRIP` (110) deep behind the coping
+  rising to the terrace's lawn (its plants: lumpy blobs in the classic look, leafy mounds, dark
+  yews, tall grass plumes, heucheras and roses in the realistic one, `bedSpots`), the notches'
+  sides rising with it from the wall's drawn top; the colliders stay at `TERRACE` (simplified,
+  MATCH-PLAN N-walls: the wall tops' coins, the hops up and the steps' ramps unchanged; Jonas on
+  a wall top stands among the bed's plants).
   Behind them the forest's bank rises over 1200 to 1500 and on, far out into the fog, to a crest
   4100 high (drawn only; the wedges where its strips turn a corner filled), so no camera sees its
   far edge against the sky.
@@ -1683,13 +1694,25 @@ trees' leaves).
   its w, turned by `yaw` (u runs (cos yaw, −sin yaw), w (sin yaw, cos yaw); its front the +w face),
   so the west end's houses, set at an angle to the street, are built like any other (`frame(h)`).
   **Villas** (`VILLAS`, north_1 … north_5, the split-level brick houses: white render to 412
-  with the garage door at drive level, red-brown brick to the eaves at 822, plain, arched and bay
-  windows, an arched front door at its garden's level, a hipped roof of pan tiles, 27°, wide
-  eaves (110) over a dark soffit; W2, the aerial's L-shaped roofs: each villa two blocks with
+  with the garage door at drive level, red-brown brick to the eaves at 822; W6, their street
+  faces from photos 9-13, 16, 17, 23 and 25-29 (`facades.js` `FACADES`, a program per block, both
+  looks: the kit of a segmental-arched garage (north_4's rounded top corners, north_2's square)
+  with a white reveal and an anthracite (north_1 light grey-blue, north_4 brown) ribbed sectional
+  door ~385 wide and 290 … 343 to its crown, a canted oriel over it on a corbelled brick foot, an
+  open round-headed loggia in the brick (north_1, north_3: an iron box of flowers; north_4: four
+  dark bars, its reveal lined in brown boards), north_2's round-headed window under a brick
+  rowlock ring behind an iron grille and its niche with a black board door, plain board doors
+  (north_1, north_3, north_4: a vent over them), north_5's deep round-arched recess with brown
+  double plank doors, white globe lamps and black lanterns, dark frames; the west blocks plain
+  windows, north_5's a square one and a slit, its white band low), a hipped roof of dark brown
+  pantiles, the front hip 34° (W6: `ROOF`, `hipOf`: the eaves boxed, 200 deep at the front and
+  90 at the sides and back, the rim 20 over the eave, brown board soffits, a brown fascia,
+  bronze-brown gutters, downpipes with swan necks; the collider the walls up under the drawn
+  slopes, `hipSolid`, the eaves drawn only; no satellite dish on north_2); W2, the aerial's L-shaped roofs: each villa two blocks with
   their own hips, its east block (the garage's, forward: the villa's id) and its west block
   (`<id>_west`, set back), `villaPair` from the aerial's readings; `sides` the faces with a
   window, not where the other block stands; north_3 a balcony on its east block's west gable,
-  solid, its middle 500 along it; north_4 the basketball hoop, see "Props"); **north_west**
+  solid, its middle 500 along it (W6: dark-stained wood); north_4 the basketball hoop, see "Props"); **north_west**
   (white render to its eaves at 462, a light grey hipped roof with two roof windows, a double
   garage facing the west leg, a low wing behind it, a flagstone drive in front cut at the
   pavement and along the first terrace's wall) with the **motorhome** on its drive (a white box
@@ -1819,10 +1842,18 @@ trees' leaves).
   litter on the asphalt's edge at its foot; W5 fix, photos 15 and 42: its east end from x −2300
   only 110 high, the link's car seen over it, stopping at x −1600, a corner of lawn open by the
   link's drive, and a taller clump of it, 140, set back against south_1's white east end), the back hedge at 242, one at 202 east
-  of the double garage, north_3's low box hedge on its terrace), west of south_1's the young
+  of the double garage, north_2's (W6: photos 9, 12, 13, 43, 44: a clipped olive beech on its bed
+  wall along its west part, `HEDGES[3]` x −4800 … −3665, 180 thick, its walkable top 190 over the
+  terrace (a jump from the pavement grabs its edge, a single one from the terrace behind lands
+  on it: the three coins that were on the wall top are on it), drawn from the wall's top (`foot`);
+  north_3's low box hedge gone: photo 17 has none)), west of south_1's the young
   beech hedge (`BEECH_ROW`, W5, photo 11: single stems on bamboo canes in a strip of dark soil,
-  drawn only, not solid), the link's two black bins (`LINK_BINS`, static, box colliders), the
-  neighbours' black mailboxes (`MAILBOXES`, drawn only), south_2's front garden (`S2_GARDEN`, W5:
+  drawn only, not solid), the link's two black bins (`LINK_BINS`, static, box colliders) and
+  north_2's three (W6: `VILLA_BINS`, black, black and green, in a row on its drive along its
+  bed's east end, their fronts to the drive: box colliders), north_3's white picket bin enclosure
+  at its drive's mouth (`ENCLOSURE`, W6, photo 17: solid, a white mailbox on its street face),
+  the neighbours' mailboxes (`MAILBOXES`, drawn only: W6 also north_2's tall green parcel box at
+  its steps and north_5's two white boxes on weathered posts in its bed), south_2's front garden (`S2_GARDEN`, W5:
   no hedge; a flush concrete edging along the apron's south edge, grey gravel (a hard surface;
   fine stone over it in the realistic look) to the plinth, a path of grey slabs to the door, a
   raised bed of stacked grey blocks at its west end by the dad's drive, 26 over the gravel,
@@ -1859,8 +1890,9 @@ trees' leaves).
   squeeze gaps by the bumpers' slopes) (the crossover a lookalike of his own car: "The dad's car"
   below); the west neighbour's white one at the link (W5: nose in, its tail ~180 in from the
   asphalt's edge (W5 fix: where its mirror and door handles triangulate from photos 41 and 42),
-  two-tone: `style` 'two', its roof, pillars and rails gloss black); a silver hatchback, a dark grey crossover, a
-  black hatchback noses in on north_1's, north_2's and north_3's drives, a black van on north_4's
+  two-tone: `style` 'two', its roof, pillars and rails gloss black); a silver hatchback and a
+  black hatchback nose in on north_1's and north_3's drives, north_2's dark grey crossover nose
+  out (W6: photos 13, 43, 44; two-tone, its roof black), a black van on north_4's
   (the photos' hoop house; its coins up the drive west of the van); a grey estate on the double
   garage's forecourt), north_4's **basketball hoop** (`HOOP`, on its front wall west of its
   garage door, a children's one: a post against the wall, a white board 412 …
@@ -1880,8 +1912,11 @@ trees' leaves).
   enough that the haze leaves it near as dark as 37 has it; photo 36, which shows none, has it near
   its left edge: the two photos do not agree); and two houses down the side road in the fog (`SIDE_BLOCKS`, drawn only).
 * **The trampoline and the 1-up** (`TRAMPOLINE`, `TRAMPOLINES`, `ONE_UP`): in north_5's front
-  garden on the terrace (x 5380, z −2300): a dark mat in a padded blue ring on six legs, r 250,
-  solid from the terrace up to its top at 240 (`props.js`); its spring is
+  garden on the terrace (x 5380, z −2300): a dark mat in a padded dark grey ring on six legs, r
+  250, solid from the terrace up to its top at 240 (`props.js`), its black safety net drawn only
+  (W6, photos 27, 28: eight poles to a top hoop 236 over the mat, a mesh of thin strands in the
+  realistic look with its door toward the street; nothing over the mat: the held bounce to the
+  1-up is never blocked); its spring is
   `objects/Trampoline.js` (see "Objects"): every landing on the mat throws him back up with a
   `boing` (`player.bounce(50, 'boing')`), to 578 (feet) without the jump button and to **852**
   every time with it held (`BOUNCE_HELD_VY`), steering from one bounce to the next. The 1-up
@@ -1916,8 +1951,9 @@ trees' leaves).
 * **Coins** (`COINS`, 55, each at its floor + 60; W2: each from the layout's anchors, the
   straight's centreline, the wall line, the plots' drives, steps and edges, the apron's ring,
   L1): down the path, on the mailbox's roof, along the street both ways, round the apron (7, on
-  `APRON.ring`), along north_2's wall top west of its drive and north_3's in front of its west
-  block, up north_3's steps, up north_4's drive west of the van, up the side yard between
+  `APRON.ring`), along north_2's hedge top west of its drive (W6: on its bed wall's hedge; a jump
+  from the pavement grabs its edge) and north_3's wall top in front of its west block, up
+  north_3's steps, up north_4's drive west of the van, up the side yard between
   north_2 and north_3, on the
   motorhome's roof, along south_1's hedge, round the junction's lamppost, on the footpath, over
   the bins, on the garage row's roof, on the east wing's slope and the main roof's back slope (W3), and five in a row across the
@@ -2167,7 +2203,8 @@ trees' leaves).
   up by the garage row's edge from the gap between the cars, then walking up onto the wing), the
   front eave (its lip, at three places along the front; W5: and the neighbours', south_2's
   raised bed walked up onto, the beech row walked through), the red-leaf tree's flip (and let go at
-  once, down in the garden), and the routes round the street, each collecting exactly its coins; the
+  once, down in the garden), and the routes round the street, each collecting exactly its coins
+  (W6: north_2's hedge top from the pavement and from the terrace behind it); the
   trampoline (852 every held bounce with a boing, the 1-up; a jump from the mat, plain bounces
   and a triple jump beside it short of it; bouncing every way in bounds), the hoop's board as a
   perch from the van's roof, the dad's cars as steps up to the garage row: the crossover's
@@ -3029,11 +3066,25 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   between) with **real openings** (`villaHouses`; arched heads with the wall filled back in their
   corners): in each window a white casing proud of the wall, a reveal, a frame with a mullion and
   a transom, the glass over a dim room box, a stone sill (one a garage door's frame would cross,
-  at the west end, stands proud instead); the bay windows glazed on three sides over an opening
-  into the room, a little tiled roof; the arched front door set back in its opening with panel
-  shadows, a brass handle and a step; the balcony a slab, dark posts and rails round dark glass
-  and a capping, the classic railing box's size (its top is the collider's). Sectional garage
-  doors, gutters and rounded hip and ridge caps over the classic hipped roofs.
+  at the west end, stands proud instead); W6, the north villas' kit from their programs
+  (`lane/facades.js` `FACADES`; frames dark): the garage's opening with its segmental or rounded
+  head (the wall filled back round any head: `outlineOf`), a slim white trim and a white reveal,
+  the sectional door set back 22 in it with fine ribs (13 apart on high, 18 on mid, four plain
+  sections on low) and a black seal; the canted oriel over it (its cheeks and front glazed in dark
+  posts and rails over a dark panel, up to the soffit, a foot of four brick courses stepping in
+  to the wall; a box bay with its front glazed and one course on low) over an opening into the
+  room; the open loggia (a brick rowlock ring, its reveal and vault lined in brown boards or
+  white render, its back in shade, a stone sill; dark bars across it or an iron box of flowers,
+  not on low); north_2's round-headed window under its ring behind an iron flower grille; the
+  niches (white returns, a board door filling them set back, grooves between its boards on high
+  and mid, a handle each leaf, a light threshold); plain board doors in dark frames with a vent
+  grille over them; white globe lamps on dark brackets and black lanterns; north_3's balcony in
+  dark-stained wood (a slab, posts, rails, flat balusters, photo 17; on low its sides panels),
+  the classic railing box's size (its top is the collider's). Sectional garage doors (the west
+  end's and the double garage's), gutters round the rims (W6: `hipOf`, the north villas' deep
+  boxed eaves: bronze-brown, a downpipe with a swan neck at each front corner its program
+  names, the deep front soffits' tongue-and-groove joints, not on low) and rounded hip and ridge
+  caps over the classic hipped roofs.
 * `foliage.js`: **leaf cards**: clusters of two crossed alpha-tested cards (the leaf atlas's
   cells: rhododendron, hedge, tree, red) on shells over the classic shapes (each canopy's
   blobs from the classic builder's own seeded stream, so every plant stands where its classic
@@ -3058,7 +3109,11 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   short trunk parting into upright leaders, the leaves in loose clumps over a slim crown widest
   low and blunt and ragged at its top (`CROWN`), some poking past it, the sky through its gaps,
   no solid core; olive, yellowing toward its top; 2000 clusters of crossed cards on high, 1400 mid,
-  900 low); W5: south_1's informal hedge (`hedge`, `h.informal`: lighter sprigs over darker gaps, loose
+  900 low); W6: north_2's clipped beech on its bed wall (`clipped`: drawn from its `foot`, its
+  own stream, the shared one stepped on as far as north_3's old box hedge took it, coarser on
+  low) and the bed walls' planted strips (`beds`: `facades.js bedSpots`, a plant every 185 on
+  high, 165 mid, 900 low: leafy mounds, dark yews, tall tan grass plumes, purple heucheras, pink
+  roses, each a small shell, no core); W5: south_1's informal hedge (`hedge`, `h.informal`: lighter sprigs over darker gaps, loose
   faces, a ragged top up to `informal` over the walkable one, brown leaf litter on the asphalt's
   edge at its foot where it stands there; W5 fix: the photos' warm olive with a few browning
   leaves, half the face cards leaning along it so a view along the street meets leaves, its core
@@ -3124,8 +3179,10 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   (the patch the car stands on: every car level on its four patches), ten-spoke rims (five on
   mid and low) over a dark barrel and a brake disc, in black liners that close each arch (W2: on
   high the cars across the street, on the north drives, at mid's detail: `LOD`, the plan's lever
-  for them; W5: on low ten sides and no rounded shoulders on the tyres, the plan's lever for
-  low, which pays for the neighbours' wings, gardens and hedge there). South_1's crossover on
+  for them; W6: every car but the dad's two a tier plainer on high and mid, the link's and the
+  north drives' at mid's detail on high and at low's on mid, the plan's lever that pays for the
+  north villas' kit, beds and hedge; W5: on low ten sides and no rounded shoulders on the
+  tyres, the plan's lever for low, which pays for the neighbours' wings, gardens and hedge there). South_1's crossover on
   the link's drive is two-tone (`STYLE.two`, W5: the cross's body, its roof gloss black over
   the black pillars and rails, as photo 42 has it). Under
   each car a **contact shadow** (`contact`: `materials.js contactMaterial`, the colour drawn under
@@ -3172,9 +3229,11 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   doorbells (the dad's a bell only: his mailbox), splash blocks under the downpipes, window
   handles, the dad's outdoor socket and hose reel (on his east gable by the drive, past the ivy,
   the socket at z 1405 and the reel at 1435, short of the car charger's box at 1470)
-  and two pot plants on his inner sills; the villas'
-  door lamps, garage door seals and a satellite dish on north_2; the terraces' walls' coping
-  stones, 4 proud with joints.
+  and two pot plants on his inner sills (W6: the north villas' lamps and seals are their kit's,
+  `villas.js`; no satellite dish on north_2's front, photo 13); the mailboxes (`MAILBOXES`: W6
+  their own tints, north_5's on weathered wooden posts from its bed); the terraces' walls' coping
+  (W6: on the low bed walls' drawn tops, irregular flat slabs 60 … 110 long and 11 … 15 thick, 3 …
+  6 proud, joints between them).
 * `garage.js` (D1): the store room's things behind the garage doors (`garageRoom(kit, L)`, before
   the cars: the dad's car stays last in every mesh it shares), each inside its box of
   `GARAGE.props` (`world/lane/garage.js ROOM`, shared with the lane's chunk, never main): the
@@ -3213,7 +3272,9 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   red-leaf bed its soil's dark face); W5 `neighbourGround`: south_2's gravel in fine stone (the
   granite set at a gravel's grain) over its hard surface round its beds, its path's grey slabs,
   the beech row's and the beds' soil, the link's two bins (the dad's bin turned round, boxes on
-  low); mended patches, a sealed
+  low; W6: north_2's three as boxes, the green one tinted, and north_3's white picket bin
+  enclosure: posts, rails, pickets round its open sides and two black bins in it on high, a
+  panel on mid and low, the white mailbox on its street face); mended patches, a sealed
   crack, manhole and drain covers; the red-leaf bed's field stones (`plan.js bedStones`: lumpy,
   light grey or pink, longer along the edge, each its own, along all four edges, none on the
   sign's post); the turning area's sign (`turnSign`: a
@@ -3224,7 +3285,9 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   `street.js`: smooth tapered
   steel lampposts with a curved arm (from 60 under the cap up to the luminaire) and luminaire, white flagpoles with a gilt ball and halyard
   (the flags their classic waving cloth), real pickets and rails, rounded wheelie bins.
-  `extras.js`: the trampoline, the hoop, the motorhome, the cabinet.
+  `extras.js`: the trampoline (W6: its dark grey pad, its black safety net: eight poles bowing
+  up to a top hoop, a mesh of thin strands with its door toward the street, poles and hoop only
+  on low), the hoop, the motorhome, the cabinet.
 * **Materials** (`render/real/materials.js`): `foliageMaterial` (an atlas with coverage-keeping
   mips; both faces lit by the card's own outward-bent normal, no back-face flip; the sun through
   the leaves from the shadowed direct light (the sun's as the lights' loop lit it,
@@ -3673,7 +3736,9 @@ legend's look row, the realistic sources' privacy, W5 fix: south_2's flush edgin
 light grey in both looks, never a colour left over from what was drawn before it),
 `tests/lane-real-geometry.test.js` (the
 worker's geometry: deterministic, within each tier's triangle budget, every face wound the way
-its normals point, the walls open at every window and door of the chain houses and the villas,
+its normals point, the walls open at every window and door of the chain houses and the villas
+(W6: every opening of the north villas' programs, `FACADES`: windows, the round-headed window,
+the loggias, the oriels' openings, the niches, the board doors, the garages),
 the tile courses in the classic roof planes (the crowns at most 1.5 over them, the ridge line's
 top 2), the firs on the classic forest's spots, the lawn mask, the cars on their wheels
 inside their colliders and their bodies and tyres closed, every tyre's patch on the drive's
@@ -3689,8 +3754,8 @@ street sign's plate blank, the clutter's share per tier; the walls' wear attribu
 the streaks hanging from the dad's sills; the bird on the ridge; the forest edge's second
 spruce on high; R fixes: the firs dense (each whorl's skirt over half its branches' reach, the
 crown solid all the way up, needles to the top, the trunk inside: the old firs fail it), the
-red-leaf bed's stones along all four edges (W3), no kerb along it; the garage's rust under its pipes' clips and the balcony's geraniums, not on
-low), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
+red-leaf bed's stones along all four edges (W3), no kerb along it; the garage's rust under its pipes' clips and the loggias' boxes of flowers
+(W6; the balcony is bare wood now), not on low), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
 tokens; the plugin's output), `tests/real-materials.test.js` (the haze (the sun's glow coming into
 it with the distance: W4 fix) and the clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
 the glass's F0 and premultiplied output, the leaf
@@ -3713,7 +3778,7 @@ with E2E=1 the built bundle's minified shaders compiling and drawing every look)
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
 own chunk (`laneRealWorker-*.js`, ~116 kB with G2's cars, clutter and hardware and G3's details,
-~164.8 KiB with the photo-match packages' (W5), no three.js, no imports: under 168 KiB); the renderer side's code that the boot does not need is
+~173.9 KiB with the photo-match packages' (W6), no three.js, no imports: under 176 KiB); the renderer side's code that the boot does not need is
 the lazy `realLook` chunk (above: ~47 kB with G1's post chain and G2's weathering and probes, its
 shaders minified since G3; imported by `main` only dynamically, importing only `main`: under 90
 kB; no modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB,
@@ -4885,10 +4950,10 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,285,239 | 401 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,285,591 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 73,774 | 30 kB | 80 KiB (from 72, W5: the photo-match packages' builders for the neighbours; W5 left it at 71.7 KiB, 322 B under 72, so the plan's allowance for W6 was taken early; its fix round took it to 72.0 KiB) |
+| lane | 81,994 | 33 kB | 84 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB) |
 | realLook | 49,397 | 18 kB | 60 KiB (from 90) |
 | laneBoss | 101,981 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
@@ -4896,7 +4961,7 @@ and every cap; the gzip sizes are printed, not asserted):
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 168,704 | 69 kB | 168 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB) |
+| laneRealWorker | 178,114 | 73 kB | 176 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

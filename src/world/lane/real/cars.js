@@ -160,7 +160,10 @@ function car(kit, L, c, probe) {
   const black = EV || S.blackRoof; // (the roof gloss black)
   // (On high the cars across the street, on the north drives, at mid's detail: W2, the plan's
   // lever for the north side's cars, the van now on north_4's drive in more views.)
-  const D = LOD[kit.tier === 'high' && c.z < 0 ? 'mid' : kit.tier] ?? LOD.high;
+  // (W6: the cars but the dad's two a tier plainer on high and mid: the link's and the north
+  // drives' at mid's detail on high, at low's on mid; the plan's levers for the north villas.)
+  const plain = !c.id && !(c.x >= L.DAD_DRIVE.x0 && c.x <= L.DAD_DRIVE.x1 && c.z > 0);
+  const D = LOD[plain ? { high: 'mid', mid: 'low' }[kit.tier] ?? kit.tier : kit.tier] ?? LOD.high;
   const { y0, R, axles, at: W0, fw, ac } = carFrame(L, c);
   const paint = kit[`carPaint@${probe}`] ?? kit.carPaint;
   const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;

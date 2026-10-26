@@ -28,7 +28,8 @@
 import { makeRng } from '../../../core/math.js';
 import { Geo, add, mul, sub, dot, cross, norm } from './geo.js';
 import { forestSpots } from './spots.js';
-import { redTreeStems, redTreeCrown, ivyMasses, climberMasses } from './plan.js';
+import { redTreeStems, redTreeCrown, ivyMasses, climberMasses, terraceSpans } from './plan.js';
+import { bedSpots } from '../facades.js';
 
 // The leaf atlas's cells (texgen/sets.js LEAF_CELLS: each half the atlas a side).
 const CELL = { rhodo: [0, 0], hedge: [0.5, 0], tree: [0, 0.5], red: [0.5, 0.5] };
@@ -162,7 +163,17 @@ export function plants(kit, L) {
   // stepped on as far as the clipped hedge along south_1 took it before W5, so every plant after
   // it keeps its leaves where W1-W4 put them: the informal hedges draw from their own.)
   for (let i = STREAM_SKIP[kit.tier] ?? STREAM_SKIP.high; i > 0; i--) R();
-  for (const h of L.HEDGES) if (!h.informal) hedge(kit, R, h);
+  for (const h of L.HEDGES) {
+    if (h.informal) continue;
+    if (!h.clipped) {
+      hedge(kit, R, h);
+      continue;
+    }
+    // (W6: north_2's own stream; the shared one stepped on as far as north_3's box hedge, in its
+    // place before, took it: every plant after keeps its leaves.)
+    hedge({ foliage: new Geo(), core: new Geo(), tier: kit.tier }, R, { x0: -1300, x1: -500, z0: -960, z1: -880, y0: 150, top: 230 });
+    hedge(kit, makeRng(6611), h);
+  }
   // The thujas: dark green columns.
   for (const t of L.THUJAS) thuja(kit, R, L, t);
   // The junction's trees.
@@ -208,6 +219,27 @@ export function plants(kit, L) {
   for (const h of L.HEDGES) if (h.informal) hedge(kit, null, h, L);
   beechRow(kit, L);
   southGarden(kit, L);
+  beds(kit, L);
+}
+
+// The planted strips behind the terraces' low bed walls (W6, photos 10, 16, 23, 27, 28: facades.js
+// bedSpots): leafy mounds (hostas, shrubs), dark yew masses, tall tan grass plumes, purple
+// heucheras, pink roses; each its own small shell, no core; on low a third as many.
+const BED_STEP = { high: 185, mid: 165, low: 900 };
+const BED_KINDS = [
+  { r: [38, 26, 32], n: 12, size: 40, cell: CELL.rhodo, tints: [[1.7, 1.85, 0.6], [1.25, 1.45, 0.5], [0.9, 1.05, 0.42]] },
+  { r: [44, 58, 36], n: 14, size: 34, cell: CELL.hedge, tints: [[0.34, 0.4, 0.17], [0.27, 0.33, 0.14]], below: -0.5 },
+  { r: [26, 70, 26], n: 8, size: 44, cell: CELL.hedge, tints: [[2.1, 1.6, 0.9], [1.8, 1.25, 0.8]], below: 0.1 },
+  { r: [30, 16, 26], n: 9, size: 30, cell: CELL.red, tints: [[0.95, 0.36, 0.42], [0.72, 0.26, 0.32]] },
+  { r: [32, 30, 28], n: 10, size: 30, cell: CELL.red, tints: [[2.2, 1, 1.3], [0.8, 1, 0.5]] },
+];
+function beds(kit, L) {
+  const S = makeRng(8243);
+  for (const p of bedSpots(L, terraceSpans(L), BED_STEP[kit.tier] ?? BED_STEP.high)) {
+    const K = BED_KINDS[p.kind];
+    const r = K.r.map((v) => v * p.s);
+    shell(kit, S, { c: [p.x, p.y + r[1] * 0.55, p.z], r, count: K.n, size: K.size * p.s, cell: K.cell, tints: K.tints, below: K.below ?? -0.15, sway: 1.5, core: null });
+  }
 }
 
 // The young beech hedge west of south_1's (W5, photo 11): single slim stems every `step` along
@@ -406,7 +438,7 @@ function hedge(kit, R, h, L) {
   if (loose) R = makeRng(5821 + Math.round(h.x0));
   const [ls, litter] = INFORMAL[kit.tier] ?? INFORMAL.high;
   // (The long hedges behind the houses a little coarser.)
-  const step = loose ? ls : (kit.tier === 'low' ? 36 : kit.tier === 'mid' ? 29 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1);
+  const step = loose ? ls : (kit.tier === 'low' ? (h.clipped ? 60 : 36) : kit.tier === 'mid' ? (h.clipped ? 31 : 29) : h.clipped ? 33 : 25) * (h.x1 - h.x0 > 4000 ? 1.3 : 1); // (W6: north_2's a little coarser: its cards 50 across)
   const card = (c, n, s, deep = 0) => {
     if (loose) {
       const t = LOOSE[Math.floor(R() * LOOSE.length)];
@@ -421,28 +453,30 @@ function hedge(kit, R, h, L) {
   };
   const jit = () => (R() - 0.5) * step;
   const top = h.top + (loose ? 6 : 8);
-  const [y1, sz] = [h.y0 + (loose ? 14 : 12), loose ? 54 : 50];
+  const y0 = h.foot ?? h.y0; // (W6: north_2's drawn from its bed wall's top, under its collider's foot)
+  const [y1, sz] = [y0 + (loose ? 14 : 12), loose ? 54 : 50];
   for (let x = h.x0; x <= h.x1; x += step) {
     for (let y = y1; y <= top; y += step) {
       if (!loose) {
-        card([x + jit(), y + jit() * 0.5, h.z0 + 4 + R() * 6], [0, 0.1, -1], 50);
-        card([x + jit(), y + jit() * 0.5, h.z1 - 4 - R() * 6], [0, 0.1, 1], 50);
+        const cs = h.clipped ? Math.max(50, step * 1.6) : 50; // (W6: north_2's coarser cards as big as their spacing needs)
+        card([x + jit(), y + jit() * 0.5, h.z0 + 4 + R() * 6], [0, 0.1, -1], cs);
+        card([x + jit(), y + jit() * 0.5, h.z1 - 4 - R() * 6], [0, 0.1, 1], cs);
         continue;
       }
-      for (const [z, s] of [[h.z0, -1], [h.z1, 1]]) card([x + jit(), y + jit() * 0.6, z + s * (R() * 14 - 6)], [s * 0.2 + (R() < 0.5 ? 0 : R() < 0.5 ? -0.8 : 0.8), 0.15, s], 54, (1 - (y - h.y0) / (top - h.y0)) * 0.6);
+      for (const [z, s] of [[h.z0, -1], [h.z1, 1]]) card([x + jit(), y + jit() * 0.6, z + s * (R() * 14 - 6)], [s * 0.2 + (R() < 0.5 ? 0 : R() < 0.5 ? -0.8 : 0.8), 0.15, s], 54, (1 - (y - y0) / (top - y0)) * 0.6);
     }
-    for (let z = h.z0 + step / 2; z <= h.z1; z += step) card([x + jit(), top - (loose ? 8 : 6) + R() * (loose ? 10 : 8), z + jit() * 0.6], [0, 1, 0], loose ? 56 : 52);
+    for (let z = h.z0 + step / 2; z <= h.z1; z += step) card([x + jit(), top - (loose ? 8 : 6) + R() * (loose ? 10 : 8), z + jit() * 0.6], [0, 1, 0], loose ? 56 : h.clipped ? Math.max(52, step * 1.6) : 52);
     for (let k = loose ? (R() < 0.6 ? 2 : 1) : 0; k > 0; k--) {
       const z = h.z0 + 20 + R() * (h.z1 - h.z0 - 40);
       card([x + jit(), top + loose * (0.3 + 0.7 * R()) - 20, z], [(R() - 0.5) * 0.6, 1, (z - (h.z0 + h.z1) / 2) / 90], 50);
     }
   }
   for (const [xe, s] of [[h.x0, -1], [h.x1, 1]]) {
-    for (let z = h.z0; z <= h.z1; z += step) for (let y = y1; y <= top; y += step) card([xe + s * (loose ? R() * 12 - 4 : 4 + R() * 6), y, z + jit() * 0.6], [s, 0.1, 0], sz);
+    for (let z = h.z0; z <= h.z1; z += step) for (let y = y1; y <= top; y += step) card([xe + s * (loose ? R() * 12 - 4 : 4 + R() * 6), y, z + jit() * 0.6], [s, 0.1, 0], h.clipped ? Math.max(sz, step * 1.6) : sz);
   }
   if (!loose) {
     core.rgb(...HEDGE_CORE);
-    core.box(h.x0 + 8, h.x1 - 8, h.y0 - 4, top - 14, h.z0 + 8, h.z1 - 8, { skip: 'b' });
+    core.box(h.x0 + 8, h.x1 - 8, y0 - 4, top - 14, h.z0 + 8, h.z1 - 8, { skip: 'b' });
     return;
   }
   core.rgb(...LOOSE_CORE.map((c) => c * (kit.tier === 'low' ? 0.5 : 0.85)));

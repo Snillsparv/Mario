@@ -24,7 +24,7 @@
 // beak, glossy black eyes, its wings raised and swept back like the real ornament's, its tail a
 // wide spiky fan cocked up behind, on a rod at the ridge's street end, side-on to the street.
 
-import { Geo, add, mul, norm, cross } from './geo.js';
+import { Geo, add, mul, norm, cross, linear } from './geo.js';
 import { bins } from './street.js';
 import { roadPieces, kerbRuns, bevelEnds, BEVEL, bedStones as bedStoneSpots } from './plan.js';
 import { signFace } from './sign.js';
@@ -421,22 +421,56 @@ export function neighbourGround(kit, L) {
   }
   granite.rgb(0.2, 0.13, 0.08);
   for (const [x0, x1, z0, z1] of P.beds) flat(x0, x1, z0, z1, G + 1.5, 2);
+  // The link's two bins (their handles to its wall) and north_2's three (W6: their handles to its
+  // bed, a green one), each the dad's bin turned (`yaw`: the way its front looks); on low boxes.
+  // North_3's white picket bin enclosure with its mailbox (W6).
   const K = L.LINK_BIN;
-  if (kit.tier === 'low') {
-    paint.color(0x182434);
-    for (const b of L.LINK_BINS) {
-      paint.box(b.x - K.x / 2 + 4, b.x + K.x / 2 - 4, G, G + K.h - 10, b.z - K.z / 2 + 6, b.z + K.z / 2, { skip: 'b' });
-      paint.box(b.x - K.x / 2, b.x + K.x / 2, G + K.h - 10, G + K.h, b.z - K.z / 2, b.z + K.z / 2 + 4, { skip: 'b' });
-    }
-    return;
+  // (North_2's, across the street behind its hedge's end, as boxes on every tier.)
+  const all = [...L.LINK_BINS.map((b) => ({ ...b, yaw: Math.PI })), ...(L.VILLA_BINS ?? [])];
+  const boxes = kit.tier === 'low' ? all : all.filter((b) => b.yaw !== Math.PI);
+  for (const b of boxes) {
+    paint.color(b.tint ?? 0x182434);
+    const [hx, hz] = Math.abs(Math.sin(b.yaw)) > 0.5 ? [K.z / 2, K.x / 2] : [K.x / 2, K.z / 2];
+    paint.box(b.x - hx + 4, b.x + hx - 4, G, G + K.h - 10, b.z - hz + 4, b.z + hz - 4, { skip: 'b' });
+    paint.box(b.x - hx, b.x + hx, G + K.h - 10, G + K.h, b.z - hz, b.z + hz, { skip: 'b' });
   }
-  const g = new Geo();
-  bins({ paint: g, tyre: g, steel: g }, { BIN: K });
-  for (const b of L.LINK_BINS) {
-    for (let i = 0; i < g.count; i++) {
-      const [p, n] = [g.pos.slice(i * 3, i * 3 + 3), g.nrm.slice(i * 3, i * 3 + 3)];
-      paint.tint = g.col.slice(i * 3, i * 3 + 3);
-      paint.vertex([b.x - p[0], G + p[1], b.z - p[2]], [-n[0], n[1], -n[2]], g.uv.slice(i * 2, i * 2 + 2));
+  if (kit.tier !== 'low') {
+    const g = new Geo();
+    bins({ paint: g, tyre: g, steel: g }, { BIN: K });
+    const body = linear(0x182434);
+    for (const b of all.filter((o) => !boxes.includes(o))) {
+      const [c, sn] = [Math.cos(b.yaw), Math.sin(b.yaw)];
+      const k = b.tint ? linear(b.tint).map((v, i) => v / body[i]) : [1, 1, 1];
+      for (let i = 0; i < g.count; i++) {
+        const [p, n] = [g.pos.slice(i * 3, i * 3 + 3), g.nrm.slice(i * 3, i * 3 + 3)];
+        paint.tint = g.col.slice(i * 3, i * 3 + 3).map((v, j) => Math.min(1, v * k[j]));
+        paint.vertex([b.x + p[0] * c + p[2] * sn, G + p[1], b.z - p[0] * sn + p[2] * c], [n[0] * c + n[2] * sn, n[1], -n[0] * sn + n[2] * c], g.uv.slice(i * 2, i * 2 + 2));
+      }
     }
   }
+  const N = L.ENCLOSURE;
+  if (!N) return;
+  paint.color(0xf2f0ea);
+  const fine = kit.tier === 'high';
+  // Its posts at the corners, top and bottom rails, the pickets round its three open sides.
+  for (const [x, z] of [[N.x0, N.z0], [N.x1, N.z0], [N.x0, N.z1], [N.x1, N.z1]]) paint.box(x - 4, x + 4, G, N.top, z - 4, z + 4, { skip: 'b' });
+  for (const y of [G + 30, N.top - 22]) {
+    paint.box(N.x0, N.x1, y, y + 7, N.z1 - 3, N.z1 + 1, { skip: 'b' });
+    for (const x of [N.x0, N.x1]) paint.box(x - 2, x + 2, y, y + 7, N.z0, N.z1, { skip: 'b' });
+  }
+  if (fine) {
+    for (let x = N.x0 + 10; x < N.x1 - 6; x += 12) paint.box(x, x + 7, G + 8, N.top - 6, N.z1 + 1, N.z1 + 3, { skip: 'b' });
+    for (const xe of [N.x0, N.x1]) for (let z = N.z0 + 10; z < N.z1 - 6; z += 12) paint.box(xe - 3, xe + 3, G + 8, N.top - 6, z, z + 7, { skip: 'b' });
+    paint.color(0x0e1012);
+    for (const x of [N.x0 + 28, N.x1 - 28]) paint.box(x - 24, x + 24, G, G + 140, N.z0 + 8, N.z1 - 10, { skip: 'b' });
+  } else {
+    paint.color(0xe2e0da);
+    paint.box(N.x0 + 2, N.x1 - 2, G + 8, N.top - 6, N.z0 + 2, N.z1 - 2, { skip: 'b' });
+  }
+  // The white mailbox on its street face.
+  const mx = (N.x0 + N.x1) / 2;
+  paint.color(0xc8ced2);
+  paint.box(mx - 22, mx + 22, N.top - 98, N.top - 18, N.z1 + 3, N.z1 + 30, { skip: 'b' });
+  paint.color(0x3a3e42);
+  paint.box(mx - 14, mx + 14, N.top - 34, N.top - 30, N.z1 + 30, N.z1 + 31);
 }

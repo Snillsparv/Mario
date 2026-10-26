@@ -11,8 +11,8 @@
 // roof; held on, he lands on its far side and walks on down into the back garden, unhurt; let go
 // at once he lands in the garden); and
 // the routes round the street, each collecting exactly its coins: down the path from the front
-// door, onto the mailbox's roof (a single jump), along the street both ways, onto the villas'
-// wall tops (a hop) and up north_3's steps, up the side yard between north_2 and north_3, onto
+// door, onto the mailbox's roof (a single jump), along the street both ways, onto north_2's hedge
+// (W6: a jump from the pavement), north_3's wall top (a hop) and up north_3's steps, up the side yard between north_2 and north_3, onto
 // the motorhome's roof (a double jump; a single one falls short from anywhere in front of it),
 // round the junction's lamppost and up it, round the turning area, up north_4's drive, along the
 // footpath, and along south_1's hedge top (a single jump up onto it). And the details: the
@@ -248,7 +248,7 @@ test('welcome: out of the front door down the path to the street (its three coin
   }
 });
 
-test('west: along the street (five coins), a hop onto north_2\'s wall top (three), north_3\'s steps (three) and its wall top (three), up the side yard between them (three)', () => {
+test('west: along the street (five coins), a jump onto north_2\'s hedge on its bed wall and along its top (three: W6), north_3\'s steps (three) and its wall top (three), up the side yard between them (three)', () => {
   // (W2: every start from the layout's anchors: the straight's centreline, the terraces' wall
   // line, the plots' steps and edges.)
   const Z = lane.ROAD.line.at(-1)[1];
@@ -257,12 +257,21 @@ test('west: along the street (five coins), a hop onto north_2\'s wall top (three
   const st = hero(-300, 0, Z, W);
   st.walk([[-3500, Z]]);
   assert.equal(st.coins(), 5, 'the street west');
-  // A hop up the wall from the pavement, then along its top (west of north_2's drive).
+  // (W6: north_2's clipped hedge on its bed wall, photos 13, 43, 44: its walkable top 190 over
+  // the terrace.) A jump from the pavement grabs its top's edge and climbs on (or from the terrace
+  // behind it, a single jump lands on it); then along its top, west of north_2's drive.
+  const H = lane.HEDGES.find((e) => e.clipped);
+  assert.equal(H.top - TERRACE, 190);
+  const mid = (H.z0 + H.z1) / 2;
   const w = hero(-4650, GROUND, pave(-4650), N);
-  jump(w, N, { push: 0.6, after: 4 });
-  assert.ok(Math.abs(w.at().y - TERRACE) < 1, `on the wall top: ${JSON.stringify(w.at())}`);
-  w.walk([[-4650, top(-4650)], [-4050, top(-4050)]], 0.5);
-  assert.equal(w.coins(), 3, "north_2's wall top");
+  jump(w, N, { push: 0.5, after: 4 });
+  assert.ok(Math.abs(w.at().y - H.top) < 1 && w.p.grounded, `on the hedge: ${JSON.stringify(w.at())}`);
+  w.walk([[-4650, mid], [-4050, mid]], 0.4, 600);
+  assert.ok(Math.abs(w.at().y - H.top) < 1, `along its top: ${JSON.stringify(w.at())}`);
+  assert.equal(w.coins(), 3, "north_2's hedge top");
+  const b = hero(-4500, TERRACE, H.z0 - 110, S);
+  jump(b, S, { push: 0.4, after: 4 });
+  assert.ok(Math.abs(b.at().y - H.top) < 1 && b.p.grounded, `onto it from the terrace behind: ${JSON.stringify(b.at())}`);
   // Up north_3's steps from the pavement (east of its drive).
   const [s0, s1] = lane.PLOTS_N[2].steps;
   const u = hero((s0 + s1) / 2, GROUND, pave(s0), N);

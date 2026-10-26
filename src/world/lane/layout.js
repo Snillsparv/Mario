@@ -179,10 +179,11 @@ export const PLOTS_N = [
 // garage's, forward, the villa's id) and its west block (`<id>_west`, set back), both from the
 // villa's back; their fronts (toward the street, +z) at `front`; `garage` the garage door's
 // middle (u, from the front's middle; north_5's east block has none: its doors at the drive's
-// end); bay windows and arched windows on the upper floor (u);
-// `sides` the faces with a window (not where the other block stands); `brick` and `roof` their
-// tints; a balcony's middle along its block's west face (u).
-export const VILLA = { y0: GROUND, render: 412, eave: 822, pitch: 27, overhang: 110, garage: { w: 520, h: 250 } };
+// end); `sides` the faces with a window (not where the other block stands); `brick` and `roof`
+// their tints (W6: dark brown pantiles, the front hip 34 degrees); a balcony's middle along its
+// block's west face (u). (W6: each block's street face, its eaves and its roof's shape are
+// builders' data: lane/facades.js.)
+export const VILLA = { y0: GROUND, render: 412, eave: 822, pitch: 34, overhang: 110, roof: 0x4e3b2f };
 const villa = (id, x0, x1, back, front, extras) => ({
   id,
   kit: 'villa',
@@ -208,11 +209,11 @@ const villaPair = (id, [xw, xs, xe, zb, zw, ze], east, west) => {
   return [villa(id, x1, x2, z0, z2, { sides: ['back', 'right'], ...east }), villa(`${id}_west`, x0, x1, z0, z1, { sides: ['back', 'left'], brick: east.brick, roof: east.roof, ...west })];
 };
 const PAIRS = [
-  villaPair('north_1', [-5829, -5016, -4080, -2912, -1935, -1180], { garage: 200, bays: [70], arches: [-400], door: -400, brick: 0xac6036, roof: 0x2e2c2c }, { windows: [-250, 250] }),
-  villaPair('north_2', [-3275, -2462, -1588, -2934, -2033, -1313], { garage: 265, bays: [265], arches: [-370], door: -260, brick: 0xa05832, roof: 0x2e2c2c }, { windows: [-200, 250] }),
-  villaPair('north_3', [-785, 60, 1006, -2980, -1979, -1209], { garage: 250, bays: [150], arches: [-400], door: -420, balcony: 500, brick: 0xa45c34, roof: 0x4a3a32 }, { windows: [0] }),
-  villaPair('north_4', [1776, 2628, 3555, -3050, -2075, -1302], { garage: 300, bays: [300], windows: [-350], door: -300, brick: 0xa85a32, roof: 0x4a3a32 }, { windows: [-200, 250] }),
-  villaPair('north_5', [4345, 5135, 6095, -3312, -2382, -1620], { bays: [250], arches: [-430], door: -432, doorTint: 0x6a4a32, brick: 0xae6236, roof: 0x4a3a32 }, { windows: [-200, 200] }),
+  villaPair('north_1', [-5829, -5016, -4080, -2912, -1935, -1180], { garage: 250, brick: 0xac6036, roof: VILLA.roof }, {}),
+  villaPair('north_2', [-3275, -2462, -1588, -2934, -2033, -1313], { garage: 265, brick: 0xa05832, roof: VILLA.roof }, {}),
+  villaPair('north_3', [-785, 60, 1006, -2980, -1979, -1209], { garage: 250, balcony: 500, brick: 0xa45c34, roof: VILLA.roof }, {}),
+  villaPair('north_4', [1776, 2628, 3555, -3050, -2075, -1302], { garage: 300, brick: 0xa85a32, roof: VILLA.roof }, {}),
+  villaPair('north_5', [4345, 5135, 6095, -3312, -2382, -1620], { brick: 0xae6236, roof: VILLA.roof }, {}),
 ];
 // The plots' villas (their east blocks) first, in the plots' order, then the west blocks.
 export const VILLAS = [...PAIRS.map((p) => p[0]), ...PAIRS.map((p) => p[1])];
@@ -601,6 +602,17 @@ export const MOVABLE_BINS = BINS.map((b, i) => ({ id: `bin_${i}`, x: b.x, y: GRO
 // dad's).
 export const LINK_BIN = { x: 110, z: 95, h: 155 };
 export const LINK_BINS = [65, 185].map((d) => ({ x: LINK.x1 - d, z: LINK.z0 - 12 - LINK_BIN.z / 2 }));
+// The villas' bins (W6, as the link's: static, box colliders): north_2's three (black, black and
+// a green one: photos 43, 44) in a row on its drive along its bed's east end, their fronts to the
+// drive (yaw: the way a bin's front looks), north_5's two by its door; north_3's white picket bin
+// enclosure at its drive's mouth (photo 17: solid, a white mailbox on its street face, two bins in
+// it).
+export const VILLA_BINS = [
+  ...[-985, -1100, -1215].map((z, i) => ({ x: PLOTS_N[1].drive[0] + 52, z, yaw: Math.PI / 2, tint: i === 2 ? 0x2e4a32 : null })),
+  // (north_5's two dark ones at its drive's end by its arched door, photos 28, 29.)
+  ...[95, 210].map((d) => ({ x: PLOTS_N[4].drive[1] - 52, z: VILLAS[4].front + d, yaw: -Math.PI / 2, tint: null })),
+];
+export const ENCLOSURE = { x0: PLOTS_N[2].drive[0] + 6, x1: PLOTS_N[2].drive[0] + 106, z0: NORTH.wallZ - 75, z1: NORTH.wallZ - 12, top: GROUND + 185 };
 
 // south_2's front garden (W5: photos 25 and 29-35; no hedge: the aerial's belt is older than
 // the photos): a low concrete edging flush along the apron's straight south edge (`edging`: x0..x1
@@ -637,6 +649,12 @@ export const MAILBOXES = [
   { house: 'south_1', wall: true, u: SOUTH_1.windows[0], v: 40, w: 45, h: 95, d: 25 },
   { x: -2600, z: SOUTH_EDGE + 8, top: GROUND + 175, w: 40, h: 55, d: 30, lid: 0x9a9a9a },
   { x: 4424, z: 1428, top: GROUND + 206, w: 68, h: 45, d: 53 },
+  // (W6: north_2's tall green parcel box on the pavement at its steps, photo 16; north_5's two white
+  // boxes with sloping lids on posts in its bed behind the wall, photos 27, 28: `tint`, their posts
+  // from the bed's drawn height `y0`.)
+  { x: -2290, z: NORTH.wallZ + 26, top: GROUND + 185, w: 52, h: 175, d: 40, tint: 0x3e6a4e, lid: 0x30563e },
+  { x: 4830, z: -936, y0: GROUND + 75, top: GROUND + 170, w: 45, h: 60, d: 38, tint: 0xe8e8e4, lid: 0xdcdcd8 },
+  { x: 4878, z: -930, y0: GROUND + 75, top: GROUND + 160, w: 45, h: 60, d: 38, tint: 0xe8e8e4, lid: 0xdcdcd8 },
 ];
 
 // ---------------------------------------------------------------- the east end
@@ -668,7 +686,7 @@ export const HEDGES = [
   { x0: -5450, x1: -2300, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 150, y0: GROUND, top: GROUND + 190, informal: 36 }, // south_1's front and on west, at the asphalt's edge (W5: loosely clipped, its ragged top drawn `informal` over the walkable one)
   { x0: -5400, x1: 5800, z0: 4100, z1: 4300, y0: GROUND, top: 242 }, // the south back hedges
   { x0: 7950, x1: 8150, z0: -1600, z1: -1000, y0: GROUND, top: 202 }, // between north_5 and the east house
-  { x0: -1300, x1: -500, z0: -960, z1: -880, y0: TERRACE, top: 230 }, // north_3's low box hedge
+  { x0: -4800, x1: -3665, z0: NORTH.wallZ - 195, z1: NORTH.wallZ - 15, y0: TERRACE, top: TERRACE + 190, foot: GROUND + 100, clipped: true }, // (W6: north_2's clipped beech on its bed wall, photos 9, 12, 13, 43, 44: hiding its west part's lower floor; its top walkable, a single jump from the terrace behind it, a double one from the pavement; drawn from the bed wall's top `foot`; north_3's low box hedge gone: photo 17 has none)
   { x0: -2300, x1: -1600, z0: SOUTH_EDGE, z1: SOUTH_EDGE + 150, y0: GROUND, top: GROUND + 110, informal: 20 }, // (W5 fix: its east end low, the link's car seen over it, and stopping short of the link: photos 15, 42)
   { x0: -1890, x1: -1470, z0: 700, z1: 890, y0: GROUND, top: GROUND + 140, informal: 24 }, // (W5 fix: a taller clump set back against south_1's white east end, photos 15, 42)
 ];
@@ -784,7 +802,7 @@ export const CARS = [
   parked('suv', 2445, GARAGE.wall - CAR_GAP, 0, 0x3a4c66),
   { ...parked('cross', -1095, 1150, 0, 0xeeeee8), style: 'two' }, // (W5: south_1's white crossover nose in on the link's drive, its tail ~180 in from the asphalt's edge, its roof, pillars and rails gloss black: photos 41, 42; W5 fix: where its mirror and door handles triangulate from the two)
   parked('hatch', garageAt('north_1').x, garageAt('north_1').front + 40, Math.PI, 0xb6babe),
-  parked('cross', garageAt('north_2').x, garageAt('north_2').front + 40, Math.PI, 0x45484c),
+  { ...parked('cross', garageAt('north_2').x + 70, garageAt('north_2').front + 780, 0, 0x45484c), style: 'two' }, // (W6: nose out on its drive, its roof and cladding black: photos 13, 43, 44)
   parked('hatch', garageAt('north_3').x, garageAt('north_3').front + 40, Math.PI, 0x1f2124),
   // north_4's van, nose in beside its garage door (the hoop's perch from its roof: HOOP).
   parked('van', garageAt('north_4').x - 130, garageAt('north_4').front + 40, Math.PI, 0x24272b),
@@ -1112,8 +1130,8 @@ export const STAR = { id: 'lane_star', x: 300, y: DAD.ridge + 180, z: DAD.ridgeZ
 // ---------------------------------------------------------------- coins, signs, poles
 
 // 55 coins, each at its floor + 60: down the path to the door, on the mailbox's roof, along the
-// street both ways, round the turning area's apron, along two wall tops (north_2's west of its
-// drive, north_3's in front of its west block) and up north_3's steps, across north_4's forecourt
+// street both ways, round the turning area's apron, along north_2's hedge top west of its drive
+// (W6: its bed wall's hedge), north_3's wall top in front of its west block and up north_3's steps, across north_4's forecourt
 // west of the van, up the side yard between north_2 and north_3, on the motorhome's roof, along
 // south_1's hedge, round the junction's lamppost, on the footpath, over the bins, on the
 // carport's roof, up the east wing's slope and the main roof's back slope (W3: the way up from the
@@ -1138,7 +1156,7 @@ export const COINS = [
     const R = APRON.ring;
     return { x: R.x + R.r * Math.sin(a), y: above(0), z: R.z + R.r * Math.cos(a) };
   }),
-  ...[-4600, -4350, -4100].map(wallTop),
+  ...[-4600, -4350, -4100].map((x) => ({ x, y: above(HEDGES[3].top), z: (HEDGES[3].z0 + HEDGES[3].z1) / 2 })),
   ...[-1200, -950, -700].map(wallTop),
   ...[60, 180, 300].map((d) => upSteps(PLOTS_N[2], d)),
   ...[-1300, -1450, -1600].map((z) => ({ x: PLOTS_N[3].drive[0] + 220, y: above(GROUND), z })),
