@@ -1349,34 +1349,49 @@ function trampoline(kit, layout) {
 // ---------------------------------------------------------------- the motorhome, fences
 
 // The motorhome on the north-west villa's drive (W8, photos 01-07: an integrated one; round 2:
-// broadside to the street, its cab toward the road, +u): a white box on a dark skirt, its front a
-// full-width windscreen sloping from the roof's peaked edge down to a short white nose with the
-// headlights, framed windows along both sides, the door on its right (+w, toward the house)
-// behind the cab, dark red swoosh decals, two
-// roof hatches, a small window and the ladder in its back; four dark wheels; solid from the
-// ground to its roof (a coin spot) and down its windscreen's slope to the nose (one convex
-// prism, the realistic look's too).
+// broadside to the street, its cab toward the road, +u): a white box on a dark skirt, its roof's
+// right edge rounded off under a long awning box (photos 06, 07), a roof rail along its left and
+// its back; its front upright (round 2 fix, photo 06): a white nose with the headlights, the
+// windscreen over it leaning back a little, a cap rounding up from its top to the roof; framed
+// windows along both sides, the door on its right (+w, toward the house) behind the cab, dark red
+// swoosh decals, two roof hatches, a small window and the ladder in its back; four dark wheels.
+// Solid from the ground to its roof (a coin spot): its body, its cab (its front a wall up to the
+// cap), the rails and the awning's box (its flat top the one ledge: a double jump's), convex each
+// (the realistic look's too).
 function motorhome(kit, layout) {
   const { paint, solids } = kit.drawn('motorhome');
   const { MOTORHOME: M, GROUND } = layout;
   const f = frame({ cx: M.cx, cz: M.cz, yaw: M.yaw, w: M.l, d: M.w });
   const top = GROUND + M.h;
   const [hl, hw] = [M.l / 2, M.w / 2];
-  const box = (u0, u1, y0, y1, w0, w1, y1b) => frameBox(f, u0, u1, y0, y1, w0, w1, y1b);
-  const nose = GROUND + M.nose;
-  const screen = hl - M.cab; // (where the roof's edge meets the windscreen)
+  const [bw, bd] = M.bevel;
+  const [rh, rt] = M.rail;
+  const box = (u0, u1, y0, y1, w0, w1) => frameBox(f, u0, u1, y0, y1, w0, w1);
+  const [nose, front] = [GROUND + M.nose, GROUND + M.front];
+  const screen = hl - M.cab; // (where the roof's edge meets the cap)
+  const brow = hl - M.lean; // (the windscreen's top, under the cap)
+  // A convex prism: the outline `pts` ([a, b]) at t 0 and 1 (`at(a, b, t)`), and its sides.
+  const prism = (pts, at) => [pts.map(([a, b]) => at(a, b, 0)), pts.map(([a, b]) => at(a, b, 1)), ...pts.map(([a, b], i) => {
+    const [c, d] = pts[(i + 1) % pts.length];
+    return [at(a, b, 0), at(a, b, 1), at(c, d, 1), at(c, d, 0)];
+  })];
+  const along = (u0, u1) => (w, y, t) => f.at(t ? u1 : u0, y, w); // (a section across it, from u0 to u1)
+  const across = (w0, w1) => (u, y, t) => f.at(u, y, t ? w1 : w0); // (a profile along it, from w0 to w1)
+  const body = (y0) => [[-hw, y0], [hw, y0], [hw, top - bd], [hw - bw, top], [-hw, top]];
+  const rail = (o) => [[o, top - bd - 5], [o + rt, top - bd - 5], [o + rt, top + rh - 6], [o + rt / 2, top + rh], [o, top + rh - 6]];
+  const rails = [prism(rail(-hw), along(-hl, screen)), prism(rail(-hl), across(-hw, hw))];
+  const awning = (y0) => box(-hl + 60, hl - 300, y0, top + M.awning[0], hw - M.awning[1], hw + 6);
   paint.color(0x3a3c40);
   paint.solid(box(-hl + 10, hl - 10, GROUND + 22, GROUND + 50, -hw + 6, hw - 6));
   paint.color(M.tint);
   const shade = (n) => (n[1] > 0.5 ? 1.05 : n[1] < -0.5 ? 0.5 : 0.95);
-  paint.solid(box(-hl, screen, GROUND + 45, top, -hw, hw), { faceShade: shade });
-  // (The cab: a wedge from the roof's edge down to the nose.)
-  paint.solid(box(screen, hl, GROUND + 45, top - 6, -hw + 4, hw - 4, nose), { faceShade: shade });
-  // The windscreen on the wedge's slope (just proud of it), the side cab windows.
+  paint.solid(prism(body(GROUND + 45), along(-hl, screen)), { faceShade: shade });
+  // (The cab: its nose, the windscreen's lean back to the brow, the cap up to the roof's edge.)
+  paint.solid(prism([[screen, GROUND + 45], [hl, GROUND + 45], [hl, nose], [brow, front], [screen, top - 4]], across(-hw + 4, hw - 4)), { faceShade: shade });
+  // The windscreen on its lean (just proud of it: it is nearly upright), the side cab windows.
   paint.color(0x1e2328);
-  const sl = Math.hypot(top - 6 - nose, hl - screen) / 1.5; // (1.5 out of the slope)
-  const q = (k, w) => f.at(screen + (hl - screen) * k + (top - 6 - nose) / sl, top - 6 - (top - 6 - nose) * k + (hl - screen) / sl, w);
-  paint.poly([q(0.9, -hw + 18), q(0.9, hw - 18), q(0.06, hw - 14), q(0.06, -hw + 14)], { facing: f.dir(top - nose, hl - screen, 0) });
+  const q = (k, w) => f.at(hl - M.lean * k + 1.5, nose + (front - nose) * k, w);
+  paint.poly([q(0.94, -hw + 18), q(0.94, hw - 18), q(0.08, hw - 14), q(0.08, -hw + 14)], { facing: f.dir(front - nose, M.lean, 0) });
   const quad = (fr, u0, v0, u1, v1, w, tint) => {
     paint.color(tint);
     paint.panel(fr, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], w);
@@ -1401,24 +1416,30 @@ function motorhome(kit, layout) {
   const right = wallFrame(f.at(0, GROUND, hw), f.dir(0, 0, 1));
   quad(right, hl - 340, 52, hl - 260, 360, 1.1, 0xe4e6e2);
   quad(right, hl - 328, 260, hl - 272, 330, 1.8, 0x23282e);
-  // The roof's hatches; the back's window and the ladder.
+  // The awning's long box on the roof's right edge (just proud of the side: drawn from a little
+  // under the roof, a shadow line under it over the rounded edge), the rails.
+  paint.color(0xc4c8c8);
+  paint.solid(awning(top - 8), { faceShade: shade });
+  paint.color(0xa8acae);
+  for (const r of rails) paint.solid(r);
+  // The roof's hatches; the back's window and the ladder up to the rail.
   paint.color(0xe0e0dc);
   for (const u of [-hl + 220, -hl + 560]) paint.solid(box(u - 40, u + 40, top, top + 14, -45, 45));
   const back = wallFrame(f.at(-hl, GROUND, 0), f.dir(-1, 0, 0));
   quad(back, -60, 280, 20, 330, 1, 0x23282e);
   paint.color(0x6a6e72);
-  for (const u of [60, 110]) paint.solid(localBoxPolys(back, u - 3, u + 3, 100, M.h + 20, 0, 12));
+  for (const u of [60, 110]) paint.solid(localBoxPolys(back, u - 3, u + 3, 100, M.h + rh, 0, 12));
   for (let v = 120; v < M.h; v += 80) paint.solid(localBoxPolys(back, 57, 113, v, v + 6, 8, 14));
   paint.color(0x111111);
   for (const u of [-hl + 170, hl - 230]) for (const w of [-hw + 10, hw - 10]) paint.solid(box(u - 42, u + 42, GROUND, GROUND + 84, w - 18, w + 18));
-  // (Its side's outline, the prism between its two sides without a bottom.)
-  const side = (w) => [f.at(-hl, GROUND - 5, w), f.at(hl, GROUND - 5, w), f.at(hl, nose, w), f.at(screen, top, w), f.at(-hl, top, w)];
-  const [a, b] = [side(-hw), side(hw)];
-  solids.solid([a, b, ...[1, 2, 3, 4].map((i) => [a[i], a[(i + 1) % 5], b[(i + 1) % 5], b[i]])], 'stone');
+  // (Solid: the body (its right edge's bevel), the cab (its front upright to the cap) and the rails.)
+  solids.solid(prism(body(GROUND - 5), along(-hl, screen)), 'stone');
+  solids.solid(prism([[screen, GROUND - 5], [hl, GROUND - 5], [hl, front], [screen, top]], across(-hw, hw)), 'stone');
+  for (const r of [...rails, awning(top - bd - 12)]) solids.solid(r, 'stone');
 }
 
-// A box in a house frame's (u, y, w) from u0..u1, y0..y1 (its +u end's top at y1b), w0..w1.
-const frameBox = (f, u0, u1, y0, y1, w0, w1, y1b = y1) => hexaPolys([f.at(u0, y0, w0), f.at(u1, y0, w0), f.at(u1, y0, w1), f.at(u0, y0, w1), f.at(u0, y1, w0), f.at(u1, y1b, w0), f.at(u1, y1b, w1), f.at(u0, y1, w1)]);
+// A box in a house frame's (u, y, w) from u0..u1, y0..y1, w0..w1.
+const frameBox = (f, u0, u1, y0, y1, w0, w1) => hexaPolys([f.at(u0, y0, w0), f.at(u1, y0, w0), f.at(u1, y0, w1), f.at(u0, y0, w1), f.at(u0, y1, w0), f.at(u1, y1, w0), f.at(u1, y1, w1), f.at(u0, y1, w1)]);
 
 // A fence along [from, to] (in its house's frame): a picket fence (pales on two rails, posts) or a
 // two-rail fence on posts; its collider a slab as high.

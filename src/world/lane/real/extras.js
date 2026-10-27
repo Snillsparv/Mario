@@ -118,9 +118,9 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
   const [hl, hw] = [M.l / 2, M.w / 2];
   const top = G + M.h;
   // The body: rounded sections along it (u); W8: an integrated motorhome (photos 01-07), its cab
-  // toward the road (+u; round 2: broadside to the street): the roof's edge a little peaked over
-  // a full-width windscreen sloping straight down to a short white nose (the slope the
-  // collider's: lane/props.js motorhome).
+  // toward the road (+u; round 2: broadside to the street); its fix: its front upright as photo
+  // 06 has it, the nose, the windscreen leaning back a little over it, a cap rounding up to the
+  // roof's edge (the collider's: lane/props.js motorhome).
   const section = (u, y0, y1, half, r) => {
     const pts = [];
     for (const [cw, cy, a0] of [[half - r, y0 + r, -Math.PI / 2], [half - r, y1 - r, 0], [-half + r, y1 - r, Math.PI / 2], [-half + r, y0 + r, Math.PI]]) {
@@ -131,30 +131,30 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
     }
     return pts;
   };
-  const nose = G + M.nose;
-  const cab = (k) => top - (top - nose) * k; // (the slope's height k along it from the roof's edge)
+  const [nose, fy] = [G + M.nose, G + M.front];
+  const [edge, brow] = [hl - M.cab, hl - M.lean]; // (the roof's edge, the windscreen's top)
   const stations = [
     [-hl, G + 50, top - 8, hw - 6, 34],
     [-hl + 18, G + 45, top, hw, 34],
-    [hl - M.cab - 20, G + 45, top, hw, 34],
-    [hl - M.cab, G + 45, top - 4, hw - 2, 32],
-    [hl - M.cab / 2, G + 45, cab(0.5), hw - 5, 30],
-    [hl - 16, G + 45, cab(0.9), hw - 10, 26],
-    [hl, G + 52, nose - 4, hw - 16, 22],
+    [edge - 20, G + 45, top, hw, 34],
+    [edge, G + 45, top - 4, hw - 2, 32],
+    [(edge + brow) / 2, G + 45, fy + (top - fy) * 0.55, hw - 4, 30],
+    [brow, G + 45, fy + 2, hw - 7, 27],
+    [hl, G + 52, nose, hw - 14, 22],
   ];
   paint.color(M.tint);
   paint.loft(stations.map(([u, a, b, h, r]) => section(u, a, b, h, r)).map((s) => s.slice().reverse()), { capStart: true, capEnd: true });
-  // The windscreen on the cab's slope, the framed windows along both sides, the swoosh, the
-  // stripe, the door on its right (+w, toward the house) behind the cab.
+  // The windscreen on its lean, the framed windows along both sides, the swoosh, the stripe, the
+  // door on its right (+w, toward the house) behind the cab.
   const slope = (k, w) => {
-    const [u0, y0] = [hl - M.cab + 12, cab(0.08)];
-    const [u1, y1] = [hl - 16, cab(0.9)];
+    const [u0, y0] = [brow + 4, fy - 6];
+    const [u1, y1] = [hl - 3, nose + 12];
     const n = norm(F.dir(y0 - y1, u1 - u0, 0));
     const p = F.at(u0 + (u1 - u0) * k, y0 + (y1 - y0) * k, w);
-    return add(p, mul(n, 4));
+    return add(p, mul(n, 3));
   };
   carGlass.rgb(0.004, 0.005, 0.006);
-  const screen = [slope(0.05, -hw + 26), slope(0.05, hw - 26), slope(0.86, hw - 22), slope(0.86, -hw + 22)];
+  const screen = [slope(0.05, -hw + 28), slope(0.05, hw - 28), slope(0.94, hw - 24), slope(0.94, -hw + 24)];
   const out = F.dir(1, 1, 0);
   if (dot(cross(sub(screen[1], screen[0]), sub(screen[3], screen[0])), out) >= 0) carGlass.quad(...screen);
   else carGlass.quad(screen[1], screen[0], screen[3], screen[2]);
@@ -197,6 +197,15 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
     const [u0, u1] = s > 0 ? [hw - 68, hw - 22] : [-hw + 22, -hw + 68];
     metal.quad(front.at(u0, G + 96, 0.4), front.at(u1, G + 96, 0.4), front.at(u1, G + 122, 0.4), front.at(u0, G + 122, 0.4));
   }
+  // The roof rail along its left and its back, the awning's box along its right edge (round 2
+  // fix: the collider's, lane/props.js motorhome).
+  const [rh, rt] = M.rail;
+  steel.color(0xa4a8aa);
+  fbox(steel, side(-1), -edge, hl, top - 24, top + rh, -rt - 0.6, 0);
+  const back = wallFrame(F.at(-hl, 0, 0), F.dir(-1, 0, 0));
+  fbox(steel, back, -hw, hw, top - 24, top + rh, -rt, 0.6);
+  paint.color(0xc4c8c8);
+  fbox(paint, right, -hl + 60, hl - 300, top - 8, top + M.awning[0], -M.awning[1] - 0.6, 5.4);
   // The roof's hatches.
   paint.color(0xe0e0dc);
   for (const u of [-hl + 220, -hl + 560]) {
@@ -214,11 +223,10 @@ export function motorhome({ paint, carGlass, tyre, rim, steel, metal }, L) {
       rim.tube([c[0] + o[0], c[1], c[2] + o[2]], [c[0] + o[0] * 1.08, c[1], c[2] + o[2] * 1.08], 24, 24, 12, { caps: true });
     }
   }
-  // The back: a small window, the ladder.
-  const back = wallFrame(F.at(-hl, 0, 0), F.dir(-1, 0, 0));
+  // The back: a small window, the ladder up to the rail.
   carGlass.quad(back.at(-60, G + 280, 0.6), back.at(20, G + 280, 0.6), back.at(20, G + 330, 0.6), back.at(-60, G + 330, 0.6));
   steel.color(0x9a9ea0);
-  for (const u of [60, 110]) steel.tube(back.at(u, G + 100, 10), back.at(u, top + 20, 10), 3, 3, 6);
+  for (const u of [60, 110]) steel.tube(back.at(u, G + 100, 10), back.at(u, top + rh, 10), 3, 3, 6);
   for (let v = 120; v < M.h; v += 80) steel.tube(back.at(57, G + v, 10), back.at(113, G + v, 10), 2.5, 2.5, 6);
 }
 

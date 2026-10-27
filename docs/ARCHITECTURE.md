@@ -1777,15 +1777,28 @@ trees' leaves).
   on its drive (an integrated motorhome; round 2, as photos 04-07 have it: broadside to the
   street beside the house's east wall, 25 clear of its eave's rim (a walkable gap of 125 to the
   wall, open at both ends), its cab toward the road, its nose 150 short of the pavement's back,
-  `yaw` WEST_YAW − π/2: a full-width windscreen sloping straight from the roof's peaked edge
-  `cab` 150 back down to its nose at `nose` 165, framed windows, the door on its right (toward
-  the house), swoosh decals, roof hatches, a ladder; 490 tall (W8 fix: at W8's 400 a single
-  running jump from full speed grabbed its edge; it grabs an edge up to ~475); solid to its roof
-  and down the windscreen's slope (one convex prism, the realistic look's the same; the slope's
-  normal ~0.42 up, no step): a running double jump from the drive beside it lands on its roof, a
-  single one from the ground round it falls short from a standstill or at full speed, at its
-  nose from the road too; north_1's terrace corner, 150 up and 25 off its side, is the one
-  place a single jump reaches it, lane-routes). **Chain houses** (south_west and its wing, south_1
+  `yaw` WEST_YAW − π/2; round 2 fix, its front upright as photo 06 has it: a white nose up to
+  `nose` 220, the windscreen over it leaning back `lean` 30 to `front` 398, a cap rounding up
+  to the roof's edge `cab` 150 back; framed windows, the door on its right (toward the house),
+  swoosh decals, roof hatches, a ladder up to the roof rail; 490 tall. Its edges keep the double
+  jump (round 2 fix): a single jump peaks 338 over its take-off and grabs an edge up to ~520 over
+  the drive, but from north_1's terrace beside it (150, 15-240 off its left side) it lands on a
+  top up to ~518, as high as a double jump from the drive (~525), so no height alone tells them
+  apart; on its right (+w, the house's side) the roof's edge is rounded off (`bevel` [30, 20],
+  33.7°: too steep to hang from, gentle enough to land on) under a roof-mounted awning box
+  (`awning` [33, 36], photos 06-07, from 60 short of its back to past its door) whose flat top
+  33 over the roof is its one ledge: over any single jump's grab, in a standing double jump's
+  (~570); along its left and its back a roof rail flush with the sides (`rail` [40, 8], ridged:
+  no grab, no landing under ~522); its front a wall up to 420, then the cap (31.5°: no grab).
+  The old sloping windscreen was a step up: a running single landed on it, slid up it on his
+  run's speed and a jump out of the slide landed on the roof (61fb2db and d46cfec; the sweeps
+  also found slanting single jumps hanging from its long sides at their peak and singles from
+  the terrace, 572 and 172 of them). Solid: its body (the bevel), its cab, the rails and the
+  awning's box, convex each, the realistic look's the same. lane-routes: no single jump from the
+  ground round it, square or slanting, from its nose, the gap to the house, the yard behind it or
+  the terrace grabs it or stands on it; a double jump straight up beside its right side hangs
+  from the awning, a running one from the drive in front of the house lands on its roof).
+  **Chain houses** (south_west and its wing, south_1
   and its two wings, `DAD` and his, south_2 and its two, east_house): a white brick plinth (135),
   boards to the eaves at 412 (or white brick gable ends with boards in their triangles),
   black-framed windows with a pale glint and white curtains, a black front door with a little
@@ -3920,7 +3933,7 @@ lane's re-pinned in the R fixes: its run grabs L4, a pole since); a profile set 
 nothing behind; the lane's profile's field of view in `apply()` and the look-up, its look point,
 the arrival's eye height, first person's eye with and without it), `tests/hero-scale.test.js`
 (the pivots; at 0.85 his mittens on the lip of the dad's eave, the carport's and the
-motorhome's roof as at full size, his grip on the poles (every lamppost among them, their thin
+motorhome's awning box as at full size, his grip on the poles (every lamppost among them, their thin
 trunks) and nothing sinking into them, his lowest point on the floor, the blob at his scale,
 the eased change of pivot), `tests/lane.test.js` (its camera tests also with the realistic
 look's profile), `tests/real-texgen.test.js` (every lane set pinned at 64 px with `TEXGEN_VERSION`,
@@ -5152,18 +5165,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,287,087 | 399 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,287,360 | 402 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 105,680 | 43 kB | 104 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone) |
-| realLook | 49,433 | 18 kB | 60 KiB (from 90) |
-| laneBoss | 102,277 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
+| lane | 106,460 | 43 kB | 104 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
+| realLook | 49,435 | 18 kB | 60 KiB (from 90) |
+| laneBoss | 102,268 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 200,659 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone) |
+| laneRealWorker | 198,992 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

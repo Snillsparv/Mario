@@ -2,7 +2,7 @@
 // model, scaled about his grip: player/model/scalePivot.js), on the real lane with the real
 // Player: the pivot per action (his feet, but the ledge's lip under his hands while he hangs
 // from it or pulls up onto it); hanging from the dad's eave, the carport's edge and the
-// motorhome's roof his mittens stay on the lip (their height and their reach over it within 2
+// motorhome's roof (its awning's box) his mittens stay on the lip (their height and their reach over it within 2
 // units of his full size's; along the lip they close in with his smaller shoulders); pulling
 // up onto the eave they keep to it; holding each of the poles his mittens keep their grip
 // (within 2 of his full size's distance from the trunk) and nothing of him sinks deeper into
@@ -64,21 +64,22 @@ function vertices(model) {
 }
 
 // The three ledges: a standing jump at the dad's front eave, and at the carport's front edge; a
-// running double jump at the motorhome's roof.
+// standing double jump at the motorhome's roof.
 function hang(name) {
   if (name === 'motorhome') {
-    // (Round 2: broadside to the street, its cab toward the road: from the yard behind it, at its
-    // back's edge (975 behind its middle, along it).)
+    // (Round 2 fix: its one ledge, the awning's box along its roof's right edge: a double jump
+    // straight up beside its right side, in the gap to the house, 300 behind its middle.)
     const M = lane.MOTORHOME;
-    const yaw = M.yaw + Math.PI / 2; // (along its +u)
-    const x = M.cx - Math.cos(M.yaw) * 975;
-    const z = M.cz + Math.sin(M.yaw) * 975;
+    const yaw = M.yaw + Math.PI; // (toward its -w: at it)
+    const [u, w] = [-300, M.w / 2 + 52];
+    const x = M.cx + Math.cos(M.yaw) * u + Math.sin(M.yaw) * w;
+    const z = M.cz - Math.sin(M.yaw) * u + Math.cos(M.yaw) * w;
     const h = hero(x, lane.groundHeight(x, z), z, yaw);
     h.tick({}, yaw);
     for (let jump = 0; jump < 2 && h.p.action !== 'ledge_hang'; jump++) {
-      h.tick({ stickY: 1 }, yaw);
-      h.tick({ stickY: 1, A: true }, yaw);
-      for (let t = 0; t < 90 && !(h.p.grounded && t > 2) && h.p.action !== 'ledge_hang'; t++) h.tick({ stickY: 1, A: true }, yaw);
+      h.tick({ stickY: 0.3 }, yaw);
+      h.tick({ stickY: 0.3, A: true }, yaw);
+      for (let t = 0; t < 90 && !(h.p.grounded && t > 2) && h.p.action !== 'ledge_hang'; t++) h.tick({ stickY: 0.3, A: true }, yaw);
     }
     return h;
   }

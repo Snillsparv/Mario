@@ -280,13 +280,24 @@ export const northWestDrive = () => {
 // eave's rim: a walkable gap of 125 between them, open at both ends), its cab
 // toward the road (its frame's +u: the house's +w), its rear 380 behind the house's front, its
 // nose 150 short of the pavement's back; the door on its right (+w: toward the house). l along
-// its frame's u, w across it, h tall (3.3 m with its roof's hatches); its cab's windscreen sloping
-// from the roof's edge `cab` back from its front down to its nose at `nose` over the ground.
-// Solid to its roof and down that slope (a coin spot, reached by a double jump and a grab of its
-// edge; a single running jump at full speed falls short of the edge: its top ~80 over that jump's
-// peak, which grabs an edge up to ~475; the windscreen too steep to stand on).
+// its frame's u, w across it, h tall (3.3 m with its roof's hatches). Round 2 fix, its front as
+// photo 06 has it: upright, its nose up to `nose` over the ground, the windscreen over it leaning
+// back `lean` to `front`, a rounded cap from there up to the roof's edge `cab` back from its
+// front. Solid to its roof (a coin spot for the double jump): its front a wall up to `front`, the
+// cap over it (gentle enough to land on, too steep to hang from). A single jump from the ground
+// peaks 338 up (it lands on a top up to ~390, grabs an edge up to ~520), one from north_1's
+// terrace beside it (128 higher) lands on a top up to ~518, as high as the double jump from the
+// ground, so the edges decide it: on its right (+w, the house's side, the double jump's) the
+// roof's edge rounded off (`bevel`: [across, down]: too steep to hang from, the double jump lands
+// over it); along its left (-w, the terrace's side) and its back a roof rail flush with the
+// sides, ridged (`rail`: [high, thick]), its top 40 over the roof: no grab, no landing for any
+// single jump; on the right edge a roof-mounted awning box (photos 06, 07; `awning`: [its flat top
+// over the roof, deep]) from 60 short of its back to just past its door (300 short of its front),
+// the double jump's ledge: its top 33 over the roof, over any single jump's grab (~520), in a
+// standing double jump's (~570); a running one lands over the rounded edge in front of it. (A steep face a single jump reaches would carry him up it on his run's speed and
+// let him jump again off it: the old sloping windscreen did, so the front is upright.)
 const MH = { u: 1020, w: 1091 }; // (its middle in the house's frame; its east side 15 short of north_1's terrace's corner)
-export const MOTORHOME = { cx: Math.round(NORTH_WEST.cx + NW_U[0] * MH.u + NW_W[0] * MH.w), cz: Math.round(NORTH_WEST.cz + NW_U[1] * MH.u + NW_W[1] * MH.w), yaw: WEST_YAW - Math.PI / 2, l: 1090, w: 390, h: 490, cab: 150, nose: 165, tint: 0xeceae4 };
+export const MOTORHOME = { cx: Math.round(NORTH_WEST.cx + NW_U[0] * MH.u + NW_W[0] * MH.w), cz: Math.round(NORTH_WEST.cz + NW_U[1] * MH.u + NW_W[1] * MH.w), yaw: WEST_YAW - Math.PI / 2, l: 1090, w: 390, h: 490, cab: 150, nose: 220, lean: 30, front: 398, bevel: [30, 20], rail: [40, 8], awning: [33, 36], tint: 0xeceae4 };
 
 // Falu red as the photos have it (W1): a cool, deep red (hue ~2 deg), the blue close to the green,
 // so it stays red in the house's shade instead of turning brown.
