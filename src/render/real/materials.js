@@ -40,7 +40,7 @@
 //   CLAMP_GLSL                                               // the clamp's source (the tests')
 //
 // `haze` is the look's uniforms (sky.js skyUniforms + uHazeDensity, uHazeGlow, and the light's
-// split uSunTint, uShadeTint: neutral where a haze has none), shared by every material, so the sky
+// split uSunTint, uShadeTint, uSunFill: neutral where a haze has none), shared by every material, so the sky
 // and the haze change together.
 //
 // The haze chunk replaces the fog: the fragment's distance to the camera fades it toward the
@@ -281,12 +281,25 @@ function wearChunk(shader, uniform, { attr = false, lite = false }) {
 // The golden hour's sun and shade (R2-2): the direct light's diffuse and specular times uSunTint,
 // the indirect (the sky's environment, the hemisphere) times uShadeTint, before the occlusion and
 // the tone mapping (so the low tier, without an output pass, has it too). Only the realistic
-// materials take it: Jonas and the signs (classic materials) are lit as before.
-const SPLIT_FRAG = /* glsl */ `reflectedLight.directDiffuse *= uSunTint;
-  reflectedLight.directSpecular *= uSunTint;
-  reflectedLight.indirectDiffuse *= uShadeTint;
-  reflectedLight.indirectSpecular *= uShadeTint;
+// materials take it: Jonas and the signs (classic materials) are lit as before. And where the
+// sun falls the sky's diffuse fill is weaker, by uSunFill of the sun's share of the diffuse light
+// (R2-2 fix: the phone photos' sunlit faces and lawns keep the low sun's gold, where an
+// even fill washed them pale; the shade, the sun's share 0 there, keeps it all). The light still
+// grows into the sun (1 - uSunFill / (1 + D/I)^2 > 0 for uSunFill < 1): no dark rim at a
+// shadow's edge.
+// (The leaves and the grass's blades keep the whole fill: their dapple is the sun's through a
+// canopy, and a fill that came and went with it only stirred their speckle.)
+const SUN_FILL = ' * (1.0 - uSunFill * splitSun / (splitSun + splitSky + 1e-6))';
+const SPLIT_FRAG = /* glsl */ `{
+    float splitSun = dot(reflectedLight.directDiffuse * uSunTint, vec3(0.2126, 0.7152, 0.0722));
+    float splitSky = dot(reflectedLight.indirectDiffuse * uShadeTint, vec3(0.2126, 0.7152, 0.0722));
+    reflectedLight.directDiffuse *= uSunTint;
+    reflectedLight.directSpecular *= uSunTint;
+    reflectedLight.indirectDiffuse *= uShadeTint${SUN_FILL};
+    reflectedLight.indirectSpecular *= uShadeTint;
+  }
   #include <aomap_fragment>`;
+const fullFill = (shader) => (shader.fragmentShader = shader.fragmentShader.replace(SUN_FILL, ''));
 const NEUTRAL = new THREE.Vector3(1, 1, 1);
 
 export function hazeChunk(material, haze, key = 'real-haze', patch = null, wear = null) {
@@ -295,9 +308,9 @@ export function hazeChunk(material, haze, key = 'real-haze', patch = null, wear 
   const worn = !!(wear && haze.uWearGround);
   if (worn) material.userData.wear = { value: new THREE.Vector4() };
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { uSunTint: { value: NEUTRAL }, uShadeTint: { value: NEUTRAL } }, haze);
+    Object.assign(shader.uniforms, { uSunTint: { value: NEUTRAL.clone() }, uShadeTint: { value: NEUTRAL.clone() }, uSunFill: { value: 0 } }, haze);
     shader.vertexShader = 'varying vec3 vHazeWorld;\n' + shader.vertexShader.replace('#include <project_vertex>', HAZE_VERT);
-    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\nuniform vec3 uSunTint;\nuniform vec3 uShadeTint;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG).replace('#include <aomap_fragment>', SPLIT_FRAG);
+    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\nuniform vec3 uSunTint;\nuniform vec3 uShadeTint;\nuniform float uSunFill;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG).replace('#include <aomap_fragment>', SPLIT_FRAG);
     patch?.(shader);
     if (worn) wearChunk(shader, material.userData.wear, wear);
     if (far) sunShadowChunk(shader);
@@ -391,6 +404,7 @@ export function foliageMaterial(map, { roughness = 0.6, translucency = 0.6, cove
       .replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''))
       .replace('#include <lights_fragment_begin>', FOLIAGE_LIGHTS)
       .replace('#include <lights_fragment_end>', FOLIAGE_FRAG);
+    fullFill(shader);
   });
 }
 
@@ -421,6 +435,7 @@ export function grassMaterial({ lawn, rect, grid, middle, wind }, haze) {
   return hazeChunk(material, haze, 'real-grass', (shader) => {
     Object.assign(shader.uniforms, { uLawn: { value: lawn }, uLawnRect: { value: rect }, uGrid: grid, uGridMiddle: middle, uWind: wind });
     shader.vertexShader = 'attribute vec2 cell;\nattribute float sway;\nuniform sampler2D uLawn;\nuniform vec4 uLawnRect, uGrid, uWind;\nuniform vec2 uGridMiddle;\n' + WEAR_NOISE + shader.vertexShader.replace('#include <color_vertex>', GRASS_COLOR).replace('#include <begin_vertex>', GRASS_VERT);
+    fullFill(shader);
   });
 }
 

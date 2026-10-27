@@ -10,9 +10,10 @@
 //
 //   const look = new RealLook({ preset, tier, probeAt, farBox, canRetro })
 //       preset: { sky, sunDir, light, exposure, environment, haze, hazeGlow, shadow: { radius, bias,
-//                 normalBias } (bias and normalBias in world units), light { sun, shade } the
-//                 golden hour's split (materials.js: the direct light's tint, the indirect's;
-//                 eased to none by the storm's darkness: look.ease),
+//                 normalBias } (bias and normalBias in world units), light { sun, shade, fill }
+//                 the golden hour's split (materials.js: the direct light's tint, the indirect's,
+//                 how much weaker the sky's fill is where the sun falls; eased to none by the
+//                 storm's darkness: look.ease; light.direct: any of them for the direct path),
 //                 atmosphere, post, grade, camera, hero }   (layout.LANE_REAL: atmosphere is the
 //                 view.setAtmosphere preset the look's sun and hemisphere come from; post and
 //                 grade the post chain's and the output pass's settings; camera the camera's
@@ -114,10 +115,12 @@ export class RealLook {
     this.camera = preset.camera ?? null; // the camera's profile meanwhile (core/AreaSwitch.js)
     this.heroScale = preset.hero ?? 1; // Jonas's model's size meanwhile (view.heroScale)
     // The golden hour's split (materials.js): the sun's tint on the direct light, the shade's on
-    // the indirect, eased to none as the storm comes (its key light and sky are its own).
-    const light = preset.light ?? {};
+    // the indirect, eased to none as the storm comes (its key light and sky are its own); on the
+    // direct path (low: no grade, no occlusion) light.direct's own values over them.
+    const light = { ...preset.light, ...(tier.direct ? preset.light?.direct : null) };
     this.light = [light.sun, light.shade].map((c) => new THREE.Vector3(...(c ?? [1, 1, 1])));
-    this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze }, uHazeGlow: { value: preset.hazeGlow ?? 0 }, uSunTint: { value: this.light[0].clone() }, uShadeTint: { value: this.light[1].clone() } };
+    this.fill = light.fill ?? 0; // (the sky's fill weaker where the sun falls: materials.js)
+    this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze }, uHazeGlow: { value: preset.hazeGlow ?? 0 }, uSunTint: { value: this.light[0].clone() }, uShadeTint: { value: this.light[1].clone() }, uSunFill: { value: this.fill } };
     this.dark = 0; // (the darkness the split was last eased for)
     this.far = farBox && tier.far ? new FarShadow({ size: tier.far, sunDir: preset.sunDir, box: farBox }) : null;
     this.heights = farBox ? [farBox.y0, farBox.y1] : SHADOW_HEIGHTS; // (the near shadow camera's depth: shadowFar)
@@ -484,6 +487,7 @@ export class RealLook {
   ease(k) {
     this.dark = k;
     [this.haze.uSunTint, this.haze.uShadeTint].forEach((u, i) => u.value.set(1, 1, 1).lerp(this.light[i], 1 - k));
+    this.haze.uSunFill.value = this.fill * (1 - k);
   }
 
   // Once: the multisampled depth's resolve into the depth texture worked (some drivers refuse

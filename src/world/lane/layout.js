@@ -1121,18 +1121,21 @@ export const LANE_REAL_SUN = (() => {
 //                blue zenith paling to a near white horizon away from the sun, a peach glow
 //                rising from the horizon only on its side, the dim ground the environment's
 //                lower half shows), its brightness and thin cirrus, the sun's glow (R2-2: a
-//                deeper peach-gold), the broken low cumulus' cover (cumulus: R2-2, the photos'
-//                evening clouds), and
+//                deeper peach-gold), the broken low cumulus' cover away from the sun (cumulus:
+//                R2-2, the photos' evening clouds; none toward the sun, as theirs), and
 //                envTint: its light's colour beside its own (the environment only: a camera's
 //                white balance, so the shade, the road and the white plinths read near neutral
 //                as in the photos, not blue; G3; R2-2 a touch cooler), envGlow: the
 //                environment's warm band on the low sun's side (the faces turned to it golden)
 //   sunDir       the realistic look's own sun, lower than the classic bake's (LANE_REAL_SUN)
 //   light        the golden hour's split (R2-2, render/real/materials.js): the sun's tint on
-//                every realistic material's direct light (golden, a little less of it: the
-//                sunlit faces under the tone curve's shoulder, saturated), the shade's on the
-//                indirect (the sky's light a little stronger and cooler); the realistic materials
-//                only, so Jonas and the signs are lit as before
+//                every realistic material's direct light (deep golden at about the same
+//                luminance), the shade's on the indirect (the sky's light a little stronger and
+//                cooler), fill: how much weaker the sky's diffuse fill is where the sun falls (by
+//                the sun's share there: the photos' sunlit faces keep the sun's gold, the shade
+//                keeps it all; under 1), direct: any of them on the direct path (low: no grade
+//                nor occlusion, its shade already as light as the photos'); the realistic
+//                materials only, so Jonas and the signs are lit as before
 //   exposure     before the output pass's Neutral tone mapping (1.25: the shade reads like the
 //                phone photos without blowing out the sunlit villas)
 //   environment  the sky's light on every material (1.3: at 1 the shaded lawn is too dark;
@@ -1178,9 +1181,9 @@ export const LANE_REAL_SUN = (() => {
 //                only the model, scaled about his grip (player/model/scalePivot.js); his
 //                collider and everything he does stay
 export const LANE_REAL = Object.freeze({
-  sky: Object.freeze({ zenith: [0.27, 0.37, 0.53], horizonAway: [0.68, 0.72, 0.76], horizonSun: [1.3, 0.82, 0.44], ground: [0.08, 0.08, 0.06], intensity: 1, clouds: 0.25, cumulus: 0.3, glow: [1, 0.7, 0.42], envGlow: [0.3, 0.17, 0.07], envTint: Object.freeze([1.02, 1, 0.94]) }),
+  sky: Object.freeze({ zenith: [0.27, 0.37, 0.53], horizonAway: [0.68, 0.72, 0.76], horizonSun: [1.3, 0.82, 0.44], ground: [0.08, 0.08, 0.06], intensity: 1, clouds: 0.25, cumulus: 0.85, glow: [1, 0.7, 0.42], envGlow: [0.3, 0.17, 0.07], envTint: Object.freeze([1.02, 1, 0.94]) }),
   sunDir: LANE_REAL_SUN,
-  light: Object.freeze({ sun: [1, 0.88, 0.6], shade: [1.12, 1.12, 1.16] }),
+  light: Object.freeze({ sun: [1, 0.82, 0.48], shade: [1.16, 1.18, 1.24], fill: 0.7, direct: Object.freeze({ shade: [1.07, 1.12, 1.18] }) }),
   exposure: 1.25,
   environment: 1.3,
   haze: 1.6e-5,

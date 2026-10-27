@@ -21,9 +21,10 @@
 //                                // horizon the visible dome shows the horizon's haze (the
 //                                // lane's ground ends short of it), 0: a dark ground (the
 //                                // environment capture, for lighting)
-//                                // cumulus: the broken low cloud layer's cover (R2-2: under
-//                                // ~30 deg, lit warm on the sun's side, cream over lilac-grey
-//                                // bases away from it; none in the capture); glow: the capture's
+//                                // cumulus: the broken low cloud layer's cover away from the
+//                                // sun (R2-2: 0 none, 1 about half the sky there, none toward
+//                                // the sun; under ~45 deg, front lit cream over lilac-grey;
+//                                // none in the capture); glow: the capture's
 //                                // warm band on the sun's side (none on the visible dome)
 //   skyEnvironment(renderer, uniforms, { clouds, tint, glow }) -> THREE.WebGLRenderTarget   // the sky
 //                                // prefiltered (PMREM) for scene.environment: diffuse and rough
@@ -115,19 +116,23 @@ void main() {
     vec3 cloud = mix(vec3(0.82, 0.86, 0.92), vec3(1.6, 1.08, 0.72), sunSide) * (0.9 + 0.6 * pow(max(mu, 0.0), 8.0));
     c = mix(c, cloud, w * 0.75);
   }
-  // A broken layer of low cumulus (R2-2, the photos' evening sky): under ~35 deg, its cover
-  // changing round the sky, the zenith clear; each cloud's side toward the sun lit (a second look
-  // a little toward it), warm peach-orange on the sun's side of the sky, cream over lilac-grey
-  // bases away from it.
+  // A broken layer of low cumulus (R2-2, the photos' evening sky): away from the sun (the photos
+  // looking from it are full of it, those toward it clear: 05, 12, 16, 24 against 32, 33, 35, 36),
+  // from just over the horizon up to ~45 deg, the zenith clear; its cover changing round the sky
+  // a little; front lit cream over lilac-grey bodies (a second look a little toward the sun for
+  // their lit sides), warmer where one stands nearer the sun's side.
   if (v.y > 0.0 && uCumulus > 0.0) {
-    vec2 q = mat2(0.6, -0.8, 0.8, 0.6) * (v.xz / (v.y + 0.08) - uDrift * 0.5) * vec2(1.0, 1.8) + 40.0;
-    float cover = uCumulus * (0.55 + 0.9 * skyNoise(normalize(v.xz + 1e-5) * 2.2 + 5.0));
-    float n = skyFbm(q * 1.4);
-    float d = smoothstep(1.0 - cover, 1.16 - cover, n) * smoothstep(0.01, 0.06, v.y) * (1.0 - smoothstep(0.22, 0.52, v.y));
-    float lit = clamp(0.55 + 5.0 * (n - skyFbm((q + normalize(uSunDir.xz) * 0.05) * 1.4)), 0.0, 1.0);
+    float toSun = dot(normalize(v.xz + 1e-5), normalize(uSunDir.xz));
+    vec2 q = mat2(0.6, -0.8, 0.8, 0.6) * (v.xz / (v.y + 0.1) - uDrift * 0.5) * vec2(2.0, 4.2) + 40.0;
+    float cover = uCumulus * smoothstep(0.55, -0.45, toSun) * (0.8 + 0.4 * skyNoise(normalize(v.xz + 1e-5) * 3.0 + 5.0));
+    float n = skyFbm(q);
+    float t = 0.8 - 0.35 * cover;
+    float d = smoothstep(t, t + 0.22, n) * smoothstep(0.03, 0.12, v.y) * (1.0 - smoothstep(0.42, 0.75, v.y));
+    float lit = clamp(0.6 + 5.0 * (n - skyFbm(q + normalize(uSunDir.xz) * 0.07)), 0.0, 1.0);
+    float body = smoothstep(t + 0.05, t + 0.3, n);
     float side = pow(clamp(mu * 0.5 + 0.5, 0.0, 1.0), 1.5);
-    vec3 cumulus = mix(mix(vec3(0.52, 0.5, 0.6), vec3(1.0, 0.93, 0.86), lit), mix(vec3(0.75, 0.56, 0.5), vec3(1.45, 0.98, 0.66), lit), side);
-    c = mix(c, cumulus, d * 0.85);
+    vec3 cumulus = mix(mix(vec3(0.9, 0.84, 0.8), vec3(1.45, 0.98, 0.66), side), mix(vec3(0.52, 0.53, 0.6), vec3(0.75, 0.56, 0.5), side), clamp(0.65 * body + 0.3 * (1.0 - lit), 0.0, 1.0));
+    c = mix(c, cumulus, d * 0.78);
   }
   // (The environment's capture only: the low sun's side of the sky brighter and warmer over a
   // wide band, as it lights the faces turned to it: R2-2, golden sunlit walls and treetops.)

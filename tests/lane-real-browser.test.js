@@ -485,10 +485,14 @@ test('?area=lane&tier=high: the realistic look swaps in; its sky, the dad\'s Fal
       const copy = document.createElement('canvas');
       copy.width = copy.height = 8;
       const ctx = copy.getContext('2d', { willReadFrequently: true });
+      // (Its sky: the bluest of the top band's row, as the five views' measure: since R2-2's fix
+      // round a frame looking away from the sun has broken cumulus over its top, as the photos do.)
       v.setFrameHook(() => {
         const c = v.renderer.domElement;
         ctx.drawImage(c, 0, 0, c.width, c.height * 0.1, 0, 0, 8, 8);
-        frames.push([c.width, c.height, [...ctx.getImageData(4, 1, 1, 1).data.slice(0, 3)]]);
+        const row = ctx.getImageData(0, 1, 8, 1).data;
+        const top = Array.from({ length: 8 }, (_, i) => [row[i * 4], row[i * 4 + 1], row[i * 4 + 2]]);
+        frames.push([c.width, c.height, top.sort((a, b) => b[2] - b[0] - (a[2] - a[0]))[0]]);
       });
       for (const [aspect, label] of [[16 / 9, '16:9'], [9 / 16, '9:16']]) {
         v.setCapture({ aspect, minHeight: 1080, zoom: aspect < 1 ? 0.72 : 1, label });

@@ -82,13 +82,15 @@ const QUIET = {
 
 const repeatOf = (name) => REPEAT[name] ?? REAL_REPEAT[name];
 const colorOf = (c = 1) => (Array.isArray(c) ? new THREE.Color(c[0], c[1], c[2]) : new THREE.Color(c, c, c));
+// (An entry's colour on the tier: `direct`, where given, on the direct path: low, no grade.)
+const tintOf = (entry, tier) => colorOf(tier.direct && entry.direct !== undefined ? entry.direct : entry.color);
 
 export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy, exposure = 1, grade = null } = {}) {
   const M = {};
   const wear = { lite: tier.name === 'low' };
   for (const [name, entry] of Object.entries(CATALOGUE)) {
     const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
-    M[name] = pbrMaterial(maps, { repeat: repeatOf(name) / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, vertexColors: entry.vertexColors ?? true, wear }, haze);
+    M[name] = pbrMaterial(maps, { repeat: repeatOf(name) / entry.cover, color: tintOf(entry, tier), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, vertexColors: entry.vertexColors ?? true, wear }, haze);
     setWear(M[name], name);
   }
   M.paint = plainMaterial(PAINT, haze);
@@ -111,7 +113,7 @@ export function detailMaterials(store, tier, haze, { anisotropy = tier.anisotrop
     const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
     if (entry.leaf) M[name] = foliageMaterial(maps.albedo, { ...entry.leaf, coverage: tier.samples > 0, wind }, haze);
     else {
-      M[name] = pbrMaterial(maps, { repeat: 1 / entry.cover, color: colorOf(entry.color), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, wear: { attr: worn.has(name), lite: tier.name === 'low' } }, haze);
+      M[name] = pbrMaterial(maps, { repeat: 1 / entry.cover, color: tintOf(entry, tier), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, wear: { attr: worn.has(name), lite: tier.name === 'low' } }, haze);
       setWear(M[name], name);
     }
   }

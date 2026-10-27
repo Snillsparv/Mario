@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import * as lane from '../src/world/lane/layout.js';
 import { laneJobs, laneMaterials, detailMaterials, wearUniforms } from '../src/world/lane/real/look.js';
+import { CATALOGUE, DETAIL } from '../src/world/lane/real/jobs.js';
 import { CLAMP_GLSL, hazeChunk, classicLook, grassMaterial, WEAR_KIND } from '../src/render/real/materials.js';
 import { RealLook } from '../src/render/real/RealLook.js';
 import { TextureStore } from '../src/render/real/textureStore.js';
@@ -124,6 +125,7 @@ test('the detail\'s own: the leaf cards lit by their own normal on both faces, t
   assert.ok(g.vertexShader.includes('1.0 - smoothstep(uGrid.w * 0.7, uGrid.w, distance(grassAt, uGridMiddle))'), 'faded out toward the radius');
   assert.equal(g.uniforms.uGrid, grid);
   assert.ok(g.fragmentShader.includes(CLAMP_GLSL));
+  assert.ok(g.fragmentShader.includes('reflectedLight.indirectDiffuse *= uShadeTint;') && !g.fragmentShader.includes('uSunFill * splitSun'), 'the golden hour\'s split, the whole fill kept (R2-2 fix)');
   // The lacquer: three's own clearcoat lobe, switched on in the standard material.
   const coat = compiled(D.carPaint);
   assert.ok(D.carPaint.defines.USE_CLEARCOAT === '' && coat.uniforms.clearcoat.value === 1 && coat.uniforms.clearcoatRoughness.value === 0.05);
@@ -168,24 +170,47 @@ test('the weathering in every textured material: its ground map and the strength
 // indirect (the sky's environment and the hemisphere), in every realistic material's shared
 // patch, after the lights (the leaves' light through them too) and before the occlusion and the
 // tone mapping (the low tier, without an output pass, has it); the look's uniforms, eased to none
-// by the storm (its own key light and sky); never in a classic material (Jonas, the signs).
+// by the storm (its own key light and sky); never in a classic material (Jonas, the signs). Its
+// fix round: where the sun falls the sky's diffuse fill weaker by uSunFill of the sun's share
+// (the photos' sunlit faces keep the sun's gold), under 1 so the light still grows into the sun.
 test('the golden hour\'s split: the sun\'s tint on every realistic material\'s direct light, the shade\'s on its indirect, before the occlusion and the tone mapping; eased to none in the storm; not on the classic ones', () => {
   const { look, M, D } = lookAndMaterials();
   const L = lane.LANE_REAL.light;
   assert.ok(L.sun[0] >= L.sun[1] && L.sun[1] > L.sun[2], `the sun's tint golden: ${L.sun}`);
   assert.ok(L.shade[2] >= L.shade[1] && L.shade[0] <= L.shade[2], `the shade's neutral to cool: ${L.shade}`);
+  assert.ok(L.fill > 0 && L.fill < 1, `the sky's fill weaker in the sun, never darker into it: ${L.fill}`);
+  // (Lit = D + I (1 - fill D / (D + I)): never below the shade's I as D grows from 0.)
+  for (let x = 0; x <= 8; x += 0.05) assert.ok(x + 1 - (L.fill * x) / (1 + x) >= 1 - 1e-9, `the light at D/I ${x}`);
   assert.deepEqual(look.haze.uSunTint.value.toArray(), L.sun);
   assert.deepEqual(look.haze.uShadeTint.value.toArray(), L.shade);
+  assert.equal(look.haze.uSunFill.value, L.fill);
+  // (The direct path, low: light.direct's values over the rest, its shade already as light.)
+  const low = new RealLook({ preset: lane.LANE_REAL, tier: TIERS.low });
+  assert.deepEqual(low.haze.uShadeTint.value.toArray(), L.direct?.shade ?? L.shade);
+  assert.deepEqual(low.haze.uSunTint.value.toArray(), L.direct?.sun ?? L.sun);
+  assert.equal(low.haze.uSunFill.value, L.direct?.fill ?? L.fill);
+  low.dispose();
+  // (The street's asphalt lighter on high and mid, as it was on low's direct path: its `direct`.)
+  const lowM = lookAndMaterials(TIERS.low);
+  for (const [m, ml, e] of [[M.asphalt, lowM.M.asphalt, CATALOGUE.asphalt], [D.patch, lowM.D.patch, DETAIL.patch]]) {
+    assert.ok(Math.abs(m.color.r - e.color) < 1e-6 && Math.abs(ml.color.r - e.direct) < 1e-6 && e.direct < e.color, `the asphalt's colour by tier: ${m.color.r} / ${ml.color.r}`);
+  }
+  lowM.look.dispose();
   const all = { ...M, ...Object.fromEntries(Object.entries(D).map(([k, m]) => [`detail ${k}`, m])) };
   for (const [name, m] of Object.entries(all)) {
     if (name === 'signs' || name === 'detail shadow' || name === 'detail contact') continue;
     const s = compiled(m);
     const at = (chunk) => s.fragmentShader.indexOf(chunk);
     assert.ok(at('reflectedLight.directDiffuse *= uSunTint;') > at('#include <lights_fragment_end>'), `${name}: the split after the lights`);
-    assert.ok(at('reflectedLight.indirectSpecular *= uShadeTint;\n  #include <aomap_fragment>') > 0, `${name}: before the occlusion`);
+    assert.ok(at('reflectedLight.indirectSpecular *= uShadeTint;') > at('reflectedLight.directDiffuse *= uSunTint;'), `${name}: the split whole`);
+    assert.ok(at('reflectedLight.indirectSpecular *= uShadeTint;') < at('#include <aomap_fragment>'), `${name}: before the occlusion`);
+    // (The leaves and the grass keep the whole fill: their canopy's dapple.)
+    const leafy = ['detail foliage', 'detail fir-leaves'].includes(name);
+    assert.equal(at('* (1.0 - uSunFill * splitSun / (splitSun + splitSky + 1e-6))') > 0, !leafy, `${name}: the fill weaker in the sun${leafy ? ', but not on leaves' : ''}`);
     assert.ok(at('#include <aomap_fragment>') < at('#include <tonemapping_fragment>'), `${name}: before the tone mapping`);
     assert.equal(s.uniforms.uSunTint, look.haze.uSunTint, `${name}: the look's sun tint`);
     assert.equal(s.uniforms.uShadeTint, look.haze.uShadeTint, `${name}: the look's shade tint`);
+    assert.equal(s.uniforms.uSunFill, look.haze.uSunFill, `${name}: the look's fill`);
   }
   // The leaves' light through them is the sun's too (added to the direct light before the split).
   const leaves = compiled(D.foliage).fragmentShader;
@@ -193,14 +218,16 @@ test('the golden hour\'s split: the sun\'s tint on every realistic material\'s d
   // A haze without the split's uniforms (another look): neutral.
   const bare = { uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.standard.uniforms), vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
   hazeChunk(new THREE.MeshStandardMaterial(), {}, 'real-test').onBeforeCompile(bare, null);
-  assert.deepEqual([bare.uniforms.uSunTint.value.toArray(), bare.uniforms.uShadeTint.value.toArray()], [[1, 1, 1], [1, 1, 1]]);
+  assert.deepEqual([bare.uniforms.uSunTint.value.toArray(), bare.uniforms.uShadeTint.value.toArray(), bare.uniforms.uSunFill.value], [[1, 1, 1], [1, 1, 1], 0]);
   // The storm: eased toward none with its darkness, and back.
   look.ease(1);
-  assert.deepEqual([look.haze.uSunTint.value.toArray(), look.haze.uShadeTint.value.toArray()], [[1, 1, 1], [1, 1, 1]]);
+  assert.deepEqual([look.haze.uSunTint.value.toArray(), look.haze.uShadeTint.value.toArray(), look.haze.uSunFill.value], [[1, 1, 1], [1, 1, 1], 0]);
   look.ease(0.5);
   assert.ok(Math.abs(look.haze.uSunTint.value.z - (1 + L.sun[2]) / 2) < 1e-9);
+  assert.ok(Math.abs(look.haze.uSunFill.value - L.fill / 2) < 1e-9);
   look.ease(0);
   assert.deepEqual(look.haze.uSunTint.value.toArray(), L.sun);
+  assert.equal(look.haze.uSunFill.value, L.fill);
   // Classic materials through the look (the signs; Jonas wears his own) never take it.
   const lib = THREE.ShaderLib.basic;
   const sign = { uniforms: {}, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
