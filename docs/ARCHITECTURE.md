@@ -3610,10 +3610,10 @@ writes it back, so leaving restores the renderer exactly:
 |---|---|---|
 | `renderer.shadowMap` enabled / type / autoUpdate | false / – / true | true / PCF / true |
 | `sun.castShadow`, `sun.shadow` (map, mapSize, radius, biases, camera box and depth) | off | on, per tier, radius 2.5, bias 6.4 units toward the light (`LANE_REAL.shadow.bias` −6.4 in world units, three's bias its share of the near camera's depth: −2.1e-4 to −2.3e-4 by tier), normalBias 3; the camera's depth from the sun's height (`shadowFar`) |
-| `sun.position`, `sun.target` | `setAtmosphere` | over the focus along `LANE_SUN` |
-| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: 0xffb878 (1, 0.48, 0.19) × 2.9 (W1: the golden hour; no brighter, Jonas's shirt burns pink at 4.4), sky 0xe2e2e0, ground 0x5a5850, 0.9; fog in the haze's horizon colour (0xd0d8e0), 3000 … 45000 |
+| `sun.position`, `sun.target` | `setAtmosphere` | over the focus along `LANE_REAL.sunDir` (`LANE_REAL_SUN`: `LANE_SUN`'s azimuth, 9° up; R2-2) |
+| sun colour and strength, hemisphere, fog | `setAtmosphere(def.atmosphere)` | `LANE_REAL.atmosphere`: 0xffb878 (1, 0.48, 0.19) × 2.9 along `LANE_REAL_SUN` (W1: the golden hour; no brighter, Jonas's shirt burns pink at 4.4), sky 0xe2e2e0, ground 0x5a5850, 0.6 (R2-2; 0.9 before); fog in the haze's horizon colour (0xd0d8e0), 3000 … 45000; the realistic materials' own split (`LANE_REAL.light`) on top (below) |
 | `scene.environment` / intensity / `background` | null / 1 / fog colour | sky PMREM / 1.3 / null (the sky draws) |
-| `renderer.toneMapping` / exposure | none / 1 | none (the output pass) or Neutral (low) / 1.3 |
+| `renderer.toneMapping` / exposure | none / 1 | none (the output pass) or Neutral (low) / 1.25 |
 | retro filter | the saved setting | off; F2 / R: retro over realistic for this visit (`lookRetro`), never saved |
 | pixel ratio | min(DPR, 2) | the tier's |
 | Jonas | no shadow; blob shadow | casts and receives the sun's (near) shadow; blob at 35 % (`REAL_BLOB`) |
@@ -3663,7 +3663,8 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   only). `OutputPass` composites them (the occlusion multiplies the HDR colour before the tone
   mapping, **never on the sky** (depth 1) and **fading on bright pixels** (`aoLit` 0.35: sunlit
   faces never look dirty); the bloom mixed in at 7 %, the shafts added), tone maps, then
-  **grades** (a filmic S-contrast 0.25, split toning 0.35: cool shadows, warm highlights;
+  **grades** (a filmic S-contrast 0.25, split toning 0.15 (0.35 until R2-2: the materials' own
+  sun / shade split now does it on every tier): cool shadows, warm highlights;
   more turns the Falu red brown in the house's shade; saturation 1.1 (1.08 before W1) as a vibrance: the more
   saturated a colour already is the less it is boosted, so Jonas's red shirt in the sun keeps
   its colour) and adds the **lens**
@@ -3842,7 +3843,8 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
 on an early October afternoon) set the light and every surface's tone, by eye and by single mean
 colours measured off them (never a texture, a crop or a pixel in the repo; the comparisons stay
 in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
-* **The sun** (`layout.LANE_SUN`, both looks): normalize(−0.67, 0.21, 0.71), 45° from +z toward
+* **The sun** (`layout.LANE_SUN`, both looks until R2-2; since then the classic bake's, the
+  realistic look's own 9° one below): normalize(−0.67, 0.21, 0.71), 45° from +z toward
   −x and ~12° up (the photos' ~5° lifted for play; not above ~14°): low in the west-south-west,
   behind the dad's house, so his front, the arrival and most of the street stand in shade and
   the villas' fronts and the west walls glow. Its colour 0xffb878 (~2900 K) at 2.9: brighter,
@@ -3910,6 +3912,65 @@ in scratch). Nothing moves: no collider, no triangle, no draw call of its own.
   into the low sun). Bytes: `main` +199 (the sun, the sky's and the tints' numbers, the classic
   dome's `setPale`), the lane's chunk +412 (`brickTexture`, `REAL_GROUND`), the worker and
   `realLook` unchanged within a few bytes.
+
+**Golden hour, round 2 (R2-2).** The photos' light on every tier: saturated warm sunlit faces
+over neutral-to-cool shade, lit clouds, the far forest less washed, and the street in the south
+houses' long shadow. No geometry, no draw call, no new shader program; the classic look is
+untouched (its bake keeps `LANE_SUN`, its materials and sky their own).
+* **The sun / shade split** (`materials.js` `SPLIT_FRAG`, in the haze patch every realistic
+  material takes: PBR, plain, glass, leaves, grass): after the lights (the leaves' light through
+  them included) and before the occlusion and the tone mapping, the direct light's diffuse and
+  specular × `uSunTint`, the indirect (the sky's environment and the hemisphere) × `uShadeTint`,
+  both the look's uniforms (`look.haze`, from `LANE_REAL.light`: sun [1, 0.88, 0.6], a golden
+  tint a little under 1 so the sunlit walls stay under the tone curve's shoulder, saturated;
+  shade [1.12, 1.12, 1.16], the sky's light a little stronger and cooler for the realistic
+  materials alone). The low tier has it too (it runs before each material's own tone mapping).
+  Jonas (his classic materials) and the signs (`classicLook`) never take it: his light changed
+  only by the preset (below). A haze without the uniforms (another look, a test) gets neutral
+  ones. The storm: `RealLook.ease(darkness)` eases both tints toward none each frame the
+  darkness changes (its key light and sky are its own), so the storm's and the flash's grades
+  (`GradePass`) look as before.
+* **The preset** (`LANE_REAL`): exposure 1.3 → 1.25; the hemisphere 0.9 → 0.6 (the shade a
+  little deeper, the realistic materials' made up by the shade tint; Jonas's shirt a little
+  redder: 1.3 % from the classic chromaticity on high, was 3.0 %; mid 4.0 % (5.4), low 11.6 %
+  (12.5; low has no grade and no shirt check)); `envTint` (1.04, 1, 0.88) → (1.02, 1, 0.94)
+  (the shade a touch cooler, the Falu red's r/g kept: the arrival's wall r/g 4-5.5 on high);
+  the environment's own warm band on the sun's side (`sky.envGlow` [0.3, 0.17, 0.07]:
+  `skyEnvironment`'s `glow`, the capture only: the faces turned to the low sun see the bright
+  peach sky there, golden walls and treetops); the haze 2.5e-5 → 1.6e-5 (the bank's forest
+  40-120 m off less washed; `hazeGlow` 6000 kept); the grade's split toning 0.35 → 0.15 (high and
+  mid would double the materials' split).
+* **The sky** (`sky.js`): the peach glow on the sun's side taller and wider (`pow(1 - y, 5.5) *
+  pow(az, 4)`, [1.3, 0.82, 0.44]), the sun's glow deeper ((1, 0.7, 0.42), `sky.glow`: the
+  `uGlow` uniform) and its widest lobe fading with the height (`(1 - y)²`: the test's zenith
+  point, 28° up and 28° from the sun, stays blue: b − r 40 on high); a **broken layer of low
+  cumulus** (`sky.cumulus` 0.3: fbm on a plane, rotated and stretched along the wind, its cover
+  changing round the sky, thinning from ~13° up and gone by ~31° (the zenith clear), each cloud's side
+  toward the sun lit from a second look a little toward it: cream over lilac-grey bases away
+  from the sun, warm peach-orange on its side; drifting with the cirrus; none in the
+  environment's capture, so the lighting is the sky's). More cover (0.45, 0.6) read worse
+  against the photos and at 0.6 failed the arrival's sky check.
+* **The sun 9° up** (`layout.LANE_REAL_SUN`: `LANE_SUN`'s azimuth, the realistic look's
+  `sunDir` and its atmosphere's): the south chain roofs' shadows reach over the street and the
+  turning area's apron (photos 12, 33, 34: the apron's sunlit tan patch gone), the sun behind
+  the dad's roof from his drive as photo 36 has it, the arrival still in his house's shade.
+  Swept 12.1 / 10.5 / 9.0 (live, a scratch harness re-aiming the look's sun, far map and
+  environment): 9 read best by eye and by the photos' scores, every gate held: the near shadow
+  camera's depth from the sun's height (W1 fix: high 29.8k -> 40.2k deep, low's ground texel along the sun 14.9 -> 20.0 units), no new bias, no acne and
+  no shimmer on low's 1024 map (the near box moved along the street a few units at a time: the
+  same 0.01-0.03 % of pixels change as at 12.1°); `lane.test` holds it at 8-14° (its azimuth
+  `LANE_SUN`'s). `lane-real-browser`'s halo pose moved up to 1200 (over the roofs: from the road
+  the sun is behind the dad's roof now, the ring round it on the roof).
+* **Measured** (E2E, high, 960 × 540): the five views 140-152 draw calls / 954-970k triangles,
+  mid 127-135 / 467-473k, low 89-94 / 207-209k (each the same as before: no triangle, no call);
+  the sky over the dad's roof (159, 175, 198), the five views' b − r 40-52; Jonas's shirt (245, 48, 39) against the classic look's
+  (220, 43, 30). Against the photos (scratch: the 44 poses on high, blurred colour difference and
+  edge agreement): the colour difference down 38.1 -> 37.7 on average (18 of the 20 poses
+  looked at for the light closer, the most toward the sun: photos 32-35), the edges' agreement
+  up a little (0.516 -> 0.521); mid 30.6 -> 29.8 and low 38.3 -> 37.0 at their four; the
+  classic look's pixels unchanged. What the light could not reach is the forest and the
+  vegetation (the sky through the canopy where the photos have golden trees) and north_1's blue
+  lower floor (paint): the later packages'.
 
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its
@@ -5165,18 +5226,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,287,360 | 402 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,287,620 | 400 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
 | lane | 106,460 | 43 kB | 104 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
-| realLook | 49,435 | 18 kB | 60 KiB (from 90) |
+| realLook | 51,085 | 18 kB | 60 KiB (from 90; R2-2: the golden hour's split, the cumulus and the environment's warm band, +1.65 kB) |
 | laneBoss | 102,268 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 198,992 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB) |
+| laneRealWorker | 199,231 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

@@ -1105,19 +1105,38 @@ export const LANE_SUN = (() => {
 
 const DEG = Math.PI / 180;
 
+// The realistic look's sun (R2-2): LANE_SUN's azimuth, 9 deg up, so the south houses' long
+// shadows lie over the street, the turning area's apron and the lower floors facing them, as
+// photos 10, 12, 33 and 34 have it (the photos' ~5 deg lifted for play: his front at the arrival
+// in the house's shade, the street readable). The classic look's bake keeps LANE_SUN.
+export const LANE_REAL_SUN = (() => {
+  const h = Math.hypot(LANE_SUN.x, LANE_SUN.z);
+  const e = 9 * DEG;
+  return Object.freeze({ x: (LANE_SUN.x / h) * Math.cos(e), y: Math.sin(e), z: (LANE_SUN.z / h) * Math.cos(e) });
+})();
+
 // The realistic look (world/lane/real/look.js, render/real/RealLook.js): the same golden hour,
 // physically lit. Tuned by eye against the photographs (never sampled from them).
 //   sky          the analytic sky's colours (linear: W1, the photos' hazy golden hour: a pale
 //                blue zenith paling to a near white horizon away from the sun, a peach glow
 //                rising from the horizon only on its side, the dim ground the environment's
-//                lower half shows), its brightness and thin cirrus, and
+//                lower half shows), its brightness and thin cirrus, the sun's glow (R2-2: a
+//                deeper peach-gold), the broken low cumulus' cover (cumulus: R2-2, the photos'
+//                evening clouds), and
 //                envTint: its light's colour beside its own (the environment only: a camera's
 //                white balance, so the shade, the road and the white plinths read near neutral
-//                as in the photos, not blue; G3)
-//   exposure     before the output pass's Neutral tone mapping (1.3: the shade reads like the
+//                as in the photos, not blue; G3; R2-2 a touch cooler), envGlow: the
+//                environment's warm band on the low sun's side (the faces turned to it golden)
+//   sunDir       the realistic look's own sun, lower than the classic bake's (LANE_REAL_SUN)
+//   light        the golden hour's split (R2-2, render/real/materials.js): the sun's tint on
+//                every realistic material's direct light (golden, a little less of it: the
+//                sunlit faces under the tone curve's shoulder, saturated), the shade's on the
+//                indirect (the sky's light a little stronger and cooler); the realistic materials
+//                only, so Jonas and the signs are lit as before
+//   exposure     before the output pass's Neutral tone mapping (1.25: the shade reads like the
 //                phone photos without blowing out the sunlit villas)
-//   environment  the sky's light on every realistic material (1.3: at 1 the shaded lawn is too
-//                dark); haze: the aerial perspective's density per unit (exponential, toward the
+//   environment  the sky's light on every material (1.3: at 1 the shaded lawn is too dark;
+//                the realistic ones get more through light.shade); haze: the aerial perspective's density per unit (exponential, toward the
 //                sky's colour in each direction), the sky's glow on the sun's side coming into it
 //                over hazeGlow (W4 fix: near the camera the sky's colour away from the sun; mixed
 //                in linear light on high and mid the glow had veiled the dark bins brown in photos
@@ -1131,8 +1150,9 @@ const DEG = Math.PI / 180;
 //                rest the tile set's normal map); tilesMid: on the mid tier only these (W2: the
 //                plan's longer neighbours would cost mid ~50k triangles)
 //   atmosphere   the actors' look meanwhile (view.setAtmosphere): the golden sun (1, 0.48,
-//                0.19) x 2.9 along LANE_SUN (W1; no brighter: Jonas's red shirt, his back to the
-//                low sun, would burn out pink), a neutral sky and ground hemisphere, the classic
+//                0.19) x 2.9 along the realistic sun (W1; no brighter: Jonas's red shirt, his
+//                back to the low sun, would burn out pink), a neutral sky and ground hemisphere
+//                (R2-2: 0.6, the shade a little deeper, his shirt a little redder), the classic
 //                objects' fog in the haze's horizon colour, far enough to match it
 //   post         the screen-space effects' settings (render/real/post/*: which of them run is
 //                the tier's level, tier.js): ao, the ambient occlusion from the depth buffer
@@ -1145,7 +1165,8 @@ const DEG = Math.PI / 180;
 //                against photos 19/40 and the GTA prototype (scratch p7): ao (the occlusion's
 //                share) fading on bright pixels (aoLit), the bloom's mix and the shafts'
 //                strength and tint, a filmic S-contrast, split toning (cool shadows, warm
-//                highlights: more turns the Falu red brown in the house's shade), saturation,
+//                highlights: more turns the Falu red brown in the house's shade; R2-2 0.15, the
+//                materials' split does the rest on every tier), saturation,
 //                vignette, and the lens touches kept subtle (edge colour fringing and grain:
 //                stronger, they show on the white brick and the cars), a black-level lift
 //   camera       the camera's profile in the realistic look (CameraController.setProfile): a
@@ -1157,17 +1178,18 @@ const DEG = Math.PI / 180;
 //                only the model, scaled about his grip (player/model/scalePivot.js); his
 //                collider and everything he does stay
 export const LANE_REAL = Object.freeze({
-  sky: Object.freeze({ zenith: [0.27, 0.37, 0.53], horizonAway: [0.68, 0.72, 0.76], horizonSun: [1.3, 0.86, 0.5], ground: [0.08, 0.08, 0.06], intensity: 1, clouds: 0.25, envTint: Object.freeze([1.04, 1, 0.88]) }),
-  sunDir: LANE_SUN,
-  exposure: 1.3,
+  sky: Object.freeze({ zenith: [0.27, 0.37, 0.53], horizonAway: [0.68, 0.72, 0.76], horizonSun: [1.3, 0.82, 0.44], ground: [0.08, 0.08, 0.06], intensity: 1, clouds: 0.25, cumulus: 0.3, glow: [1, 0.7, 0.42], envGlow: [0.3, 0.17, 0.07], envTint: Object.freeze([1.02, 1, 0.94]) }),
+  sunDir: LANE_REAL_SUN,
+  light: Object.freeze({ sun: [1, 0.88, 0.6], shade: [1.12, 1.12, 1.16] }),
+  exposure: 1.25,
   environment: 1.3,
-  haze: 2.5e-5,
+  haze: 1.6e-5,
   hazeGlow: 6000,
   shadow: Object.freeze({ radius: 2.5, bias: -6.4, normalBias: 3 }),
   probe: Object.freeze({ x: 0, y: 260, z: 250 }),
   tiles: Object.freeze(['south_1', 'south_dad', 'south_2']),
   tilesMid: Object.freeze(['south_dad']),
-  atmosphere: Object.freeze({ fog: 0xd0d8e0, near: 3000, far: 45000, sun: 0xffb878, sunIntensity: 2.9, sunDir: LANE_SUN, sky: 0xe2e2e0, ground: 0x5a5850, ambientIntensity: 0.9 }),
+  atmosphere: Object.freeze({ fog: 0xd0d8e0, near: 3000, far: 45000, sun: 0xffb878, sunIntensity: 2.9, sunDir: LANE_REAL_SUN, sky: 0xe2e2e0, ground: 0x5a5850, ambientIntensity: 0.6 }),
   post: Object.freeze({
     ao: Object.freeze({ radius: 110, intensity: 2.6, bias: 0.12, maxPx: 90, fade: Object.freeze([4500, 9000]) }),
     bloom: Object.freeze({ threshold: 1.1, knee: 0.6, radius: 1 }),
@@ -1180,7 +1202,7 @@ export const LANE_REAL = Object.freeze({
     shafts: 0.5,
     shaftTint: Object.freeze([1, 0.86, 0.62]),
     contrast: 0.25,
-    split: 0.35,
+    split: 0.15,
     shadowTint: Object.freeze([0.97, 0.99, 1.02]),
     highTint: Object.freeze([1.07, 1, 0.9]),
     saturation: 1.1,

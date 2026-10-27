@@ -790,6 +790,14 @@ test('the look: the sun low in the west-south-west; the villas\' street faces li
   const up = (Math.asin(S.y) * 180) / Math.PI;
   assert.ok(Math.abs(Math.hypot(S.x, S.y, S.z) - 1) < 1e-9 && turn > 35 && turn < 55 && up > 10 && up < 14, `${JSON.stringify(S)}: ${turn.toFixed(1)} deg toward -x, ${up.toFixed(1)} up`);
   assert.equal(AREA_DEFS.lane.atmosphere.sunDir, S);
+  // The realistic look's own sun (R2-2): the same azimuth, lower (8-14 deg up): the photos' street
+  // in the south houses' long shadow (~5 deg in the photos, lifted for play: the arrival and the
+  // street readable); its preset's sun and the actors' the same.
+  const R = lane.LANE_REAL_SUN;
+  const rTurn = (Math.atan2(-R.x, R.z) * 180) / Math.PI;
+  const rUp = (Math.asin(R.y) * 180) / Math.PI;
+  assert.ok(Math.abs(Math.hypot(R.x, R.y, R.z) - 1) < 1e-9 && Math.abs(rTurn - turn) < 0.01 && rUp >= 8 && rUp <= 14, `the realistic sun: ${rTurn.toFixed(1)} deg toward -x, ${rUp.toFixed(1)} up`);
+  assert.ok(lane.LANE_REAL.sunDir === R && lane.LANE_REAL.atmosphere.sunDir === R);
   // Mean brightness of a mesh's vertices on faces looking along `n`, in a box.
   const mean = (name, n, test) => {
     const g = mesh(name).geometry.attributes;

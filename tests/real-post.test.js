@@ -79,7 +79,9 @@ test('the grade\'s constants in range: subtle lens touches (the dad: subtle), a 
   assert.ok(p.ao.radius > 50 && p.ao.radius < 200 && p.ao.bias > 0 && p.ao.intensity > 0, 'the occlusion\'s reach ~0.7 m');
   assert.ok(p.bloom.threshold >= 1 && p.bloom.knee > 0, 'only what is brighter than white blooms');
   assert.ok(p.shafts.decay < 1 && p.shafts.density <= 1);
-  assert.ok(lane.LANE_REAL.haze > 2.2e-5 && lane.LANE_REAL.haze < 5e-5, 'the haze a little deeper than R3\'s');
+  // (R2-2: thinner, 1.6e-5: the bank's forest 40-120 m off dark-golden as the photos have it,
+  // not washed pale; still some depth down the street.)
+  assert.ok(lane.LANE_REAL.haze > 1.2e-5 && lane.LANE_REAL.haze < 5e-5, 'the haze: some depth, the far forest not washed out');
 });
 
 test('the output pass: the occlusion on the HDR colour before the tone mapping (never on the sky, fading on bright pixels), the bloom mixed in and the shafts added, the grade after the tone mapping, the lens and the dither last; its uniforms from the look\'s grade', () => {

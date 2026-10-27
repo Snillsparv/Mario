@@ -285,11 +285,13 @@ async function gtaLook(page) {
     out.wallNoAo = window.__pixelsAt([[600, 26, 1329]]);
     settings.ao = ao;
     out.wallAo = window.__pixelsAt([[600, 26, 1329]]);
-    // Toward the sun (low in the west-south-west): the camera on the road looking at it.
+    // Toward the sun (low in the west-south-west): the camera over the road looking at it.
+    // (R2-2: the realistic sun 9 deg up sits behind the dad's roof from the road, as photo 36 has
+    // it: the camera 1200 up, over the roofs, the ring round it on clear sky.)
     const d = look.sunDir;
     const cam = v.camera;
     g.step(1);
-    cam.position.set(-60000 + 0, 300, 200);
+    cam.position.set(-60000 + 0, 1200, 200);
     cam.lookAt(cam.position.x + d.x * 1000, cam.position.y + d.y * 1000, cam.position.z + d.z * 1000);
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();

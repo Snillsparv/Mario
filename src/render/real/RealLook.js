@@ -9,8 +9,10 @@
 // and how Jonas is framed and drawn meanwhile (the camera's profile, his model's size).
 //
 //   const look = new RealLook({ preset, tier, probeAt, farBox, canRetro })
-//       preset: { sky, sunDir, exposure, environment, haze, hazeGlow, shadow: { radius, bias, normalBias }
-//                 (bias and normalBias in world units),
+//       preset: { sky, sunDir, light, exposure, environment, haze, hazeGlow, shadow: { radius, bias,
+//                 normalBias } (bias and normalBias in world units), light { sun, shade } the
+//                 golden hour's split (materials.js: the direct light's tint, the indirect's;
+//                 eased to none by the storm's darkness: look.ease),
 //                 atmosphere, post, grade, camera, hero }   (layout.LANE_REAL: atmosphere is the
 //                 view.setAtmosphere preset the look's sun and hemisphere come from; post and
 //                 grade the post chain's and the output pass's settings; camera the camera's
@@ -26,6 +28,9 @@
 //                                   // classicLook (the signs)
 //   look.pixelRatio(dpr, width, height)   // the drawing buffer's pixel ratio (tier.js)
 //   look.haze                       // the uniforms every realistic material's haze shares
+//                                   // (the split's uSunTint, uShadeTint among them)
+//   look.ease(k)                    // the split eased toward none by darkness k (each frame
+//                                   // the storm's darkness changes)
 //   look.addProbe(name, at, size)   // another reflection probe (world/lane/real/look.js: each
 //                                   // cluster of parked cars', the villas' windows'), at { x, y,
 //                                   // z } (world), its cube `size` px (0: none, the materials keep
@@ -108,12 +113,17 @@ export class RealLook {
     this.canRetro = canRetro; // (retro over realistic needs half-float targets)
     this.camera = preset.camera ?? null; // the camera's profile meanwhile (core/AreaSwitch.js)
     this.heroScale = preset.hero ?? 1; // Jonas's model's size meanwhile (view.heroScale)
-    this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze }, uHazeGlow: { value: preset.hazeGlow ?? 0 } };
+    // The golden hour's split (materials.js): the sun's tint on the direct light, the shade's on
+    // the indirect, eased to none as the storm comes (its key light and sky are its own).
+    const light = preset.light ?? {};
+    this.light = [light.sun, light.shade].map((c) => new THREE.Vector3(...(c ?? [1, 1, 1])));
+    this.haze = { ...skyUniforms(preset.sky, preset.sunDir), uHazeDensity: { value: preset.haze }, uHazeGlow: { value: preset.hazeGlow ?? 0 }, uSunTint: { value: this.light[0].clone() }, uShadeTint: { value: this.light[1].clone() } };
+    this.dark = 0; // (the darkness the split was last eased for)
     this.far = farBox && tier.far ? new FarShadow({ size: tier.far, sunDir: preset.sunDir, box: farBox }) : null;
     this.heights = farBox ? [farBox.y0, farBox.y1] : SHADOW_HEIGHTS; // (the near shadow camera's depth: shadowFar)
     if (this.far) Object.assign(this.haze, this.far.uniforms); // (every realistic material's)
     this.farDirty = !!this.far;
-    this.sky = makeSky(this.haze, { clouds: preset.sky.clouds });
+    this.sky = makeSky(this.haze, { clouds: preset.sky.clouds, cumulus: preset.sky.cumulus });
     this.output = new OutputPass({ grade: preset.grade });
     this.grade = { ...this.output.grade, uBloom: this.output.material.uniforms.uBloom, uGradeScreen: { value: new THREE.Vector2(1, 1) } };
     this.post = tier.direct ? null : new RealPost(preset.post);
@@ -170,7 +180,7 @@ export class RealLook {
   attach(view) {
     const { renderer, scene, sun } = view;
     const { preset, tier } = this;
-    if (!this.env) this.env = skyEnvironment(renderer, this.haze, { tint: preset.sky.envTint });
+    if (!this.env) this.env = skyEnvironment(renderer, this.haze, { tint: preset.sky.envTint, glow: preset.sky.envGlow });
     scene.environment = this.env.texture;
     scene.environmentIntensity = preset.environment;
     scene.background = null; // (the sky draws)
@@ -428,6 +438,7 @@ export class RealLook {
     if (this.farDirty) this.takeFar(view);
     if (this.probeDirty) this.takeProbe(view);
     this.placeSun(sun, this.shadowFocus(view));
+    if (view.darkness !== this.dark) this.ease(view.darkness);
     const retro = view.lookRetro;
     if (this.tier.direct && !retro && !graded) {
       view.underwater.warm(view.compileObject, 'realDirect');
@@ -467,6 +478,12 @@ export class RealLook {
     renderer.setRenderTarget(null);
     this.output.render(renderer, target.texture, out);
     this.releaseGrade(view);
+  }
+
+  // The split eased toward none by the storm's darkness k.
+  ease(k) {
+    this.dark = k;
+    [this.haze.uSunTint, this.haze.uShadeTint].forEach((u, i) => u.value.set(1, 1, 1).lerp(this.light[i], 1 - k));
   }
 
   // Once: the multisampled depth's resolve into the depth texture worked (some drivers refuse

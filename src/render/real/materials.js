@@ -39,8 +39,9 @@
 //       the look's grade uniforms, RealLook.grade, turned back too)
 //   CLAMP_GLSL                                               // the clamp's source (the tests')
 //
-// `haze` is the look's uniforms (sky.js skyUniforms + uHazeDensity, uHazeGlow), shared by every
-// material, so the sky and the haze change together.
+// `haze` is the look's uniforms (sky.js skyUniforms + uHazeDensity, uHazeGlow, and the light's
+// split uSunTint, uShadeTint: neutral where a haze has none), shared by every material, so the sky
+// and the haze change together.
 //
 // The haze chunk replaces the fog: the fragment's distance to the camera fades it toward the
 // sky's own colour in that direction (sky.js hazeColor: exponential, uHazeDensity per unit). The
@@ -277,15 +278,26 @@ function wearChunk(shader, uniform, { attr = false, lite = false }) {
   shader.fragmentShader = defines + WEAR_GLSL + shader.fragmentShader.replace('#include <lights_physical_fragment>', WEAR_FRAG + '#include <lights_physical_fragment>');
 }
 
+// The golden hour's sun and shade (R2-2): the direct light's diffuse and specular times uSunTint,
+// the indirect (the sky's environment, the hemisphere) times uShadeTint, before the occlusion and
+// the tone mapping (so the low tier, without an output pass, has it too). Only the realistic
+// materials take it: Jonas and the signs (classic materials) are lit as before.
+const SPLIT_FRAG = /* glsl */ `reflectedLight.directDiffuse *= uSunTint;
+  reflectedLight.directSpecular *= uSunTint;
+  reflectedLight.indirectDiffuse *= uShadeTint;
+  reflectedLight.indirectSpecular *= uShadeTint;
+  #include <aomap_fragment>`;
+const NEUTRAL = new THREE.Vector3(1, 1, 1);
+
 export function hazeChunk(material, haze, key = 'real-haze', patch = null, wear = null) {
   material.fog = false; // (the haze is the fog)
   const far = !!haze.uFarShadow;
   const worn = !!(wear && haze.uWearGround);
   if (worn) material.userData.wear = { value: new THREE.Vector4() };
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, haze);
+    Object.assign(shader.uniforms, { uSunTint: { value: NEUTRAL }, uShadeTint: { value: NEUTRAL } }, haze);
     shader.vertexShader = 'varying vec3 vHazeWorld;\n' + shader.vertexShader.replace('#include <project_vertex>', HAZE_VERT);
-    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG);
+    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\nuniform vec3 uSunTint;\nuniform vec3 uShadeTint;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG).replace('#include <aomap_fragment>', SPLIT_FRAG);
     patch?.(shader);
     if (worn) wearChunk(shader, material.userData.wear, wear);
     if (far) sunShadowChunk(shader);

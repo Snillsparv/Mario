@@ -164,6 +164,51 @@ test('the weathering in every textured material: its ground map and the strength
   }
 });
 
+// R2-2, the golden hour's split: the sun's tint on the direct light, the shade's on the
+// indirect (the sky's environment and the hemisphere), in every realistic material's shared
+// patch, after the lights (the leaves' light through them too) and before the occlusion and the
+// tone mapping (the low tier, without an output pass, has it); the look's uniforms, eased to none
+// by the storm (its own key light and sky); never in a classic material (Jonas, the signs).
+test('the golden hour\'s split: the sun\'s tint on every realistic material\'s direct light, the shade\'s on its indirect, before the occlusion and the tone mapping; eased to none in the storm; not on the classic ones', () => {
+  const { look, M, D } = lookAndMaterials();
+  const L = lane.LANE_REAL.light;
+  assert.ok(L.sun[0] >= L.sun[1] && L.sun[1] > L.sun[2], `the sun's tint golden: ${L.sun}`);
+  assert.ok(L.shade[2] >= L.shade[1] && L.shade[0] <= L.shade[2], `the shade's neutral to cool: ${L.shade}`);
+  assert.deepEqual(look.haze.uSunTint.value.toArray(), L.sun);
+  assert.deepEqual(look.haze.uShadeTint.value.toArray(), L.shade);
+  const all = { ...M, ...Object.fromEntries(Object.entries(D).map(([k, m]) => [`detail ${k}`, m])) };
+  for (const [name, m] of Object.entries(all)) {
+    if (name === 'signs' || name === 'detail shadow' || name === 'detail contact') continue;
+    const s = compiled(m);
+    const at = (chunk) => s.fragmentShader.indexOf(chunk);
+    assert.ok(at('reflectedLight.directDiffuse *= uSunTint;') > at('#include <lights_fragment_end>'), `${name}: the split after the lights`);
+    assert.ok(at('reflectedLight.indirectSpecular *= uShadeTint;\n  #include <aomap_fragment>') > 0, `${name}: before the occlusion`);
+    assert.ok(at('#include <aomap_fragment>') < at('#include <tonemapping_fragment>'), `${name}: before the tone mapping`);
+    assert.equal(s.uniforms.uSunTint, look.haze.uSunTint, `${name}: the look's sun tint`);
+    assert.equal(s.uniforms.uShadeTint, look.haze.uShadeTint, `${name}: the look's shade tint`);
+  }
+  // The leaves' light through them is the sun's too (added to the direct light before the split).
+  const leaves = compiled(D.foliage).fragmentShader;
+  assert.ok(leaves.indexOf('4.0 * uTranslucency') < leaves.indexOf('reflectedLight.directDiffuse *= uSunTint;'));
+  // A haze without the split's uniforms (another look): neutral.
+  const bare = { uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.standard.uniforms), vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+  hazeChunk(new THREE.MeshStandardMaterial(), {}, 'real-test').onBeforeCompile(bare, null);
+  assert.deepEqual([bare.uniforms.uSunTint.value.toArray(), bare.uniforms.uShadeTint.value.toArray()], [[1, 1, 1], [1, 1, 1]]);
+  // The storm: eased toward none with its darkness, and back.
+  look.ease(1);
+  assert.deepEqual([look.haze.uSunTint.value.toArray(), look.haze.uShadeTint.value.toArray()], [[1, 1, 1], [1, 1, 1]]);
+  look.ease(0.5);
+  assert.ok(Math.abs(look.haze.uSunTint.value.z - (1 + L.sun[2]) / 2) < 1e-9);
+  look.ease(0);
+  assert.deepEqual(look.haze.uSunTint.value.toArray(), L.sun);
+  // Classic materials through the look (the signs; Jonas wears his own) never take it.
+  const lib = THREE.ShaderLib.basic;
+  const sign = { uniforms: {}, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
+  M.signs.onBeforeCompile(sign, null);
+  assert.ok(!sign.fragmentShader.includes('uSunTint') && !('uSunTint' in sign.uniforms));
+  look.dispose();
+});
+
 test('stable program cache keys, and the lane\'s realistic materials (its detail\'s too) need at most 24 programs', (t) => {
   const { M, D } = lookAndMaterials();
   const programs = new Set();
@@ -193,7 +238,7 @@ test('the sky and the output pass: the sky\'s gradient and haze share the unifor
   assert.ok(out.fragmentShader.includes('NeutralToneMapping(') && out.fragmentShader.includes('#include <tonemapping_pars_fragment>'));
   assert.ok(out.fragmentShader.includes('bayer('));
   assert.equal(out.toneMapped, false, 'it tone maps itself');
-  assert.equal(look.preset.exposure, 1.3);
+  assert.equal(look.preset.exposure, 1.25); // (R2-2: the sunlit faces under the tone curve's shoulder)
   look.dispose();
 });
 
