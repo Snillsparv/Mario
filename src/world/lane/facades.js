@@ -237,8 +237,20 @@ export function wallDrawnAt(x) {
 
 // The planted strips' plants (both looks): along every wall span of the terraces (real/plan.js
 // terraceSpans) but under north_2's hedge, every ~`step` a plant { x, z, y (the strip's drawn
-// height there), kind (0 a leafy mound, 1 a dark yew mass, 2 grass plumes, 3 a purple heuchera,
-// 4 a pink rose), s (its size, 1 .. 1.55) }, seeded.
+// height there), kind, s (its size, 1 .. 1.55), room (to the span's ends) }, seeded; kind 0 a
+// leafy mound (a hosta), 1 a dark yew mass, 2 tan grass plumes, 3 a purple heuchera, 4 a pink
+// rose, (P3, photos 13, 16, 23, 24, 26-28, 44) 5 cosmos, 6 coneflowers, 7 a round clipped box
+// ball, 8 a boulder, 9 a small red-purple maple, 10 pink grass plumes; each plot its own mix
+// (BED_MIX: north_5's a dense mass of cosmos and coneflowers from north_4's steps on, photos 27
+// and 28 seeing them as one bed, north_3's and north_4's grasses,
+// box balls and hostas, north_2's yews, boulders and box) and, behind north_2's hedge on its
+// terrace, the maple and the pink plumes over it (`behind`).
+const BED_MIX = [
+  [-1e5, [0.38, 0.58, 0.74, 0.88, 1], [0, 1, 2, 3, 4], 1],
+  [-5261, [0.22, 0.36, 0.52, 0.64, 0.78, 0.92, 1], [1, 8, 0, 2, 7, 3, 9], 0.8],
+  [-2022, [0.32, 0.56, 0.8, 0.9, 1], [2, 7, 0, 1, 3], 1],
+  [4400, [0.48, 0.8, 0.9, 1], [5, 6, 3, 4], 0.55],
+];
 export function bedSpots(L, spans, step) {
   let seed = 90127;
   const R = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
@@ -247,16 +259,20 @@ export function bedSpots(L, spans, step) {
   for (const { spans: list } of spans) {
     for (const { a, b, kind } of list) {
       if (kind !== 'wall') continue;
-      for (let x = a + step * 0.4; x < b - 25; x += step * (0.75 + 0.5 * R())) {
+      for (let x = a + step * 0.4; x < b - 25; ) {
+        const [, cut, kinds, f] = BED_MIX.findLast(([x0]) => x >= x0);
         const k = R();
         const d = 42 + R() * 55;
         const z = L.wallZAt(x) - d;
-        if (hedges.some((h) => x > h.x0 - 30 && x < h.x1 + 30)) continue;
-        const wt = L.GROUND + wallDrawnAt(x) + 1;
+        const at = x;
+        x += step * f * (0.75 + 0.5 * R());
+        if (hedges.some((h) => at > h.x0 - 30 && at < h.x1 + 30)) continue;
+        const wt = L.GROUND + wallDrawnAt(at) + 1;
         const y = wt + (L.NORTH.top - wt) * Math.max(0, Math.min(1, (d - 30) / (STRIP - 30)));
-        out.push({ x, z, y, kind: k < 0.38 ? 0 : k < 0.58 ? 1 : k < 0.74 ? 2 : k < 0.88 ? 3 : 4, s: 1 + 0.55 * R() });
+        out.push({ x: at, z, y, kind: kinds[cut.findIndex((c) => k < c)], s: 1 + 0.55 * R(), room: Math.min(at - a, b - at) });
       }
     }
   }
+  for (const h of hedges) for (const [t, kind, dz] of [[0.3, 9, 120], [0.12, 10, 75], [0.55, 10, 80], [0.8, 10, 70]]) out.push({ x: h.x0 + (h.x1 - h.x0) * t, z: h.z0 - dz, y: h.y0, kind, s: 1.3, room: 999, behind: true });
   return out;
 }

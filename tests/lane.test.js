@@ -126,7 +126,11 @@ const mesh = (name) => meshes.find((m) => m.name === name);
 // gable panels and windows, the bend's fence, the hedges along lines, the double garage's front
 // and roof, the east house's dormer, the forecourt's wall, the veranda house, the lay-by's cars,
 // lamppost B, the far houses: ~42.2k, the classic look's frame stays a small one.)
-test('budgets: at most 15 meshes named lane-* with baked colours (13 and the movers: the bins, instanced, and the charger\'s cable), under 45k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
+// (47k, from 45k, round 2b's P3: the street worn and patched as the photos have it, both looks
+// drawing it in the shared asphalt mesh: the patches in groups with islands, the long seal bands,
+// the grated covers (+1.1k); the bed walls' irregular cap slabs (+0.3k); the beds' new kinds and
+// their flowers (+0.6k): 46.5k.)
+test('budgets: at most 15 meshes named lane-* with baked colours (13 and the movers: the bins, instanced, and the charger\'s cable), under 47k triangles and 6.5k collider triangles, built in under 1200 ms; the course\'s objects within 9 meshes', () => {
   assert.ok(meshes.length <= 15, `${meshes.length} meshes`);
   assert.ok(mesh('lane-bins').isInstancedMesh && mesh('lane-bins').count === 2 && mesh('lane-cable'), 'the movers');
   let tris = 0;
@@ -137,7 +141,7 @@ test('budgets: at most 15 meshes named lane-* with baked colours (13 and the mov
     assert.ok(g.attributes.position.count > 0, `${m.name} has vertices`);
     tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
   }
-  assert.ok(tris < 45000, `${tris} triangles`);
+  assert.ok(tris < 47000, `${tris} triangles`);
   const colliders = area.parts.flatMap((p) => p.colliders);
   const colliderTris = colliders.reduce((n, c) => n + c.positions.length / 9, 0);
   assert.ok(colliderTris < 6500, `${colliderTris} collider triangles`);

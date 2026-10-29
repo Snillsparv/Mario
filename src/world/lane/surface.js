@@ -7,20 +7,24 @@
 //   roadAt(L, t, s)   the point t along ROAD.line from its west end, s across it (+ its left: the
 //                     south side) -> [x, z, dx, dz] (dx, dz: the line's way there)
 //   streetWear(L)     the road's wear (memoised per layout):
-//       patches       [[x, z]...] the mended patches: blobby outlines (12-20 points, 150-900
-//                     across), a quarter to a third of the carriageway, darker sealed asphalt
+//       patches       [[x, z]...] the mended patches (P3): ragged outlines of 16 points, ~180-900
+//                     across, in groups along the wheel tracks and the kerbs, round the covers and
+//                     at the north drives' mouths, ~28 % of the carriageway and apron, dark sealant
+//       islands       [[x, z]...] the old asphalt left inside the big ones (8 points)
+//       long          [{ pts, w }] the long seal bands down the wheel tracks (P3: three, 36-52 m,
+//                     a width per point, 20-63, as dark as the patches)
 //       bands         [{ pts, w }] the meandering sealant bands along the road (20-50 wide, darker)
 //       seals         [{ pts, w }] the crack-seal lines (4-6 wide, near black), one 15 m along the
 //                     bend's south third
 //       seam          { pts, w } the longitudinal seam a quarter in from the south edge west of the
 //                     dad's (two layings)
-//       covers        [{ x, z, r }] cast-iron manhole covers: two side by side at the bend, two at
+//       covers        [{ x, z, r }] cast-iron manhole covers (P3: grey-rust, grated, photo 09): two side by side at the bend, two at
 //                     the side road's mouth, two in the straight's south half by the dad's, two on
 //                     the turning area's line and one in its middle; none on the straight west of
 //                     the link (photo 12)
 //       gullies       [{ x, z, dx, dz }] rectangular grates at the north kerb only (along dx, dz)
 //       sump          { x, z, r } the dark round patch with its small square grate (photos 33, 34)
-//     (`n`: the blobs' points: 12 on low)
+//     (one wear for every tier and both looks)
 //   EDGING            the dad's lawn's weathered timber edging at the asphalt's edge (x0..x1,
 //                     w wide, joints every `joint`) and, along its west edge by the link's drive,
 //                     the small concrete edging stones with a moss strip (`west`)
@@ -52,14 +56,16 @@ const lineLength = (L) => L.ROAD.line.slice(1).reduce((s, p, i) => s + Math.hypo
 // (The straight's line: t of a point on it at x.)
 const tAtX = (L, x) => lineLength(L) - (L.ROAD.line.at(-1)[0] - x);
 
-// A blob: n points round (cx, cz), radii a (along d) and b (across), its outline wandering.
-function blob(R, cx, cz, a, b, d, n) {
+// A blob: n points round (cx, cz), radii a (along d) and b (across), its outline wandering (P3:
+// `rag` adds finer wobbles and a jitter per point: a sealed patch's ragged edge).
+function blob(R, cx, cz, a, b, d, n, rag = 0) {
   const ph = [R(), R(), R()].map((v) => v * 6.3);
+  const fine = rag ? [R(), R()].map((v) => v * 6.3) : [0, 0];
   const [ux, uz] = d;
   const pts = [];
   for (let i = 0; i < n; i++) {
     const t = (i / n) * Math.PI * 2;
-    const k = 1 + 0.16 * Math.sin(2 * t + ph[0]) + 0.11 * Math.sin(3 * t + ph[1]) + 0.07 * Math.sin(5 * t + ph[2]);
+    const k = 1 + 0.16 * Math.sin(2 * t + ph[0]) + 0.11 * Math.sin(3 * t + ph[1]) + 0.07 * Math.sin(5 * t + ph[2]) + rag * (0.08 * Math.sin(7 * t + fine[0]) + 0.06 * Math.sin(9 * t + fine[1]) + 0.16 * (R() - 0.5));
     const [p, q] = [Math.cos(t) * a * k, Math.sin(t) * b * k];
     pts.push([cx + ux * p - uz * q, cz + uz * p + ux * q]);
   }
@@ -82,33 +88,49 @@ function meander(L, R, t0, len, s0, drift, step, edge = 60) {
 }
 
 const WEAR = new WeakMap();
-export function streetWear(L, n = 12) {
-  const key = WEAR.get(L) ?? {};
-  if (key[n]) return key[n];
+export function streetWear(L) {
+  if (WEAR.has(L)) return WEAR.get(L);
+  const n = 16;
   const R = makeRng(7177);
   const half = L.ROAD.half;
   const total = lineLength(L);
+  // (P3: the old patches' draws, so the bands and the seals keep their places.)
+  for (let i = 200; i--; ) R();
+  // The mended patches (P3, photos 04, 05, 09, 12, 34, 43: dark, ragged, in groups along the wheel
+  // tracks and the kerbs, round the covers and at the drives' mouths), their own stream; each
+  // wholly on the carriageway or the turning area.
+  const P = makeRng(7187);
   const patches = [];
-  // Along the road from the junction: a blob every ~750, inside the carriageway.
-  for (let t = 250; t < total - 200; ) {
-    const [a, b] = [170 + R() * 330, 80 + R() * 190];
-    const s = (R() * 2 - 1) * (half - 40 - b);
-    const [x, z, dx, dz] = roadAt(L, t, s);
-    const turn = (R() - 0.5) * 0.5;
+  const on = (x, z) => L.inApron(x, z) || nearest(L, x, z)[1] < half - 25;
+  const islands = [];
+  const put = (x, z, a, b, turn, dx = 1, dz = 0) => {
     const [c, sn] = [Math.cos(turn), Math.sin(turn)];
-    patches.push(blob(R, x, z, a, b, [dx * c - dz * sn, dz * c + dx * sn], n));
-    t += a * 1.3 + 120 + R() * 380;
-  }
-  // On the turning area: a few more, each wholly on it.
-  const A = L.APRON;
-  for (let k = 0, tries = 0; k < 6 && tries < 60; tries++) {
-    const [x, z, a, b, turn] = [A.x0 + 250 + R() * (A.x1 - A.x0 - 500), A.z0 + 250 + R() * (A.z1 - A.z0 - 500), 200 + R() * 260, 110 + R() * 160, R() * Math.PI];
-    const pts = blob(R, x, z, a, b, [Math.cos(turn), Math.sin(turn)], n);
-    if (pts.every(([px, pz]) => L.inApron(px, pz))) {
-      patches.push(pts);
-      k++;
+    const d = [dx * c - dz * sn, dz * c + dx * sn];
+    const pts = blob(P, x, z, a, b, d, n, 1);
+    if (!pts.every(([px, pz]) => on(px, pz))) return;
+    patches.push(pts);
+    // (A big one keeps an island or two of the old asphalt: the photos' frayed sealant.)
+    if (a > 250) {
+      const [u, w] = [(P() - 0.5) * a, (P() - 0.5) * b * 0.6];
+      islands.push(blob(P, x + d[0] * u - d[1] * w, z + d[1] * u + d[0] * w, 30 + P() * 50, 20 + P() * 30, d, 8, 1));
+    }
+  };
+  // Along the road: a group every ~770, on a wheel track or by a kerb: a long blob and 0-2 small
+  // ones beside it.
+  for (let t = 200; t < total - 150; t += 500 + P() * 380) {
+    const lane = P();
+    const [a, b] = [180 + P() * 240, 105 + P() * 130];
+    const s = Math.sign(lane < 0.6 ? lane - 0.3 : lane - 0.8) * Math.min(lane < 0.6 ? 130 + P() * 170 : half, half - 30 - b * 1.4);
+    const [x, z, dx, dz] = roadAt(L, t, s);
+    put(x, z, a, b, (P() - 0.5) * 0.4, dx, dz);
+    for (let k = Math.floor(P() * 2.4); k > 0; k--) {
+      const [x2, z2] = roadAt(L, t + (P() < 0.5 ? -1 : 1) * (a + 30 + P() * 120), s + (P() - 0.5) * 160);
+      put(x2, z2, 50 + P() * 120, 40 + P() * 70, P() * 3, dx, dz);
     }
   }
+  // On the turning area: six big ones (photos 25, 33, 34).
+  const A = L.APRON;
+  for (let i = 0, m = patches.length + 6; i < 60 && patches.length < m; i++) put(A.x0 + 250 + P() * (A.x1 - A.x0 - 500), A.z0 + 300 + P() * (A.z1 - A.z0 - 550), 150 + P() * 180, 90 + P() * 110, P() * Math.PI);
   // The sealant bands and the crack seals: their starts along the road (t from the junction).
   const bands = [[3300, 1400, -150], [5800, 1900, 120], [7600, 1300, -260], [9900, 2000, 60], [12100, 1500, -60], [13600, 1100, 200]].map(([t, len, s]) => ({ pts: meander(L, R, t, len, s, 30, 90), w: 10 + R() * 18 }));
   // (The first: 15 m on from the bend's west end along its south third, photo 09.)
@@ -136,14 +158,25 @@ export function streetWear(L, n = 12) {
     const [x, z, dx, dz] = roadAt(L, mouth + d, -half + 24);
     gullies.push({ x, z, dx, dz });
   }
-  const out = { patches, bands, seals, seam, covers, gullies, sump: { x: 4453, z: 292, r: 90 } };
-  key[n] = out;
-  WEAR.set(L, key);
+  // Round each cover a patch (its trench resealed), and one at each north drive's mouth (the
+  // kerb's drop).
+  for (const c of covers) put(c.x + (P() - 0.5) * 60, c.z + (P() - 0.5) * 60, 110 + P() * 90, 80 + P() * 60, P() * 3);
+  for (const { drive: [d0, d1] } of L.PLOTS_N) if (d1 < L.ROAD.line.at(-1)[0]) put((d0 + d1) / 2, kerbZ + 150, (d1 - d0) * 0.3, 70 + P() * 50, (P() - 0.5) * 0.3);
+  // The long seal bands down the wheel tracks (P3, photos 34, 43: 20-60 m, 16-50 wide, as dark as
+  // the patches, slowly meandering), their own stream: { pts, w } (a width per point).
+  const Q = makeRng(7193);
+  const long = [[3600, 4200, 150], [tAtX(L, -5000), 5200, -170], [tAtX(L, -4300), 3700, 120]].map(([t, len, s]) => {
+    const pts = meander(L, Q, t, len, s, 12, 120, 120);
+    const [w, ph] = [28 + Q() * 18, Q() * 6];
+    return { pts, w: pts.map((_, i) => Math.max(16, w * (0.8 + 0.25 * Math.sin(i * 0.37 + ph) + 0.5 * (Q() - 0.5)))) };
+  });
+  const out = { patches, islands, bands, seals, seam, covers, gullies, long, sump: { x: 4453, z: 292, r: 90 } };
+  WEAR.set(L, out);
   return out;
 }
 
-// The arc length along ROAD.line of the point on it nearest (x, z).
-function tAtLine(L, x, z) {
+// The arc length along ROAD.line of the point on it nearest (x, z), and its distance.
+function nearest(L, x, z) {
   const line = L.ROAD.line;
   let [best, at, acc] = [Infinity, 0, 0];
   for (let i = 0; i + 1 < line.length; i++) {
@@ -155,8 +188,9 @@ function tAtLine(L, x, z) {
     if (d < best) [best, at] = [d, acc + u * l];
     acc += l;
   }
-  return at;
+  return [at, best];
 }
+const tAtLine = (L, x, z) => nearest(L, x, z)[0];
 
 export const EDGING = Object.freeze({ x0: -860, x1: 885, w: 18, joint: 300, west: { x: -860, z1: 1310, w: 10, moss: 50 } });
 export const SHOULDER = Object.freeze({ x0: -7700, x1: -6080, w: 70 });
@@ -189,35 +223,49 @@ export function kerbside(L) {
 
 // The street's flat pieces (lane/build.js surface draws them in both looks, picking a tint by `k`):
 // each { k, pts: [[x, y, z]...] (convex, or star-shaped and fanned from its middle: `fan`), up? (a
-// slanted one's way up), shade? }; k: 'patch', 'band', 'seal', 'cover' (the covers: an iron disc,
-// its raised ring a shade lighter), 'sump', 'slot', 'bar', 'litter' (down the south edge's bevel
+// slanted one's way up), shade? }; k: 'patch' (and the long bands), 'island', 'band', 'seal',
+// 'cover' and 'grid' (the covers: a dark gap, the iron face with its smooth rim a shade lighter,
+// eight slots across it), 'sump', 'slot', 'bar', 'litter' (down the south edge's bevel
 // and, in patches, a ragged way out onto the road, `runs`' edges but where a hedge stands at the
 // edge: near the road's tone, each piece its own shade), 'sand' (the same along the young
 // beeches, BEECH_ROW: their light sandy verge), 'moss', 'gravel'; and `boards` (the timber
 // edging's [x0, x1] between its joints) and `stones` (the west edging's [z0, z1]). (`step`: the
 // litter's pieces' length.)
 export function surfaceParts(L, runs, step = 90) {
-  const W = streetWear(L, 12);
+  const W = streetWear(L);
   const G = L.GROUND;
   const out = [];
   const add = (k, pts, extra = {}) => out.push({ k, pts, ...extra });
   const flat = (pts, y) => pts.map(([x, z]) => [x, y, z]);
   const box = (k, x0, z0, x1, z1, y) => add(k, flat([[x0, z0], [x1, z0], [x1, z1], [x0, z1]], y));
-  const disc = (k, x, z, r, y, extra) => add(k, flat(Array.from({ length: 14 }, (_, i) => [x + Math.cos(i * 0.4488) * r, z + Math.sin(i * 0.4488) * r]), y), { fan: true, ...extra });
+  const disc = (k, x, z, r, y, extra, m = 14) => add(k, flat(Array.from({ length: m }, (_, i) => [x + Math.cos((i * 6.2832) / m) * r, z + Math.sin((i * 6.2832) / m) * r]), y), { fan: true, ...extra });
+  // (A band's quads; w a width, or one per point.)
   const strip = (k, pts, w, y) => {
     for (let i = 0; i + 1 < pts.length; i++) {
       const [a, q] = [pts[i], pts[i + 1]];
-      const l = Math.hypot(q[0] - a[0], q[1] - a[1]) || 1;
-      const [nx, nz] = [((a[1] - q[1]) / l) * (w / 2), ((q[0] - a[0]) / l) * (w / 2)];
+      const l = (Math.hypot(q[0] - a[0], q[1] - a[1]) || 1) / ((w[i] ?? w) / 2);
+      const [nx, nz] = [(a[1] - q[1]) / l, (q[0] - a[0]) / l];
       add(k, flat([[a[0] + nx, a[1] + nz], [q[0] + nx, q[1] + nz], [q[0] - nx, q[1] - nz], [a[0] - nx, a[1] - nz]], y));
     }
   };
-  for (const p of W.patches) add('patch', flat(p, 0.6), { fan: true });
+  // (P3: the patches and the long bands one tint at one height, under the litter's lip: no two of
+  // them fight where they overlap.)
+  for (const p of W.patches) add('patch', flat(p, 0.5), { fan: true });
+  for (const p of W.islands) add('island', flat(p, 0.55), { fan: true });
+  for (const b of W.long) strip('patch', b.pts, b.w, 0.5);
   for (const b of [...W.bands, W.seam]) strip('band', b.pts, b.w, 0.7);
   for (const c of W.seals) strip('seal', c.pts, c.w, 0.8);
+  // The covers (P3, photo 09): grey-rust cast iron, a dark gap round it, a smooth rim and a grid
+  // of slots across its face.
   for (const { x, z, r } of W.covers) {
-    disc('cover', x, z, r, 0.85, { shade: 0.85 });
-    disc('cover', x, z, r * 0.62, 1.1, { shade: 1.2 });
+    disc('grid', x, z, r, 0.85, {}, 12);
+    disc('cover', x, z, r * 0.93, 0.95, { shade: 1.1 }, 12);
+    for (let k = -1.5; k < 2; k++) {
+      const v = k * r * 0.22;
+      const h = Math.sqrt((r * 0.78) ** 2 - v * v);
+      box('grid', x - h, z + v - 1.5, x + h, z + v + 1.5, 1.05);
+      box('grid', x + v - 1.5, z - h, x + v + 1.5, z + h, 1.05);
+    }
   }
   const S = W.sump;
   disc('sump', S.x, S.z, S.r, 0.75);

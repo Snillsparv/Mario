@@ -384,29 +384,33 @@ function antenna({ steel, paint }, L, { house, x, gable }, fine) {
 
 // The terraces' walls' coping (lane/build.js terraces: their fronts along the wall's line but at
 // the drives' notches and the steps: plan.js terraceSpans), W6: on the low bed walls' drawn tops
-// (facades.js wallDrawnAt), irregular flat slabs 60 .. 110 long and 13 thick, standing 4 proud of
-// the face, a little out of line, joints between them.
+// (facades.js wallDrawnAt), irregular flat slabs, a little out of line, joints between them; P3
+// (photos 13, 16, 27, 28): a light grey, 40 .. 140 long, 9 .. 16 thick, standing 2 .. 9 proud of
+// the face, 26 .. 34 deep, a few with one end lifted (never below the classic cap under them).
 function coping({ granite }, L) {
   const R = makeRng(2390);
   for (const { spans } of terraceSpans(L)) {
     for (const { a: xa, b: xb, kind } of spans) {
       if (kind !== 'wall') continue;
       for (let x = xa; x < xb - 1; ) {
-        let x1 = Math.min(xb, x + 60 + R() * 50);
+        let x1 = Math.min(xb, x + 40 + R() * 100);
         const top = L.GROUND + wallDrawnAt(x + 1) + 1.5;
         // (A slab ends where the wall's drawn height steps.)
         for (const [bx] of WALL_DRAWN) if (bx > x + 1 && bx < x1) x1 = bx;
-        const out = 3 + R() * 3;
-        const t = 11 + R() * 4;
+        const out = 2 + R() * 7;
+        const t = 9 + R() * 7;
+        const back = 26 + R() * 8;
+        const lift = R() < 0.18 ? 1 + R() * 2.5 : 0;
+        const [ya, yb] = R() < 0.5 ? [top + lift, top] : [top, top + lift];
         const [za, zb] = [L.wallZAt(x + 0.01), L.wallZAt(x1 - 0.01)];
-        granite.color(0xc8c2b8, 0.86 + 0.16 * R());
+        granite.color(0xd2cec6, 0.86 + 0.16 * R());
         const F = (xx, zz, y) => [xx, y, zz];
         const xe = x1 - 0.8;
-        granite.quad(F(x, za + out, top - t), F(xe, zb + out, top - t), F(xe, zb + out, top), F(x, za + out, top));
-        granite.quad(F(x, za + out, top), F(xe, zb + out, top), F(xe, zb - 30, top), F(x, za - 30, top));
-        granite.quad(F(x, za - 30, top - t), F(x, za + out, top - t), F(x, za + out, top), F(x, za - 30, top), { shade: 0.7 });
-        granite.quad(F(xe, zb + out, top - t), F(xe, zb - 30, top - t), F(xe, zb - 30, top), F(xe, zb + out, top), { shade: 0.7 });
-        granite.quad(F(x, za, top - t), F(xe, zb, top - t), F(xe, zb + out, top - t), F(x, za + out, top - t), { shade: 0.5 });
+        granite.quad(F(x, za + out, ya - t), F(xe, zb + out, yb - t), F(xe, zb + out, yb), F(x, za + out, ya));
+        granite.quad(F(x, za + out, ya), F(xe, zb + out, yb), F(xe, zb - back, yb), F(x, za - back, ya));
+        granite.quad(F(x, za - back, ya - t), F(x, za + out, ya - t), F(x, za + out, ya), F(x, za - back, ya), { shade: 0.7 });
+        granite.quad(F(xe, zb + out, yb - t), F(xe, zb - back, yb - t), F(xe, zb - back, yb), F(xe, zb + out, yb), { shade: 0.7 });
+        granite.quad(F(x, za, ya - t), F(xe, zb, yb - t), F(xe, zb + out, yb - t), F(x, za + out, ya - t), { shade: 0.5 });
         x = x1;
       }
     }

@@ -25,7 +25,9 @@ export const CATALOGUE = {
   // south houses' long shade; the low tier's direct path, no grade nor occlusion, already as light.)
   asphalt: { set: 'asphalt', cover: 420, color: 2.13, direct: 1.85, normalScale: 0.8 },
   grass: { set: 'grass', cover: 300, color: [1.38, 1.15, 0.55] }, // (an autumn olive)
-  blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, normalScale: 1.6 },
+  // (P3: on the direct path, low, as light as high's in the sun and shade: its bed walls were ~25
+  // lighter than photos 13, 24, 27, its steps' treads near white.)
+  blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, direct: 0.9, normalScale: 1.6 },
   brick: { set: 'brick', cover: 180, color: 1.12, normalScale: 1.2 },
   render: { set: 'render', cover: 300 },
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },

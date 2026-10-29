@@ -823,24 +823,34 @@ function dadsGarden(kit, layout) {
 }
 
 // The planted strips behind the terraces' low bed walls (W6: facades.js bedSpots, a plant every
-// ~140): lumpy blobs, leafy greens and dark yews in leaves, the purple heucheras in render's plain
-// white (the leaf texture would brown them), tan grass plumes tall and narrow; a rose a low green
-// mound with three small deep pink flowers on it (round 2: not a pink ball).
-const BED_TINTS = [0x8aa040, 0x4a5a2a, 0xb09868, 0x7a3a4a, 0x5e7a34];
+// ~150, each plot its own mix; the small ones four-sided): lumpy blobs, leafy greens and dark yews in leaves, the purple
+// heucheras in render's plain white (the leaf texture would brown them), tan grass plumes tall and
+// narrow; a rose a low green mound with three small deep pink flowers on it (round 2: not a pink
+// ball); P3: cosmos and coneflowers green mounds with pink, white or magenta flowers on them, box
+// balls round and dark, boulders grey and low, a small red-purple maple on its stem, pink plumes.
+// [tint, r, ry, the flowers' tints] by kind.
+const BED_TINTS = [[0x8aa040, 36, 26], [0x4a5a2a, 40, 52], [0xb09868, 24, 80], [0x7a3a4a, 28, 16], [0x5e7a34, 34, 18, [0xc23a62]], [0x7a9a3a, 38, 40, [0xe070b0, 0xf4eef0, 0xc0307a]], [0x5e7a34, 30, 32, [0xd05a8a]], [0x3e5a26, 36, 32], [0xa8a094, 30, 16], [0x6a2030, 50, 38], [0xc89a9a, 26, 90]];
 function beds(kit, layout) {
-  const { leaves, render } = kit.drawn('plants');
-  for (const p of bedSpots(layout, terraceSpans(layout), 140)) {
-    const b = p.kind === 3 ? render : leaves;
-    b.color(BED_TINTS[p.kind]);
-    const [r, ry] = [[36, 26], [40, 52], [22, 62], [28, 16], [34, 18]][p.kind];
-    const cy = p.y + ry * p.s * 0.7;
-    blob(b, p.x, p.z, cy, r * p.s, ry * p.s, p.x * 0.01, 5);
-    if (p.kind !== 4) continue;
-    render.color(0xc23a62);
-    for (let i = 0; i < 3; i++) {
+  const { leaves, render, paint } = kit.drawn('plants');
+  for (const p of bedSpots(layout, terraceSpans(layout), 150)) {
+    const [tint, r0, ry0, dots] = BED_TINTS[p.kind];
+    const s = p.s * Math.max(0.5, Math.min(1, (p.room - 6) / (r0 * p.s)));
+    const b = [3, 8, 9].includes(p.kind) ? render : leaves;
+    const [r, ry] = [r0 * s, ry0 * s];
+    let cy = p.y + ry * 0.7;
+    if (p.kind === 9) {
+      paint.color(TINT.trunk);
+      paint.box(p.x - 3, p.x + 3, p.y, p.y + 130 * s, p.z - 3, p.z + 3, { bottom: false });
+      cy += 130 * s;
+    }
+    b.color(tint);
+    blob(b, p.x, p.z, p.kind === 8 ? p.y + ry * 0.3 : cy, r, ry, p.x * 0.01, r > 34 ? 5 : 4);
+    if (!dots) continue;
+    for (let i = 0; i < (p.kind === 4 ? 3 : 2); i++) {
       const a = p.x * 0.013 + i * 2.1;
-      const [d, y] = [r * p.s * (i ? 0.8 : 0.1), cy + ry * p.s * (i ? 0.6 : 0.98)]; // (on the mound's skin)
-      render.lathe(p.x + Math.sin(a) * d, p.z + Math.cos(a) * d, [[0, y - 7], [7, y], [0, y + 7]], 4, { flat: true, a0: a });
+      const [d, y] = [r * (i ? 0.8 : 0.1), cy + ry * (i ? 0.6 : 0.98)]; // (on the mound's skin)
+      render.color(dots[(i + p.kind) % dots.length]);
+      render.lathe(p.x + Math.sin(a) * d, p.z + Math.cos(a) * d, [[0, y - 7], [7, y], [0, y + 7]], 3, { flat: true, a0: a });
     }
   }
 }

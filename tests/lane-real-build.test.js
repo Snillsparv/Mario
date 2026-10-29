@@ -17,6 +17,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import * as THREE from 'three';
 import * as lane from '../src/world/lane/layout.js';
 import { buildLane, REPEAT, REAL_DRAWN } from '../src/world/lane/build.js';
+import { streetWear } from '../src/world/lane/surface.js';
+import { bedSpots } from '../src/world/lane/facades.js';
+import { terraceSpans } from '../src/world/lane/real/plan.js';
 import { buildLaneReal, laneJobs } from '../src/world/lane/real/look.js';
 import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { TextureStore } from '../src/render/real/textureStore.js';
@@ -157,6 +160,83 @@ test('its lawns are grey tints (the lawn texture is green), its roofs\' uvs run 
   for (const m of Object.values(C)) classicTris += m.geometry.attributes.position.count / 3;
   // (R1: the classic geometry; section 7's budgets are for the frame, the shadow pass included.)
   assert.ok(tris < classicTris * 1.05 && tris < 100000, `${tris} triangles (classic ${classicTris})`);
+});
+
+test('P3: the street worn and patched in both looks: the patches and long seal bands one dark tint (~0.6 of the road\'s, drifting with place) at one height under the litter\'s lip, ~28 % of the carriageway, islands of the old asphalt, the covers grey-rust and grated; the bed walls\' faces in finer, longer slabs than the steps', () => {
+  const W = streetWear(lane);
+  const area = (p) => Math.abs(p.reduce((s, [x, z], i) => s + x * p[(i + 1) % p.length][1] - p[(i + 1) % p.length][0] * z, 0)) / 2;
+  const len = lane.ROAD.line.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - lane.ROAD.line[i][0], p[1] - lane.ROAD.line[i][1]), 0);
+  const A = lane.APRON;
+  const share = W.patches.reduce((s, p) => s + area(p), 0) / (len * 2 * lane.ROAD.half + (A.x1 - A.x0) * (A.z1 - A.z0));
+  assert.ok(W.patches.length >= 40 && W.patches.length <= 60 && share > 0.25 && share < 0.33, `${W.patches.length} patches, ${share.toFixed(3)} of the carriageway`);
+  assert.ok(W.patches.every((p) => p.length >= 16 && p.every(([x, z]) => lane.inApron(x, z) || Math.abs(z - lane.ROAD.line.at(-1)[1]) < lane.ROAD.half || x < lane.ROAD.line.at(-2)[0])), 'ragged, on the carriageway');
+  assert.equal(W.long.length, 3);
+  assert.ok(W.islands.length > 5 && W.covers.length === 9);
+  const lum = (c, i) => 0.2126 * c[i] + 0.7152 * c[i + 1] + 0.0722 * c[i + 2];
+  for (const [look, part] of [['classic', classic], ['realistic', real]]) {
+    const g = meshes(part)['lane-asphalt'].geometry;
+    const [p, c] = [g.attributes.position.array, g.attributes.color.array];
+    const at = (y, x0 = -7000, x1 = 2700) => {
+      const out = [];
+      for (let i = 0; i < p.length; i += 3) if (Math.abs(p[i + 1] - y) < 0.01 && p[i] > x0 && p[i] < x1 && Math.abs(p[i + 2] + 90) < lane.ROAD.half) out.push(lum(c, i));
+      return out.sort((u, v) => u - v);
+    };
+    const road = at(0);
+    const r = road[road.length >> 1];
+    const patch = at(0.5);
+    assert.ok(patch.length > 600, `${look}: the patches' and long bands' vertices (${patch.length})`);
+    const [lo, hi] = [patch[0] / r, patch.at(-1) / r];
+    if (look === 'realistic') assert.ok(lo > 0.4 && hi < 0.75 && hi - lo > 0.1, `${look}: the patches ${lo.toFixed(2)} .. ${hi.toFixed(2)} the road's (linear)`);
+    else assert.ok(hi < 0.85 && hi - lo > 0.1, `${look}: the patches ${lo.toFixed(2)} .. ${hi.toFixed(2)} the road's, baked`);
+    const island = at(0.55);
+    assert.ok(island.length > 50 && island[island.length >> 1] > patch[patch.length >> 1] * 1.3, `${look}: islands lighter than the patches round them`);
+    // The covers' faces (at 0.95) grey-rust, near the road's own tone; the slots darker.
+    const face = [];
+    for (let i = 0; i < p.length; i += 3) if (Math.abs(p[i + 1] - 0.95) < 0.01) face.push([c[i], c[i + 1], c[i + 2]]);
+    assert.ok(face.length > 9 * 20, `${look}: the covers' faces`);
+    for (const [cr, cg, cb] of face) assert.ok(cr > cg && cg > cb, `${look}: a cover rusty grey (${cr.toFixed(3)}, ${cg.toFixed(3)}, ${cb.toFixed(3)})`);
+  }
+  // The bed walls' faces: v per unit 2.8 times the steps' risers' (W6's courses ~2.8x finer), u 1.1.
+  const b = meshes(classic)['lane-blocks'].geometry.attributes;
+  const rate = (pick) => {
+    for (let i = 0; i < b.position.count; i += 3) {
+      if (![0, 1, 2].every((k) => pick(i + k))) continue;
+      for (const [u, v] of [[0, 1], [1, 2], [0, 2]]) {
+        const dy = b.position.getY(i + v) - b.position.getY(i + u);
+        if (Math.abs(dy) > 20) return ((b.uv.getY(i + v) - b.uv.getY(i + u)) / dy) * REPEAT.blocks;
+      }
+    }
+    return 0;
+  };
+  // (A face's triangle over 20 high: the wall's under its 13-high cap; a step's riser 25.6.)
+  const wallZ = (i) => Math.abs(b.position.getZ(i) - lane.wallZAt(b.position.getX(i))) < 0.5 && Math.abs(b.normal.getZ(i)) > 0.9;
+  const plot = lane.PLOTS_N[2];
+  const wall = rate((i) => wallZ(i) && b.position.getX(i) >= plot.x0 - 1 && b.position.getX(i) <= plot.drive[0] + 1);
+  const riser = rate((i) => b.position.getX(i) >= plot.steps[0] - 1 && b.position.getX(i) <= plot.steps[1] + 1 && Math.abs(b.normal.getZ(i)) > 0.9 && b.position.getY(i) > lane.GROUND - 1 && b.position.getZ(i) < lane.wallZAt(plot.steps[0]) - 5);
+  assert.ok(Math.abs(Math.abs(wall) - 2.8) < 0.01 && Math.abs(Math.abs(riser) - 1) < 0.01, `the wall's courses ${wall}, the steps' ${riser}`);
+});
+
+test('P3: the beds each plot\'s own (north_5\'s cosmos and coneflowers from north_4\'s steps on, north_3\'s and north_4\'s grasses, box balls and hostas, north_2\'s yews, boulders and box), every plant inside its strip\'s span (clear of the steps\' railings and the drives), the maple and pink plumes behind north_2\'s hedge clear of its top and of F1', () => {
+  const spans = terraceSpans(lane);
+  for (const step of [95, 140, 165, 900]) {
+    const spots = bedSpots(lane, spans, step);
+    const strip = spots.filter((p) => !p.behind);
+    for (const p of strip) {
+      const span = spans.flatMap((t) => t.spans).find((q) => q.kind === 'wall' && p.x > q.a && p.x < q.b);
+      assert.ok(span && Math.abs(p.room - Math.min(p.x - span.a, span.b - p.x)) < 1e-6, `${step}: a plant at ${p.x.toFixed(0)} inside its span`);
+      assert.ok(p.z < lane.wallZAt(p.x) - 30 && p.z > lane.wallZAt(p.x) - lane.NORTH.top, 'in the strip');
+    }
+    if (step > 200) continue;
+    const share = (x0, x1, kinds) => strip.filter((p) => p.x > x0 && p.x < x1 && kinds.includes(p.kind)).length / strip.filter((p) => p.x > x0 && p.x < x1).length;
+    assert.ok(share(4400, 1e5, [5, 6]) > 0.6, `${step}: north_5's flowers`);
+    assert.ok(share(-2022, 4400, [0, 2, 7]) > 0.6, `${step}: the grasses, box and hostas`);
+    assert.ok(share(-5261, -2022, [1, 8, 0, 7, 2, 3, 9]) === 1, `${step}: north_2's`);
+    const H = lane.HEDGES.find((h) => h.clipped);
+    const F = lane.FLAGPOLES.find((f) => f.id === 'F1');
+    const behind = spots.filter((p) => p.behind);
+    assert.equal(behind.length, 4);
+    for (const p of behind) assert.ok(p.x > H.x0 && p.x < H.x1 && p.z < H.z0 - 60 && p.y === H.y0 && Math.hypot(p.x - F.x, p.z - F.z) > 300, 'behind the hedge on its terrace');
+  }
 });
 
 test("south_2's flush edging (W5 fix) in the kerbs' light grey in both looks, never a colour left over from what was drawn before it", () => {

@@ -48,7 +48,7 @@ const BIRCH_BARK = 0xf4f2ec;
 
 // Two crossed cards at c leaning out along d (unit), `size` across, from cell `cell`, the
 // normals bent out (+ up): into g at its current colour (one card: `cards` 1, the hedges').
-function cluster(g, R, c, d, size, cell, sway, cards = 2) {
+function cluster(g, R, c, d, size, cell, sway, cards = 2, tall = 1) {
   const n0 = norm(add(d, [0, 0.35, 0]));
   const helper = Math.abs(d[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
   const u0 = norm(cross(d, helper));
@@ -61,7 +61,7 @@ function cluster(g, R, c, d, size, cell, sway, cards = 2) {
     // Spanned by uu and a line between the shell's tangent and d: the card leans out.
     const vv = norm(add(mul(cross(uu, d), 0.85), mul(d, 0.55)));
     const u = mul(uu, size / 2);
-    const v = mul(vv, size / 2);
+    const v = mul(vv, (size / 2) * tall);
     const p = (a, b) => add(add(c, mul(u, a)), mul(v, b));
     const nn = () => norm(add(n0, [(R() - 0.5) * 0.3, 0, (R() - 0.5) * 0.3]));
     // Its root edge (b -1) hardly moves, its far edge sways.
@@ -78,7 +78,7 @@ function cluster(g, R, c, d, size, cell, sway, cards = 2) {
 // Clusters on an ellipsoid's skin: `count` of them `size` across, out of `outside` (other
 // ellipsoids of the same canopy: clusters inside them are left out), its tints [[r, g, b]] by
 // turns at random, darker deep and low; and its dark core.
-function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside = [], sway = 3, core = CORE.green, coreK = 0.78, away = null, gold = null, into = kit.foliage }) {
+function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside = [], sway = 3, core = CORE.green, coreK = 0.78, away = null, gold = null, into = kit.foliage, tall = 1 }) {
   const foliage = into;
   const n = Math.round(count * (CLUSTERS[kit.tier] ?? 1));
   for (let i = 0; i < n; i++) {
@@ -95,7 +95,7 @@ function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside 
     const k = (0.55 + 0.45 * ((depth - 0.72) / 0.3)) * (0.72 + 0.28 * (d[1] * 0.5 + 0.5)) * (0.85 + 0.3 * R());
     if (gold) t = goldOf(t, p[1], d, gold);
     foliage.rgb(t[0] * k, t[1] * k, t[2] * k);
-    cluster(foliage, R, p, d, size * (0.75 + 0.5 * R()), cell, sway);
+    cluster(foliage, R, p, d, size * (0.75 + 0.5 * R()), cell, sway, 2, tall);
   }
   if (core) {
     kit.core.rgb(...core);
@@ -274,22 +274,55 @@ export function plants(kit, L) {
 }
 
 // The planted strips behind the terraces' low bed walls (W6, photos 10, 16, 23, 27, 28: facades.js
-// bedSpots): leafy mounds (hostas, shrubs), dark yew masses, tall tan grass plumes, purple
-// heucheras, pink roses; each its own small shell, no core; on low a third as many.
-const BED_STEP = { high: 185, mid: 165, low: 900 };
+// bedSpots, each plot its own mix): leafy mounds (hostas), dark yew masses, tall tan grass plumes,
+// purple heucheras, pink roses; P3 (photos 13, 16, 23, 24, 26-28, 44): cosmos (feathery light green,
+// pink, white and magenta flowers over it) and coneflowers (pink over green) in a dense mass at
+// north_5, round clipped box balls, granite boulders half in the soil, small red-purple maples (on a
+// thin stem) and pink grass plumes; each kind a small shell or two, no core, its own stream, kept
+// inside its span (the steps' railings and the drives clear); on low a sixth as many. (`f`: the
+// flowers' shell over the leaves, its tints; `h`: a stem.)
+const BED_STEP = { high: 100, mid: 165, low: 900 };
+// (The beds' clusters on mid: three quarters of the shells' own 70 %, its frame's budget.)
+const BED_K = { mid: 0.75 };
+// (The flowers on the red cell's leaves, their green and blue raised: pink, white, magenta.)
+const PINKS = [[2.9, 6, 9.5], [3.1, 13, 15], [2.6, 2.2, 6.5]];
 const BED_KINDS = [
   { r: [38, 26, 32], n: 12, size: 40, cell: CELL.rhodo, tints: [[1.7, 1.85, 0.6], [1.25, 1.45, 0.5], [0.9, 1.05, 0.42]] },
   { r: [44, 58, 36], n: 14, size: 34, cell: CELL.hedge, tints: [[0.34, 0.4, 0.17], [0.27, 0.33, 0.14]], below: -0.5 },
-  { r: [26, 70, 26], n: 8, size: 44, cell: CELL.hedge, tints: [[2.1, 1.6, 0.9], [1.8, 1.25, 0.8]], below: 0.1 },
+  { r: [30, 85, 30], n: 18, size: 11, cell: CELL.hedge, tints: [[3.4, 1.25, 2.9], [2.8, 1.05, 2.4]], below: 0.05, tall: 6 },
   { r: [30, 16, 26], n: 9, size: 30, cell: CELL.red, tints: [[0.95, 0.36, 0.42], [0.72, 0.26, 0.32]] },
   { r: [32, 30, 28], n: 10, size: 30, cell: CELL.red, tints: [[2.2, 1, 1.3], [0.8, 1, 0.5]] },
+  { r: [44, 52, 40], n: 13, size: 34, cell: CELL.hedge, tints: [[0.75, 1.15, 0.38], [0.6, 0.95, 0.32]], below: -0.1, f: [10, 20, PINKS] },
+  { r: [36, 52, 32], n: 9, size: 30, cell: CELL.hedge, tints: [[0.55, 0.8, 0.3], [0.45, 0.7, 0.26]], f: [8, 20, [[2.8, 4.5, 6.5], [2.4, 3.6, 5.2]]] },
+  { r: [40, 36, 40], n: 16, size: 30, cell: CELL.hedge, tints: [[0.42, 0.55, 0.2], [0.36, 0.48, 0.18]], below: -0.4 },
+  null,
+  { r: [62, 46, 58], n: 30, size: 34, cell: CELL.red, tints: [[0.55, 0.1, 0.14], [0.42, 0.07, 0.12], [0.7, 0.16, 0.2]], below: -0.3, h: 130 },
+  { r: [32, 95, 32], n: 18, size: 12, cell: CELL.hedge, tints: [[3.8, 1, 3.6], [3.2, 0.85, 3.1]], below: 0.05, tall: 6 },
 ];
 function beds(kit, L) {
-  const S = makeRng(8243);
+  const streams = BED_KINDS.map((_, i) => makeRng(8243 + 101 * i));
   for (const p of bedSpots(L, terraceSpans(L), BED_STEP[kit.tier] ?? BED_STEP.high)) {
+    const S = streams[p.kind];
     const K = BED_KINDS[p.kind];
-    const r = K.r.map((v) => v * p.s);
-    shell(kit, S, { c: [p.x, p.y + r[1] * 0.55, p.z], r, count: K.n, size: K.size * p.s, cell: K.cell, tints: K.tints, below: K.below ?? -0.15, sway: 1.5, core: null });
+    // (Inside its span: a plant near the steps or the drive drawn smaller.)
+    const s = p.s * Math.max(0.5, Math.min(1, (p.room - 6) / ((K?.r[0] ?? 30) * 1.2 * p.s)));
+    if (!K) {
+      // A boulder, half in the soil.
+      const r = [26 + 16 * S(), 16 + 8 * S(), 22 + 12 * S()].map((v) => v * s);
+      kit.granite.color(0xb4ab9c, 0.8 + 0.3 * S());
+      const th = S() * 3;
+      kit.granite.ellipsoid([p.x, p.y + r[1] * 0.35, p.z], [Math.cos(th), 0, Math.sin(th)], [0, 1, 0], [-Math.sin(th), 0, Math.cos(th)], r[0], r[1], r[2], 7, 4);
+      continue;
+    }
+    const r = K.r.map((v) => v * s * 1.2);
+    const y = p.y + (K.h ?? 0) * s;
+    if (K.h) {
+      kit.bark.color(0x5a4a42);
+      kit.bark.tube([p.x, p.y - 4, p.z], [p.x + (S() - 0.5) * 20, y, p.z], 3.5 * s, 2, 5);
+    }
+    const k = BED_K[kit.tier] ?? 1;
+    shell(kit, S, { c: [p.x, y + r[1] * 0.55, p.z], r, count: K.n * k, size: K.size * s * 1.15, cell: K.cell, tints: K.tints, below: K.below ?? -0.15, sway: 1.5, core: null, tall: K.tall });
+    if (K.f) shell(kit, S, { c: [p.x, y + r[1] * 1.1, p.z], r: [r[0] * 1.05, r[1] * 0.35, r[2] * 1.05], count: K.f[0] * k, size: K.f[1] * s, cell: CELL.red, tints: K.f[2], below: 0.3, sway: 2, core: null });
   }
 }
 

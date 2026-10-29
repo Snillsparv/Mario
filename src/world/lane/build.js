@@ -101,8 +101,8 @@ const TINT = {
   backLawn: 0xb38f47,
   bank: 0x775e2c,
   path: 0x9c9466, // the grass-paver path: grass tinted a mossy olive (W3)
-  walls: 0x9a9088, // (W6: the bed walls' warm grey slabs, photos 13, 23, 28)
-  coping: 0xb0a89e,
+  walls: 0xb6b0c1, // (W6: the bed walls' grey slabs, photos 13, 23, 28; P3: cool, so they render the photos' grey in the warm light, photos 13, 27)
+  coping: 0xd0ccc4, // (P3: lighter, photos 13, 16, 27)
   bed: 0x6a5a3a, // (W6: the planted strip behind them, dark soil under the plants)
   steps: 0xc8c2b8,
   cobbles: 0xa8a49e, // (W6: the villas' drives' grey granite setts)
@@ -114,6 +114,7 @@ const TINT = {
   slabs: 0xb4b2ac, // (its path's concrete slabs)
   paving: 0xb4b2ac, // (W5 fix: the slabs' bed east of its path, plain grey)
   floor: 0x9a9890, // (the store room's concrete)
+  cover: 0x6a625a, // (P3: the manhole covers' grey-rust cast iron, photo 09)
   litter: 0x60584e, // (W7: the south edge's leaf litter, the dad's lawn's timber edging, its moss strip; W7 fix: near the road's tone, a little browner, as photo 18's edge ~0.85 the road's)
   sand: 0x958a7e, // (W7 fix: the young beeches' light sandy verge, photo 11)
   edging: 0x8a8780,
@@ -121,7 +122,7 @@ const TINT = {
 };
 // The realistic look's asphalt tints (its light worn set, world/lane/real/jobs.js: the road a
 // light neutral grey, the pavement a shade lighter, the drives darker: W1, against the photos).
-const REAL_GROUND = { ...TINT, flags: 0x5a5856, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea, litter: 0xb8a896, sand: 0xffe8d0 };
+const REAL_GROUND = { ...TINT, walls: 0xbec9d0, flags: 0x5a5856, cover: 0xd2c0b0, road: 0xf0e8de, pavement: 0xf4eeea, drive: 0xaeaaa6, dadDrive: 0xe2e6ec, footpath: 0xeae4dc, floor: 0xcfcdc6, gravel: 0xe8e2d8, paving: 0xf4eeea, litter: 0xb8a896, sand: 0xffe8d0 };
 
 const UP = [0, 1, 0];
 // Golden hour, warmer than the skerries' (the photos' low sun: W1); the ambient a little up for
@@ -613,15 +614,15 @@ function surface(kit, L, road) {
   // look), its darker tints, the iron dark, the litter near the road's tone and the beeches'
   // verge light; the moss in the lawn's.)
   const k = real ? 2.2 : 1;
-  const by = { patch: [T.road, 0.74], band: [T.road, 0.64], seal: [0x1c1c1c, k], cover: [0x4a3e36, k], sump: [T.road, 0.56], slot: [0x141414, k], bar: [0x4a4846, k], litter: [T.litter, 1], sand: [T.sand, real ? 1.6 : 1], moss: [TINT.moss, 1, grass], gravel: [T.gravel, 1.08] };
+  const by = { patch: [T.road, real ? 0.6 : 0.7], island: [T.road, 0.94], band: [T.road, 0.55], seal: [0x1c1c1c, k], cover: [T.cover, 1], grid: [T.cover, 0.35], sump: [T.road, 0.56], slot: [0x141414, k], bar: [0x4a4846, k], litter: [T.litter, 1], sand: [T.sand, real ? 1.6 : 1], moss: [TINT.moss, 1, grass], gravel: [T.gravel, 1.08] };
+  // (P3: the patches' darkness drifts slowly over the road, fresher and older sealant, by place
+  // only: where two overlap they agree.)
+  const mottle = (q) => 1 + 0.18 * Math.sin(q[0] * 0.0021 + q[2] * 0.0013) * Math.cos(q[0] * 0.0009 - q[2] * 0.0031);
   for (const { k: kind, pts, up, fan, shade = 1 } of parts) {
     const [tint, f = 1, b = asphalt] = by[kind];
     b.color(tint, f * shade);
-    if (!fan) b.poly(pts, { facing: up ?? UP });
-    else {
-      const c = [0, 1, 2].map((i) => pts.reduce((a, q) => a + q[i] / pts.length, 0));
-      b.poly([c, ...pts, pts[0]], { facing: UP });
-    }
+    const all = fan ? [[0, 1, 2].map((i) => pts.reduce((a, q) => a + q[i] / pts.length, 0)), ...pts, pts[0]] : pts;
+    b.poly(all, { facing: up ?? UP, shade: kind === 'patch' ? all.map(mottle) : undefined });
   }
   // The dad's lawn's timber edging (weathered grey boards, dark joints) and its west edge's stones.
   const z0 = L.SOUTH_EDGE;
@@ -695,11 +696,22 @@ function terraces(kit, L) {
     for (const [f, facing, terrain] of faces) kit.solids.face(f, facing, terrain);
     kit.grass.color(TINT.backLawn);
     kit.grass.poly(faces[0][0], { facing: faces[0][1] });
-    kit.blocks.color(TINT.walls);
+    kit.blocks.color(tints(kit).walls);
     if (p === L.PLOTS_N[0]) kit.blocks.poly(faces[2][0], { facing: [-1, 0, 0] });
     if (p === L.PLOTS_N.at(-1)) kit.blocks.poly(faces[3][0], { facing: [1, 0, 0] });
   }
 }
+
+// The bed walls' faces' uvs (P3, photos 13, 16, 27, 28): the blocks' courses 2.8 times finer and
+// their slabs a little shorter (the steps and the kerbs keep theirs), so they read as the photos'
+// thin long stacked slabs in both looks (the realistic material repeats the same uvs). A hash in
+// 0..1.
+const slabs = (b, n) => (p) => {
+  const [u, v] = b.project(p, n);
+  return [u * 1.1, v * 2.8];
+};
+const hash = (x) => Math.abs(Math.sin(x * 12.9898) * 43758.5453) % 1;
+const tints = (kit) => (kit.look === 'real' ? REAL_GROUND : TINT);
 
 // One terrace block from x a to b, its front from (a, za) to (b, zb), back to the flat's end, from
 // under the ground up to the terrace: its top (grass) and, unless it stands behind a notch (the
@@ -712,6 +724,7 @@ function terraces(kit, L) {
 // garage doors and niches are set back in their openings, and its top crossed them there).
 function block(kit, L, { a, b, za, zb, notch, kind }) {
   const { grass, blocks, solids } = kit;
+  const T = tints(kit);
   const top = L.NORTH.top;
   const [ba, bb] = [L.flatZAt(a), L.flatZAt(b)];
   const y0 = -100;
@@ -731,11 +744,17 @@ function block(kit, L, { a, b, za, zb, notch, kind }) {
       const [z0, z1] = [zAt(x0), zAt(x1)];
       const wt = L.GROUND + wallDrawnAt((x0 + x1) / 2);
       const face = (ya, yb) => [[x0, ya, z0], [x1, ya, z1], [x1, yb, z1], [x0, yb, z0]];
-      blocks.color(TINT.walls);
-      blocks.poly(face(0, wt - 12), { facing: out, shade: [0.86, 0.86, 1, 1] });
-      blocks.color(TINT.coping);
-      blocks.poly(face(wt - 12, wt + 1), { facing: out });
-      blocks.poly([[x0, wt + 1, z0], [x1, wt + 1, z1], [x1, wt + 1, z1 - 30], [x0, wt + 1, z0 - 30]], { facing: UP, shade: 1.04 });
+      blocks.color(T.walls);
+      blocks.poly(face(0, wt - 12), { facing: out, shade: [0.86, 0.86, 1, 1], uv: slabs(blocks, out) });
+      // (P3: its cap slabs 70-190 long, each its own shade: irregular joints.)
+      for (let u = x0, v; u < x1 - 1; u = v) {
+        v = Math.min(x1, u + 70 + 120 * hash(u));
+        if (x1 - v < 30) v = x1;
+        const [zu, zv] = [zAt(u), zAt(v)];
+        blocks.color(T.coping, 0.9 + 0.18 * hash(u + 7));
+        blocks.poly([[u, wt - 12, zu], [v, wt - 12, zv], [v, wt + 1, zv], [u, wt + 1, zu]], { facing: out });
+        blocks.poly([[u, wt + 1, zu], [v, wt + 1, zv], [v, wt + 1, zv - 30], [u, wt + 1, zu - 30]], { facing: UP, shade: 1.04 });
+      }
       // The planted strip: from the coping's back up to the terrace's lawn.
       grass.color(TINT.bed);
       grass.poly([[x0, wt + 1, z0 - 30], [x1, wt + 1, z1 - 30], [x1, top, z1 - S], [x0, top, z0 - S]], { facing: [0, S - 30, top - wt] });
@@ -745,7 +764,7 @@ function block(kit, L, { a, b, za, zb, notch, kind }) {
         if (Math.abs(wn - wt) > 0.5) {
           const [lo, hi] = wn > wt ? [wt, wn] : [wn, wt];
           const facing = [wn > wt ? -1 : 1, 0, 0];
-          blocks.color(TINT.coping, 0.9);
+          blocks.color(T.coping, 0.9);
           blocks.poly([[x1, lo + 1, z1], [x1, hi + 1, z1], [x1, hi + 1, z1 - 30], [x1, lo + 1, z1 - 30]], { facing });
           grass.color(TINT.bed, 0.8);
           grass.poly([[x1, lo + 1, z1 - 30], [x1, hi + 1, z1 - 30], [x1, top, z1 - S]], { facing });
@@ -768,8 +787,8 @@ function side(kit, L, x, z0, z1, s) {
   const zs = Math.min(z0, z1);
   const wt = Math.min(top, L.GROUND + wallDrawnAt(x - s * 2));
   const zr = Math.max(zs, ze - STRIP);
-  kit.blocks.color(TINT.walls);
-  kit.blocks.poly([[x, 0, zs], [x, 0, ze], [x, wt, ze], [x, top, zr], [x, top, zs]], { facing: [s, 0, 0], shade: [0.82, 0.82, 0.95, 0.95, 0.95] });
+  kit.blocks.color(tints(kit).walls);
+  kit.blocks.poly([[x, 0, zs], [x, 0, ze], [x, wt, ze], [x, top, zr], [x, top, zs]], { facing: [s, 0, 0], shade: [0.82, 0.82, 0.95, 0.95, 0.95], uv: slabs(kit.blocks, [s, 0, 0]) });
 }
 
 // A villa's steps from the street up to its terrace: a smooth ramp collider (not slippery)
