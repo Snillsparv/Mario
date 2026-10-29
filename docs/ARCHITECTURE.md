@@ -1889,7 +1889,8 @@ trees' leaves).
   walking off its ridge onto the main roof); downpipes only where `pipes` lists them (none on the
   main back eave, none against the link). The patio between them (`PATIO`). In the **front
   garden**, on the door's line: the mossy grass-paver path (`DAD_PATH`, x 885 … 1125, from the
-  road's edge to the landing), the pedestal mailbox at its street end on its west side with a
+  road's edge to the landing; P2: drawn x 940 … 1125 (`drawn`), the lawn over its west strip in
+  both looks, the realistic blades too, its collider the whole), the pedestal mailbox at its street end on its west side with a
   rose on three stakes beside it (`ROSE`, drawn only), the **red-leaf bed** east of the path
   (`BED`: a rectangle x 1125 … 1600 from the street's edge back to z 980, its back corners rounded
   r 120, `bedOutline()`, `inBed(x, z)`; raised 6, under the knee from the road; its collider a
@@ -1897,15 +1898,22 @@ trees' leaves).
   field stones, grey and pink, close set along all four edges, on the road along the street's,
   the biggest at its north-east corner by the sign's post, `real/plan.js bedStones`, both
   looks; the turning area's sign at that corner: `TURN_SIGN` below), the **red-leaf tree** in its
-  middle (`RED_TREE`, (1390, 690): an old purple-leaved crab apple, its pale trunk a climbable
-  pole to 440, forking at 260 into four leaning stems, `real/plan.js redTreeStems`, its wide
-  sparse crown r 440 from 300 to 960, `redTreeCrown`'s blobs (five-sided in the classic look,
-  like the ivy's and the rose's), in dark purple-reds and browns, over the street and the eaves, open over the trunk's top where Jonas stands; the flip onto
-  the roof from 640 off the wall), the ivy mound over the north-east pier and round the corner
-  (`IVY`, `real/plan.js ivyMasses`, drawn only), the rhododendron out from the west pier
-  (`RHODODENDRON`: rx 210 along the street, rz 330, 330 high, under the gutter with the west pier
-  showing over it; solid, an eight-sided elliptic
-  prism a little inside it); the two wheelie bins against the front of the east gable (`BINS`,
+  middle (`RED_TREE`, (1390, 690): an old crab apple, its grey-brown trunk a climbable pole to
+  440, forking at 260 into six slim stems rising steeply (P2), `real/plan.js redTreeStems`, its
+  sparse vase crown (P2, photos 20, 38, 39: r 460 at its widest, high up, from 380 to 960,
+  `redTreeCrown`'s 18 blobs: a ring narrow low, none within ~100 of the trunk's top, widest
+  high, three over the middle at the top, three drooping at the rim, the lowest (none over the
+  street, where the camera follows him); five-sided in the classic look, like the ivy's and the
+  rose's), in red-browns and an orange, over the street and the eaves, open over the trunk's top
+  where Jonas stands; the flip onto the roof from 640 off the wall), the ivy over the north-east
+  pier from the ground to the gutter and round the corner (`IVY`: its foot on the lawn,
+  `real/plan.js ivyMasses`: P2, a dark sheet hugging the pier ~90 deep, fuller at its foot, a lump
+  round the corner and a narrower one along the gable, `away` from the walls; drawn only), the
+  rhododendron out from the west pier (`RHODODENDRON`: rx 210 along the street, rz 330, P2: 370
+  high, a cone of three lumps, olive, its top out on the lawn so the gutter's rim over the wall
+  stays clear; solid in two steps, deliberately: an eight-sided elliptic prism a little inside
+  its foot to 0.4 of its height and a narrower one to 0.78 (a hop up them and a jump from the top
+  toward the house is a way onto the roof, as the eave's grab is: lane-routes)); the two wheelie bins against the front of the east gable (`BINS`,
   W4: the photos' four-compartment ones, 120 × 105, solid to 187, near-black blue-grey (the
   realistic look's `street.js BIN_TINT`, in the gable's shade near (17, 25, 34) on every tier as
   in the photos), their lids split, handles and wheels toward the street, 124 apart: they move, see
@@ -2124,7 +2132,8 @@ trees' leaves).
   just over the row's roof), up the wing's slope to its ridge and along it onto the main roof (the
   valleys' apex: no step), up to the ridge; or a standing jump within
   100 of the front wall grabs the eave (its lip); or the red-leaf tree's handstand and a flip
-  toward the house with the stick held 8 … 24 ticks (let go at once he lands in the garden).
+  toward the house with the stick held 8 … 24 ticks (let go at once he lands in the garden); or
+  (P2) a hop up the rhododendron's two steps and a running jump from its top toward the house.
   Every fall from the dad's roofs is harmless.
 * **Coins** (`COINS`, 55, each at its floor + 60; W2: each from the layout's anchors, the
   straight's centreline, the wall line, the plots' drives, steps and edges, the apron's ring,
@@ -2383,7 +2392,9 @@ trees' leaves).
   up by the garage row's edge from the gap between the cars, then walking up onto the wing), the
   front eave (its lip, at three places along the front; W5: and the neighbours', south_2's
   raised bed walked up onto, the beech row walked through), the red-leaf tree's flip (and let go at
-  once, down in the garden), and the routes round the street, each collecting exactly its coins
+  once, down in the garden), the rhododendron (P2: walked past along the front, up the link's
+  drive and between them; hopped up its two steps, a jump from its top onto the roof or back onto
+  its step, walked off it onto the lawn, unhurt), and the routes round the street, each collecting exactly its coins
   (W6: north_2's hedge top from the pavement and from the terrace behind it; W7: the pavement
   walked from the west end to the turning area past every kerbside cabinet, post, street bin and
   side-yard trunk with none of them in the way, and no tree over a coin; W7 fix: each side yard's
@@ -3161,7 +3172,9 @@ both looks.)
   ~50 MB), least recently used out, other versions first; the keys are read once as a worker
   starts, so a miss costs no transaction; any error is a miss). `TEXGEN_VERSION` is bumped by
   hand whenever a generator's output changes: `tests/real-texgen.test.js` pins each lane set's
-  hash at 64 px with it. `textureStore.js` (main thread) runs **a pool of the workers** (the
+  hash at 64 px with it. (A new option whose default leaves every other set's bytes as they were
+  needs no bump: its key is new, nothing is cached under it; W6's `setts`, W7's `fine`, P2's
+  pavers `slab` and `grass`, the dad's path's toned-down concrete and the grass in its joints.) `textureStore.js` (main thread) runs **a pool of the workers** (the
   cores but one, 1 to 3: `poolSize`), hands each job to the one with the least work ahead by an
   estimate (the area's geometry first, then the sets, the biggest first), all at once (the main
   thread may be busy booting meanwhile), holding a worker's jobs until it says it runs (a
@@ -3280,20 +3293,25 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   blobs from the classic builder's own seeded stream, so every plant stands where its classic
   blob stood): the hedges (single cards over their faces and tops), the thujas, the junction's
   trees, the apple tree (apples), the birches (white bark, an airy yellowing canopy), the shrub,
-  the dad's red-leaf tree (W3: a pale grey trunk with lichen on it, 24 at its foot, inside the
-  pole's 28 as a lamppost's post is, forking into four bending stems and on up as a slim leader
-  to the pole's top, rounded there, where it forks again into three branches up into the crown;
-  the trunk, each stem and each of those branches one skin (`limb`: rings square to each bend's
-  bisector on one frame carried along it, so no wedge of sky shows at a kink; each end rounded
-  off), the bark set's dark brown under a pale tint and a lichen tone per vertex; in the classic
-  look a slim lathe rounded at the pole's top, pale grey in the render's builder; limbs from the
-  stems into the crown's blobs and fine bent twigs from the limbs, 14 a blob on high, forked, 9 on mid, 2
-  straight on low; sparse sprays of dark purple-red and brown, no core; russet fallen leaves on
-  the bed, fewer on mid and low, and its ground cover: low tufts of brown-red and green leaves,
-  their own seeded streams), the rhododendron down to the ground (three lumps along it, dark), the
-  ivy mound (`ivyMasses`: two lumps along the pier, one round the corner, a sheet up the wall to
-  the gutter; 900 cards on high, 520 mid, 100 low), the rose on its stakes (yellow-green, a few
-  hips; none on low), the pot plant on the landing, the flower beds, the climber at the gable's
+  the dad's red-leaf tree (W3: a grey trunk with lichen on it, P2: a darker grey-brown, 21 at
+  its foot, inside the pole's 28 as a lamppost's post is, forking into six slim bending stems and
+  on up as a slim leader to the pole's top, rounded there, where it forks again into seven thin
+  branches up into the crown (three on low); the trunk, each stem and each of those branches one
+  skin (`limb`: rings square to each bend's bisector on one frame carried along it, so no wedge of
+  sky shows at a kink; each end rounded off), the bark set's dark brown under a tint and a lichen
+  tone per vertex; in the classic look a slim lathe rounded at the pole's top, grey-brown in the
+  render's builder; limbs from the stems into the crown's blobs and fine bent twigs from the
+  limbs, 18 a blob on high, 10 on mid, 3 straight on low; sparse small sprays (P2: 25 across on
+  high, 34 mid, 40 low) of red-brown and orange, no core; the bed a flat carpet of fallen leaves
+  (P2, photo 39: flat cards of whole sprays, russet, brown-red and purple-red with a few green,
+  each a hair over the last, 520 on high, 340 mid, 160 low, over the bed's litter) and its low cover:
+  a few small crossed tufts, mostly green, their own seeded streams), the rhododendron down to
+  the ground (P2: `rhodo`, a cone of three lumps each narrower and higher, olive, smaller glossy
+  leaves, its own stream, the plants' shared one stepped on as the old one took it: `RHODO_SKIP`),
+  the ivy (`ivyMasses`: P2, a sheet hugging the pier to the gutter, a fuller foot, a lump round
+  the corner and one along the gable to the bins, no cards into the walls, darker; 1700 cards on
+  high, 860 mid, 200 low), the rose on its stakes (yellow-green, a few hips; P2: 140 cards on
+  high, 80 mid; none on low), the pot plant on the landing, the flower beds, the climber at the gable's
   back corner (W4: `climberMasses`, small dark leaves; 330 cards on high, 200 mid, 50 low, its own
   stream), the columnar tree far behind the garage row (W4 fix: a Lombardy poplar, `POPLAR`: a
   short trunk parting into upright leaders, the leaves in loose clumps over a slim crown widest
@@ -4119,6 +4137,35 @@ changed (the trunks and their prisms as they were, the west masses and the far c
   126-134 / 465-471k, low 88-93 / 203-206k. The detail high 402.4k triangles (+4.8k: the far
   line's cards, the rag cards, three-sided far trunks), mid 238.5k, low 139.1k; the classic
   build 43,023 triangles; no collider, draw call, program or texture changed.
+
+**The dad's front garden, round 2b (P2).** The arrival and the door as photos 19-22 and 38-41 have
+them, both looks, every tier: the red-leaf tree a sparse vase of small red-brown and orange sprays
+on six slim stems, thin branches up from the leader and bent limbs (no spokes), its grey-brown
+trunk slimmer, the bed under it a flat carpet of fallen leaves (no spiky tufts); the ivy a dark
+sheet over the north-east pier from the ground to the gutter, round the corner and on along the
+gable to the bins; the rhododendron a taller olive cone (370), solid in two steps; the path narrower
+(drawn 185 of its 240, the lawn and its blades over the west strip) and mossy, the concrete grey,
+grass in its joints, no white blotches; the rose on its stakes leafier. Details above, under the
+front garden (`RED_TREE`, `IVY`, `RHODODENDRON`, `DAD_PATH.drawn`) and `foliage.js`.
+* **Colliders**: only the rhododendron's (deliberately: its two prisms for one; lane-routes walks
+  past it and up the link's drive, hops up its steps and from its top onto the roof, and off it);
+  the red tree's pole, the path's (the whole 240, its stone face as it was: the lawn drawn over its
+  strip only), the mailbox's unchanged; the realistic look's colliders still the classic build's.
+* **Streams**: the rhododendron draws from its own stream and steps the plants' shared one on as
+  the old lumps took it (`RHODO_SKIP`): the pot, the flower beds and every plant after keep their
+  leaves; the lawn's mask grows on the path's strip and in front of the slimmer ivy, so clutter's
+  plinth weeds and lawn flowers after the dad's front are drawn anew (its shared stream).
+* **Measured** (E2E, 960 × 540): the five views high 135-147 / 938.7k-954.1k (were 135-147 /
+  933-948k), mid 126-134 / 468.3k-474.6k (465-471k), low 88-93 / 204.3k-206.3k (203-206k);
+  programs, texture bytes (the path's set the same size) and the skies unchanged (the views' sky
+  now the bluest of nine points across the top band: the taller crown fills the turning view's
+  top right on mid). The fight's worst frame high 158 / 972,842 (was 158 / 966,816), mid 139 /
+  485,998 (139 / 482,284), low 96 / 212,208 (96 / 211,407), classic 45 / 52,272 (45 / 52,086),
+  each under its P2 ceiling (161 / 976.6k, 139 / 486.7k, 96 / 213.4k): the garden's cards and bark
+  cast on high and mid (twice a frame). The detail high 405.4k triangles (+3.0k), mid 240.4k
+  (+1.9k), low 139.9k (+0.8k); the classic build 43,209 triangles (+186) in its 15 meshes, its
+  colliders 3,089 (+22: the second prism). Bytes: lane 107,781 (+502), laneRealWorker 203,564 (+507), main
+  1,287,854 (+35): no cap raised.
 
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its

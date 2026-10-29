@@ -200,7 +200,6 @@ function limbs(g, p, blobs, r) {
 
 export function plants(kit, L) {
   const R = makeRng(4242);
-  const G = L.GROUND;
   const sun = L.LANE_REAL.sunDir;
   SUN = norm([sun.x, 0, sun.z]).filter((_, i) => i !== 1);
   const leafy = [[1, 1.04, 0.92], [0.86, 0.95, 0.8], [1.08, 1.1, 0.9]];
@@ -240,17 +239,12 @@ export function plants(kit, L) {
   });
   for (const t of L.GARDEN_TREES) gardenTree(kit, R, L, t);
   redTree(kit, R, L);
-  // The rhododendron out from the west pier, its leaves down to the ground (W3: bigger, longer
-  // across the lawn, lumpy, a dark glossy green with a few yellowing leaves): a main mass and a
-  // lump at each end along it.
-  const rh = L.RHODODENDRON;
-  const rhodo = [[0.9, 1, 0.8], [0.72, 0.82, 0.66], [0.98, 1.04, 0.82], [0.85, 0.95, 0.75], [1.5, 1.35, 0.6]].map(([r, g, b]) => [r * 0.7, g * 0.72, b * 0.62]);
-  const lumps = [
-    { c: [rh.x, G + rh.h * 0.36, rh.z], r: [rh.rx, rh.h * 0.66, rh.rz * 0.8], n: 560 }, // (a dome on the ground, not a ball)
-    { c: [rh.x - rh.rx * 0.15, G + rh.h * 0.34, rh.z - rh.rz * 0.55], r: [rh.rx * 0.72, rh.h * 0.4, rh.rz * 0.42], n: 140 },
-    { c: [rh.x + rh.rx * 0.2, G + rh.h * 0.6, rh.z + rh.rz * 0.42], r: [rh.rx * 0.7, rh.h * 0.42, rh.rz * 0.42], n: 120 },
-  ];
-  for (const m of lumps) shell(kit, R, { c: m.c, r: m.r, count: m.n, size: 80, cell: CELL.rhodo, tints: rhodo, below: -0.8, sway: 2, outside: lumps.filter((o) => o !== m) });
+  // The rhododendron out from the west pier, its leaves down to the ground (P2, photos 19, 41: a
+  // cone of three lumps, each narrower and higher, the top one half the width; olive, smaller
+  // glossy leaves, a few yellowing): its own stream, the plants' R stepped on as the old one took
+  // it, so every plant after keeps its leaves.
+  rhodo(kit, L);
+  for (let i = RHODO_SKIP[kit.tier] ?? RHODO_SKIP.high; i > 0; i--) R();
   // The pot on the landing: a glazed blue pot, a little leafy plant in it.
   const P = L.POT;
   const pg = L.LANDING.top;
@@ -787,10 +781,10 @@ function gardenBroad(kit, R, t, y0) {
   canopy(kit, R, blobs, { size: cherry ? 80 : 100, cell: CELL.tree, tints: cherry ? CHERRY : OAK, density: dens, sway: 7, core: cherry ? null : CORE.green });
 }
 
-// The red tree's bark tint over the bark set's dark brown (linear, a pale grey a little warm),
+// The red tree's bark tint over the bark set's dark brown (linear, a grey-brown: P2),
 // and its lichen: a colour per vertex from a smooth hash of where it is (paler grey-green
 // patches, a few darker), no stream of its own.
-const RED_BARK = [2.35, 2.2, 2.7];
+const RED_BARK = [2.0, 1.8, 1.75];
 function lichen(p) {
   const w = Math.sin(p[0] * 0.071 + p[1] * 0.043) * Math.sin(p[2] * 0.067 - p[1] * 0.029 + 1.3) + 0.5 * Math.sin(p[1] * 0.11 + p[0] * 0.05 - p[2] * 0.04);
   if (w > 0.55) return [1.1, 1.18, 1.0]; // (grey-green lichen)
@@ -849,16 +843,18 @@ function limb(g, pts, rs, sides, { tip = false, tone = null } = {}) {
   }
 }
 
-// The dad's red-leaf tree in the middle of the bed (W3: an old purple-leaved crab apple): its
-// pale grey trunk with lichen on it (the climbable pole) forking into four leaning stems and on
-// up as a slim leader that forks again at the pole's top, limbs from them up into the crown and
-// fine twigs out through it; a wide, sparse crown of small dark purple-red and
-// brown sprays (the sky shows through; open over the trunk's top, where Jonas stands). Its own
-// streams (the plants' R stepped on as before, so every plant after it keeps its place).
+// The dad's red-leaf tree in the middle of the bed (W3: an old crab apple): its grey-brown trunk
+// with lichen on it (the climbable pole) forking into slim stems leaning out and up and on up as a
+// slim leader to the pole's top, where Jonas stands, rounded off there, thin branches up from it,
+// limbs from the stems up into the crown and fine twigs out through it; a sparse vase crown of
+// small red-brown and orange sprays (P2, photos 20, 38, 39: the sky through it; open over the
+// trunk's top). Its own streams (the plants' R stepped on as before, so every plant after it keeps
+// its place).
 // (The crown's sprays per tier: their size, their density over the blobs' skins.)
-const RED_TREE_CARDS = { high: [30, 1.05], mid: [34, 0.55], low: [40, 0.26] };
-const TWIGS = { high: 14, mid: 9, low: 2 };
-const FALLEN = { high: 420, mid: 300, low: 110 };
+const RED_TREE_CARDS = { high: [25, 0.85], mid: [34, 0.62], low: [40, 0.3] };
+const TWIGS = { high: 18, mid: 10, low: 3 };
+const FALLEN = { high: 520, mid: 340, low: 160 }; // (the bed's flat cards)
+const RED_TINTS = [[0.75, 2.6, 2.0], [0.6, 1.9, 1.6], [1.0, 3.6, 1.9], [0.85, 2.2, 1.9]];
 function redTree(kit, R, L) {
   const { BED: B, RED_TREE: T } = L;
   const G = L.GROUND;
@@ -866,40 +862,42 @@ function redTree(kit, R, L) {
   const fork = [T.x + 8, G + T.fork, T.z - 6];
   const S = makeRng(7331);
   const fine = kit.tier !== 'low';
-  // (W3 fix: pale grey, lichen on it, as the photos have it: over the bark set's dark brown a
-  // light tint, greener and paler in patches; slimmer, about 22 at the foot: the pole's radius
-  // 28 is the post's plus 6, as a lamppost's.)
+  // (W3 fix: lichen on it, as the photos have it, greener and paler in patches; P2: a darker
+  // grey-brown, slimmer, about 21 at the foot inside the pole's 28, the post's plus 6, as a
+  // lamppost's.)
   kit.bark.rgb(...RED_BARK);
   const sides = fine ? 8 : 7;
   // The trunk, a little crooked, swelling at the fork and on up as the leader (thinner at once:
   // one stem among the others) to the pole's top, where Jonas stands, rounded off there: one skin.
   const top = [T.x + 2, T.trunkTop + 20, T.z + 4];
-  limb(kit.bark, [[T.x, bedTop - 4, T.z], [T.x - 3, bedTop + 50, T.z + 2], [T.x + 3, G + 170, T.z - 3], fork, [T.x + 6, fork[1] + 40, T.z - 3], [T.x + 3, G + 370, T.z + 2], top], [24, 20.5, 18.5, 18, 12.5, 11, 9.5], sides, { tip: true, tone: lichen });
-  // Four stems leaning out from inside the fork, each bending up toward its end (a little
-  // crooked) in one skin, its end rounded; a side branch off each out toward the crown's rim.
+  limb(kit.bark, [[T.x, bedTop - 4, T.z], [T.x - 3, bedTop + 50, T.z + 2], [T.x + 3, G + 170, T.z - 3], fork, [T.x + 6, fork[1] + 40, T.z - 3], [T.x + 3, G + 370, T.z + 2], top], [21, 18, 16.5, 16, 11, 9.5, 8.5], sides, { tip: true, tone: lichen });
+  // Stems leaning out from inside the fork, each bending up toward its end (a little crooked) in
+  // one skin, its end rounded; a side branch off each out toward the crown's rim.
   const ends = redTreeStems(T);
   const rims = [];
   const inside = [fork[0], fork[1] - 18, fork[2]];
   for (const [x, y, z, w] of ends) {
     const at = (t, lift) => [fork[0] + (x - fork[0]) * t + (S() - 0.5) * 24, fork[1] + (y - fork[1]) * (t * t * 0.6 + t * 0.4) - lift, fork[2] + (z - fork[2]) * t + (S() - 0.5) * 24];
     const [a, b] = [at(0.35, 10), at(0.7, 14)];
-    limb(kit.bark, [inside, a, b, [x, y, z]], [w * 0.72, w * 0.6, w * 0.48, w * 0.4], fine ? 7 : 6, { tip: true, tone: lichen });
+    limb(kit.bark, [inside, a, b, [x, y, z]], [w * 0.72, w * 0.6, w * 0.48, w * 0.4], fine ? 6 : 5, { tip: true, tone: lichen });
     const out = [x - T.x, z - T.z];
     const l = Math.hypot(out[0], out[1]);
     const turn = (S() - 0.5) * 1.4;
     const [ox, oz] = [(out[0] * Math.cos(turn) - out[1] * Math.sin(turn)) / l, (out[0] * Math.sin(turn) + out[1] * Math.cos(turn)) / l];
-    const tip = [b[0] + ox * T.canopy.r * 0.45, b[1] + 60 + S() * 80, b[2] + oz * T.canopy.r * 0.45];
-    kit.bark.tube(b, tip, w * 0.3, 2.5, 5);
+    const tip = [b[0] + ox * T.canopy.r * 0.5, b[1] + 90 + S() * 80, b[2] + oz * T.canopy.r * 0.5];
+    const bend = [(b[0] + tip[0]) / 2 + (S() - 0.5) * 40, (b[1] + tip[1]) / 2 + 30, (b[2] + tip[2]) / 2 + (S() - 0.5) * 40];
+    kit.bark.tube(b, bend, w * 0.3, w * 0.18, 5);
+    kit.bark.tube(bend, tip, w * 0.18, 1.5, 5);
     rims.push(tip);
   }
-  // (Three branches from the leader's top up and out into the crown's middle, bending as they
-  // go: the leader forks again there, not a sawn stub with spikes.)
-  for (let k = 0; k < 3; k++) {
-    const a = k * 2.1 + S();
+  // (Thin branches from the leader's top up and out between the stems, bending as they go: the
+  // leader forks again there, not a sawn stub with spikes.)
+  for (let k = 0; k < (fine ? 7 : 3); k++) {
+    const a = k * (fine ? 0.9 : 2.1) + S();
     const lift = S();
     const [dx, dz] = [Math.sin(a), Math.cos(a)];
     const p0 = [top[0], top[1] - 14, top[2]];
-    limb(kit.bark, [p0, [p0[0] + dx * 55, p0[1] + 95, p0[2] + dz * 55], [p0[0] + dx * 150, p0[1] + 210 + lift * 60, p0[2] + dz * 150]], [7.5, 5, 2.5], fine ? 6 : 5, { tip: true, tone: lichen });
+    limb(kit.bark, [p0, [p0[0] + dx * 60, p0[1] + 90, p0[2] + dz * 60], [p0[0] + dx * (130 + lift * 60), p0[1] + 220 + lift * 90, p0[2] + dz * (130 + lift * 60)]], [5, 3.5, 1.8], fine ? 5 : 4, { tip: true, tone: lichen });
   }
   // Limbs from each stem's end up and out into the blobs nearest it, twigs out through each blob.
   const blobs = redTreeCrown(T);
@@ -907,69 +905,62 @@ function redTree(kit, R, L) {
     let best = ends[0];
     for (const t of ends) if (Math.hypot(t[0] - b.c[0], t[2] - b.c[2]) + Math.abs(t[1] - b.c[1]) < Math.hypot(best[0] - b.c[0], best[2] - b.c[2]) + Math.abs(best[1] - b.c[1])) best = t;
     const [x, y, z, w] = best;
-    kit.bark.tube([x, y, z], b.c, w * 0.34, 2.6, fine ? 5 : 4);
+    // (P2: bent once, so the limbs sharing a stem's end fan out crooked, not as spokes.)
+    const mid = [(x + b.c[0]) / 2 + (S() - 0.5) * 60, (y + b.c[1]) / 2 + 20 + S() * 30, (z + b.c[2]) / 2 + (S() - 0.5) * 60];
+    kit.bark.tube([x, y, z], mid, w * 0.3, w * 0.2, fine ? 5 : 4);
+    kit.bark.tube(mid, b.c, w * 0.2, 2, fine ? 5 : 4);
     // (Each twig from a point along the limb, in two pieces, bent, out past the blob's skin
-    // round it: a fine mesh, not spokes; on low two, straight.)
+    // round it: a fine mesh, not spokes; on low straight.)
     for (let k = 0; k < (TWIGS[kit.tier] ?? TWIGS.high); k++) {
       const t = 0.35 + 0.65 * S();
-      const p0 = [x + (b.c[0] - x) * t, y + (b.c[1] - y) * t, z + (b.c[2] - z) * t];
+      const [e, f, g] = t < 0.5 ? [[x, y, z], mid, t * 2] : [mid, b.c, t * 2 - 1];
+      const p0 = [e[0] + (f[0] - e[0]) * g, e[1] + (f[1] - e[1]) * g, e[2] + (f[2] - e[2]) * g];
       const a = S() * Math.PI * 2;
       const up = (S() - 0.35) * 1.3;
       const reach = 0.7 + 0.5 * S();
       const q = [b.c[0] + Math.sin(a) * b.r[0] * reach * Math.cos(up), b.c[1] + Math.sin(up) * b.r[1] * reach, b.c[2] + Math.cos(a) * b.r[2] * reach * Math.cos(up)];
       const m = [(p0[0] + q[0]) / 2 + (S() - 0.5) * 34, (p0[1] + q[1]) / 2 + 6 + S() * 16, (p0[2] + q[2]) / 2 + (S() - 0.5) * 34];
       if (!fine) {
-        kit.bark.tube(p0, q, 1.8, 0.5, 3);
+        kit.bark.tube(p0, q, 1.5, 0.4, 3);
         continue;
       }
-      kit.bark.tube(p0, m, 1.7, 1.0, 3);
-      kit.bark.tube(m, q, 1.0, 0.4, 3);
-      // (On high a fork off each twig's middle.)
-      if (kit.tier === 'high') {
-        const f = [m[0] + (q[0] - m[0]) * 0.4 + (S() - 0.5) * 60, m[1] + (q[1] - m[1]) * 0.4 + 10 + S() * 30, m[2] + (q[2] - m[2]) * 0.4 + (S() - 0.5) * 60];
-        kit.bark.tube(m, f, 0.9, 0.35, 3);
-      }
+      kit.bark.tube(p0, m, 1.4, 0.8, 3);
+      kit.bark.tube(m, q, 0.8, 0.3, 3);
     }
   }
-  // The crown: sparse sprays on each blob's skin (no core: the light shows through).
-  // (Over the atlas's dark purple-red sprays: duller and browner, a few orange-brown.)
-  const tints = [[0.5, 0.72, 0.72], [0.4, 0.55, 0.56], [0.75, 1.25, 0.95], [0.55, 0.85, 0.8]];
+  // The crown: sparse sprays on each blob's skin (no core: the light shows through), red-brown
+  // and orange over the atlas's dark red sprays.
   const [size, density] = RED_TREE_CARDS[kit.tier] ?? RED_TREE_CARDS.high;
   for (const b of blobs) {
     const count = Math.round(((areaOf([b]) / (size * size)) * density) / (CLUSTERS[kit.tier] ?? 1));
-    shell(kit, S, { c: b.c, r: b.r, count, size, cell: CELL.red, tints, below: -0.6, outside: blobs.filter((o) => o !== b), sway: 5, core: null });
+    shell(kit, S, { c: b.c, r: b.r, count, size, cell: CELL.red, tints: RED_TINTS, below: -0.6, outside: blobs.filter((o) => o !== b), sway: 5, core: null });
   }
   // (A few sprays out at the side branches' tips, past the blobs.)
-  for (const t of rims) shell(kit, S, { c: t, r: [70, 45, 70], count: Math.round((kit.tier === 'low' ? 6 : 14) / (CLUSTERS[kit.tier] ?? 1)), size, cell: CELL.red, tints, below: -0.6, sway: 5, core: null });
-  // Fallen leaves on the bed's soil (thickest under the crown), russet and brown, and its ground
-  // cover (the photos: low leaves, brown-red overall, a little green): their own stream (the
-  // plants' R stepped on as the old round bed's leaves took it).
+  for (const t of rims) shell(kit, S, { c: t, r: [70, 45, 70], count: Math.round((kit.tier === 'low' ? 6 : 14) / (CLUSTERS[kit.tier] ?? 1)), size, cell: CELL.red, tints: RED_TINTS, below: -0.6, sway: 5, core: null });
+  // The bed (P2, photo 39): a flat carpet of fallen leaves over its litter, thickest under the
+  // crown: flat cards of the atlas's sprays (a whole red cell each, a few of the hedge's green:
+  // the low cover), russet, brown-red and purple-red, each a hair over the last (no fighting).
+  // Their own stream (the plants' R stepped on as the old round bed's leaves took it).
   for (let i = 0; i < 360; i++) R();
   const F = makeRng(3311);
-  // (Over the atlas's red: russet, dark brown-red and a pale brown, W3: brown, not red.)
-  const leafTone = () => {
-    const t = F();
-    return t < 0.4 ? [1.2, 3.4, 2.4] : t < 0.75 ? [0.8, 1.9, 1.5] : [1.5, 4.3, 2.9];
-  };
   const fallen = FALLEN[kit.tier] ?? FALLEN.high;
-  for (let i = 0; i < 420; i++) {
+  for (let i = 0; i < 520; i++) {
     const a = F() * Math.PI * 2;
-    const d = Math.sqrt(F()) * (i < 120 ? 330 : 700);
-    const [x, z, s] = [T.x + Math.sin(a) * d, T.z + Math.cos(a) * d, 10 + F() * 7];
-    if (!L.inBed(x + s, z - s) || !L.inBed(x - s, z + s) || !L.inBed(x - s, z - s) || !L.inBed(x + s, z + s)) continue;
-    const tone = leafTone();
-    const turn = F() * Math.PI;
-    const y = bedTop + 4.5 + F() * 0.5;
-    if (i % 420 >= fallen) continue; // (fewer on mid and low, the stream unchanged)
-    kit.foliage.rgb(...tone);
+    const d = Math.sqrt(F()) * (i < 140 ? 330 : 700);
+    const [x, z, s, turn, t] = [T.x + Math.sin(a) * d, T.z + Math.cos(a) * d, 40 + F() * 22, F() * Math.PI, F()];
+    if (!L.inBed(x + s, z - s) || !L.inBed(x - s, z + s) || !L.inBed(x - s, z - s) || !L.inBed(x + s, z + s) || i >= fallen) continue;
+    const green = t > 0.84;
+    kit.foliage.rgb(...(green ? [0.8, 0.9, 0.62] : t < 0.3 ? [1.0, 2.6, 1.9] : t < 0.55 ? [1.1, 1.8, 1.9] : t < 0.72 ? [0.8, 1.9, 1.4] : [1.2, 3.2, 2.3]));
+    const y = bedTop + 0.5 + (i % 12) * 0.25;
     const [ca, sa] = [Math.cos(turn) * s, Math.sin(turn) * s];
-    const [u0, v0] = CELL.red;
-    kit.foliage.quad([x - ca, y, z - sa], [x + sa, y, z - ca], [x + ca, y, z + sa], [x - sa, y, z + ca], { n: [[0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0]], uvs: [[u0 + 0.2, v0 + 0.2], [u0 + 0.3, v0 + 0.2], [u0 + 0.3, v0 + 0.3], [u0 + 0.2, v0 + 0.3]] });
+    const [u0, v0] = green ? CELL.hedge : CELL.red;
+    kit.foliage.quad([x - ca, y, z - sa], [x + sa, y, z - ca], [x + ca, y, z + sa], [x - sa, y, z + ca], { n: [[0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 1, 0]], uvs: [[u0, v0], [u0 + 0.5, v0], [u0 + 0.5, v0 + 0.5], [u0, v0 + 0.5]] });
   }
-  const tufts = Math.round(110 * (CLUSTERS[kit.tier] ?? 1));
+  // (The low cover between: a few small low crossed tufts, mostly green.)
+  const tufts = Math.round(50 * (CLUSTERS[kit.tier] ?? 1));
   for (let i = 0; i < tufts; i++) {
     const [x, z] = [B.x0 + 30 + F() * (B.x1 - B.x0 - 60), B.z0 + 30 + F() * (B.z1 - B.z0 - 60)];
-    const [s, turn, green, t] = [26 + F() * 22, F() * Math.PI, F() < 0.3, F()];
+    const [s, turn, green, t] = [16 + F() * 12, F() * Math.PI, F() < 0.6, F()];
     if (!L.inBed(x + s, z + s) || !L.inBed(x - s, z - s) || Math.hypot(x - T.x, z - T.z) < 70) continue;
     const [u0, v0] = green ? CELL.hedge : CELL.red;
     if (green) kit.foliage.rgb(0.72 + t * 0.25, 0.82, 0.62);
@@ -977,7 +968,7 @@ function redTree(kit, R, L) {
     for (const a of [turn, turn + Math.PI / 2]) {
       const [dx, dz] = [Math.cos(a) * s, Math.sin(a) * s];
       const n = [0, 1, 0];
-      const top = bedTop + s * 0.6;
+      const top = bedTop + s * 0.35;
       kit.foliage.sway = 0;
       const uv = [[u0 + 0.05, v0 + 0.45], [u0 + 0.45, v0 + 0.45], [u0 + 0.45, v0 + 0.25], [u0 + 0.05, v0 + 0.25]];
       kit.foliage.vertex([x - dx, bedTop + 1, z - dz], n, uv[0]);
@@ -994,23 +985,37 @@ function redTree(kit, R, L) {
   }
 }
 
-// The ivy mound over the dad's north-east pier (IVY, W3): a dense mass of broad dark leaves,
-// yellowing in patches, standing out from the wall up to the gutter and round the corner onto
-// the gable (a second, narrower mass there); a dark core. Its own stream; cards per tier.
-const IVY_CARDS = { high: 900, mid: 520, low: 100 };
+const RHODO_SKIP = { high: 17626, mid: 12229, low: 8855 };
+const RHODO_TINTS = [[0.95, 0.62, 0.62], [0.8, 0.52, 0.52], [1.05, 0.68, 0.66], [0.9, 0.58, 0.6], [1.5, 0.95, 0.5]];
+function rhodo(kit, L) {
+  const { RHODODENDRON: rh, GROUND: G } = L;
+  const S = makeRng(6121);
+  const lumps = [
+    { c: [rh.x, G + rh.h * 0.27, rh.z], r: [rh.rx, rh.h * 0.3, rh.rz * 0.85], n: 470 },
+    { c: [rh.x - rh.rx * 0.05, G + rh.h * 0.52, rh.z - rh.rz * 0.06], r: [rh.rx * 0.78, rh.h * 0.3, rh.rz * 0.62], n: 280 },
+    { c: [rh.x + rh.rx * 0.04, G + rh.h * 0.75, rh.z - rh.rz * 0.1], r: [rh.rx * 0.5, rh.h * 0.25, rh.rz * 0.4], n: 150 },
+  ];
+  for (const m of lumps) shell(kit, S, { c: m.c, r: m.r, count: m.n, size: 62, cell: CELL.rhodo, tints: RHODO_TINTS, below: -0.85, sway: 2, outside: lumps.filter((o) => o !== m), core: [0.04, 0.045, 0.022] });
+}
+
+// The ivy over the dad's north-east pier (IVY, W3; P2, photos 21, 22, 36, 39): a dense dark mass of
+// broad leaves, yellowing in patches, hugging the wall from the ground to the gutter and round the
+// corner onto the gable (plan.js ivyMasses: no cards into the wall); a dark core. Its own stream;
+// cards per tier.
+const IVY_CARDS = { high: 1700, mid: 860, low: 200 };
 function ivy(kit, L) {
   const S = makeRng(9127);
   const n = IVY_CARDS[kit.tier] ?? IVY_CARDS.high;
   const k = CLUSTERS[kit.tier] ?? 1;
-  const tints = [[0.32, 0.34, 0.19], [0.24, 0.27, 0.15], [0.4, 0.42, 0.22], [0.9, 0.82, 0.32], [0.28, 0.31, 0.17]];
+  const tints = [[0.36, 0.24, 0.18], [0.27, 0.2, 0.14], [0.45, 0.31, 0.22], [1.0, 0.6, 0.31], [0.31, 0.23, 0.17]];
   const masses = ivyMasses(L);
   const total = masses.reduce((a, m) => a + m.r[0] * m.r[1], 0);
-  for (const m of masses) shell(kit, S, { c: m.c, r: m.r, count: Math.round((n * m.r[0] * m.r[1]) / total / k), size: 44, cell: CELL.rhodo, tints, below: -0.9, sway: 1.5, outside: masses.filter((o) => o !== m), coreK: 0.8 });
+  for (const m of masses) shell(kit, S, { c: m.c, r: m.r, count: Math.round((n * m.r[0] * m.r[1]) / total / k), size: 40, cell: CELL.rhodo, tints, below: -0.9, sway: 1.5, outside: masses.filter((o) => o !== m), coreK: 0.8, away: m.away });
 }
 
 // The rose beside the mailbox (ROSE, W3): three thin dark stakes leaning in, bare canes on them,
 // a sparse mass of small yellow-green leaves and a few red hips; none on low.
-const ROSE_CARDS = { high: 90, mid: 55, low: 0 };
+const ROSE_CARDS = { high: 140, mid: 80, low: 0 };
 function rose(kit, L) {
   const Ro = L.ROSE;
   const G = L.GROUND;

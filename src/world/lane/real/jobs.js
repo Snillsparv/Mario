@@ -31,7 +31,7 @@ export const CATALOGUE = {
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },
   roof: { set: 'tiles', cover: 270, color: 5 },
   cobbles: { set: 'pavers', opts: { cols: 16, seed: 73, setts: 0.4 }, cover: 240, color: 1.5 }, // (W6: the villas' drives' granite setts in arcs, ~15 a sett)
-  path: { set: 'pavers', opts: { moss: 0.24, olive: 1 }, cover: 240, color: [1.05, 0.82, 0.72], vertexColors: false }, // (mossed over: olive, W3)
+  path: { set: 'pavers', opts: { moss: 0.32, olive: 1.6, slab: 0.6, grass: 0.8 }, cover: 240, color: [1.35, 1.2, 0.85], vertexColors: false }, // (mossed over: olive, W3; P2, photos 22, 39, 40: mossier and yellower, the bare concrete grey, not white, grass in the joints)
 };
 export const DETAIL = {
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },

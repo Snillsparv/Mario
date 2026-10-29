@@ -29,7 +29,7 @@ const PINNED = {
     'boards:{}': '7e263730eff300d0',
     'tiles:{}': '45d44a788bada083',
     'pavers:{"cols":16,"seed":73,"setts":0.4}': 'ea3bb603bba6a7d7', // (W6: the villas' drives' granite setts in arcs, a new option: every other set's bytes unchanged; the old cobbles' were 7af87ac8440e7746)
-    'pavers:{"moss":0.24,"olive":1}': 'e39383ae37fa23f7', // (W3: the dad's path mossed over, olive; the plain set's bytes unchanged: 8c283e6c89994825)
+    'pavers:{"grass":0.8,"moss":0.32,"olive":1.6,"slab":0.6}': '0ec61d9dceef49cc', // (W3: the dad's path mossed over, olive; the plain set's bytes unchanged: 8c283e6c89994825. P2, photos 22, 39, 40: mossier and yellower, its bare concrete toned down and grass in its joints by two new options, `slab` and `grass`: every other set's bytes unchanged (W3's path set's still e39383ae37fa23f7), so TEXGEN_VERSION stays: a new key, nothing cached under it)
     'tiles:{"relief":0}': '880063751491c992',
     'granite:{"fine":1}': 'f4976a1725f5f61a', // (W7: the kerbs' light fine-grained granite, a new option: every other set's bytes unchanged; the plain set's were 2e69c35083fd3dbd)
     'bark:{}': '98e8c8d71d224033',
@@ -48,7 +48,7 @@ const MEANS = {
   render: [[0.7, 0.9], [0.7, 0.9], [0.7, 0.9]],
   boards: [[0.7, 0.95], [0.7, 0.95], [0.7, 0.95]], // light neutral: the tint gives Falu red
   tiles: [[0.4, 0.8], [0.4, 0.8], [0.4, 0.8]], // mid grey: the tint gives black or brown
-  pavers: [[0.1, 0.35], [0.12, 0.35], [0.06, 0.3]], // (W3: the path's olive moss, less blue)
+  pavers: [[0.1, 0.35], [0.1, 0.35], [0.03, 0.3]], // (W3: the path's olive moss, less blue; P2: its yellow moss less blue still)
   soil: [[0.05, 0.2], [0.02, 0.1], [0.01, 0.05]],
   granite: [[0.15, 0.45], [0.15, 0.45], [0.15, 0.45]],
   bark: [[0.08, 0.25], [0.06, 0.2], [0.04, 0.16]], // grey-brown: the tint darkens it

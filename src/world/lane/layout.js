@@ -565,7 +565,7 @@ export const SOUTH_2_WING = SOUTH_2_WINGS[1];
 // `top`), the car charger near the gable's back corner (DAD.charger) under its lamp (GABLE_LAMPS),
 // a climber up the corner (CLIMBER: drawn only); behind the house between the wings a patio of
 // grey slabs. The link's own short drive in front of its garage door.
-export const DAD_PATH = { x0: 885, x1: 1125, z0: SOUTH_EDGE, z1: LANDING.z0 };
+export const DAD_PATH = { x0: 885, x1: 1125, z0: SOUTH_EDGE, z1: LANDING.z0, drawn: [940, 1125] }; // (P2, photos 21, 39, 40: drawn narrower, the lawn over its west strip, the bed's stones at its east edge; its collider the whole)
 // The bed: a rectangle x0..x1 from the street's edge (z0) back to z1, its back corners rounded
 // (r), its soil `raise` over the lawn (under the knee: walked onto from the road), field stones
 // along all four edges (real/plan.js bedStones).
@@ -586,22 +586,24 @@ export const inBed = (x, z) => {
   const cx = Math.min(Math.max(x, x0 + r), x1 - r);
   return z <= z1 - r || Math.hypot(x - cx, z - (z1 - r)) <= r;
 };
-// The red-leaf tree (an old purple-leaved crab apple): its trunk forking at `fork` into four
-// leaning stems, a wide sparse crown (canopy: r, from y0 to y1) reaching over the street and the
-// eaves; its trunk the climbable pole up to y1 (a flip from its top toward the house lands on the
-// roof).
-export const RED_TREE = { x: 1390, z: 690, y0: GROUND, y1: 440, radius: 28, trunkTop: 420, fork: 260, canopy: { r: 440, y0: 300, y1: 960 } };
+// The red-leaf tree (an old crab apple): its trunk forking at `fork` into leaning stems, a sparse
+// vase crown (canopy: r at its widest, high up, from y0 to y1; P2, photos 20, 38, 39: narrow low,
+// open over the trunk's top) reaching over the street and the eaves; its trunk the climbable pole
+// up to y1 (a flip from its top toward the house lands on the roof).
+export const RED_TREE = { x: 1390, z: 690, y0: GROUND, y1: 440, radius: 28, trunkTop: 420, fork: 260, canopy: { r: 460, y0: 380, y1: 960 } };
 // The turning area's sign at the bed's corner by the asphalt, facing the street's way in (west):
 // a grey post (solid, `collider` round) carrying a yellow plate with a red rim (`plate`: w by h,
 // its foot at y0), "Vänd-" over "plats" on it in black and under them the round no-parking sign
 // (a blue disc in a red ring, one red stripe; world/lane/real/sign.js lays its face out), and
 // under the plate a small blank blue plate (`sub`: its foot and height).
 export const TURN_SIGN = { x: 1520, z: SOUTH_EDGE + 55, yaw: -Math.PI / 2, top: 492, r: 8, collider: 12, plate: { w: 84, h: 130, y0: 350 }, sub: { y0: 306, h: 34 } };
-// The rhododendron out from the west pier (an ellipsoid, rx along the street, rz across, h
-// high; solid), the ivy mound over the north-east pier and round the corner (drawn only), the
-// rose on three stakes beside the mailbox (drawn only), the pot on the landing.
-export const RHODODENDRON = { x: -650, z: 1020, rx: 210, rz: 330, h: 330 }; // (W3 fix: under the gutter, the west pier showing over it, as photos 19 and 41 have it)
-export const IVY = { x: 1520, z: 1205, rx: 210, rz: 130, h: 420 };
+// The rhododendron out from the west pier (rx along the street, rz across, h high; P2, photos 19
+// and 41: a cone of lumps, solid in two steps: lane/props.js), the ivy over the north-east pier
+// from the ground to the gutter and round the corner (rx, rz: its foot on the lawn; drawn only:
+// real/plan.js ivyMasses), the rose on three stakes beside the mailbox (drawn only), the pot on
+// the landing.
+export const RHODODENDRON = { x: -650, z: 1020, rx: 210, rz: 330, h: 370 }; // (W3 fix: under the gutter, the west pier showing over it; P2: taller, its top at the gutter's height out on the lawn, the rim over the wall clear)
+export const IVY = { x: 1500, z: 1272, rx: 200, rz: 62, h: 400 };
 export const ROSE = { x: 745, z: 525, r: 70, h: 250 };
 export const POT = { x: 1118, z: 1292 };
 export const DAD_DRIVE = { x0: DAD.x1, x1: CARPORT.x1, z0: SOUTH_EDGE, z1: CARPORT.z0 };

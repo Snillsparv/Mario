@@ -83,8 +83,9 @@ function hang(name) {
     }
     return h;
   }
-  // (W3: the eave at x 400, between two windows: the rhododendron stands out from the west pier;
-  // W4: the garage row's edge in the gap between the dad's two cars, parked deep.)
+  // (W3: the eave at x 400, between two windows: the rhododendron stands out from the west pier,
+  // P2: taller and solid in two steps, x -830..-470, well west of it; W4: the garage row's edge
+  // in the gap between the dad's two cars, parked deep.)
   const [ev, suv] = lane.CARS.slice(0, 2);
   const gap = (ev.x + lane.CAR_KINDS[ev.kind].w / 2 + suv.x - lane.CAR_KINDS[suv.kind].w / 2) / 2;
   const [x, z] = name === 'eave' ? [400, DAD.z0 - 110] : [gap, lane.CARPORT.z0 - 110];

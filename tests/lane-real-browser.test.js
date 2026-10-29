@@ -178,12 +178,14 @@ const ZENITH = [0.7, 0.98];
 
 // The five views (Jonas there, the camera behind him; local x, y, z, yaw): each one's draw calls,
 // triangles (the shadow pass included), realistic programs and texture bytes within the tier's
-// budgets, the sky at its top blue (the bluest of five points across its top band: the
+// budgets, the sky at its top blue (the bluest of nine points across its top band: the
 // realistic look's lower, wider camera puts the golden glow round the low sun at the top of the
 // picture where he faces it, at the dad's drive).
 // (W3: the arrival and the door's views where the door is now, near the east end: the arrival's
 // camera then looks west along his front from the drive, the red-leaf tree's crown over the
-// left, the middle and the right of its top band; five points, not three.)
+// left, the middle and the right of its top band; five points, not three. P2: nine: the tree's
+// taller vase crown fills the turning view's top right on mid, its twigs and leaves over the
+// old five's last three; the sky blue between them.)
 const E = lane.ENTRIES.home;
 const VIEWS = { arrival: [E.x, 22, E.z, Math.PI], door: [E.x - 260, 22, 700, 0.4], west: [-600, 22, 200, -Math.PI / 2], turn: [1500, 0, 250, Math.PI / 2 + 0.3], cars: [1500, 22, 700, 0.7] };
 // The panes of the dad's two windows nearest the door from the arrival: lit (the probe's
@@ -216,7 +218,7 @@ async function countViews(page, t, budget) {
       let texels = 0;
       for (const s of g.areas.real.store.sets.values()) texels += s.albedo.length + s.normal.length + s.orm.length;
       const out = { calls: r.info.render.calls, triangles: r.info.render.triangles, programs, all: r.info.programs.length, textureBytes: Math.round(texels * 1.33) };
-      out.sky = window.__pixelsOn([[0.1, 0.98], [0.3, 0.98], [0.5, 0.98], [0.7, 0.98], [0.9, 0.98]]).sort((a, b) => b[2] - b[0] - (a[2] - a[0]))[0];
+      out.sky = window.__pixelsOn([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map((x) => [x, 0.98])).sort((a, b) => b[2] - b[0] - (a[2] - a[0]))[0];
       return out;
     }, [x, y, z, yaw]);
     t.diagnostic(`${name}: ${JSON.stringify(f)}`);

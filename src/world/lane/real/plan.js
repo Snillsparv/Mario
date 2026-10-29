@@ -20,7 +20,7 @@
 //   redTreeStems(T) -> [[x, y, z, w]]        // the red-leaf tree's stems (layout RED_TREE): from its
 //                                            // fork out to each end, w thick (both looks)
 //   redTreeCrown(T) -> [{ c, r }]            // its crown's blobs (middle, radii), sparse
-//   ivyMasses(L) -> [{ c, r }]               // the ivy mound's lumps (layout IVY)
+//   ivyMasses(L) -> [{ c, r, away? }]        // the ivy's masses (layout IVY; away: the wall)
 //   climberMasses(L) -> [{ c, r }]           // the climber up the gable's back corner (CLIMBER)
 //   chainFaces(h) -> [face]                  // a chain house's drawn faces (a wing's joined end
 //                                            // left out: lane/layout.js DAD_WINGS)
@@ -319,25 +319,28 @@ export function bedStones(L) {
 }
 
 export function redTreeStems(T) {
-  // Four stems leaning out from the fork, each [x, y, z, w] at its end: long, rising to the
-  // crown's middle height, spread round the trunk (none straight over its top).
+  // Stems leaning out from the fork, each [x, y, z, w] at its end, spread round the trunk (none
+  // straight over its top). (P2, photos 20, 38, 39: six slim ones rising steeply into a vase.)
   const C = T.canopy;
-  return [[0.5, 0.55, 640, 17], [2.0, 0.5, 600, 15], [-1.1, 0.6, 680, 16], [3.5, 0.45, 560, 13]].map(([a, out, y, w]) => [T.x + Math.sin(a) * C.r * out, y, T.z + Math.cos(a) * C.r * out, w]);
+  return [[0.45, 0.42, 700, 12], [1.5, 0.38, 660, 10.5], [2.6, 0.45, 720, 11.5], [3.7, 0.36, 640, 10], [4.8, 0.44, 690, 11], [5.7, 0.33, 740, 9.5]].map(([a, out, y, w]) => [T.x + Math.sin(a) * C.r * out, y, T.z + Math.cos(a) * C.r * out, w]);
 }
 
 export function redTreeCrown(T) {
-  // Small blobs spread wide like an open umbrella: the outer ones lower (the limbs droop), the
-  // inner ones higher, none low over the trunk's top.
+  // Small blobs (P2, photos 20, 38, 39): a ring narrow low and widest high, three over the middle
+  // at the top and three drooping at the rim, the lowest (none within ~100 of the trunk's top, none
+  // over the street).
   const C = T.canopy;
   const R = makeRng(4517);
   const out = [];
-  for (let i = 0; i < 14; i++) {
-    const a = i * 2.39996 + R() * 0.5;
-    const k = 0.3 + 0.7 * Math.sqrt((i + 0.5) / 14) * (0.85 + 0.15 * R());
-    const d = C.r * k;
-    const y = C.y1 - (C.y1 - C.y0) * (0.08 + 0.5 * k * k + 0.1 * R());
-    const r = C.r * (0.24 + 0.08 * R());
-    out.push({ c: [T.x + Math.sin(a) * d, y, T.z + Math.cos(a) * d], r: [r, r * (0.55 + 0.2 * R()), r] });
+  for (let i = 0; i < 18; i++) {
+    const [top, rim] = [i > 11 && i < 15, i > 14];
+    const u = top ? 1 : rim ? 0 : i / 11;
+    const a = (rim ? (i - 16) * 1.5 : i * 2.39996) + R() * 0.5; // (the rim's west, toward the house and east: none low over the street, where the camera follows him)
+    const r = C.r * (0.16 + 0.06 * u + 0.06 * R());
+    const ry = r * (0.55 + 0.2 * R());
+    const d = C.r * (top ? 0.12 + 0.2 * R() : rim ? 0.9 + 0.1 * R() : (0.48 + 0.48 * u ** 0.7) * (0.9 + 0.12 * R()));
+    const y = C.y0 + ry + (C.y1 - C.y0 - 2 * ry) * (top ? 0.97 : rim ? 0.04 * R() : 0.1 + 0.8 * u + 0.03 * R());
+    out.push({ c: [T.x + Math.sin(a) * d, y, T.z + Math.cos(a) * d], r: [r, ry, r] });
   }
   return out;
 }
@@ -374,18 +377,17 @@ export function brickSpans(h, name, half) {
   return out;
 }
 
-// The ivy mound's masses ({ c, r }: three lumps along the front's east pier and round the corner
-// onto the gable; both looks draw them, lane/props.js too).
+// The ivy's masses ({ c, r }; both looks draw them, lane/props.js too). (P2, photos 21, 22, 36,
+// 39: a dark sheet hugging the north-east pier from the ground to the gutter, ~90 deep, fuller at
+// its foot; a lump round the corner and one on along the gable to the bins, photo 36.)
 export function ivyMasses(L) {
-  const I = L.IVY;
-  const G = L.GROUND;
-  // (Two lumps along the pier, one round the corner onto the gable, and a sheet climbing the
-  // pier flat against the wall up to the gutter.)
+  const { IVY: I, GROUND: G, DAD: D } = L;
+  const h = I.h;
   return [
-    { c: [I.x - I.rx * 0.45, G + I.h * 0.43, I.z + 40], r: [I.rx * 0.62, I.h * 0.44, I.rz * 0.7] },
-    { c: [I.x + I.rx * 0.2, G + I.h * 0.46, I.z + 30], r: [I.rx * 0.6, I.h * 0.47, I.rz * 0.78] },
-    { c: [L.DAD.x1 + 45, G + I.h * 0.42, L.DAD.z0 - 30], r: [I.rx * 0.38, I.h * 0.43, I.rz * 0.68] },
-    { c: [I.x - I.rx * 0.15, G + I.h * 0.74, L.DAD.z0 - 22], r: [I.rx * 0.85, I.h * 0.25, 34] },
+    { c: [I.x - 38, G + h * 0.49, D.z0 - 34], r: [I.rx * 0.7, h * 0.45, 44], away: [0, 0, 1] },
+    { c: [I.x - 50, G + h * 0.3, D.z0 - 55], r: [I.rx * 0.75, h * 0.31, 50], away: [0, 0, 1] },
+    { c: [D.x1 + 25, G + h * 0.42, D.z0 + 5], r: [105, h * 0.42, 105] },
+    { c: [D.x1 + 40, G + h * 0.36, D.z0 + 95], r: [45, h * 0.36, 75], away: [-1, 0, 0] },
   ];
 }
 

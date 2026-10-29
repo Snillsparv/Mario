@@ -160,6 +160,45 @@ test('the front eave: a standing jump within 100 of the front wall grabs the eav
   }
 });
 
+// (P2, photos 19, 41: the rhododendron taller and conical, solid in two steps, its foot's to 0.4 of
+// its height, its top's narrower one to 0.78; deliberately: its outline. Its gutter's rim stays
+// clear: the front eave's grab above holds. A hop up the steps and a jump from its top toward the
+// house is a way onto the roof, as the eave's grab is.)
+test('the rhododendron (P2): walked past along the dad\'s front, up the link\'s drive and between them; hopped onto its foot\'s step, then its top, a jump from there onto the roof (or, from its front, back onto the step); walked off its step back onto the lawn; unhurt, never stuck', () => {
+  const R = lane.RHODODENDRON;
+  const [foot, top] = [GROUND + R.h * 0.4, GROUND + R.h * 0.78];
+  const a = hero(-1000, GROUND, R.z - R.rz - 60, E);
+  a.walk([[0, R.z - R.rz - 60]], 0.6);
+  assert.ok(a.at().x > -60 && Math.abs(a.at().y - GROUND) < 1, `along the front: ${JSON.stringify(a.at())}`);
+  for (const x of [(lane.LINK_DRIVE.x0 + lane.LINK_DRIVE.x1) / 2, R.x - R.rx - 30]) {
+    const b = hero(x, GROUND, lane.SOUTH_EDGE + 100, S);
+    b.walk([[x, DAD.z0 - 60]], 0.6);
+    assert.ok(b.at().z > DAD.z0 - 110 && Math.abs(b.at().y - GROUND) < 1, `up beside it at x ${x}: ${JSON.stringify(b.at())}`);
+  }
+  for (const [dx, dz, yaw] of [[1, 0, W], [-1, 0, E], [0, -1, S]]) {
+    const c = hero(R.x + dx * (R.rx * 0.85 + 70), GROUND, R.z + dz * (R.rz * 0.8 + 70), yaw);
+    c.rest(2);
+    jump(c, yaw, { push: 0.4, after: 4 });
+    c.rest(20);
+    assert.ok(Math.abs(c.at().y - foot) < 1 && c.p.grounded, `on its foot's step: ${JSON.stringify(c.at())}`);
+    jump(c, yaw, { push: 0.4, after: 4 });
+    c.rest(20);
+    assert.ok(Math.abs(c.at().y - top) < 1 && c.p.grounded, `on its top: ${JSON.stringify(c.at())}`);
+    jump(c, S, { push: 1, after: 6 });
+    c.rest(30);
+    // (From its top's middle the roof; from its front, short of it, back on its foot's step.)
+    const q = c.at();
+    const roof = q.z > DAD.z0 && Math.abs(q.y - roofOver(q.x, q.z)) < 4;
+    if (dz === 0) assert.ok(roof, `from its top onto the roof: ${JSON.stringify(q)}`);
+    assert.ok((roof || Math.abs(q.y - foot) < 1) && c.p.grounded && c.p.health === MAX_HEALTH, `landed cleanly: ${JSON.stringify(q)}`);
+  }
+  const d = hero(R.x + R.rx * 0.85 + 70, GROUND, R.z, W);
+  jump(d, W, { push: 0.4, after: 4 });
+  d.rest(20);
+  d.walk([[R.x + R.rx + 400, R.z]], 0.5);
+  assert.ok(Math.abs(d.at().y - GROUND) < 1 && d.at().x > R.x + R.rx + 300 && d.p.grounded && d.p.health === MAX_HEALTH, `off its step onto the lawn: ${JSON.stringify(d.at())}`);
+});
+
 test("the neighbours (W5): a standing jump within 100 of south_1's and south_2's front walls grabs the eave (a lip, as the dad's: their roofs as steep) and climbs onto the roof; south_2's raised bed walked up onto from its gravel; on through the young beech row into the garden behind it", () => {
   for (const H of [lane.SOUTH_1, lane.SOUTH_2]) {
     const tan = (H.ridge - H.eave) / (H.d / 2);

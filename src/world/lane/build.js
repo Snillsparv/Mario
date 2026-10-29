@@ -519,9 +519,19 @@ function ground(kit, L, road) {
     if (solid(piece)) solids.face(at(piece, 0), UP, 'stone');
   }
   const hard = hardSurfaces(L, road, tints);
+  const draw = (b, outline, tint, shade = 1) => {
+    b.color(tint, shade);
+    b.poly(at(outline, G), { facing: UP, shade: outline.map(([x, z]) => swath(x, z)) });
+  };
   for (const { outline, mat, tint, shade } of hard) {
-    kit[mat].color(tint, shade);
-    kit[mat].poly(at(outline, G), { facing: UP, shade: outline.map(([x, z]) => swath(x, z)) });
+    // (P2, photos 22, 39, 40: the dad's path drawn narrower, the lawn over its outer strips; its
+    // collider the whole.)
+    const P = L.DAD_PATH;
+    if (mat === 'path') {
+      const [d0, d1] = P.drawn;
+      draw(kit.path, rectOf(d0, d1, P.z0, P.z1), tint);
+      for (const [a, b] of [[P.x0, d0], [d1, P.x1]]) draw(grass, rectOf(a, b, P.z0, P.z1), tints.lawn);
+    } else draw(kit[mat], outline, tint, shade);
     if (solid(outline)) solids.face(at(outline, G), UP, 'stone');
   }
   // The lawn, tile by tile, round everything else; the terraces' blocks, their steps and their
