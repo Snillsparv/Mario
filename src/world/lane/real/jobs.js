@@ -25,9 +25,14 @@ export const CATALOGUE = {
   // south houses' long shade; the low tier's direct path, no grade nor occlusion, already as light.)
   asphalt: { set: 'asphalt', cover: 420, color: 2.13, direct: 1.85, normalScale: 0.8 },
   grass: { set: 'grass', cover: 300, color: [1.38, 1.15, 0.55] }, // (an autumn olive)
-  // (P3: on the direct path, low, as light as high's in the sun and shade: its bed walls were ~25
-  // lighter than photos 13, 24, 27, its steps' treads near white.)
-  blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, direct: 0.9, normalScale: 1.6 },
+  // (P3 fix: its own shade, where the sun does not fall (materials.js uShadeOwn): the bed walls'
+  // cool tint, grey in the low gold sun, the photos' beige-grey stone in the shade, photos 17, 24,
+  // 26 (it was blue-grey there); the steps, south_2's edging and the west villa's split-face
+  // panels a little warmer in the shade too, the forecourt's wall neutral under it (lane/props.js).
+  // On the direct path, low, 1.05 for the whole material: every part of it within ~13 of high's
+  // (the walls ~6 lighter, the panels ~9 darker, the pillar and the edging ~5 lighter); at 1.4
+  // they were 15-25 lighter, at 0.9 the panels 24 darker.)
+  blocks: { set: 'brick', opts: BLOCKS, cover: 240, color: 1.4, direct: 1.05, normalScale: 1.6, shade: [0.9, 0.74, 0.6] },
   brick: { set: 'brick', cover: 180, color: 1.12, normalScale: 1.2 },
   render: { set: 'render', cover: 300 },
   boards: { set: 'boards', cover: 240, color: 1.15, normalScale: 1.3 },

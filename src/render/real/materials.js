@@ -5,8 +5,9 @@
 //   pbrMaterial(maps, opts, haze) -> MeshStandardMaterial    // a texture set's maps (texture
 //       Store.maps: albedo x the vertex tint x opts.color, the normal map, occlusion and
 //       roughness from the ORM map); opts { repeat, color, roughness, normalScale, side,
-//       vertexColors }: repeat = the textures' repeats per geometry uv unit (clones are taken,
-//       sharing the images, so two materials may repeat one set differently)
+//       vertexColors, shade }: repeat = the textures' repeats per geometry uv unit (clones are
+//       taken, sharing the images, so two materials may repeat one set differently); shade, [r, g,
+//       b] on its indirect diffuse (the split below: uShadeOwn)
 //   plainMaterial(opts, haze) -> MeshStandardMaterial        // flat: paint, cloth (opts { color,
 //       roughness, metalness, side, vertexColors, envMapIntensity, clearcoat }: clearcoat, a
 //       car's lacquer, [strength, roughness] over the paint: three.js's own clearcoat lobe,
@@ -289,6 +290,10 @@ function wearChunk(shader, uniform, { attr = false, lite = false }) {
 // shadow's edge.
 // (The leaves and the grass's blades keep the whole fill: their dapple is the sun's through a
 // canopy, and a fill that came and went with it only stirred their speckle.)
+// And a material's own shade (pbrMaterial's `shade`, uShadeOwn: neutral but where given) on its
+// indirect diffuse where the sun does not fall, eased out as the sun's share of the light grows
+// to 0.3 (P3 fix: the lane's split-face blocks, the photos' beige-grey stone in the shade, while
+// their cool tint keeps them grey, not tan, in the low gold sun).
 const SUN_FILL = ' * (1.0 - uSunFill * splitSun / (splitSun + splitSky + 1e-6))';
 const SPLIT_FRAG = /* glsl */ `{
     float splitSun = dot(reflectedLight.directDiffuse * uSunTint, vec3(0.2126, 0.7152, 0.0722));
@@ -297,6 +302,7 @@ const SPLIT_FRAG = /* glsl */ `{
     reflectedLight.directSpecular *= uSunTint;
     reflectedLight.indirectDiffuse *= uShadeTint${SUN_FILL};
     reflectedLight.indirectSpecular *= uShadeTint;
+    reflectedLight.indirectDiffuse *= mix(uShadeOwn, vec3(1.0), smoothstep(0.0, 0.3, splitSun / (splitSun + splitSky + 1e-6)));
   }
   #include <aomap_fragment>`;
 const fullFill = (shader) => (shader.fragmentShader = shader.fragmentShader.replace(SUN_FILL, ''));
@@ -308,9 +314,9 @@ export function hazeChunk(material, haze, key = 'real-haze', patch = null, wear 
   const worn = !!(wear && haze.uWearGround);
   if (worn) material.userData.wear = { value: new THREE.Vector4() };
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { uSunTint: { value: NEUTRAL.clone() }, uShadeTint: { value: NEUTRAL.clone() }, uSunFill: { value: 0 } }, haze);
+    Object.assign(shader.uniforms, { uSunTint: { value: NEUTRAL.clone() }, uShadeTint: { value: NEUTRAL.clone() }, uSunFill: { value: 0 } }, haze, { uShadeOwn: material.userData.shade ?? { value: NEUTRAL } });
     shader.vertexShader = 'varying vec3 vHazeWorld;\n' + shader.vertexShader.replace('#include <project_vertex>', HAZE_VERT);
-    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\nuniform vec3 uSunTint;\nuniform vec3 uShadeTint;\nuniform float uSunFill;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG).replace('#include <aomap_fragment>', SPLIT_FRAG);
+    shader.fragmentShader = 'varying vec3 vHazeWorld;\nuniform float uHazeDensity;\nuniform float uHazeGlow;\nuniform vec3 uSunTint;\nuniform vec3 uShadeTint;\nuniform vec3 uShadeOwn;\nuniform float uSunFill;\n' + SKY_GLSL + shader.fragmentShader.replace('#include <fog_fragment>', HAZE_FRAG).replace('#include <aomap_fragment>', SPLIT_FRAG);
     patch?.(shader);
     if (worn) wearChunk(shader, material.userData.wear, wear);
     if (far) sunShadowChunk(shader);
@@ -326,7 +332,7 @@ const repeated = (texture, repeat) => {
   return t;
 };
 
-export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1, normalScale = 1, side = THREE.FrontSide, vertexColors = true, wear = {} } = {}, haze) {
+export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1, normalScale = 1, side = THREE.FrontSide, vertexColors = true, wear = {}, shade = null } = {}, haze) {
   const orm = repeated(maps.orm, repeat);
   const material = new THREE.MeshStandardMaterial({
     map: repeated(maps.albedo, repeat),
@@ -340,6 +346,7 @@ export function pbrMaterial(maps, { repeat = 1, color = 0xffffff, roughness = 1,
     vertexColors,
     side,
   });
+  if (shade) material.userData.shade = { value: new THREE.Vector3(...shade) };
   return hazeChunk(material, haze, 'real-haze', null, wear);
 }
 

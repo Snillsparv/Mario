@@ -304,8 +304,10 @@ function beds(kit, L) {
   for (const p of bedSpots(L, terraceSpans(L), BED_STEP[kit.tier] ?? BED_STEP.high)) {
     const S = streams[p.kind];
     const K = BED_KINDS[p.kind];
-    // (Inside its span: a plant near the steps or the drive drawn smaller.)
-    const s = p.s * Math.max(0.5, Math.min(1, (p.room - 6) / ((K?.r[0] ?? 30) * 1.2 * p.s)));
+    // (Inside its span: a plant near the steps or the drive drawn smaller; P3 fix: and its crown's
+    // cards clear of a mailbox's box in the bed, or not drawn.)
+    const s = Math.min(p.s * Math.max(0.5, Math.min(1, (p.room - 6) / ((K?.r[0] ?? 30) * 1.2 * p.s))), p.clear / (K ? K.r[0] * 1.25 + 0.75 * K.size : 45));
+    if (s < 0.5) continue;
     if (!K) {
       // A boulder, half in the soil.
       const r = [26 + 16 * S(), 16 + 8 * S(), 22 + 12 * S()].map((v) => v * s);

@@ -7,12 +7,12 @@
 //   roadAt(L, t, s)   the point t along ROAD.line from its west end, s across it (+ its left: the
 //                     south side) -> [x, z, dx, dz] (dx, dz: the line's way there)
 //   streetWear(L)     the road's wear (memoised per layout):
-//       patches       [[x, z]...] the mended patches (P3): ragged outlines of 16 points, ~180-900
+//       patches       [[x, z]...] the mended patches (P3): ragged outlines of 16 points, ~140-900
 //                     across, in groups along the wheel tracks and the kerbs, round the covers and
 //                     at the north drives' mouths, ~28 % of the carriageway and apron, dark sealant
 //       islands       [[x, z]...] the old asphalt left inside the big ones (8 points)
-//       long          [{ pts, w }] the long seal bands down the wheel tracks (P3: three, 36-52 m,
-//                     a width per point, 20-63, as dark as the patches)
+//       long          [{ pts, w }] the long seal bands down the wheel tracks (P3: three, 24-34 m,
+//                     a width per point, 16-49, as dark as the patches)
 //       bands         [{ pts, w }] the meandering sealant bands along the road (20-50 wide, darker)
 //       seals         [{ pts, w }] the crack-seal lines (4-6 wide, near black), one 15 m along the
 //                     bend's south third

@@ -166,6 +166,31 @@ test('the weathering in every textured material: its ground map and the strength
   }
 });
 
+// P3 fix: a material's own shade (its catalogue entry's `shade`: the lane's split-face blocks
+// only, photos 13, 17, 24, 26: their beige-grey stone in the shade, where their cool tint keeps
+// them grey in the low gold sun) on its indirect diffuse where the sun does not fall, eased out as
+// the sun's share of the light grows; every other realistic material neutral, in the same program.
+// On low the blocks' colour on the direct path its own `direct`, a little under high's.
+test('P3 fix: the blocks\' own shade on their indirect diffuse where the sun does not fall (eased out by the sun\'s share), every other realistic material neutral, the same programs; on low their direct colour a little under high\'s', () => {
+  const { look, M, D } = lookAndMaterials();
+  const want = CATALOGUE.blocks.shade;
+  assert.ok(want[0] > want[1] && want[1] > want[2] && want[0] <= 1, `warm, never lighter: ${want}`);
+  const own = 'reflectedLight.indirectDiffuse *= mix(uShadeOwn, vec3(1.0), smoothstep(0.0, 0.3, splitSun / (splitSun + splitSky + 1e-6)));';
+  for (const [set, name, m] of [...Object.entries(M).map(([k, v]) => ['M', k, v]), ...Object.entries(D).map(([k, v]) => ['D', k, v])]) {
+    if (['signs', 'shadow', 'contact'].includes(name)) continue;
+    const s = compiled(m);
+    assert.deepEqual(s.uniforms.uShadeOwn.value.toArray(), set === 'M' && name === 'blocks' ? want : [1, 1, 1], `${set} ${name}: its own shade`);
+    const at = (c) => s.fragmentShader.indexOf(c);
+    assert.ok(at(own) > at('reflectedLight.indirectSpecular *= uShadeTint;') && at(own) < at('#include <aomap_fragment>') && s.fragmentShader.includes('uniform vec3 uShadeOwn;'), `${set} ${name}: after the split, before the occlusion`);
+  }
+  assert.equal(M.blocks.customProgramCacheKey(), M.brick.customProgramCacheKey(), 'the textured materials\' program');
+  look.dispose();
+  const low = lookAndMaterials(TIERS.low);
+  const e = CATALOGUE.blocks;
+  assert.ok(Math.abs(low.M.blocks.color.r - e.direct) < 1e-6 && e.direct < e.color && e.direct > 0.7 * e.color, `the blocks' colour on low ${low.M.blocks.color.r}`);
+  low.look.dispose();
+});
+
 // R2-2, the golden hour's split: the sun's tint on the direct light, the shade's on the
 // indirect (the sky's environment and the hemisphere), in every realistic material's shared
 // patch, after the lights (the leaves' light through them too) and before the occlusion and the

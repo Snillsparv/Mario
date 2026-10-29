@@ -834,7 +834,9 @@ function beds(kit, layout) {
   const { leaves, render, paint } = kit.drawn('plants');
   for (const p of bedSpots(layout, terraceSpans(layout), 150)) {
     const [tint, r0, ry0, dots] = BED_TINTS[p.kind];
-    const s = p.s * Math.max(0.5, Math.min(1, (p.room - 6) / (r0 * p.s)));
+    // (P3 fix: clear of a mailbox's box in the bed, its flowers' dots too, or not drawn.)
+    const s = Math.min(p.s * Math.max(0.5, Math.min(1, (p.room - 6) / (r0 * p.s))), (p.clear - 8) / r0);
+    if (s < 0.5) continue;
     const b = [3, 8, 9].includes(p.kind) ? render : leaves;
     const [r, ry] = [r0 * s, ry0 * s];
     let cy = p.y + ry * 0.7;
@@ -1628,7 +1630,8 @@ function footpathProps(kit, layout) {
   const wl = Math.hypot(wd[0], wd[2]);
   const wm = [(wa[0] + wb[0]) / 2, 0, (wa[1] + wb[1]) / 2];
   const shade = { faceShade: (n) => (n[1] > 0.5 ? 1.08 : 0.92) };
-  blocks.color(0xbab0a3, kit.look === 'real' ? 1.4 : 1);
+  // (P3 fix: a neutral in the realistic look, its blocks' shade making it the photos' beige-grey.)
+  blocks.color(kit.look === 'real' ? 0xc8c8c6 : 0xbab0a3, kit.look === 'real' ? 1.5 : 1);
   paint.color(0xc8c2b8);
   for (const [at, l, t, top] of [[wm, wl, W.thick, W.top], [[C.x, 0, C.z], W.pillar, W.pillar, W.pillarTop]]) {
     blocks.solid(orientedBoxPolys(at, wd, l, GROUND - 5, top - 10, t, { bottom: false }), shade);

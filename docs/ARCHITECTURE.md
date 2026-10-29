@@ -1684,13 +1684,13 @@ trees' leaves).
   casting no shadow in the realistic look, the edging's boards in `boards`): the kerb's
   granite stones ~0.75 m (110) long, light and fine-grained, a tone each (realistic: flush, a
   rounded arris, a slim 24 top of the kerb's 30, each joint a dark line drawn a hair out over the
-  face and the top); `streetWear(L)`: the mended patches (P3, photos 04, 05, 09, 12, 34, 43: ~58
-  ragged blobs of 16 points, ~180 … 900 across, in groups along the wheel tracks and by the kerbs
-  every ~690 along the road, six on the apron, one round each cover and one at each north drive's
+  face and the top); `streetWear(L)`: the mended patches (P3, photos 04, 05, 09, 12, 34, 43: 55
+  ragged blobs of 16 points, ~140 … 900 across, in groups along the wheel tracks and by the kerbs
+  every ~770 along the road, six on the apron, one round each cover and one at each north drive's
   mouth on the straight; ~28 % of the carriageway and apron, 0.6 of the road's tint, their
   darkness drifting slowly with place (`build.js` `mottle`, so two that overlap agree), the big
-  ones keeping an island of the old asphalt), the long seal bands (P3, photos 34, 43: three, 36 …
-  60 m down the wheel tracks, 20 … 63 wide, as dark as the patches; ~3 % more), every patch and
+  ones keeping an island of the old asphalt), the long seal bands (P3, photos 34, 43: three, 24 …
+  34 m down the wheel tracks, 16 … 49 wide, as dark as the patches; ~2 % more), every patch and
   band one tint at one height (0.5, under the litter's lip at 0.6: none fights another), the
   patches, islands and long bands each their own stream (`R`'s old draws stepped over, so the
   older meandering sealant bands, a shade darker still, and the five near-black crack seals keep
@@ -1729,7 +1729,10 @@ trees' leaves).
   **W6, the bed walls** (photos 10, 13, 16, 17, 23, 28): the walls' fronts are
   drawn lower than their colliders, low stacked-slab bed walls under a coping (P3, photos 13, 16,
   27, 28: a cool grey tint, `TINT.walls` and the realistic look's own, so they render the photos'
-  grey in the warm light, within ~8 of photos 13 and 27 per channel in the shade; their faces' uvs
+  grey in the warm light, within ~8 of photos 13 and 27 per channel; P3 fix: in the realistic look
+  the blocks' own shade, `CATALOGUE.blocks.shade`, warms them where the sun does not fall, so the
+  shaded walls read the photos' beige-grey stone, not blue-grey: photos 17 and 24 (83, 75, 67) and
+  (84, 74, 65), high (85, 80, 70) and (83, 78, 71), were (90, 95, 95) and (87, 92, 95); their faces' uvs
   only, `build.js slabs`, 2.8 times finer courses and slabs a tenth shorter, so both looks read
   thin long slabs, the steps and kerbs keeping theirs; the classic coping lighter, cut into slabs
   70 … 190 long, each its own shade), each
@@ -3354,7 +3357,9 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   north_5, round clipped box balls, granite boulders half in the soil, small red-purple maples on
   a thin stem and pink plumes, the maple and plumes also behind north_2's hedge; each a small
   shell or two, no core, each kind its own stream, a plant near its span's end drawn smaller so it
-  stays clear of the steps' railings and the drives); W5: south_1's informal hedge (`hedge`, `h.informal`: lighter sprigs over darker gaps, loose
+  stays clear of the steps' railings and the drives (to half its size at the least), P3 fix: and
+  one near north_5's two mailboxes on their posts drawn smaller to keep its cards out of their
+  boxes, or not at all: `bedSpots`' `clear`); W5: south_1's informal hedge (`hedge`, `h.informal`: lighter sprigs over darker gaps, loose
   faces, a ragged top up to `informal` over the walkable one, brown leaf litter on the asphalt's
   edge at its foot where it stands there; W5 fix: the photos' warm olive with a few browning
   leaves, half the face cards leaning along it so a view along the street meets leaves, its core
@@ -4050,7 +4055,12 @@ untouched (its bake keeps `LANE_SUN`, its materials and sky their own).
   haze without the uniforms (another look, a test) gets neutral ones (fresh per material). The
   storm: `RealLook.ease(darkness)` eases the tints and the fill toward none each frame the
   darkness changes (its key light and sky are its own), so the storm's and the flash's grades
-  (`GradePass`) look as before.
+  (`GradePass`) look as before. (P3 fix round: a material may have its own shade, `uShadeOwn`,
+  `pbrMaterial`'s `shade` from its catalogue entry, on its indirect diffuse where the sun does not
+  fall: × mix(`uShadeOwn`, 1, smoothstep(0, 0.3, D / (D + I))), so it is gone where the sun's
+  share reaches 0.3 (a sunlit face's is far over it). Every material carries the uniform, neutral
+  but the lane's `blocks`, so no program is added; it stays through the storm. See the P3 fix
+  round below.)
 * **The preset** (`LANE_REAL`): exposure 1.3 → 1.25; the hemisphere 0.9 → 0.6 (the shade a
   little deeper, the realistic materials' made up by the shade tint; Jonas's shirt a little
   redder: 1.3 % from the classic chromaticity on high, was 3.0 %; mid 4.0 % (5.4), low 11.6 %
@@ -4225,18 +4235,19 @@ photos 03-05, 09, 12, 13, 15-17, 23-28, 33, 34, 43 and 44 have them, both looks,
   the turning area, one round each cover and at the north drives' mouths (~28 % of the carriageway,
   0.6 of the road's tint in the realistic look, 0.7 baked in the classic, their darkness drifting
   with place: `mottle`), an island of the old asphalt in each big one, three long seal bands down
-  the wheel tracks (36-52 m, 16-50 wide), and the nine covers grey-rust grated iron (a dark gap, a
+  the wheel tracks (24-34 m, 16-49 wide), and the nine covers grey-rust grated iron (a dark gap, a
   smooth rim, eight slots; 40 triangles). The patches, the islands and the long bands each draw
   from their own stream and the old stream is stepped over its patches' 200 draws, so the older
   sealant bands, the crack seals and the seam keep their places.
 * **The bed walls** (`build.js block`, `side`, `slabs`; `TINT.walls`/`coping`, `REAL_GROUND.walls`;
-  `real/hardware.js coping`; `real/jobs.js` `CATALOGUE.blocks.direct`): a cool grey tint in each
+  `real/hardware.js coping`; `real/jobs.js` `CATALOGUE.blocks.direct`, `shade`: the fix round
+  below): a cool grey tint in each
   look (the warm light makes it the photos' grey: photo 13's shade region (111, 97, 88), high
   (109, 95, 83), classic (102, 89, 80); photo 27's (100, 90, 82), high (96, 85, 81), classic
   (100, 89, 78)), the faces' uvs only 2.8 times finer and a tenth shorter (thin long slabs, the
   steps and kerbs as they were), the classic cap cut into slabs of their own shades, the realistic
   coping lighter and more irregular; on low the blocks' material 0.9 on the direct path (its walls
-  were ~25 lighter than high's, its steps near white).
+  were ~25 lighter than high's, its steps near white; 1.05 since the fix round).
 * **The beds** (`facades.js bedSpots`, `BED_MIX`; `real/foliage.js beds`, `BED_KINDS`, `BED_STEP`
   high 100, `BED_K` mid 0.75; `props.js beds`): see the terraces and the plants above; the
   grasses' cards three to six times taller than wide (`cluster`'s `tall`).
@@ -4254,6 +4265,43 @@ photos 03-05, 09, 12, 13, 15-17, 23-28, 33, 34, 43 and 44 have them, both looks,
   low 140.1k (+0.3k); the classic build 46,527 triangles (+2.0k: lane.test's cap 47k) in its 15
   meshes, its colliders 3,089 (the same bytes). Bytes: lane 110,584 (+2,394; cap 106 -> 109 KiB),
   laneRealWorker 205,353 (+1,671; cap 200 -> 202 KiB), main 1,287,858 (+10).
+
+**P3's fix round.** Three things its judges found:
+* **The shaded bed walls blue-grey in the realistic look** (every tier: the cool tint that keeps
+  them grey in the low gold sun read pale blue brick in the shade, where photos 17, 24 and 26 have
+  a warm beige-grey stone, R − B +15 … +25): the blocks' material has its own shade
+  (`CATALOGUE.blocks.shade` [0.9, 0.74, 0.6], `materials.js` `uShadeOwn`: on the indirect diffuse,
+  eased out as the sun's share of the light grows to 0.3, so the sunlit faces stay as they were,
+  photo 13's within 1 of before). Shaded walls (photo / before / now, high): photo 17 (83, 75, 67)
+  / (90, 95, 95) / (85, 80, 70), photo 24 (84, 74, 65) / (87, 92, 95) / (83, 78, 71); the sunlit
+  wall of photo 27 (111, 99, 91) / (105, 95, 91) / (104, 93, 87). The whole material takes it:
+  the steps and south_2's edging a little warmer in the shade, the west villa's split-face panels
+  a little creamier, nearer the render beside them ((202, 201, 195) -> (194, 178, 158)); the
+  forecourt's wall and pillar, the same beige split-face in photos 29-31 but warm in its own tint,
+  neutral in the realistic look under it (`props.js footpathProps`: photo 31's pillar (125, 109,
+  97), before (105, 97, 86), now (113, 100, 86)).
+* **The low tier's `CATALOGUE.blocks.direct`** (0.9 had darkened the whole material on the direct
+  path, not only the walls and steps: the west villa's white split-face panels 24 darker than
+  high's): 1.05, chosen over the material's every part against high on the acceptance poses
+  (luminance over the material's pixels, low − high: the bed walls +6 (−2 … +13), the panels −9,
+  the forecourt's pillar +4, south_2's edging +7; at 1.4 all 15-25 lighter, at 0.9 the walls −2,
+  the panels −24; mid and high unchanged).
+* **Bed plants through north_5's mailboxes** (high and mid: a cosmos and a heuchera stood in the
+  two boxes on their posts in the bed, photos 27, 28): `bedSpots` gives each plant its `clear` to
+  the nearest mailbox on a post in a bed (MAILBOXES with `y0`), and both looks' builders draw it
+  smaller to keep its cards (and the classic mounds' flower dots) out of the box, or not at all
+  under half its size: on high the two in the boxes are gone, on mid and in the classic look the
+  nearest drawn smaller. `tests/lane-real-geometry.test.js` checks every mesh of every tier and of
+  the classic build (but the boxes' own) for any face inside a box.
+* **Measured** (E2E, 960 × 540): the fight's worst frame high 158 / 980,002, mid 139 / 487,232,
+  low 96 / 214,024, classic 45 / 55,582; the five views high 135-147 / 945.9k-961.3k, mid and low
+  as before; no draw call, program (22 / 18 / 14), material or texture set added; the colliders
+  the same bytes. Bytes: main 1,287,878 (+20), lane 110,833 (+249), laneRealWorker 205,597 (+244),
+  realLook 51,830 (+252); no cap raised. Against the photos (the 19 acceptance poses): high's colour
+  difference 28.04 -> 28.03 and edge agreement 0.451 -> 0.452, mid 28.39 -> 28.37 and 0.458 ->
+  0.459, low 30.09 -> 30.14 and 0.486 -> 0.487: the walls are a small part of each frame; on
+  their own the shaded walls' summed |dRGB| to photos 17 and 24, high 55 -> 10 and 51 -> 11, low
+  58 -> 33 and 61 -> 36.
 
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its
@@ -5510,18 +5558,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,287,858 | 400 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,287,878 | 400 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 110,584 | 45 kB | 109 KiB (from 106, round 2b's P3, planned 108: the street's patches in groups with their islands, the long seal bands and the grated covers, drawn by the classic build for both looks, the bed walls' finer slabs and irregular cap, the beds' own mix per plot with their new kinds and flowers, 108.0 KiB, +2.4 kB, over the plan's +1.3 kB; from 104, round 2b's P1: the classic forest's gilt tops, lobed crowns and far masses behind the bank and round the west end, both looks' west-curve broadleaves, 104.7 KiB; 104.8 KiB with its fix round, the far masses' skirts; from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
-| realLook | 51,578 | 18 kB | 60 KiB (from 90; R2-2: the golden hour's split, the cumulus and the environment's warm band, +1.65 kB; its fix round, the fill where the sun falls, the cumulus away from the sun, the direct path's own light, +0.7 kB; round 2b's P1, the far tree line's and the edge's spruces' instanced meshes gone, −0.2 kB) |
+| lane | 110,833 | 45 kB | 109 KiB (from 106, round 2b's P3, planned 108: the street's patches in groups with their islands, the long seal bands and the grated covers, drawn by the classic build for both looks, the bed walls' finer slabs and irregular cap, the beds' own mix per plot with their new kinds and flowers, 108.0 KiB, +2.4 kB, over the plan's +1.3 kB; 108.2 KiB with its fix round, the beds' plants clear of north_5's mailboxes, the forecourt wall's realistic tint; from 104, round 2b's P1: the classic forest's gilt tops, lobed crowns and far masses behind the bank and round the west end, both looks' west-curve broadleaves, 104.7 KiB; 104.8 KiB with its fix round, the far masses' skirts; from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
+| realLook | 51,830 | 18 kB | 60 KiB (from 90; R2-2: the golden hour's split, the cumulus and the environment's warm band, +1.65 kB; its fix round, the fill where the sun falls, the cumulus away from the sun, the direct path's own light, +0.7 kB; round 2b's P1, the far tree line's and the edge's spruces' instanced meshes gone, −0.2 kB; round 2b's P3 fix round, a material's own shade, +0.25 kB) |
 | laneBoss | 102,268 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 205,353 | 85 kB | 202 KiB (from 200, round 2b's P3: the beds' new kinds, their flowers, each plot's mix and the grasses' tall cards, the coping's lighter slabs, 200.5 KiB, +1.7 kB, over the plan's +0.8 kB; from 196, round 2b's P1, planned to cover P1-P4: the forest wall (the canopy masses' two rows, the undergrowth), the far canopy's masses, the crowns' gold and lobes, the short lawn's clump, the far tree line's spruces and the edge's second spruce gone with their code, 197.4 KiB; 198.3 KiB with its fix round: the far tree line of card trees east of the lane and up the bank's foot, the west masses' skirts and rag cards, two dead paths gone; from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB (its fix round's fill and direct-path numbers too)) |
+| laneRealWorker | 205,597 | 85 kB | 202 KiB (from 200, round 2b's P3: the beds' new kinds, their flowers, each plot's mix and the grasses' tall cards, the coping's lighter slabs, 200.5 KiB, +1.7 kB, over the plan's +0.8 kB; 200.8 KiB with its fix round, the beds' plants clear of north_5's mailboxes; from 196, round 2b's P1, planned to cover P1-P4: the forest wall (the canopy masses' two rows, the undergrowth), the far canopy's masses, the crowns' gold and lobes, the short lawn's clump, the far tree line's spruces and the edge's second spruce gone with their code, 197.4 KiB; 198.3 KiB with its fix round: the far tree line of card trees east of the lane and up the bank's foot, the west masses' skirts and rag cards, two dead paths gone; from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB (its fix round's fill and direct-path numbers too)) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

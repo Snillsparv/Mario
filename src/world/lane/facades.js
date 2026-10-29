@@ -244,7 +244,9 @@ export function wallDrawnAt(x) {
 // (BED_MIX: north_5's a dense mass of cosmos and coneflowers from north_4's steps on, photos 27
 // and 28 seeing them as one bed, north_3's and north_4's grasses,
 // box balls and hostas, north_2's yews, boulders and box) and, behind north_2's hedge on its
-// terrace, the maple and the pink plumes over it (`behind`).
+// terrace, the maple and the pink plumes over it (`behind`). P3 fix: `clear`, its distance to the
+// nearest mailbox standing on a post in a bed (MAILBOXES with y0: north_5's two), its box and lid
+// lip: the builders draw a plant smaller to keep its leaves out of the box, or not at all.
 const BED_MIX = [
   [-1e5, [0.38, 0.58, 0.74, 0.88, 1], [0, 1, 2, 3, 4], 1],
   [-5261, [0.22, 0.36, 0.52, 0.64, 0.78, 0.92, 1], [1, 8, 0, 2, 7, 3, 9], 0.8],
@@ -255,6 +257,8 @@ export function bedSpots(L, spans, step) {
   let seed = 90127;
   const R = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
   const hedges = L.HEDGES.filter((h) => h.clipped);
+  const boxes = (L.MAILBOXES ?? []).filter((m) => m.y0);
+  const clear = (x, z) => Math.min(1e4, ...boxes.map((m) => Math.hypot(Math.max(0, Math.abs(x - m.x) - m.w / 2 - 2), Math.max(0, Math.abs(z - m.z) - m.d / 2 - 2))));
   const out = [];
   for (const { spans: list } of spans) {
     for (const { a, b, kind } of list) {
@@ -269,10 +273,10 @@ export function bedSpots(L, spans, step) {
         if (hedges.some((h) => at > h.x0 - 30 && at < h.x1 + 30)) continue;
         const wt = L.GROUND + wallDrawnAt(at) + 1;
         const y = wt + (L.NORTH.top - wt) * Math.max(0, Math.min(1, (d - 30) / (STRIP - 30)));
-        out.push({ x: at, z, y, kind: kinds[cut.findIndex((c) => k < c)], s: 1 + 0.55 * R(), room: Math.min(at - a, b - at) });
+        out.push({ x: at, z, y, kind: kinds[cut.findIndex((c) => k < c)], s: 1 + 0.55 * R(), room: Math.min(at - a, b - at), clear: clear(at, z) });
       }
     }
   }
-  for (const h of hedges) for (const [t, kind, dz] of [[0.3, 9, 120], [0.12, 10, 75], [0.55, 10, 80], [0.8, 10, 70]]) out.push({ x: h.x0 + (h.x1 - h.x0) * t, z: h.z0 - dz, y: h.y0, kind, s: 1.3, room: 999, behind: true });
+  for (const h of hedges) for (const [t, kind, dz] of [[0.3, 9, 120], [0.12, 10, 75], [0.55, 10, 80], [0.8, 10, 70]]) out.push({ x: h.x0 + (h.x1 - h.x0) * t, z: h.z0 - dz, y: h.y0, kind, s: 1.3, room: 999, clear: 1e4, behind: true });
   return out;
 }

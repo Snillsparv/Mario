@@ -83,7 +83,8 @@ const CHUNKS = {
   // covers, drawn by the classic build for both looks), the bed walls' finer slabs and irregular
   // cap, the beds' own mix per plot with their new kinds and flowers (facades.js, props.js):
   // 110,584 B, 108.0 KiB, +2.4 kB, over the plan's +1.3 kB by ~1.1 kB (it was at 108,190 B); the
-  // extra KiB keeps round 2b's P4 its planned +0.6 kB.)
+  // extra KiB keeps round 2b's P4 its planned +0.6 kB. Its fix round, the beds' plants clear of
+  // north_5's mailboxes and the forecourt wall's realistic tint: 110,833 B, +0.25 kB.)
   lane: { parent: 'main', cap: 109 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
@@ -174,7 +175,8 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   // from 200, round 2b's P3 (the plan's one exception for P2-P4): the beds' new kinds (cosmos and
   // coneflowers with their flowers, box balls, boulders, maples, pink plumes, the grasses' tall
   // cards) and each plot's mix, the coping's lighter slabs: 205,353 B, 200.5 KiB, +1.7 kB, over the
-  // plan's +0.8 kB (it was at 203,682 B); P4 keeps ~1.5 kB.)
+  // plan's +0.8 kB (it was at 203,682 B); its fix round, the beds' plants clear of north_5's
+  // mailboxes, 205,597 B, +0.25 kB; P4 keeps ~1.2 kB.)
   assert.ok(size('laneRealWorker') < 202 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');

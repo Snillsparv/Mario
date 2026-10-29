@@ -90,7 +90,7 @@ export function laneMaterials(store, tier, haze, { anisotropy = tier.anisotropy,
   const wear = { lite: tier.name === 'low' };
   for (const [name, entry] of Object.entries(CATALOGUE)) {
     const maps = store.maps(jobKey(jobOf(tier, entry)), { anisotropy });
-    M[name] = pbrMaterial(maps, { repeat: repeatOf(name) / entry.cover, color: tintOf(entry, tier), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, vertexColors: entry.vertexColors ?? true, wear }, haze);
+    M[name] = pbrMaterial(maps, { repeat: repeatOf(name) / entry.cover, color: tintOf(entry, tier), roughness: entry.roughness ?? 1, normalScale: entry.normalScale ?? 1, vertexColors: entry.vertexColors ?? true, wear, shade: entry.shade }, haze);
     setWear(M[name], name);
   }
   M.paint = plainMaterial(PAINT, haze);

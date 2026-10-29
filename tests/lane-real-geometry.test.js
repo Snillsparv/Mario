@@ -26,8 +26,8 @@ import { lawnMask, GRASS } from '../src/world/lane/real/grass.js';
 import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
-import { roadPieces, inside } from '../src/world/lane/real/plan.js';
-import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET, WEST_FRONTS, GABLES } from '../src/world/lane/facades.js';
+import { roadPieces, inside, terraceSpans } from '../src/world/lane/real/plan.js';
+import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET, WEST_FRONTS, GABLES, bedSpots } from '../src/world/lane/facades.js';
 import { FAR_LAMPS, LAYBY } from '../src/world/lane/ends.js';
 
 const t0 = performance.now();
@@ -1138,4 +1138,43 @@ test('P1 fix round: the far canopy outside the boundary on every tier, none sout
     }
     assert.ok(west >= 6, `${tier}: ${west} west masses`);
   }
+});
+
+test('P3 fix: north_5\'s bed plants clear of its two mailboxes on their posts (no leaf card, stem or boulder inside a box or its lid, photos 27, 28) on every tier and in the classic look; plants too near one drawn smaller or not at all', () => {
+  const boxes = lane.MAILBOXES.filter((m) => m.y0);
+  assert.equal(boxes.length, 2);
+  // How many points of the triangles in `pos` (non-indexed, xyz) fall in a box (and its lid's
+  // lip): each triangle's points on a 6 x 6 barycentric grid.
+  const inBox = (pos, m) => {
+    const [x0, x1, y0, y1, z0, z1] = [m.x - m.w / 2 - 2, m.x + m.w / 2 + 2, m.top - m.h, m.top, m.z - m.d / 2 - 2, m.z + m.d / 2 + 2];
+    let n = 0;
+    for (let i = 0; i < pos.length; i += 9) {
+      const p = pos.subarray(i, i + 9);
+      if (Math.max(p[0], p[3], p[6]) < x0 || Math.min(p[0], p[3], p[6]) > x1 || Math.max(p[2], p[5], p[8]) < z0 || Math.min(p[2], p[5], p[8]) > z1) continue;
+      for (let a = 0; a <= 6; a++) {
+        for (let b = 0; a + b <= 6; b++) {
+          const q = [0, 1, 2].map((k) => (a * p[k] + b * p[3 + k] + (6 - a - b) * p[6 + k]) / 6);
+          if (q[0] > x0 && q[0] < x1 && q[1] > y0 && q[1] < y1 && q[2] > z0 && q[2] < z1) n++;
+        }
+      }
+    }
+    return n;
+  };
+  const tiers = { high, mid: buildLaneDetail(lane, 'mid'), low };
+  for (const [name, d] of Object.entries(tiers)) {
+    // (The boxes themselves are paint, their posts steel.)
+    for (const m of d.meshes.filter((x) => !['paint', 'steel'].includes(x.material))) {
+      for (const b of boxes) assert.equal(inBox(m.buffers.position, b), 0, `${name}: ${m.name} inside the mailbox at ${b.x}`);
+    }
+  }
+  // The classic look's (without its mailboxes: every mesh's faces).
+  const part = buildLane(lane, { replaced: ['mailbox'] });
+  part.object3D.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+    for (const b of boxes) assert.equal(inBox(g.attributes.position.array, b), 0, `classic: ${o.name} inside the mailbox at ${b.x}`);
+  });
+  // (On high the plants that stood in them are gone, the rest drawn whole or smaller.)
+  const near = bedSpots(lane, terraceSpans(lane), 100).filter((p) => p.clear < 60);
+  assert.ok(near.length >= 2 && near.every((p) => p.x > 4600), `the plants near them: ${near.map((p) => p.x.toFixed(0))}`);
 });
