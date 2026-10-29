@@ -2,8 +2,8 @@
 // classic builder (lane/props.js forest) and the realistic look's worker (world/lane/real/foliage.js:
 // card crowns; the spruces instanced, detail.js) plant the very same trees.
 //
-//   forestSpots(L) -> { firs, bank, birches, broad, pines }   (memoised per layout)
-//     firs:    [{ x, z, base, h, r, a0 }]   the spruces: the bank's `bank` first, then the edge's
+//   forestSpots(L) -> { firs, birches, broad, pines }   (memoised per layout)
+//     firs:    [{ x, z, base, h, r, a0 }]   the spruces: the bank's first, then the edge's
 //     birches: [{ x, z, base, h, r, seed }]
 //     broad:   [{ x, z, base, h, r, seed, solid? }]   oaks and aspens (rounded crowns r across)
 //     pines:   [{ x, z, base, h, r, seed, solid? }]   Scots pines (a bare trunk, a flat crown r
@@ -36,7 +36,7 @@ const MEMO = new WeakMap();
 export function forestSpots(L) {
   if (MEMO.has(L)) return MEMO.get(L);
   const { FOREST: F, EDGE_FOREST: E, BOUNDS } = L;
-  const out = { firs: [], bank: 0, birches: [], broad: [], pines: [] };
+  const out = { firs: [], birches: [], broad: [], pines: [] };
   const into = { broad: out.broad, birch: out.birches, pine: out.pines, spruce: out.firs };
   const rng = makeRng(F.seed);
   const pick = (mix, r) => {
@@ -66,7 +66,6 @@ export function forestSpots(L) {
   }
   for (const s of F.special) plant(s.kind, s.x, s.z, s.top, rng, s.r ? { r: s.r } : {});
   for (const [x, z, kind, top] of F.yards) plant(kind, x, z, top, rng, { solid: true });
-  out.bank = out.firs.length;
   const er = makeRng(E.seed);
   const edges = BOUNDS.map((p, i) => [p, BOUNDS[(i + 1) % BOUNDS.length]]);
   const lengths = edges.map(([p, q]) => Math.hypot(q[0] - p[0], q[1] - p[1]));

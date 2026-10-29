@@ -21,7 +21,7 @@ import * as lane from '../src/world/lane/layout.js';
 import { buildLane } from '../src/world/lane/build.js';
 import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { forestSpots } from '../src/world/lane/real/spots.js';
-import { firGeometry, FIR_SHAPES } from '../src/world/lane/real/foliage.js';
+import { firGeometry, FIR_SHAPES, farCanopy } from '../src/world/lane/real/foliage.js';
 import { lawnMask, GRASS } from '../src/world/lane/real/grass.js';
 import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
@@ -1096,5 +1096,41 @@ test('W7 fix: the bank\'s canopy masses and its broadleaves\' cores leafy, not s
       });
     }
     for (let k = 0; k < masses.length; k++) assert.ok(per[k] / 6 >= (tier === 'high' ? 50 : 20), `${tier}: the mass at ${masses[k][0]}, row ${masses[k][2]}: ${per[k] / 6} leaf quads`);
+  }
+});
+
+test('P1 fix round: the far canopy outside the boundary on every tier, none south of the west curve (photo 01: open sky over the south-west roofs); the west masses on skirts down to the ground (from the junction a dome on a pointed foot read as a dark balloon over the horizon); east of the lane a far tree line of leaf cards on bark trunks, no faceted solid (the far ring\'s core-only masses read as olive balloons and shards from the turning area)', () => {
+  const SOLID = (uv) => Math.abs(uv[0] - 0.748) < 1e-6 && Math.abs(uv[1] - 0.236) < 1e-6;
+  for (const [tier, d] of [['high', high], ['low', low]]) {
+    const p = mesh(d, 'canopy').position;
+    let east = 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const [x, z] = [p[i], p[i + 2]];
+      assert.ok(!lane.inBounds(x, z), `${tier}: a far canopy vertex inside the boundary at ${Math.round(x)}, ${Math.round(z)}`);
+      assert.ok(!(x < -8000 && z > 5200), `${tier}: a far canopy vertex south of the west curve at ${Math.round(x)}, ${Math.round(z)}`);
+      if (x > 10000) east++;
+    }
+    assert.ok(east / 3 > (tier === 'high' ? 1500 : 500), `${tier}: ${east / 3} far line triangles`);
+    const bark = mesh(d, 'bark').position;
+    let trunks = 0;
+    for (let i = 0; i < bark.length; i += 3) if (bark[i] > 10400) trunks++;
+    assert.ok(trunks / 3 >= 25 * 6, `${tier}: ${trunks / 3} far line trunk triangles`);
+    // Each skin and each card cluster as farCanopy draws it (a spy kit: a run of quads per rgb()).
+    const segs = [];
+    let cur = null;
+    const spy = { sway: 0, rgb() { cur = { solid: false, pts: [] }; segs.push(cur); }, quad(a, b, c, e, o) { cur.solid = SOLID(o.uvs[0]); cur.pts.push(a, b, c, e); }, vertex(q) { cur.pts.push(q); } };
+    farCanopy({ tier, canopy: spy, bark: new Geo(), birch: new Geo(), core: new Geo(), foliage: new Geo() }, lane);
+    let west = 0;
+    for (const s of segs.filter((s) => s.solid)) {
+      const [cx, cz] = [0, 2].map((k) => s.pts.reduce((v, q) => v + q[k], 0) / s.pts.length);
+      assert.ok(cx < 10000, `${tier}: a solid far mass east of the lane at ${Math.round(cx)}, ${Math.round(cz)}`);
+      if (!(cx < -12000 && cz > -4000)) continue; // ((ii), the west end's)
+      west++;
+      const lo = Math.min(...s.pts.map((q) => q[1]));
+      const reach = (list) => Math.max(...list.map((q) => Math.hypot(q[0] - cx, q[2] - cz)));
+      assert.ok(lo <= lane.groundHeight(cx, cz), `${tier}: the west mass at ${Math.round(cx)}, ${Math.round(cz)}: its core from ${Math.round(lo)}`);
+      assert.ok(reach(s.pts.filter((q) => q[1] < lo + 30)) > 0.6 * reach(s.pts), `${tier}: the west mass at ${Math.round(cx)}, ${Math.round(cz)}: a skirt, not a point, at the ground`);
+    }
+    assert.ok(west >= 6, `${tier}: ${west} west masses`);
   }
 });

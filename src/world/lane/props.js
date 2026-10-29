@@ -1677,11 +1677,14 @@ function forest(kit, layout) {
     leaves.shade = null;
     if (t.solid) solids.solid(prismPolys(t.x, t.z, 40, 8, t.base, t.base + t.h * 0.4), 'wood');
   }
+  // (P1 fix round: each on a skirt down to the ground, not a blob on its point: from the
+  // junction a ball floating over the horizon.)
   for (const [x, z, r] of FAR_MASSES) {
     const y0 = layout.groundHeight(x, z);
+    const h = 2900 - y0;
     leaves.color(TINT.oak[0], 0.8);
-    gilt(leaves, y0, 2900 - y0, 0.6);
-    blob(leaves, x, z, (y0 + 2900) / 2, r, (2900 - y0) / 2, x * 0.001, 5, true);
+    gilt(leaves, y0, h, 0.6);
+    leaves.lathe(x, z, [[r * 0.9, y0 - 10], [r * 0.96, y0 + h * 0.16], [r, y0 + h * 0.48], [r * 0.8, y0 + h * 0.8], [0, 2900]], 5, { a0: x * 0.001 });
   }
   leaves.shade = null;
 }

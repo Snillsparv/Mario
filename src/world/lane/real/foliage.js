@@ -12,9 +12,10 @@
 //   firGeometry(tier, seed, shape) -> { leaves, core }   // one spruce (unit radius and
 //                           // height, its foot at 0): Geos (the core its dark inner cone and
 //                           // its trunk); shape: FIR_SHAPES.A (the forest's)
-//   farCanopy(kit, L)       // P1: the far canopy's masses into kit.canopy (detail.js)
-//   firInstances(L, from, to) -> { matrices, colors }   // the forest's firs (spots.js; a range
-//                           // of them), a matrix and a tint each
+//   farCanopy(kit, L)       // P1: the far canopy's masses and (fix round) the far tree line
+//                           // east of the lane into kit.canopy (detail.js; its trunks kit.bark)
+//   firInstances(L) -> { matrices, colors }   // the forest's firs (spots.js), a matrix and a
+//                           // tint each
 //
 // A plant is clusters of two crossed cards (the leaf atlas's cells: texgen/sets.js LEAF_CELLS)
 // on a shell: an ellipsoid (the bushes, each blob of a canopy), a box (the hedges) or a column
@@ -1090,6 +1091,8 @@ const FOREST_CARDS = { high: [215, 1], mid: [240, 0.85], low: [290, 0.81] };
 // (The ring round the outside, the side yards' and the named trees are seen nearer, from the
 // footpath, the turning area and the terraces: smaller cards, a little denser, every side.)
 const NEAR_CARDS = { high: [185, 1.05], mid: [210, 1], low: [270, 0.9] };
+// (P1 fix round: the far tree line's (farCanopy (iii)), 70-90 m off: bigger cards, as full.)
+const FAR_CARDS = { high: [400, 1.3], mid: [560, 0.95], low: [560, 1] };
 const FOREST_SIDES = { high: 6, mid: 5, low: 4 };
 const OAK = [[1.6, 1.42, 0.56], [1.3, 1.26, 0.64], [1.85, 1.52, 0.46], [1.15, 1.16, 0.62]];
 const PINES = [[0.72, 0.76, 0.38], [0.6, 0.68, 0.34], [0.84, 0.82, 0.4]];
@@ -1103,8 +1106,12 @@ export function forestTree(kit, t, kind) {
   const R = makeRng(t.seed);
   const tier = kit.tier ?? 'high';
   const near = !t.bank;
-  const [size, density] = (near ? NEAR_CARDS : FOREST_CARDS)[tier] ?? FOREST_CARDS.high;
-  const sides = FOREST_SIDES[tier] ?? 6;
+  const [size, density] = (t.far ? FAR_CARDS : near ? NEAR_CARDS : FOREST_CARDS)[tier] ?? FOREST_CARDS.high;
+  const sides = t.far ? 3 : FOREST_SIDES[tier] ?? 6;
+  // (A far one's greens a shade deeper, its gold fainter: through 70-90 m of haze the photos'
+  // far crowns are dark, only lit along their tops.)
+  const gold = t.far ? GOLD_K * 0.55 : GOLD_K;
+  const dim = (tints) => (t.far ? tints.map((c) => c.map((v) => v * 0.75)) : tints);
   const { x, z, base, h, r } = t;
   const top = base + h;
   const lean = [(R() - 0.5) * r * 0.12, (R() - 0.5) * r * 0.12];
@@ -1122,7 +1129,7 @@ export function forestTree(kit, t, kind) {
       { c: [cx + Math.sin(a) * r * 0.6, top - h * 0.2, cz + Math.cos(a) * r * 0.6], r: [r * 0.6, h * 0.085, r * 0.55] },
       { c: [cx - Math.sin(a + 0.9) * r * 0.55, top - h * 0.27, cz - Math.cos(a + 0.9) * r * 0.55], r: [r * 0.5, h * 0.07, r * 0.5] },
     ];
-    canopy(kit, R, blobs, { size, cell: CELL.tree, tints: PINES, density: density * 1.05, below: -0.5, sway: 6, core: null, away, gold: GOLD_K });
+    canopy(kit, R, blobs, { size, cell: CELL.tree, tints: dim(PINES), density: density * 1.05, below: -0.5, sway: 6, core: null, away, gold });
     return; // (no core: its crown thin and flat)
   } else {
     const birchy = kind === 'birch';
@@ -1133,7 +1140,7 @@ export function forestTree(kit, t, kind) {
     const clumped = !birchy && t.solid;
     const fork = base + h * (birchy ? 0.55 : clumped ? 0.3 : 0.42);
     g.tube([x, base - 10, z], [x + lean[0], fork, z + lean[1]], r * (birchy ? 0.06 : 0.09), r * 0.05, sides);
-    blobs = canopyBlobs(x + lean[0], z + lean[1], base + h * (birchy ? 0.4 : 0.32), top, r, t.seed, 3);
+    blobs = canopyBlobs(x + lean[0], z + lean[1], base + h * (birchy ? 0.4 : t.low ?? 0.32), top, r, t.seed, 3);
     let dens = density * (birchy ? 0.8 : 1);
     if (clumped) {
       const old = ragged(blobs, 3, t.seed + 1, tier);
@@ -1143,7 +1150,7 @@ export function forestTree(kit, t, kind) {
     // (Its limbs only a near one's: from the street the crown hides the bank's.)
     else if (!birchy && near) blobs = ragged(blobs, 3, t.seed + 1, tier); // (ragged, not a lollipop; on low as it is)
     if (near) limbs(g, [x + lean[0], fork - 20, z + lean[1]], clumped ? blobs : blobs.slice(0, 3), r * 0.035);
-    canopy(kit, R, blobs, { size: birchy ? size * 0.78 : size, cell: birchy ? CELL.hedge : CELL.tree, tints: birchy ? GOLD : OAK, density: dens, below: -0.4, sway: 9, core: null, away, gold: GOLD_K });
+    canopy(kit, R, blobs, { size: birchy ? size * 0.78 : size, cell: birchy ? CELL.hedge : CELL.tree, tints: dim(birchy ? GOLD : OAK), density: dens, below: t.low ? -0.85 : -0.4, sway: 9, core: null, away, gold });
     // (A near one no core: its smooth facets showed through the cards.)
     if (birchy || near) return;
   }
@@ -1151,7 +1158,8 @@ export function forestTree(kit, t, kind) {
   // street it reads as the mass the cards fringe): W7 fix, a leafy skin (cut-out leaves both
   // sides), not a smooth olive solid, which read as rock.
   const [m] = blobs;
-  leafSkin(kit.foliage, m.c, [m.r[0] * 0.6, m.r[1] * 0.62, m.r[2] * 0.6], tier === 'low' ? 6 : 8, tier === 'low' ? 3 : 4, MASS_TINTS[t.seed % MASS_TINTS.length], away, crownOf(blobs, GOLD_K));
+  const plain = tier === 'low' || t.far; // (a far one's 6 x 3 as low's)
+  leafSkin(kit.foliage, m.c, [m.r[0] * 0.6, m.r[1] * 0.62, m.r[2] * 0.6], plain ? 6 : 8, plain ? 3 : 4, dim(MASS_TINTS)[t.seed % MASS_TINTS.length], away, crownOf(blobs, gold));
 }
 
 // (P1 1f, photos 16, 23, 24, 28: a near broadleaf's crown in clumps round its limbs, not a
@@ -1190,17 +1198,20 @@ function areaOf(blobs) {
 // (crownOf, P1); `solid` (P1, the far canopy's: a cut-out's coverage a km off blends with the sky
 // into a pale lattice): every corner on one opaque texel of the cell (SOLID), lumpy (each vertex
 // in or out by a hash of where it is: the crowns' bumps along its outline) and mottled (lit and
-// shaded crowns), no gap in it.
+// shaded crowns), no gap in it. `skirt` (P1 fix round, the far canopy's west masses): its lower
+// half a skirt down to r[3] under its middle, near as wide as its middle all the way (its lowest
+// row a ring there, open underneath: no balloon over the ground and the horizon).
 const SOLID = [0.748, 0.236];
 const hash = (a, b) => {
   const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
   return v - Math.floor(v);
 };
-function leafSkin(g, c, r, seg, ring, tint, away = null, crown = null, solid = false, cell = CELL.hedge) {
+function leafSkin(g, c, r, seg, ring, tint, away = null, crown = null, solid = false, cell = CELL.hedge, skirt = false) {
   const [cu, cv] = cell; // (P1: the hedge's small leaves, not the sprays: at a skin's scale the sprays read as flames)
   const at = (i, j) => {
     const [th, ph] = [(2 * Math.PI * i) / seg, -Math.PI / 2 + (Math.PI * j) / ring];
-    const d = [Math.cos(ph) * Math.cos(th), Math.sin(ph), Math.cos(ph) * Math.sin(th)];
+    const f = skirt && ph < 0 ? Math.max(Math.cos(ph), 0.85) : Math.cos(ph);
+    const d = [f * Math.cos(th), Math.sin(ph), f * Math.sin(th)];
     // (The seam's and the poles' vertices one each: the hash of the ring round and the row up.)
     const [a, b] = [(i % seg) + c[0] * 0.01, j + c[2] * 0.01];
     const out = solid && j && j < ring ? 0.12 * (hash(a, b) - 0.5) : 0;
@@ -1281,24 +1292,34 @@ export function canopyMasses(kit, L) {
 // near crowns: (i) rows up the slope behind the bank's band to its east end, the hill's crowns
 // over the band's (tops 2600-3400, ~1600-2400 over the bank's top; on the lane's ground); (ii)
 // round the west end outside the boundary past the ring of trees, among its tops (none by the road
-// on past the junction; the south and the east look out over the houses into an open sky); (iii)
-// a sparser ring 11.5 to 16 km off, about the old far tree line's size, the core alone (no edge of
-// the ground seen from a roof; none in the ring's low or clear sectors). Its own stream: every tier's masses stand
-// in the same places.
+// on past the junction, none south of the west curve; the south and the east look out over the
+// houses into an open sky), on skirts down to the ground, ragged with leaf cards (fix round);
+// (iii) (fix round) not masses but a far tree line east of the lane, pines and broadleaves of
+// cards. Its own streams: every tier's masses and trees stand in the same places.
 // (Per tier its leafy skin's segments and rings (none on low), its solid core's.)
 const FAR_SKIN = { high: [10, 6, 8, 5], mid: [8, 4, 6, 4], low: [0, 0, 6, 4] };
 const FAR_TINTS = OAK.map((t) => t.map((c) => c * 0.45));
+// (Fix round) The west masses' rag cards (size, density) per tier; the far tree line's spots.
+const RAGS = { high: [420, 0.4], mid: [500, 0.36], low: [460, 0.5] };
+const FAR_LINE = 46;
 export function farCanopy(kit, L) {
   const g = kit.canopy;
   const R = makeRng(0x5ba7a);
   const [seg, ring, cs, cr] = FAR_SKIN[kit.tier] ?? FAR_SKIN.high;
+  const RAG = RAGS[kit.tier] ?? RAGS.high;
   const F = L.FOREST;
   const E = L.EDGE_FOREST;
   // (A mass: a round dome of crowns, never much taller than wide, over a foot down to the ground;
-  // its leafy cut-out skin over a solid core a shade darker (the far ring's the core alone: no leaf
-  // seen from 12 km), darker toward the sun, low in the west-south-west: the photos' backlit
-  // forest, 43.)
-  const mass = (x, z, rx, top, far = 1) => {
+  // its leafy cut-out skin over a solid core a shade darker (on low the core alone), darker toward
+  // the sun, low in the west-south-west: the photos' backlit forest, 43.)
+  // (Fix round, (ii) only, `skirt`: seen from the junction, 25-40 m off, a dome over a pointed
+  // foot read as a dark balloon floating over the ground; its skins a skirt down to the ground
+  // instead, the core's too, and a few leaf cards (their own stream) ragging its outline as the
+  // bank's masses' do, round as far as its skins go (theirs left out past 0.55 away, shell's past
+  // 0.3: `away` scaled to match; from the junction a bare core's sunlit flank showed).)
+  const S = makeRng(0x5ba7b);
+  const kin = { ...kit, foliage: g }; // (canopy's cards and a far tree's crown into the far canopy)
+  const mass = (x, z, rx, top, far = 1, skirt = false) => {
     const base = L.groundHeight(x, z) - 20;
     const w = Math.max(rx, (top - base) * 0.4);
     const dome = Math.min((top - base) / 2, w * 0.8);
@@ -1309,9 +1330,13 @@ export function farCanopy(kit, L) {
     const tint = FAR_TINTS[Math.floor(R() * FAR_TINTS.length)].map((v) => v * far * back);
     const crown = crownOf([{ c, r }], GOLD_K);
     // (Over the core its leaves stand out lit against its dark depths: the photos' texture.)
-    const leafy = seg && far > 0.75;
-    if (leafy) leafSkin(g, c, r, seg, ring, tint, away, crown, false, CELL.tree);
-    leafSkin(g, c, leafy ? r.map((v) => v * 0.9) : r, cs, cr, tint.map((v) => v * (leafy ? 0.45 : 0.75)), away, crown, true);
+    // (A skirt's on low too, 6 x 3: its smooth core alone read as an olive mound.)
+    const leafy = (seg || skirt) && far > 0.75;
+    if (leafy) leafSkin(g, c, r, seg || 6, ring || 3, tint, away, crown, false, CELL.tree, skirt);
+    const k = leafy ? 0.9 : 1;
+    // (A skirt's core greener: its depths in the shade, not a brown wall.)
+    leafSkin(g, c, [r[0] * k, r[1] * k, r[2] * k, skirt ? r[3] : r[3] * k], cs, cr, tint.map((v, i) => v * (leafy ? 0.45 : 0.75) * (skirt ? [0.7, 1, 0.9][i] : 1)), away, crown, true, CELL.hedge, skirt);
+    if (skirt) canopy(kin, S, [{ c, r }, { c: [x, base + r[3] * 0.5, z], r: [r[0] * 0.95, r[3] * 0.55, r[2] * 0.95] }], { size: RAG[0], cell: CELL.tree, tints: [tint.map((v) => v * 1.6)], density: RAG[1], below: -0.8, sway: 5, core: null, away: away.map((v) => v * 0.55), gold: GOLD_K });
   };
   // (i) Up the slope behind the bank's band (the hill's crowns over the band's, photos 12, 13,
   // 23, 24: the sky only above them).
@@ -1336,19 +1361,47 @@ export function farCanopy(kit, L) {
       // stand there.)
       const [rx, top] = [550 + R() * 300, 2100 + R() * 800];
       if (x > -8500 || L.inBounds(x, z) || (x > F.x0 - 2600 && z < F.z0 + F.slope * x) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 2600 || offTheEnds(L, x, z, 700)) continue;
-      mass(x, z, rx, top, 0.8);
+      // (Fix round: none south of the curve, photo 01's open sky over the south-west roofs; each
+      // drawn and dropped, mass's two draws too: the others keep their shapes.)
+      if (z > 4000) {
+        R();
+        R();
+        continue;
+      }
+      mass(x, z, rx, top, 0.8, true);
     }
   }
-  // (iii) The far ring, about the old far tree line's size (none in the ring's low sector or its
-  // clear sector: photos 30, 31 and the dad's drive look out over them).
-  const c = E.clear;
-  for (let k = 0; k < 44; k++) {
-    const a = (k / 44) * Math.PI * 2 + R() * 0.1;
-    const d = 11500 + R() * 4500;
+  // (iii) The far tree line east of the lane (fix round: the far ring's masses, the core alone,
+  // read as faceted olive balloons and shards over the east end's roofs, 7-9 km from the turning
+  // area; photos 12, 18, 24, 25, 28, 29: pines' tops and dark broadleaf crowns over the far end's
+  // roofs, the sky over them): Scots pines and broadleaves as the bank's (forestTree), their
+  // crowns in bigger cards (FAR_CARDS) into the far canopy, their trunks the bark's (three-sided),
+  // on the old far line's ring 10.6 to 13.2 km off, their crowns beyond the east boundary, from
+  // its north edge round to the low sector (the south and the low sector open sky: photos 30, 31;
+  // the west (ii)'s, the north the slope's). Its own stream.
+  const T = makeRng(0x5ba7c);
+  const backZ = (x) => L.NORTH.flat0 + L.NORTH.slope * x - L.NORTH.ramp; // (layout.js backZAt: where the bank rises)
+  for (let k = 0; k < FAR_LINE; k++) {
+    const a = -0.62 + (0.92 * (k + T())) / FAR_LINE;
+    const d = 10600 + T() * 2600;
     const [x, z] = [MIDDLE[0] + Math.cos(a) * d * 1.15, MIDDLE[1] + Math.sin(a) * d * 0.8];
-    const [rx, top] = [500 + R() * 300, 1300 + R() * 900];
-    if (z < -6000 || Math.abs(x) > 15500 || z > 9500 || (E.low && x > E.low.x0 && z > E.low.z0) || (c && x > c.x0 && x < c.x1 && z > c.z0) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 2600 + rx || offTheEnds(L, x, z, 700 + rx)) continue;
-    mass(x, z, rx, top, 0.7);
+    const [pine, top, f, seed] = [T() < 0.55, 1500 + T() * 800, T(), Math.floor(T() * 1e6)];
+    const r = pine ? 420 + f * 180 : 520 + f * 240;
+    // (Its crown's edge 600 beyond the east boundary; on the flat, the bank's its own rows'.)
+    if (x - r < 10450 || z < backZ(x) || (E.low && x > E.low.x0 && z > E.low.z0) || offTheEnds(L, x, z, 700)) continue;
+    const base = L.groundHeight(x, z) - 10;
+    forestTree(kin, { x, z, base, h: top - base, r, seed, bank: true, far: true }, pine ? 'pine' : 'broad');
+  }
+  // (And a row up the bank's foot east of the band's end to the drawn ground's (16000), its slope
+  // bare since P1, before it the far line's spruces over its foot: from the turning area a
+  // flat-shaded green shard behind the double garage; photo 28's broadleaf and tall pines
+  // north-east of it. Their tops the band's, over the slope's top; the broadleaves' crowns down
+  // near the slope (`low`: no bare ground between their trunks), a pine in four.)
+  for (let x = F.x1 + 450 + T() * 300; x < 15800; x += 460 + T() * 260) {
+    const z = backZ(x) - 60 - T() * 200;
+    const [pine, top, f, seed] = [T() < 0.25, F.top[0] + T() * (F.top[1] - F.top[0]), T(), Math.floor(T() * 1e6)];
+    const base = L.groundHeight(x, z) - 10;
+    forestTree(kin, { x, z, base, h: top - base, r: pine ? 420 + f * 180 : 520 + f * 240, seed, bank: true, far: true, low: pine ? null : -0.08 }, pine ? 'pine' : 'broad');
   }
 }
 
@@ -1449,14 +1502,12 @@ export function firGeometry(tier = 'high', seed = 7, shape = FIR_SHAPES.A) {
   return { leaves, core };
 }
 
-// `from`, `to`: the spots' range (forestSpots' order: the bank's firs, then the edge's).
-export function firInstances(L, from = 0, to = Infinity) {
-  const { firs } = forestSpots(L);
-  const list = firs.slice(from, to);
+// The forest's spruces (forestSpots' order: the bank's firs, then the edge's), a tint each.
+export function firInstances(L) {
+  const list = forestSpots(L).firs;
   const matrices = new Float32Array(list.length * 16);
   const colors = new Float32Array(list.length * 3);
   const R = makeRng(99);
-  for (let i = 0; i < from; i++) R(); // (each fir's tint its own, wherever the range starts)
   list.forEach((s, i) => {
     // Column-major: a turn about y, scaled (r, h, r), at its foot.
     const a = s.a0 * Math.PI * 2;

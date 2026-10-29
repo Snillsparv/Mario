@@ -205,7 +205,9 @@ export function clutter(kit, L, ground) {
       if (h !== null && !L.TRAMPOLINES.some((T) => Math.hypot(px - T.x, pz - T.z) < T.r + 30)) leaf(px, h + 0.8, pz, 4 + R() * 3.5, red);
     }
   };
-  for (const t of L.TREES) under(t.x, t.z, t.r * 0.9, 520);
+  // (The junction's two only: P1's west-curve broadleaves stand out of bounds over no lawn, and
+  // drawing their tries from this shared stream would move every leaf and weed after them.)
+  for (const t of L.TREES.slice(0, 2)) under(t.x, t.z, t.r * 0.9, 520);
   for (const t of L.GARDEN_TREES) if (t.kind !== 'shrub') under(t.x, t.z, t.r * 1.1, t.kind === 'birch' ? 200 : t.kind === 'creeper' ? 110 : 260, t.kind === 'creeper'); // (W8: the creeper's red leaves under it)
   // The dad's path and his lawn's edge along it (photo 40's leaves).
   const P = L.DAD_PATH;
