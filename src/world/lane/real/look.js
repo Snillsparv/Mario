@@ -127,7 +127,8 @@ const geometryOf = (buffers) => {
   return geo;
 };
 
-// The worker's meshes in their materials (the group 'lane-detail'), the firs instanced.
+// The worker's meshes in their materials (the group 'lane-detail'; P1: the far canopy's in the
+// foliage material itself, casting none), the firs instanced.
 function detailGroup(detail, M) {
   const group = new THREE.Group();
   group.name = 'lane-detail';
@@ -142,21 +143,13 @@ function detailGroup(detail, M) {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(sphere[0], sphere[1], sphere[2]), sphere[3]); // (the worker's)
     add(new THREE.Mesh(geo, M[probe ? `${material}@${probe}` : material]), name, cast);
   }
-  const { parts, matrices, colors, cast, far, edge } = detail.firs;
-  const instanced = (geo, material, set, name, casts) => {
-    const mesh = new THREE.InstancedMesh(geo, M[material], set.matrices.length / 16);
-    mesh.instanceMatrix = new THREE.InstancedBufferAttribute(set.matrices, 16);
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(set.colors, 3);
-    add(mesh, name, casts);
-  };
-  parts.forEach(({ material, buffers }, i) => {
-    const geo = geometryOf(buffers);
-    instanced(geo, material, { matrices, colors }, material, cast);
-    // (The far tree line's own plainer spruce, W7: detail.js.)
-    instanced(far.parts ? geometryOf(far.parts[i].buffers) : geo, material, far, `${material}-far`, false);
-  });
-  // (On high the edge's firs, nearest the street, a spruce of their own.)
-  for (const { material, buffers } of edge?.parts ?? []) instanced(geometryOf(buffers), material, edge, `${material}-edge`, cast);
+  const { parts, matrices, colors, cast } = detail.firs;
+  for (const { material, buffers } of parts) {
+    const mesh = new THREE.InstancedMesh(geometryOf(buffers), M[material], matrices.length / 16);
+    mesh.instanceMatrix = new THREE.InstancedBufferAttribute(matrices, 16);
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
+    add(mesh, material, cast);
+  }
   return group;
 }
 

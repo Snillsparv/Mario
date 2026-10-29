@@ -18,8 +18,10 @@
 //                                      // radius (blades fade out from 0.7 of it)
 //
 // A clump: `blades` blades round its foot, each `segs` segments tapering to a tip, bending a
-// little, 3.5 to 7 tall (a short mown lawn), dark at the foot and lighter to the tip in the lawn
-// texture's greens (look.js matches them), normals up (no dark back faces); the tips sway.
+// little, 2.2 to 4.5 tall and slim (P1, photos 19, 21, 41: a short mown lawn, no tall dark
+// spikes at a person's height), a little darker at the foot than at the tip in the lawn
+// texture's greens (look.js matches them; the lawn's mean tone kept), normals up (no dark back
+// faces); the tips sway.
 
 import { Geo } from './geo.js';
 import { makeRng } from '../../../core/math.js';
@@ -40,15 +42,16 @@ export function grassClump(tier) {
   for (let b = 0; b < G.blades; b++) {
     const a = (b / G.blades) * Math.PI * 2 + R();
     const [ox, oz] = [Math.cos(a) * 2.5, Math.sin(a) * 2.5];
-    const h = 3.5 + R() * 3.5;
-    const [fx, fz] = [Math.cos(a + Math.PI / 2) * 1.3, Math.sin(a + Math.PI / 2) * 1.3];
-    const [lx, lz] = [Math.cos(a) * 3, Math.sin(a) * 3];
+    const h = 2.2 + R() * 2.3;
+    const [fx, fz] = [Math.cos(a + Math.PI / 2) * 0.85, Math.sin(a + Math.PI / 2) * 0.85];
+    const [lx, lz] = [Math.cos(a) * 2, Math.sin(a) * 2];
     const at = (t, side) => [ox + fx * (1 - t) * side + lx * t * t, h * t, oz + fz * (1 - t) * side + lz * t * t];
     for (let s = 0; s < G.segs; s++) {
       const [t0, t1] = [s / G.segs, (s + 1) / G.segs];
-      // (Lighter toward the tips: dark spiky tufts read against the lawn at a person's height.)
-      const k0 = 0.7 + 0.55 * t0;
-      const k1 = 0.7 + 0.55 * t1;
+      // (A little lighter toward the tips: P1, 0.8 -> 1.05, the old 0.7 -> 1.25's mean over the
+      // tapering blade.)
+      const k0 = 0.8 + 0.25 * t0;
+      const k1 = 0.8 + 0.25 * t1;
       const q = [at(t0, -1), at(t0, 1), at(t1, 1), at(t1, -1)];
       const up = [0, 1, 0];
       for (const i of [0, 1, 2, 0, 2, 3]) {

@@ -79,7 +79,9 @@ test('deterministic, finite, and each tier within its triangle budget', (t) => {
       for (const a of Object.values(b)) for (let i = 0; i < a.length; i++) assert.ok(Number.isFinite(a[i]), `${m.name}: finite`);
     }
   }
-  assert.ok(high.triangles < 400000, `high: ${high.triangles}`);
+  // (P1: 400k -> 420k, the far canopy, the forest wall's masses, the west curve's broadleaves and
+  // the lobed crowns; the round's later packages' room.)
+  assert.ok(high.triangles < 420000, `high: ${high.triangles}`);
   assert.ok(low.triangles < 0.5 * high.triangles, `low: ${low.triangles} (high ${high.triangles})`);
   assert.equal(low.grass, null, 'no blades on low');
   assert.ok(!low.meshes.some((m) => m.name === 'tiles' && m.buffers.position.length / 9 > 3000), 'no tile courses on low (their caps only)');
@@ -89,7 +91,7 @@ test('deterministic, finite, and each tier within its triangle budget', (t) => {
 test('every face is wound the way its normals point (but the leaf cards, lit through both faces): the tile courses face out of their roofs', () => {
   for (const d of [high, low]) {
     for (const m of d.meshes) {
-      if (m.name === 'foliage') continue;
+      if (m.material === 'foliage') continue; // (P1: the far canopy's cards too)
       const { position: p, normal: n } = m.buffers;
       let bad = 0;
       for (let i = 0; i < p.length; i += 9) {
@@ -216,45 +218,29 @@ test('the tile courses lie in the classic roof planes (the colliders Jonas walks
   }
 });
 
-test('the firs stand where the classic forest\'s cones stood, the classic build drawing the same spots; on high the edge\'s firs a second spruce (more tiers, a hanging skirt, gaps); W7: a mixed canopy, its tops under the shadows\' box, the side yards\' trunks solid', (t) => {
-  const { firs, bank, broad, pines, birches } = forestSpots(lane);
-  // (On high the bank's firs, then the edge's, a spruce of their own; on low one set.)
-  const all = new Float32Array([...high.firs.matrices, ...high.firs.edge.matrices]);
-  assert.equal(high.firs.matrices.length / 16, bank, 'the bank\'s');
+test('the firs stand where the classic forest\'s cones stood, the classic build drawing the same spots (P1: one spruce on every tier, the edge\'s on high the forest\'s too; no far tree line); W7: a mixed canopy, its tops under the shadows\' box, the side yards\' trunks solid', (t) => {
+  const { firs, broad, pines, birches } = forestSpots(lane);
+  const all = high.firs.matrices;
   assert.equal(all.length / 16, firs.length);
-  assert.equal(low.firs.edge, null, 'one spruce on low');
-  assert.equal(low.firs.matrices.length / 16, firs.length);
-  assert.deepEqual([...low.firs.matrices.slice(0, 16 * bank)], [...high.firs.matrices].map((v) => v), 'the same places on every tier');
-  assert.deepEqual([...low.firs.colors.slice(3 * bank)], [...high.firs.edge.colors], 'each its own tint');
-  // (W4: none of the forest in the edge's clear sector over the garage row; W7: the mix, the
-  // photos' ~55 % broadleaf, ~30 % pine, ~15 % spruce on the bank, every top 16-21 m over the
-  // street and under the shadows' box's top, only the side yards' trees inside the boundary and
-  // their trunks solid.)
+  assert.deepEqual(Object.keys(high.firs).sort(), ['cast', 'colors', 'matrices', 'parts'], 'one spruce: no edge\'s, no far line');
+  assert.deepEqual([...low.firs.matrices], [...high.firs.matrices], 'the same places on every tier');
+  assert.deepEqual([...low.firs.colors], [...high.firs.colors], 'each its own tint');
+  // (W4: none of the forest in the edge's clear sector over the garage row; W7: the mix, every
+  // top 16-21 m over the street and under the shadows' box's top, only the side yards' trees
+  // inside the boundary and their trunks solid; P1, photos 04, 05, 12, 13, 23, 24: broadleaf and
+  // Scots pine, hardly a spruce.)
   const C = lane.EDGE_FOREST.clear;
   const trees = [...firs, ...broad, ...pines, ...birches];
   assert.ok(trees.length >= 110 && trees.every((s) => !(s.x > C.x0 && s.x < C.x1 && s.z > C.z0)), `${trees.length} trees`);
   const share = (list) => list.length / trees.length;
-  assert.ok(share(broad) + share(birches) > 0.45 && share(pines) > 0.2 && share(firs) < 0.35, `broadleaf ${share(broad) + share(birches)}, pine ${share(pines)}, spruce ${share(firs)}`);
+  assert.ok(share(broad) + share(birches) > 0.5 && share(pines) > 0.25 && share(firs) < 0.12, `broadleaf ${share(broad) + share(birches)}, pine ${share(pines)}, spruce ${share(firs)}`);
   assert.ok(trees.every((s) => s.base + s.h <= lane.FOREST.top[1] + 1), 'under the shadows\' box');
   const yard = trees.filter((s) => s.solid);
   assert.equal(yard.length, lane.FOREST.yards.length);
   assert.ok(trees.every((s) => s.solid || !lane.inBounds(s.x, s.z)), 'the rest outside the boundary');
   const classicCols = buildLane(lane).colliders;
   for (const s of yard) assert.ok(classicCols.some((c) => c.terrain === 'wood' && Array.from({ length: c.positions.length / 3 }, (_, i) => Math.hypot(c.positions[i * 3] - s.x, c.positions[i * 3 + 2] - s.z)).some((d) => d < 45)), `the side yard's trunk at ${s.x}, ${s.z} solid`);
-  // The edge's spruce: more tiers, its lowest branches hanging lower, under 1.6 x the forest's.
-  const count = (parts) => parts.find((p) => p.material === 'fir-leaves').buffers.position.length / 9;
-  const lowest = (parts) => {
-    const p = parts.find((q) => q.material === 'fir-leaves').buffers.position;
-    let y = Infinity;
-    for (let i = 1; i < p.length; i += 3) y = Math.min(y, p[i]);
-    return y;
-  };
-  const [a, b] = [count(high.firs.parts), count(high.firs.edge.parts)];
-  t.diagnostic(`fir leaves: forest ${a}, edge ${b} triangles`);
-  assert.ok(b > a && b < 1.6 * a, `the edge's spruce ${b} triangles, the forest's ${a}`);
-  assert.ok(lowest(high.firs.edge.parts) < lowest(high.firs.parts) - 0.03, 'a hanging skirt');
-  // (W7: the far tree line the low tier's plainer spruce on high: fewer triangles, the same materials.)
-  assert.ok(count(high.firs.far.parts) < a, 'the far line plainer');
+  t.diagnostic(`${firs.length} firs, ${broad.length} broadleaves, ${pines.length} pines, ${birches.length} birches`);
   firs.forEach((s, i) => {
     const m = all.subarray(i * 16, i * 16 + 16);
     assert.deepEqual([m[12], m[13], m[14]].map((v) => v.toFixed(3)), [s.x, s.base, s.z].map((v) => Math.fround(v).toFixed(3)));
@@ -270,7 +256,7 @@ test('the firs stand where the classic forest\'s cones stood, the classic build 
 
 test('the firs read as dense spruces, not a net of cards (R fixes: the dad\'s "shadowy raster" was the forest, a smooth cone in a sparse lattice of feather cards under a bare trunk spike): each whorl an opaque skirt out over half its branches\' reach and down over the whorl below; no bare trunk over the crown, needles to the top', () => {
   for (const tier of ['high', 'low']) {
-    for (const [name, shape, seed] of [['A', FIR_SHAPES.A, 7], ['B', FIR_SHAPES.B, 11]]) {
+    for (const [name, shape, seed] of [['A', FIR_SHAPES.A, 7]]) {
       const { leaves, core } = firGeometry(tier, seed, shape);
       const pts = (g) => {
         const out = [];
@@ -972,7 +958,8 @@ test('W4 fix: the columnar tree is a lacy poplar (photo 37), not a frustum: leaf
       return out;
     };
     const leaves = near(positionsOf(d, 'foliage'));
-    assert.ok(leaves.length / 6 >= (tier === 'high' ? 3000 : 1500), `${tier}: ${leaves.length / 6} cards`);
+    // (P1: its cards 2000/900 -> 1400/600 clusters, the plan's lever for the forest wall.)
+    assert.ok(leaves.length / 6 >= (tier === 'high' ? 2400 : 1000), `${tier}: ${leaves.length / 6} cards`);
     assert.ok(Math.max(...leaves.map(([, y]) => y)) > t.h * 0.97, `${tier}: up to its top`);
     const band = (f0, f1) => leaves.filter(([, y]) => y > t.h * f0 && y < t.h * f1).map(([r]) => r);
     assert.ok(Math.max(...band(0.35, 0.5)) > t.r * 0.85, `${tier}: out to its widest low`);
@@ -1083,11 +1070,11 @@ test('W7 fix: the south edge near the road\'s own tone in both looks (photo 18: 
   }
 });
 
-test('W7 fix: the bank\'s canopy masses and its broadleaves\' cores leafy, not smooth solids (they read as grey rock): the only dark core left in the band the masses\', under every crown\'s top; leaf quads over each mass on every tier', () => {
+test('W7 fix: the bank\'s canopy masses and its broadleaves\' cores leafy, not smooth solids (they read as grey rock): the only dark core left in the band the masses\', under every crown\'s top; leaf quads over each mass on every tier (P1: two staggered rows every 480 from 2500 west of the band, the front row\'s on a 6 x 3 core)', () => {
   const F = lane.FOREST;
   const front = (x) => F.z0 + F.slope * x;
   const masses = [];
-  for (let x = F.x0 - 1700; x < F.x1; x += 700) masses.push(x);
+  for (const [row, share] of [[0, 0.3], [1, 0.6]]) for (let x = F.x0 - 2500 + row * 240; x < F.x1; x += 480) masses.push([x, front(x) + share * (F.z1 - F.z0), row]);
   for (const [tier, d] of [['high', high], ['low', low]]) {
     const core = positionsOf(d, 'core');
     let inBand = 0;
@@ -1096,16 +1083,18 @@ test('W7 fix: the bank\'s canopy masses and its broadleaves\' cores leafy, not s
       inBand++;
       assert.ok(core[i + 1] < F.top[0], `${tier}: a core at ${Math.round(core[i])}, ${Math.round(core[i + 1])} over the crowns' least top`);
     }
-    // (The masses' cores only: 8 x 4 quads each.)
-    assert.ok(inBand > 0 && inBand <= masses.length * 8 * 4 * 6, `${tier}: ${inBand / 6} core quads in the band`);
-    // Leaves round each mass, at its middle's depth along the band.
+    // (The front row's cores only: 6 x 3 quads each.)
+    assert.ok(inBand > 0 && inBand <= masses.filter((m) => !m[2]).length * 6 * 3 * 6, `${tier}: ${inBand / 6} core quads in the band`);
+    // Leaves round each mass, at its middle along the band and its row's depth.
     const leaves = positionsOf(d, 'foliage');
     const per = masses.map(() => 0);
     for (let i = 0; i < leaves.length; i += 3) {
-      const k = Math.round((leaves[i] - (F.x0 - 1700)) / 700);
-      const z = front(leaves[i]) + 0.36 * (F.z1 - F.z0);
-      if (k >= 0 && k < masses.length && Math.abs(leaves[i] - masses[k]) < 600 && Math.abs(leaves[i + 2] - z) < 500 && leaves[i + 1] < lane.groundHeight(leaves[i], leaves[i + 2]) + 1600) per[k]++;
+      const [x, y, z] = [leaves[i], leaves[i + 1], leaves[i + 2]];
+      if (y > lane.groundHeight(x, z) + 2400) continue;
+      masses.forEach(([mx, mz], k) => {
+        if (((x - mx) / 800) ** 2 + ((z - mz) / 450) ** 2 < 1) per[k]++;
+      });
     }
-    for (let k = 0; k < masses.length; k++) assert.ok(per[k] / 6 >= (tier === 'high' ? 50 : 15), `${tier}: the mass at ${masses[k]}: ${per[k] / 6} leaf quads`);
+    for (let k = 0; k < masses.length; k++) assert.ok(per[k] / 6 >= (tier === 'high' ? 50 : 20), `${tier}: the mass at ${masses[k][0]}, row ${masses[k][2]}: ${per[k] / 6} leaf quads`);
   }
 });

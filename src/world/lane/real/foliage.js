@@ -11,8 +11,8 @@
 //   boxPlants(kit, spots, seed)   // a balcony box's leafy tufts and geraniums (villas.js)
 //   firGeometry(tier, seed, shape) -> { leaves, core }   // one spruce (unit radius and
 //                           // height, its foot at 0): Geos (the core its dark inner cone and
-//                           // its trunk); shape: FIR_SHAPES.A (the forest's) or .B (the edge's
-//                           // on high: more tiers, a hanging skirt, gaps)
+//                           // its trunk); shape: FIR_SHAPES.A (the forest's)
+//   farCanopy(kit, L)       // P1: the far canopy's masses into kit.canopy (detail.js)
 //   firInstances(L, from, to) -> { matrices, colors }   // the forest's firs (spots.js; a range
 //                           // of them), a matrix and a tint each
 //
@@ -27,7 +27,7 @@
 
 import { makeRng } from '../../../core/math.js';
 import { Geo, add, mul, sub, dot, cross, norm } from './geo.js';
-import { forestSpots } from './spots.js';
+import { forestSpots, offTheEnds } from './spots.js';
 import { redTreeStems, redTreeCrown, ivyMasses, climberMasses, terraceSpans } from './plan.js';
 import { bedSpots } from '../facades.js';
 import { LINE_HEDGES, SMALL_PLANTS } from '../ends.js';
@@ -77,8 +77,8 @@ function cluster(g, R, c, d, size, cell, sway, cards = 2) {
 // Clusters on an ellipsoid's skin: `count` of them `size` across, out of `outside` (other
 // ellipsoids of the same canopy: clusters inside them are left out), its tints [[r, g, b]] by
 // turns at random, darker deep and low; and its dark core.
-function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside = [], sway = 3, core = CORE.green, coreK = 0.78, away = null }) {
-  const { foliage } = kit;
+function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside = [], sway = 3, core = CORE.green, coreK = 0.78, away = null, gold = null, into = kit.foliage }) {
+  const foliage = into;
   const n = Math.round(count * (CLUSTERS[kit.tier] ?? 1));
   for (let i = 0; i < n; i++) {
     let d;
@@ -90,8 +90,9 @@ function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside 
     const depth = 0.72 + 0.3 * Math.sqrt(R());
     const p = [c[0] + d[0] * r[0] * depth, c[1] + d[1] * r[1] * depth, c[2] + d[2] * r[2] * depth];
     if (outside.some((o) => ((p[0] - o.c[0]) / o.r[0]) ** 2 + ((p[1] - o.c[1]) / o.r[1]) ** 2 + ((p[2] - o.c[2]) / o.r[2]) ** 2 < 0.8)) continue;
-    const t = tints[Math.floor(R() * tints.length)];
+    let t = tints[Math.floor(R() * tints.length)];
     const k = (0.55 + 0.45 * ((depth - 0.72) / 0.3)) * (0.72 + 0.28 * (d[1] * 0.5 + 0.5)) * (0.85 + 0.3 * R());
+    if (gold) t = goldOf(t, p[1], d, gold);
     foliage.rgb(t[0] * k, t[1] * k, t[2] * k);
     cluster(foliage, R, p, d, size * (0.75 + 0.5 * R()), cell, sway);
   }
@@ -99,6 +100,23 @@ function shell(kit, R, { c, r, count, size, cell, tints, below = -0.15, outside 
     kit.core.rgb(...core);
     kit.core.ellipsoid(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], r[0] * coreK, r[1] * coreK, r[2] * coreK, 10, 6);
   }
+}
+
+// A kit drawing nothing, counting the cards' vertices (P1: an old crown's cards stepping the
+// shared stream as it took it; how many cards a crown has).
+const ghost = (kit) => {
+  const g = { n: 0, rgb() {}, ellipsoid() {}, vertex() { g.n++; } };
+  return { foliage: g, core: g, tier: kit.tier };
+};
+// (P1) The density that gives `blobs` as many cards as `old` had at opts.density (its count `n`
+// if known): the same card budget split among the lobes.
+function sameCards(kit, blobs, old, opts, n) {
+  const count = (b) => {
+    const k = ghost(kit);
+    canopy(k, makeRng(7), b, opts);
+    return k.foliage.n;
+  };
+  return (opts.density * (n ?? count(old))) / Math.max(1, count(blobs));
 }
 
 // A canopy's blobs as the classic one draws them (lane/props.js canopy: the same seeded stream),
@@ -139,14 +157,35 @@ function ragged(blobs, n, seed, tier = 'high') {
 }
 
 // A canopy: every blob's shell (only outside the others), cluster counts by its skin's area.
-function canopy(kit, R, blobs, { size, cell, tints, density = 1.2, below = -0.4, sway = 8, core = CORE.green, away = null }) {
+function canopy(kit, R, blobs, { size, cell, tints, density = 1.2, below = -0.4, sway = 8, core = CORE.green, away = null, gold = 0, into }) {
+  const crown = gold && crownOf(blobs, gold);
   for (const b of blobs) {
-    const [a, h, c] = b.r;
-    const area = 4 * Math.PI * Math.pow(((a * h) ** 1.6 + (a * c) ** 1.6 + (h * c) ** 1.6) / 3, 1 / 1.6);
-    const count = Math.round((area / (size * size)) * density);
+    const count = Math.round((areaOf([b]) / (size * size)) * density);
     // (A ragged canopy's small outer blobs no core of their own: the light shows through them.)
-    shell(kit, R, { c: b.c, r: b.r, count, size, cell, tints, below, outside: blobs.filter((o) => o !== b), sway, core: b.outer ? null : core, coreK: 0.72, away });
+    shell(kit, R, { c: b.c, r: b.r, count, size, cell, tints, below, outside: blobs.filter((o) => o !== b), sway, core: b.outer ? null : core, coreK: 0.72, away, gold: crown, into });
   }
+}
+
+// (P1, photos 04, 05, 12, 13, 23, 24: the low sun gilds the forest's crowns from above and from
+// its side) A card's tint toward GOLD_TOP the higher it sits in its crown (from 0.45 of the
+// crown's height up, by its top `k` of the way) and the more it faces the sun; the lower and
+// shaded sides keep their own green. No stream of its own: a function of where the card is.
+// crown: { y0, y1, k, sun: the sun's way across the ground (unit [x, z]) }.
+const GOLD_TOP = [3.3, 1.5, 0.3];
+let SUN = [-0.69, 0.73];
+export function crownOf(blobs, k) {
+  let [y0, y1] = [Infinity, -Infinity];
+  for (const b of blobs) [y0, y1] = [Math.min(y0, b.c[1] - b.r[1]), Math.max(y1, b.c[1] + b.r[1])];
+  return { y0, y1, k };
+}
+function goldMix(y, d, { y0, y1, k }) {
+  const up = Math.min(1, Math.max(0, ((y - y0) / (y1 - y0 || 1) - 0.45) / 0.55));
+  const lit = Math.max(0, d[0] * SUN[0] + d[2] * SUN[1]);
+  return k * Math.min(1, up * (0.5 + 0.75 * lit) + 0.15 * lit);
+}
+function goldOf(t, y, d, crown) {
+  const m = goldMix(y, d, crown);
+  return [t[0] + (GOLD_TOP[0] - t[0]) * m, t[1] + (GOLD_TOP[1] - t[1]) * m, t[2] + (GOLD_TOP[2] - t[2]) * m];
 }
 
 // Limbs from a trunk's top (p) out and up into each blob, tapering.
@@ -161,6 +200,8 @@ function limbs(g, p, blobs, r) {
 export function plants(kit, L) {
   const R = makeRng(4242);
   const G = L.GROUND;
+  const sun = L.LANE_REAL.sunDir;
+  SUN = norm([sun.x, 0, sun.z]).filter((_, i) => i !== 1);
   const leafy = [[1, 1.04, 0.92], [0.86, 0.95, 0.8], [1.08, 1.1, 0.9]];
   // The hedges: cards over their faces and tops round a dark box. (W5 fix: the stream first
   // stepped on as far as the clipped hedge along south_1 took it before W5, so every plant after
@@ -179,17 +220,23 @@ export function plants(kit, L) {
   }
   // The thujas: dark green columns.
   for (const t of L.THUJAS) thuja(kit, R, L, t);
-  // The junction's trees.
-  for (const t of L.TREES) {
+  // The junction's trees (P1: in lobes from a low fork, the same cards; the first two's old
+  // crowns step the shared stream as they took it, so every plant after keeps its leaves; the
+  // west curve's broadleaf masses, photos 01-03, after them).
+  L.TREES.forEach((t, i) => {
     const y0 = L.groundHeight(t.x, t.z);
-    const top = y0 + t.h * 0.45;
-    kit.bark.color(BARK);
-    kit.bark.tube([t.x, y0 - 10, t.z], [t.x, top, t.z], 60, 36, 8);
-    const blobs = ragged(canopyBlobs(t.x, t.z, y0 + t.h * (t.low ?? 0.32), y0 + t.h, t.r, Math.round(t.x * 7 + t.z)), 6, Math.round(t.x * 3 - t.z), kit.tier);
-    limbs(kit.bark, [t.x, top - 20, t.z], blobs, 26);
+    const fork = y0 + t.h * 0.3;
+    const old = ragged(canopyBlobs(t.x, t.z, y0 + t.h * (t.low ?? 0.32), y0 + t.h, t.r, Math.round(t.x * 7 + t.z)), 6, Math.round(t.x * 3 - t.z), kit.tier);
     // (W8 fix: a crown down to the ground in bigger cards, about as many as the higher one's.)
-    canopy(kit, R, blobs, { size: t.low ? 160 : 130, below: t.low ? -0.9 : -0.4, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * ({ high: 1.2, low: 0.8 }[kit.tier] ?? DENSE[kit.tier] ?? 1) }); // (W8: on high 1.2x, not DENSE's 1.4x, on low 0.8x: the plan's levers, out past the junction now)
-  }
+    const opts = { size: t.low ? 160 : 130, below: t.low ? -0.9 : -0.4, cell: CELL.tree, tints: leafy, sway: 10, density: 1.2 * ({ high: 1.2, low: 0.8 }[kit.tier] ?? DENSE[kit.tier] ?? 1) }; // (W8: on high 1.2x, not DENSE's 1.4x, on low 0.8x: the plan's levers, out past the junction now)
+    const was = i < 2 && ghost(kit);
+    if (was) canopy(was, R, old, opts);
+    kit.bark.color(BARK);
+    kit.bark.tube([t.x, y0 - 10, t.z], [t.x, fork, t.z], 60, 36, 8);
+    const blobs = lobes(t.x, t.z, y0 + t.h * (t.low ?? 0.24), y0 + t.h, t.r, Math.round(t.x * 3 - t.z), 6, i > 1 ? 1.35 : 1.1);
+    limbs(kit.bark, [t.x, fork - 20, t.z], blobs, 26);
+    canopy(kit, makeRng(Math.round(t.x - t.z * 3)), blobs, { ...opts, density: sameCards(kit, blobs, old, opts, was ? was.foliage.n : undefined), gold: GOLD_K * 0.8 });
+  });
   for (const t of L.GARDEN_TREES) gardenTree(kit, R, L, t);
   redTree(kit, R, L);
   // The rhododendron out from the west pier, its leaves down to the ground (W3: bigger, longer
@@ -218,6 +265,7 @@ export function plants(kit, L) {
   const F = forestSpots(L);
   for (const [kind, list] of [['broad', F.broad], ['birch', F.birches], ['pine', F.pines]]) for (const t of list) forestTree(kit, t, kind);
   canopyMasses(kit, L);
+  if (kit.canopy) farCanopy(kit, L);
   // (W4: their own streams, the others' kept.)
   climber(kit, L);
   for (const t of L.COLUMN_TREES ?? []) column(kit, L, t);
@@ -347,8 +395,9 @@ function climber(kit, L) {
 // crown, the outer ones poking past its outline: a slim, lacy column, widest low, ragged at its
 // top, the sky through its gaps (no solid core: the old one's smooth frustum read as an ivy-clad
 // chimney). Olive leaves, yellowing toward its top. Cards per tier (POPLAR); the crown's outline
-// (CROWN: its radius, a share of r, at a share of h).
-const POPLAR = { high: 2000, mid: 1400, low: 900 };
+// (CROWN: its radius, a share of r, at a share of h). (P1: 2000/1400/900 -> 1400/900/600, the
+// plan's lever for the forest wall: the clumps the larger.)
+const POPLAR = { high: 1400, mid: 900, low: 600 };
 const CROWN = [[0.12, 0], [0.5, 0.16], [0.85, 0.3], [0.95, 0.42], [0.8, 0.49], [0.66, 0.55], [0.6, 0.65], [0.56, 0.75], [0.5, 0.83], [0.44, 0.9], [0.38, 0.95], [0.28, 0.985], [0.1, 1]];
 function column(kit, L, { x, z, r, h }) {
   const S = makeRng(9377);
@@ -606,15 +655,19 @@ function thuja(kit, R, L, { x, z }) {
     }
     return 0;
   };
+  // (P1: on mid 70 % of high's cards, the plan's lever for the forest wall; the shared stream
+  // stepped on as before.)
   const count = kit.tier === 'low' ? 110 : 220;
+  const skip = ghost(kit).foliage;
   for (let i = 0; i < count; i++) {
+    const into = kit.tier === 'mid' && i % 10 > 6 ? skip : kit.foliage;
     const y = h * Math.pow(R(), 0.85) * 0.97;
     const a = R() * Math.PI * 2;
     const rr = radius(y) * (0.85 + 0.2 * R());
     const d = norm([Math.sin(a), 0.25 + (y / h) * 0.5, Math.cos(a)]);
     const k = (0.6 + 0.4 * (y / h)) * (0.85 + 0.3 * R());
-    kit.foliage.rgb(0.62 * k, 0.6 * k, 0.3 * k);
-    cluster(kit.foliage, R, [x + Math.sin(a) * rr, y0 + y, z + Math.cos(a) * rr], d, 46 * (0.8 + 0.4 * R()), CELL.hedge, 2);
+    into.rgb(0.62 * k, 0.6 * k, 0.3 * k);
+    cluster(into, R, [x + Math.sin(a) * rr, y0 + y, z + Math.cos(a) * rr], d, 46 * (0.8 + 0.4 * R()), CELL.hedge, 2);
   }
   kit.core.rgb(...CORE.green);
   kit.core.loft(prof.slice(0, 4).map(([pr, py]) => ring(x, y0 + py, z, pr * 0.72, 8)), { capEnd: true });
@@ -643,13 +696,18 @@ function gardenTree(kit, R, L, t) {
     if (t.kind === 'creeper') creeper(kit, t, y0, reds);
     return;
   }
-  // The apple tree: a short trunk, limbs, a broad canopy hung with red apples.
+  // The apple tree: a short trunk, limbs, a broad canopy hung with red apples (P1: in lobes
+  // round its limbs, the same cards; its old crown steps the shared stream as it took it).
   const c0 = y0 + t.h * 0.35;
   kit.bark.color(BARK);
-  kit.bark.tube([t.x, y0 - 10, t.z], [t.x, c0 + 60, t.z], 36, 24, 7);
-  const blobs = ragged(canopyBlobs(t.x, t.z, c0, y0 + t.h, t.r, 211, 5), 4, 2111, kit.tier);
-  limbs(kit.bark, [t.x, c0 + 40, t.z], blobs, 16);
-  canopy(kit, R, blobs, { size: 90, cell: CELL.tree, tints: [[1, 1.05, 0.92], [0.9, 1, 0.85], [1.1, 1.08, 0.9]], density: 1.3 * (DENSE[kit.tier] ?? 1), sway: 6 });
+  kit.bark.tube([t.x, y0 - 10, t.z], [t.x, c0 + 20, t.z], 36, 24, 7);
+  const old = ragged(canopyBlobs(t.x, t.z, c0, y0 + t.h, t.r, 211, 5), 4, 2111, kit.tier);
+  const opts = { size: 90, cell: CELL.tree, tints: [[1, 1.05, 0.92], [0.9, 1, 0.85], [1.1, 1.08, 0.9]], density: 1.3 * (DENSE[kit.tier] ?? 1), sway: 6 };
+  const was = ghost(kit);
+  canopy(was, R, old, opts);
+  const blobs = lobes(t.x, t.z, c0 - t.h * 0.05, y0 + t.h, t.r, 2111, 5);
+  limbs(kit.bark, [t.x, c0, t.z], blobs, 16);
+  canopy(kit, makeRng(2112), blobs, { ...opts, density: sameCards(kit, blobs, old, opts, was.foliage.n) });
   kit.paint.color(0xb8281e);
   const A = makeRng(213);
   for (let i = 0; i < 26; i++) {
@@ -701,9 +759,21 @@ const CHERRY = [[1.35, 1.3, 0.56], [1.7, 1.05, 0.4], [1.15, 1.22, 0.62]];
 function gardenBroad(kit, R, t, y0) {
   const { x, z, h, r } = t;
   const cherry = t.kind === 'cherry';
-  const fork = y0 + (cherry ? 195 : h * 0.4);
-  const blobs = ragged(canopyBlobs(x, z, y0 + h * (cherry ? 0.45 : 0.34), y0 + h, r, Math.round(x + z), 4), 4, Math.round(x - z), kit.tier);
+  const fork = y0 + (cherry ? 195 : h * 0.3);
+  let blobs = ragged(canopyBlobs(x, z, y0 + h * (cherry ? 0.45 : 0.34), y0 + h, r, Math.round(x + z), 4), 4, Math.round(x - z), kit.tier);
   if (cherry) for (const b of blobs.slice(0, 2)) b.r[1] *= 0.8; // (broad and open, flatter)
+  let dens = (cherry ? 0.95 : 1.2) * (DENSE[kit.tier] ?? 1);
+  if (!cherry) {
+    // (P1: the side yard's broadleaf in lobes from a low fork, the same cards; its old crown steps
+    // the shared stream as it took it.)
+    const opts = { size: 100, cell: CELL.tree, tints: OAK, density: dens };
+    const was = ghost(kit);
+    canopy(was, R, blobs, opts);
+    const old = blobs;
+    blobs = lobes(x, z, y0 + h * 0.26, y0 + h, r, Math.round(x - z));
+    dens = sameCards(kit, blobs, old, opts, was.foliage.n);
+    R = makeRng(Math.round(x - z) + 1);
+  }
   kit.bark.color(cherry ? 0xa0a098 : BARK);
   kit.bark.tube([x, y0 - 10, z], [x, fork + 10, z], cherry ? 24 : 30, cherry ? 20 : 24, 7);
   if (cherry) {
@@ -713,7 +783,7 @@ function gardenBroad(kit, R, t, y0) {
       limb(kit.bark, [[x, fork - 10, z], [x + (q[0] - x) * 0.45, fork + (q[1] - fork) * 0.5, z + (q[2] - z) * 0.45], q], [17, 13, 7], 6);
     }
   } else limbs(kit.bark, [x, fork - 10, z], blobs, 14);
-  canopy(kit, R, blobs, { size: cherry ? 80 : 100, cell: CELL.tree, tints: cherry ? CHERRY : OAK, density: (cherry ? 0.95 : 1.2) * (DENSE[kit.tier] ?? 1), sway: 7, core: cherry ? null : CORE.green });
+  canopy(kit, R, blobs, { size: cherry ? 80 : 100, cell: CELL.tree, tints: cherry ? CHERRY : OAK, density: dens, sway: 7, core: cherry ? null : CORE.green });
 }
 
 // The red tree's bark tint over the bark set's dark brown (linear, a pale grey a little warm),
@@ -865,9 +935,7 @@ function redTree(kit, R, L) {
   const tints = [[0.5, 0.72, 0.72], [0.4, 0.55, 0.56], [0.75, 1.25, 0.95], [0.55, 0.85, 0.8]];
   const [size, density] = RED_TREE_CARDS[kit.tier] ?? RED_TREE_CARDS.high;
   for (const b of blobs) {
-    const [a, h, c] = b.r;
-    const area = 4 * Math.PI * Math.pow(((a * h) ** 1.6 + (a * c) ** 1.6 + (h * c) ** 1.6) / 3, 1 / 1.6);
-    const count = Math.round(((area / (size * size)) * density) / (CLUSTERS[kit.tier] ?? 1));
+    const count = Math.round(((areaOf([b]) / (size * size)) * density) / (CLUSTERS[kit.tier] ?? 1));
     shell(kit, S, { c: b.c, r: b.r, count, size, cell: CELL.red, tints, below: -0.6, outside: blobs.filter((o) => o !== b), sway: 5, core: null });
   }
   // (A few sprays out at the side branches' tips, past the blobs.)
@@ -1017,7 +1085,8 @@ export function boxPlants(kit, spots, seed) {
 // pine's (a birch's crown airy, no core), golden-green tops in the low sun; a pine a tall bare
 // trunk, grey-brown low and orange-brown up into its flat dark crown. Per tier the cards' size
 // and density (FOREST_CARDS; the shells' share as every plant's, CLUSTERS). Each its own stream.
-const FOREST_CARDS = { high: [215, 1], mid: [240, 0.95], low: [290, 0.9] };
+// (P1: on mid and low the bank's density -10 %, the plan's lever for the forest wall's masses.)
+const FOREST_CARDS = { high: [215, 1], mid: [240, 0.85], low: [290, 0.81] };
 // (The ring round the outside, the side yards' and the named trees are seen nearer, from the
 // footpath, the turning area and the terraces: smaller cards, a little denser, every side.)
 const NEAR_CARDS = { high: [185, 1.05], mid: [210, 1], low: [270, 0.9] };
@@ -1026,8 +1095,10 @@ const OAK = [[1.6, 1.42, 0.56], [1.3, 1.26, 0.64], [1.85, 1.52, 0.46], [1.15, 1.
 const PINES = [[0.72, 0.76, 0.38], [0.6, 0.68, 0.34], [0.84, 0.82, 0.4]];
 const GOLD = [[1.7, 1.45, 0.55], [1.3, 1.22, 0.62], [2.1, 1.6, 0.42]];
 const PINE_BARK = [1.55, 0.86, 0.6]; // (over BARK: the upper trunk's orange-brown)
+const GOLD_K = 0.85; // (P1: the crowns' tops gilt this much toward GOLD_TOP: goldOf)
 // (The lane's middle: a forest tree's far side, away from it, is never seen.)
 const MIDDLE = [-1050, -200];
+const awayOf = (x, z) => norm([x - MIDDLE[0], 0, z - MIDDLE[1]]);
 export function forestTree(kit, t, kind) {
   const R = makeRng(t.seed);
   const tier = kit.tier ?? 'high';
@@ -1037,8 +1108,7 @@ export function forestTree(kit, t, kind) {
   const { x, z, base, h, r } = t;
   const top = base + h;
   const lean = [(R() - 0.5) * r * 0.12, (R() - 0.5) * r * 0.12];
-  const l = Math.hypot(x - MIDDLE[0], z - MIDDLE[1]) || 1;
-  const away = near ? null : [(x - MIDDLE[0]) / l, 0, (z - MIDDLE[1]) / l];
+  const away = near ? null : awayOf(x, z);
   let blobs;
   if (kind === 'pine') {
     const c0 = top - h * 0.32;
@@ -1052,20 +1122,28 @@ export function forestTree(kit, t, kind) {
       { c: [cx + Math.sin(a) * r * 0.6, top - h * 0.2, cz + Math.cos(a) * r * 0.6], r: [r * 0.6, h * 0.085, r * 0.55] },
       { c: [cx - Math.sin(a + 0.9) * r * 0.55, top - h * 0.27, cz - Math.cos(a + 0.9) * r * 0.55], r: [r * 0.5, h * 0.07, r * 0.5] },
     ];
-    canopy(kit, R, blobs, { size, cell: CELL.tree, tints: PINES, density: density * 1.05, below: -0.5, sway: 6, core: null, away });
+    canopy(kit, R, blobs, { size, cell: CELL.tree, tints: PINES, density: density * 1.05, below: -0.5, sway: 6, core: null, away, gold: GOLD_K });
     return; // (no core: its crown thin and flat)
   } else {
     const birchy = kind === 'birch';
     const g = birchy ? kit.birch : kit.bark;
     g.color(birchy ? BIRCH_BARK : BARK);
-    const fork = base + h * (birchy ? 0.55 : 0.42);
+    // (P1: a side yard's broadleaf in lobes round its limbs from a low fork, photos 16, 23, 24,
+    // 28; the ring's keep their ragged round crowns, photo 31's.)
+    const clumped = !birchy && t.solid;
+    const fork = base + h * (birchy ? 0.55 : clumped ? 0.3 : 0.42);
     g.tube([x, base - 10, z], [x + lean[0], fork, z + lean[1]], r * (birchy ? 0.06 : 0.09), r * 0.05, sides);
     blobs = canopyBlobs(x + lean[0], z + lean[1], base + h * (birchy ? 0.4 : 0.32), top, r, t.seed, 3);
-    // (Ragged: small lumps round its outline, not a lollipop; on low as it is.)
-    if (!birchy && near) blobs = ragged(blobs, 3, t.seed + 1, tier);
+    let dens = density * (birchy ? 0.8 : 1);
+    if (clumped) {
+      const old = ragged(blobs, 3, t.seed + 1, tier);
+      blobs = lobes(x + lean[0], z + lean[1], base + h * 0.26, top, r, t.seed + 1);
+      dens = sameCards(kit, blobs, old, { size, cell: CELL.tree, tints: OAK, density: dens, below: -0.4 });
+    }
     // (Its limbs only a near one's: from the street the crown hides the bank's.)
-    if (near) limbs(g, [x + lean[0], fork - 20, z + lean[1]], blobs.slice(0, 3), r * 0.035);
-    canopy(kit, R, blobs, { size: birchy ? size * 0.78 : size, cell: birchy ? CELL.hedge : CELL.tree, tints: birchy ? GOLD : OAK, density: density * (birchy ? 0.8 : 1), below: -0.4, sway: 9, core: null, away });
+    else if (!birchy && near) blobs = ragged(blobs, 3, t.seed + 1, tier); // (ragged, not a lollipop; on low as it is)
+    if (near) limbs(g, [x + lean[0], fork - 20, z + lean[1]], clumped ? blobs : blobs.slice(0, 3), r * 0.035);
+    canopy(kit, R, blobs, { size: birchy ? size * 0.78 : size, cell: birchy ? CELL.hedge : CELL.tree, tints: birchy ? GOLD : OAK, density: dens, below: -0.4, sway: 9, core: null, away, gold: GOLD_K });
     // (A near one no core: its smooth facets showed through the cards.)
     if (birchy || near) return;
   }
@@ -1073,19 +1151,63 @@ export function forestTree(kit, t, kind) {
   // street it reads as the mass the cards fringe): W7 fix, a leafy skin (cut-out leaves both
   // sides), not a smooth olive solid, which read as rock.
   const [m] = blobs;
-  leafSkin(kit.foliage, m.c, [m.r[0] * 0.6, m.r[1] * 0.62, m.r[2] * 0.6], tier === 'low' ? 6 : 8, tier === 'low' ? 3 : 4, MASS_TINTS[t.seed % MASS_TINTS.length], away);
+  leafSkin(kit.foliage, m.c, [m.r[0] * 0.6, m.r[1] * 0.62, m.r[2] * 0.6], tier === 'low' ? 6 : 8, tier === 'low' ? 3 : 4, MASS_TINTS[t.seed % MASS_TINTS.length], away, crownOf(blobs, GOLD_K));
 }
 
-// A leafy skin (W7 fix): an ellipsoid's quads (seg round, ring up) each the leaf atlas's tree
-// cell (its cut-out sprays; the material both-sided, so the far side's leaves show through the
+// (P1 1f, photos 16, 23, 24, 28: a near broadleaf's crown in clumps round its limbs, not a
+// lollipop on a bare trunk) `n` lobes between y0 and y1 out to r: one over the top, the others
+// round it at different heights (the lowest from the low fork), gaps between them where the
+// limbs show (`fill` > 1: fuller lobes, fewer gaps: the junction's and the west curve's big
+// broadleaves, a wall of leaves seen from the street); its own seeded stream.
+function lobes(x, z, y0, y1, r, seed, n = 5, fill = 1) {
+  const R = makeRng(seed);
+  const h = y1 - y0;
+  const out = [{ c: [x, y1 - h * 0.27, z], r: [r * 0.52, h * 0.27, r * 0.52] }];
+  for (let i = 1; i < n; i++) {
+    const a = (i / (n - 1)) * Math.PI * 2 + R() * 0.9;
+    const f = (i - 1) / Math.max(1, n - 2); // (0: the lowest)
+    const br = r * (0.36 + 0.12 * R()) * fill;
+    const ry = h * (0.17 + 0.06 * R()) * fill;
+    const off = r * (0.5 + 0.16 * R()) * (1 - 0.25 * f);
+    out.push({ c: [x + Math.sin(a) * off, y0 + ry + (h * 0.62 - ry) * f * (0.75 + 0.25 * R()), z + Math.cos(a) * off], r: [br, ry, br] });
+  }
+  // (No dark core in a lobe: through its cards it read as a ball on a stick.)
+  for (const b of out) b.outer = true;
+  return out;
+}
+// Blobs' skins' area (an ellipsoid's, Thomsen's: canopy's measure of its cards' count).
+function areaOf(blobs) {
+  let s = 0;
+  for (const { r: [a, h, c] } of blobs) s += 4 * Math.PI * Math.pow(((a * h) ** 1.6 + (a * c) ** 1.6 + (h * c) ** 1.6) / 3, 1 / 1.6);
+  return s;
+}
+
+// A leafy skin (W7 fix): an ellipsoid's quads (seg round, ring up) each the leaf atlas's hedge
+// cell (its cut-out leaves; the material both-sided, so the far side's leaves show through the
 // near side's gaps), tinted, lighter up top and darker under, the normals bent up as a card's;
-// the quads facing `away` (from the lane) left out.
-function leafSkin(g, c, r, seg, ring, tint, away = null) {
-  const [cu, cv] = CELL.tree;
+// the quads facing `away` (from the lane) left out (r[3], if given: its lower half's height, a
+// dome over a taller foot); `crown`: gilt toward its top on its sun side
+// (crownOf, P1); `solid` (P1, the far canopy's: a cut-out's coverage a km off blends with the sky
+// into a pale lattice): every corner on one opaque texel of the cell (SOLID), lumpy (each vertex
+// in or out by a hash of where it is: the crowns' bumps along its outline) and mottled (lit and
+// shaded crowns), no gap in it.
+const SOLID = [0.748, 0.236];
+const hash = (a, b) => {
+  const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+  return v - Math.floor(v);
+};
+function leafSkin(g, c, r, seg, ring, tint, away = null, crown = null, solid = false, cell = CELL.hedge) {
+  const [cu, cv] = cell; // (P1: the hedge's small leaves, not the sprays: at a skin's scale the sprays read as flames)
   const at = (i, j) => {
     const [th, ph] = [(2 * Math.PI * i) / seg, -Math.PI / 2 + (Math.PI * j) / ring];
     const d = [Math.cos(ph) * Math.cos(th), Math.sin(ph), Math.cos(ph) * Math.sin(th)];
-    return { p: [c[0] + d[0] * r[0], c[1] + d[1] * r[1], c[2] + d[2] * r[2]], n: norm(add(norm([d[0] / r[0], d[1] / r[1], d[2] / r[2]]), [0, 0.35, 0])), k: 0.55 + 0.55 * (d[1] * 0.5 + 0.5) };
+    // (The seam's and the poles' vertices one each: the hash of the ring round and the row up.)
+    const [a, b] = [(i % seg) + c[0] * 0.01, j + c[2] * 0.01];
+    const out = solid && j && j < ring ? 0.12 * (hash(a, b) - 0.5) : 0;
+    const p = [c[0] + d[0] * r[0] * (1 + 2 * out), c[1] + d[1] * (d[1] < 0 ? r[3] ?? r[1] : r[1]) * (1 + out), c[2] + d[2] * r[2] * (1 + 2 * out)];
+    const k = (0.55 + 0.55 * (d[1] * 0.5 + 0.5)) * (solid ? 0.6 + 0.8 * hash(b, a) : 1);
+    const t = crown && goldOf(tint, p[1], d, crown);
+    return { p, n: norm(add(norm([d[0] / r[0], d[1] / r[1], d[2] / r[2]]), [0, 0.35, 0])), k: t ? [(k * t[0]) / tint[0], (k * t[1]) / tint[1], (k * t[2]) / tint[2]] : k };
   };
   g.rgb(...tint);
   for (let j = 0; j < ring; j++) {
@@ -1095,52 +1217,148 @@ function leafSkin(g, c, r, seg, ring, tint, away = null) {
       if (away && Math.cos(th) * away[0] + Math.sin(th) * away[2] > 0.55) continue;
       // (Every other quad the cell mirrored: no one spray repeated in rows.)
       const [u0, u1] = (i + j) % 2 ? [cu + 0.49, cu + 0.01] : [cu + 0.01, cu + 0.49];
-      g.quad(q[0].p, q[1].p, q[2].p, q[3].p, { n: q.map((v) => v.n), uvs: [[u0, cv + 0.01], [u0, cv + 0.49], [u1, cv + 0.49], [u1, cv + 0.01]], shade: q.map((v) => v.k) });
+      g.quad(q[0].p, q[1].p, q[2].p, q[3].p, { n: q.map((v) => v.n), uvs: solid ? [SOLID, SOLID, SOLID, SOLID] : [[u0, cv + 0.01], [u0, cv + 0.49], [u1, cv + 0.49], [u1, cv + 0.01]], shade: q.map((v) => v.k) });
     }
   }
 }
 
 // The bank's canopy masses (W7, photos 09, 12, 23, 24, 43, 44: the forest behind the north
-// gardens one continuous wall of leaves, its sunlit tops golden): low mounds along the band behind
-// its front row, so the sky never shows through the gaps between the trees. W7 fix: each a leafy
-// skin (the crowns' tints a shade deeper, the side away from the lane left out) over an olive
-// core, a few leaf cards ragging its outline (their own stream: the masses stand where they
-// stood), its top well under the crowns' (the skyline the trees' own); they had been smooth dark
-// solids that read as grey rock.
-const MASS_CARDS = { high: [250, 0.45], mid: [280, 0.45], low: [330, 0.45] };
+// gardens one continuous wall of leaves, its sunlit tops golden): mounds along the band among
+// its crowns, so the sky never shows through the gaps between the trees. W7 fix: each a leafy
+// skin (the crowns' tints a shade deeper, the side away from the lane left out), a few leaf cards
+// ragging its outline (their own stream: the masses stand where they stood), its top under the
+// crowns' (the skyline the trees' own); they had been smooth dark solids that read as grey rock.
+// P1 (photos 04, 05, 12, 13, 23, 24): every MASS_STEP in two staggered rows (0.3 and 0.6 of the
+// band's depth), wider and taller, their tops ~82 % of the crowns' (MASS_TOP of the band's mean
+// top), from 2500 west of the band (behind north_west and the junction's north side) to its east
+// end, gilt on top; the front row's on an olive core (6 x 3), the back row's none (the front's
+// gaps show their leaves).
+const MASS_STEP = 480;
+const MASS_TOP = 0.82;
+const MASS_CARDS = { high: [380, 0.42], mid: [400, 0.4], low: [440, 0.3] };
 const MASS_TINTS = OAK.map((t) => t.map((c) => c * 0.8));
+const MASS_SKIN = 0.6; // (its skin darker than its cards: the shade inside, the cards its texture)
 const MASS_CORE = [0.06, 0.075, 0.016];
 export function canopyMasses(kit, L) {
   const { core, foliage, tier } = kit;
   const F = L.FOREST;
   const R = makeRng(F.seed + 9);
   const S = makeRng(F.seed + 10);
-  const [seg, ring] = tier === 'low' ? [8, 4] : [10, 6];
+  const U = makeRng(F.seed + 11);
+  const [seg, ring] = tier === 'low' ? [6, 3] : [8, 4];
   const [size, density] = MASS_CARDS[tier] ?? MASS_CARDS.high;
-  for (let k = 0, x = F.x0 - 1700; x < F.x1; x += 700, k++) {
-    const z = F.z0 + F.slope * x + 0.36 * (F.z1 - F.z0) + (R() - 0.5) * 200;
-    const c = [x, L.groundHeight(x, z) + 850 + R() * 250, z];
-    const r = [620 + R() * 120, 700, 480];
-    const l = Math.hypot(x - MIDDLE[0], z - MIDDLE[1]) || 1;
-    const away = [(x - MIDDLE[0]) / l, 0, (z - MIDDLE[1]) / l];
-    core.rgb(...MASS_CORE);
-    core.ellipsoid(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], r[0] * 0.78, r[1] * 0.78, r[2] * 0.78, 8, 4);
-    leafSkin(foliage, c, r, seg, ring, MASS_TINTS[k % MASS_TINTS.length], away);
-    canopy(kit, S, [{ c, r }], { size, cell: CELL.tree, tints: MASS_TINTS, density, below: -0.3, sway: 5, core: null, away });
+  const top = (MASS_TOP * (F.top[0] + F.top[1])) / 2;
+  // (Row 2: the undergrowth along the band's foot, photos 23, 24, 27: no bare slope between the
+  // trunks; its own stream.)
+  for (const [row, share, step] of [[0, 0.3, MASS_STEP], [1, 0.6, MASS_STEP], [2, 0.03, 520]]) {
+    const T = row > 1 ? U : R;
+    for (let k = 0, x = F.x0 - 2500 + (row % 2) * (step / 2); x < F.x1; x += step, k++) {
+      const z = F.z0 + F.slope * x + (row > 1 ? share + 0.05 * T() : share) * (F.z1 - F.z0) + (row > 1 ? 0 : (T() - 0.5) * 160);
+      const at = x + (T() - 0.5) * (row > 1 ? 160 : 120);
+      const r = row > 1 ? [430 + T() * 120, 380 + T() * 120, 300] : [700 + T() * 150, 850 + T() * 150, 520];
+      const g = L.groundHeight(at, z);
+      const c = [at, row > 1 ? g + r[1] * 0.55 : Math.max(g + r[1] * 0.45, top - r[1]), z];
+      const away = awayOf(at, z);
+      if (!row) {
+        core.rgb(...MASS_CORE);
+        core.ellipsoid(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], r[0] * 0.78, r[1] * 0.78, r[2] * 0.78, 6, 3);
+      }
+      const gold = row < 2 && GOLD_K;
+      leafSkin(foliage, c, r, seg, ring, MASS_TINTS[row > 1 ? Math.floor(U() * MASS_TINTS.length) : (k + row) % MASS_TINTS.length].map((v) => v * MASS_SKIN * (row > 1 ? 0.8 : 1)), away, gold && crownOf([{ c, r }], gold));
+      canopy(kit, row > 1 ? U : S, [{ c, r }], { size: row > 1 ? size * 0.7 : size, cell: CELL.tree, tints: MASS_TINTS, density, below: row > 1 ? -0.2 : -0.3, sway: 5, core: null, away, gold });
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the far canopy
+
+// (P1, photos 01-05, 12, 13, 23, 34, 43: the forest runs on past the lane's ground, the sky only
+// above it) The far canopy, detail.js's `canopy` mesh (the foliage material itself, casting no
+// shadow: drawn once a frame; it replaced the far tree line's instanced spruces): broadleaf crown
+// masses, each a round dome over a foot down to the ground, a leafy cut-out skin (high and mid)
+// over a solid, lumpy, mottled core skin (leafSkin `solid`: a cut-out alone a km off blends with
+// the sky into a pale lattice), gilt on top, the side away from the lane left out, darker than the
+// near crowns: (i) rows up the slope behind the bank's band to its east end, the hill's crowns
+// over the band's (tops 2600-3400, ~1600-2400 over the bank's top; on the lane's ground); (ii)
+// round the west end outside the boundary past the ring of trees, among its tops (none by the road
+// on past the junction; the south and the east look out over the houses into an open sky); (iii)
+// a sparser ring 11.5 to 16 km off, about the old far tree line's size, the core alone (no edge of
+// the ground seen from a roof; none in the ring's low or clear sectors). Its own stream: every tier's masses stand
+// in the same places.
+// (Per tier its leafy skin's segments and rings (none on low), its solid core's.)
+const FAR_SKIN = { high: [10, 6, 8, 5], mid: [8, 4, 6, 4], low: [0, 0, 6, 4] };
+const FAR_TINTS = OAK.map((t) => t.map((c) => c * 0.45));
+export function farCanopy(kit, L) {
+  const g = kit.canopy;
+  const R = makeRng(0x5ba7a);
+  const [seg, ring, cs, cr] = FAR_SKIN[kit.tier] ?? FAR_SKIN.high;
+  const F = L.FOREST;
+  const E = L.EDGE_FOREST;
+  // (A mass: a round dome of crowns, never much taller than wide, over a foot down to the ground;
+  // its leafy cut-out skin over a solid core a shade darker (the far ring's the core alone: no leaf
+  // seen from 12 km), darker toward the sun, low in the west-south-west: the photos' backlit
+  // forest, 43.)
+  const mass = (x, z, rx, top, far = 1) => {
+    const base = L.groundHeight(x, z) - 20;
+    const w = Math.max(rx, (top - base) * 0.4);
+    const dome = Math.min((top - base) / 2, w * 0.8);
+    const c = [x, top - dome, z];
+    const r = [w, dome, w * (0.75 + 0.25 * R()), c[1] - base];
+    const away = awayOf(x, z);
+    const back = 1 - 0.45 * Math.max(0, away[0] * SUN[0] + away[2] * SUN[1]);
+    const tint = FAR_TINTS[Math.floor(R() * FAR_TINTS.length)].map((v) => v * far * back);
+    const crown = crownOf([{ c, r }], GOLD_K);
+    // (Over the core its leaves stand out lit against its dark depths: the photos' texture.)
+    const leafy = seg && far > 0.75;
+    if (leafy) leafSkin(g, c, r, seg, ring, tint, away, crown, false, CELL.tree);
+    leafSkin(g, c, leafy ? r.map((v) => v * 0.9) : r, cs, cr, tint.map((v) => v * (leafy ? 0.45 : 0.75)), away, crown, true);
+  };
+  // (i) Up the slope behind the bank's band (the hill's crowns over the band's, photos 12, 13,
+  // 23, 24: the sky only above them).
+  for (const [back, step] of [[250, 560], [1150, 640], [2200, 760]]) {
+    for (let x = F.x0 - 2600 + R() * step; x < F.x1 + 600; x += step * (0.85 + 0.3 * R())) {
+      const z = Math.max(-7800, F.z1 + F.slope * x - back - R() * 500); // (on the lane's ground)
+      mass(x, z, 480 + R() * 220, Math.max(2600, L.groundHeight(x, z) + 1600) + R() * 800);
+    }
+  }
+  // (ii) Round the west end, outside the boundary beyond the ring of trees (photos 04, 05, 43; the
+  // south and the east look out over the houses into an open sky: photos 11, 30, 31, 42).
+  const B = L.BOUNDS;
+  for (let i = 0; i < B.length; i++) {
+    const [p, q] = [B[i], B[(i + 1) % B.length]];
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const [nx, nz] = [(q[1] - p[1]) / len, -(q[0] - p[0]) / len];
+    for (let t = R() * 600; t < len; t += 520 + R() * 260) {
+      const away = E.to + 300 + R() * 1400;
+      const [x, z] = [p[0] + ((q[0] - p[0]) * t) / len + nx * away, p[1] + ((q[1] - p[1]) * t) / len + nz * away];
+      // (Over the ring's tops, a wall behind them; none by the road on past the junction: from
+      // there a mass a few hundred off is a smooth hill; the west curve's own broadleaves, TREES,
+      // stand there.)
+      const [rx, top] = [550 + R() * 300, 2100 + R() * 800];
+      if (x > -8500 || L.inBounds(x, z) || (x > F.x0 - 2600 && z < F.z0 + F.slope * x) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 2600 || offTheEnds(L, x, z, 700)) continue;
+      mass(x, z, rx, top, 0.8);
+    }
+  }
+  // (iii) The far ring, about the old far tree line's size (none in the ring's low sector or its
+  // clear sector: photos 30, 31 and the dad's drive look out over them).
+  const c = E.clear;
+  for (let k = 0; k < 44; k++) {
+    const a = (k / 44) * Math.PI * 2 + R() * 0.1;
+    const d = 11500 + R() * 4500;
+    const [x, z] = [MIDDLE[0] + Math.cos(a) * d * 1.15, MIDDLE[1] + Math.sin(a) * d * 0.8];
+    const [rx, top] = [500 + R() * 300, 1300 + R() * 900];
+    if (z < -6000 || Math.abs(x) > 15500 || z > 9500 || (E.low && x > E.low.x0 && z > E.low.z0) || (c && x > c.x0 && x < c.x1 && z > c.z0) || L.roadDistance(x, z, L.ROAD_DRAWN) < L.ROAD.half + 2600 + rx || offTheEnds(L, x, z, 700 + rx)) continue;
+    mass(x, z, rx, top, 0.7);
   }
 }
 
 // ---------------------------------------------------------------- firs
 
-// The forest's spruce (A: every fir but the edge's on high) and the edge's (B, high only: the
-// firs nearest the street): more, shorter tiers, the lower branches hanging (a Norway spruce's
-// skirt), a narrower spire, branches more uneven and here and there one missing (a gap the sky
-// shows through), so the edge is not one tree copied.
+// The forest's spruce (P1: every fir's, the edge's on high too: the photos' few spruces, its
+// second spruce and the far tree line's plainer one gone): tiers per tier, branches a whorl,
+// their spread, the crown's taper.
 export const FIR_SHAPES = Object.freeze({
-  A: Object.freeze({ tiers: 12, low: 8, branches: 5, droop: 0, spread: 0.3, gap: 0, power: 0.85 }),
-  B: Object.freeze({ tiers: 15, low: 10, branches: 5, droop: 0.22, spread: 0.45, gap: 0.14, power: 1.05 }),
-  // (W7: the far tree line's, 11.5 to 16 km off in the haze: six whorls, every tier.)
-  C: Object.freeze({ tiers: 6, low: 6, branches: 4, droop: 0, spread: 0.3, gap: 0, power: 0.85 }),
+  A: Object.freeze({ tiers: 12, low: 8, branches: 5, spread: 0.3, power: 0.85 }),
 });
 
 const DOWN = [0, -1, 0];
@@ -1189,11 +1407,10 @@ export function firGeometry(tier = 'high', seed = 7, shape = FIR_SHAPES.A) {
     }
     for (let b = 0; b < n; b++) {
       const a = a0 + (b / n) * Math.PI * 2 + (R() - 0.5) * 0.4;
-      if (shape.gap && R() < shape.gap * (1 - t)) continue;
       const dir = [Math.cos(a), 0, Math.sin(a)];
       const len = r * (1 - shape.spread / 2 + shape.spread * R());
       const p0 = [dir[0] * 0.02, y, dir[2] * 0.02];
-      const p1 = [dir[0] * len, y - (0.05 + 0.08 * R()) * (0.6 + t) - shape.droop * (1 - t) * len, dir[2] * len];
+      const p1 = [dir[0] * len, y - (0.05 + 0.08 * R()) * (0.6 + t), dir[2] * len];
       const axis = norm(sub(p1, p0));
       const across = norm(cross([0, 1, 0], axis));
       const w = 0.24 + 0.25 * r;

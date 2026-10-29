@@ -493,30 +493,50 @@ function ellipsePrism(cx, cz, rx, rz, sides, y0, y1) {
   return [hi, ...lo.map((p, i) => [p, lo[(i + 1) % sides], hi[(i + 1) % sides], hi[i]])];
 }
 
-// One roughly round blob of leaves (a seven-sided lathe): r across, from cy - ry up to cy + ry.
-function blob(b, x, z, cy, r, ry, a0, sides = 7) {
-  b.lathe(x, z, [[0, cy - ry], [r * 0.72, cy - ry * 0.68], [r, cy - ry * 0.05], [r * 0.8, cy + ry * 0.6], [r * 0.35, cy + ry * 0.95], [0, cy + ry]], sides, { a0 });
+// One roughly round blob of leaves (a seven-sided lathe): r across, from cy - ry up to cy + ry
+// (`plain`: no shoulder under its top, P1: the far ones, a fifth fewer triangles).
+function blob(b, x, z, cy, r, ry, a0, sides = 7, plain = false) {
+  b.lathe(x, z, [[0, cy - ry], [r * 0.72, cy - ry * 0.68], [r, cy - ry * 0.05], [r * 0.8, cy + ry * 0.6], ...(plain ? [] : [[r * 0.35, cy + ry * 0.95]]), [0, cy + ry]], sides, { a0 });
 }
 
 // A lumpy canopy: `n` overlapping blobs round (x, z) between y0 and y1, out to r, into `leaves`
 // (the leaf texture's greens; a red one goes into render's plain white, as the green texture
 // would darken it to brown), in `tint` (or turn by turn through a list of tints); darker
-// underneath.
-function canopy(kit, x, z, y0, y1, r, tint, seed, n = 4, leaves = kit.leaves) {
+// underneath. P1 (photos 16, 23, 24, 28): `lobed`, in clumps, not a lollipop: one over the top,
+// the others round it at different heights, gaps between them; `gold`: its top gilt (gilt).
+function canopy(kit, x, z, y0, y1, r, tint, seed, n = 4, leaves = kit.leaves, { lobed = false, gold = 0, sides = 7 } = {}) {
   const rng = makeRng(seed);
   const h = y1 - y0;
   const tints = [].concat(tint);
-  leaves.shade = (px, y) => 0.68 + 0.36 * Math.min(1, Math.max(0, (y - y0) / h));
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rng();
-    const off = i === 0 ? 0 : r * (0.35 + rng() * 0.2);
-    const br = i === 0 ? r * 0.62 : r * (0.45 + rng() * 0.15);
-    const cy = i === 0 ? y0 + h * 0.5 : y0 + h * (0.35 + rng() * 0.3);
-    const ry = i === 0 ? h * 0.5 : h * (0.32 + rng() * 0.1);
+    const f = i ? (i - 1) / Math.max(1, n - 2) : 1;
+    // (A lobe reaches in over the trunk's top: no blob floats, the classic tree has no limbs.)
+    const off = i === 0 ? 0 : r * (lobed ? 0.34 + rng() * 0.1 : 0.35 + rng() * 0.2);
+    const br = i === 0 ? r * (lobed ? 0.52 : 0.62) : r * (lobed ? 0.44 + rng() * 0.1 : 0.45 + rng() * 0.15);
+    const cy = i === 0 ? y0 + h * (lobed ? 0.73 : 0.5) : y0 + h * (lobed ? 0.2 + 0.42 * f : 0.35 + rng() * 0.3);
+    const ry = i === 0 ? h * (lobed ? 0.27 : 0.5) : h * (lobed ? 0.2 : 0.32 + rng() * 0.1);
     leaves.color(tints[i % tints.length], 0.9 + rng() * 0.2);
-    blob(leaves, x + Math.sin(a) * off, z + Math.cos(a) * off, cy, br, ry, rng() * 6);
+    gilt(leaves, y0, h, gold);
+    blob(leaves, x + Math.sin(a) * off, z + Math.cos(a) * off, cy, br, ry, rng() * 6, sides);
   }
   leaves.shade = null;
+}
+
+// (P1, photos 04, 05, 12, 13, 23, 24: the low sun gilds the crowns' tops) The shade's ramp up a
+// crown from y0 over h, its tint turned toward GOLD over the upper part (from 0.55 of its height
+// to its top, by k): the builder reads its tint after the shade, so the shade sets it.
+const GOLD = 0xd8a030;
+function gilt(leaves, y0, h, k, lo = 0.68, span = 0.36) {
+  const base = leaves.tint;
+  const gold = k && leaves.color(GOLD).tint;
+  leaves.tint = base;
+  leaves.shade = (px, y) => {
+    const f = Math.min(1, Math.max(0, (y - y0) / h));
+    const m = k * Math.max(0, (f - 0.55) / 0.45);
+    if (k) leaves.tint = base.map((c, i) => c + (gold[i] - c) * m);
+    return lo + span * f;
+  };
 }
 
 // A big broad-leaved tree off the junction: a stout trunk (solid where Jonas can reach it) under
@@ -528,7 +548,8 @@ function broadTree(kit, layout, t) {
   const trunkTop = y0 + t.h * 0.45;
   wood.color(TINT.trunk);
   wood.lathe(t.x, t.z, [[60, y0 - 10], [45, y0 + 120], [38, trunkTop], [0, trunkTop]], 7, { flat: true });
-  canopy(drawn, t.x, t.z, y0 + t.h * (t.low ?? 0.32), y0 + t.h, t.r, TINT.canopy, Math.round(t.x * 7 + t.z));
+  // (P1: in lobes, gilt; the west curve's, photos 01-03, plainer: four six-sided lobes.)
+  canopy(drawn, t.x, t.z, y0 + t.h * (t.low ?? 0.32), y0 + t.h, t.r, TINT.canopy, Math.round(t.x * 7 + t.z), 4, drawn.leaves, { lobed: true, gold: 0.7, sides: layout.TREES.indexOf(t) > 1 ? 6 : 7 });
   if (layout.inBounds(t.x, t.z)) solids.solid(prismPolys(t.x, t.z, 45, 8, y0 - 10, trunkTop), 'wood');
 }
 
@@ -564,7 +585,7 @@ function gardenTree(kit, layout, t) {
         wood.solid(beamPolys([t.x, fork - 10, t.z], [t.x + Math.sin(a) * t.r * 0.55, y0 + t.h * 0.62, t.z + Math.cos(a) * t.r * 0.55], [Math.cos(a), 0, -Math.sin(a)], 14, 14));
       }
     }
-    canopy(drawn, t.x, t.z, y0 + t.h * (cherry ? 0.5 : 0.36), y0 + t.h, t.r, cherry ? TINT.cherry : TINT.oak, Math.round(t.x + t.z), 4);
+    canopy(drawn, t.x, t.z, y0 + t.h * (cherry ? 0.5 : 0.3), y0 + t.h, t.r, cherry ? TINT.cherry : TINT.oak, Math.round(t.x + t.z), 4, drawn.leaves, { lobed: !cherry, gold: 0.5 });
     solids.solid(prismPolys(t.x, t.z, cherry ? 30 : 36, 6, y0 - 10, fork), 'wood');
     return;
   }
@@ -599,7 +620,7 @@ function gardenTree(kit, layout, t) {
   const c0 = y0 + t.h * 0.35;
   wood.color(TINT.trunk);
   wood.lathe(t.x, t.z, [[40, y0 - 10], [32, y0 + 100], [26, c0 + 80], [0, c0 + 100]], 7, { flat: true });
-  canopy(drawn, t.x, t.z, c0, top, t.r, TINT.apple, 211, 5);
+  canopy(drawn, t.x, t.z, c0 - t.h * 0.05, top, t.r, TINT.apple, 211, 5, drawn.leaves, { lobed: true });
   const rng = makeRng(213);
   paint.color(TINT.fruit);
   for (let i = 0; i < 18; i++) {
@@ -1624,32 +1645,45 @@ function footpathProps(kit, layout) {
 // spruces (skerries/props.js fir()), birches, broadleaves (a short trunk under two golden-green
 // blobs) and Scots pines (a tall orange-brown trunk under a flat dark crown), drawn only but the
 // side yards' trunks (solid, beside the yards' walking lines: off every route): the boundary's
-// walls stand inside the rest.
+// walls stand inside the rest. P1: the crowns' tops gilt (gilt), the side yards' broadleaves in
+// three lobes at different heights (photos 16, 23, 24, 28), the trunks in the back rows and round
+// the outside three-sided (the triangles the lobes and the far masses take), and low wide masses
+// behind the bank's band and round the west end (FAR_MASSES: the sky only over the forest,
+// photos 04, 05, 13, 43).
+const FAR_MASSES = [[-12800, -3900, 900], [-11200, -6300, 1000], [-8200, -7000, 1100], [-4200, -7400, 1100], [200, -7600, 1100], [4600, -7500, 1100], [-14800, -1200, 1000], [-16000, 3200, 1100]];
 function forest(kit, layout) {
   const { leaves, wood, solids } = kit.drawn('forest');
   const { firs, birches, broad, pines } = forestSpots(layout);
+  const F = layout.FOREST;
   for (const t of firs) fir({ leaves, wood }, t.x, t.z, t.base, t.h, t.r, { a0: t.a0, solid: false });
   for (const t of [...birches, ...broad, ...pines]) {
     const pine = pines.includes(t);
     const rng = makeRng(t.seed);
     const trunk = pine ? 0.86 : 0.5;
-    wood.color(pine ? TINT.pine : birches.includes(t) ? TINT.bark : TINT.trunk);
-    wood.lathe(t.x, t.z, [[t.r * (pine ? 0.07 : 0.09), t.base - 10], [t.r * 0.05, t.base + t.h * trunk]], 5, { flat: true });
-    const tint = pine ? TINT.pineCrown : birches.includes(t) ? TINT.birch : TINT.oak[t.seed % TINT.oak.length];
-    leaves.shade = (px, y) => 0.7 + 0.4 * Math.min(1, Math.max(0, (y - t.base - t.h * 0.4) / (t.h * 0.6)));
     // (Two blobs: the crown and a lump off it; a pine's flat, at its top; one deep in the bank
     // and round the outside, where the front rows hide them.)
-    const F = layout.FOREST;
     const front = t.solid || (t.z > F.z0 + F.slope * t.x - 600 && t.z < F.z0 + F.slope * t.x + 400);
-    const blobs = pine ? [[0, 0, 0.9, 1, 0.1], [1, 0.45, 0.8, 0.6, 0.08]] : [[0, 0, 0.66, 0.85, 0.32], [1, 0.42, 0.8, 0.6, 0.2]];
+    wood.color(pine ? TINT.pine : birches.includes(t) ? TINT.bark : TINT.trunk);
+    wood.lathe(t.x, t.z, [[t.r * (pine ? 0.07 : 0.09), t.base - 10], [t.r * 0.05, t.base + t.h * trunk]], front ? 5 : 3, { flat: true });
+    const tint = pine ? TINT.pineCrown : birches.includes(t) ? TINT.birch : TINT.oak[t.seed % TINT.oak.length];
+    const lobed = t.solid && !pine;
+    const blobs = lobed ? [[0, 0, 0.8, 0.55, 0.18], [1, 0.45, 0.58, 0.48, 0.16], [2, 0.46, 0.42, 0.46, 0.14]] : pine ? [[0, 0, 0.9, 1, 0.1], [1, 0.45, 0.8, 0.6, 0.08]] : [[0, 0, 0.66, 0.85, 0.32], [1, 0.42, 0.8, 0.6, 0.2]];
     for (const [k, off, up, rr, ry] of front ? blobs : blobs.slice(0, 1)) {
-      const a = rng() * 6.3;
+      const a = rng() * 6.3 + k * 2.1;
       leaves.color(tint, 0.92 + rng() * 0.16);
-      blob(leaves, t.x + Math.sin(a) * t.r * off, t.z + Math.cos(a) * t.r * off, t.base + t.h * up, t.r * rr, t.h * ry, a + k, 5);
+      gilt(leaves, t.base + t.h * 0.4, t.h * 0.6, pine ? 0.5 : 0.75, 0.7, 0.4);
+      blob(leaves, t.x + Math.sin(a) * t.r * off, t.z + Math.cos(a) * t.r * off, t.base + t.h * up, t.r * rr, t.h * ry, a + k, 5, !front);
     }
     leaves.shade = null;
     if (t.solid) solids.solid(prismPolys(t.x, t.z, 40, 8, t.base, t.base + t.h * 0.4), 'wood');
   }
+  for (const [x, z, r] of FAR_MASSES) {
+    const y0 = layout.groundHeight(x, z);
+    leaves.color(TINT.oak[0], 0.8);
+    gilt(leaves, y0, 2900 - y0, 0.6);
+    blob(leaves, x, z, (y0 + 2900) / 2, r, (2900 - y0) / 2, x * 0.001, 5, true);
+  }
+  leaves.shade = null;
 }
 
 // A house down the side road in the fog (SIDE_BLOCKS): a plain chain house (houses.js) along the

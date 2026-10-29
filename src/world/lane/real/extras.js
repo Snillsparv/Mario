@@ -10,15 +10,11 @@
 //                       // overhang), a dark window band, a door, the stripe, wheels in arches,
 //                       // the ladder up its back
 //   cabinet(kit, L)     // the grey electrical cabinet: folded steel, its doors' seams, a lock
-//   treeLine(L, tier) -> { matrices, colors }   // a far ring of firs where the lane's ground
-//                       // ends in the haze (fir instances: foliage.js firGeometry)
 //
 // kit: detail.js's Geo per material (paint, steel, tyre, rim, carGlass, metal, cloth).
 
-import { makeRng } from '../../../core/math.js';
 import { frameOf, fbox, wallFrame } from './house.js';
 import { add, mul, norm, sub, dot, cross } from './geo.js';
-import { oldDrawn, offTheEnds } from './spots.js';
 import { FORECOURT_WALL } from '../ends.js';
 
 const PAD = 0x2a2c30; // (W6: the photos' dark grey pad)
@@ -259,34 +255,4 @@ export function cabinet({ steel, metal }, L) {
   metal.quad(front.at(-24, y + 30, 0.3), front.at(24, y + 30, 0.3), front.at(24, y + 34, 0.3), front.at(-24, y + 34, 0.3));
   metal.color(0xb0aca4);
   fbox(metal, front, 20, 26, y + 12, y + 20, 0, 2, 'k');
-}
-
-// The far tree line: firs in a ring out where the lane's ground ends in the haze, so no edge of
-// it shows from up on a roof; a seeded scatter, none on the road running on into the fog.
-export function treeLine(L, tier) {
-  const R = makeRng(0x5ba79);
-  const count = tier === 'low' ? 60 : 110;
-  const [cx, cz] = [-1050, -200];
-  const matrices = new Float32Array(count * 16);
-  const colors = new Float32Array(count * 3);
-  let n = 0;
-  const clear = L.EDGE_FOREST.clear;
-  for (let tries = 0, placed = 0; placed < count && tries < count * 4; tries++) {
-    const a = R() * Math.PI * 2;
-    const d = 11500 + R() * 4500;
-    const [x, z] = [cx + Math.cos(a) * d * 1.15, cz + Math.sin(a) * d * 0.8];
-    const [h, r, turn, t] = [1300 + R() * 900, 330 + R() * 160, R(), R()];
-    // (Not on the road on into the fog, not up the forest's bank (it rises on past its heights),
-    // not off the lane's ground; none in the edge forest's clear sector, W4: the sky over the
-    // garage row from the dad's drive (its spots dropped, the others where they were).)
-    if (L.roadDistance(x, z, oldDrawn(L)) < L.ROAD.half + 600 || z < -6000 || Math.abs(x) > 15500 || z > 9500) continue;
-    placed++;
-    if ((clear && x > clear.x0 && x < clear.x1 && z > clear.z0) || offTheEnds(L, x, z, 600)) continue;
-    const base = L.groundHeight(x, z) - 10;
-    const [c, s] = [Math.cos(turn * Math.PI * 2), Math.sin(turn * Math.PI * 2)];
-    matrices.set([c * r, 0, -s * r, 0, 0, h, 0, 0, s * r, 0, c * r, 0, x, base, z, 1], n * 16);
-    colors.set([0.8 + 0.25 * t, 0.85 + 0.2 * t, 0.8 + 0.2 * t], n * 3);
-    n++;
-  }
-  return { matrices: matrices.slice(0, n * 16), colors: colors.slice(0, n * 3) };
 }

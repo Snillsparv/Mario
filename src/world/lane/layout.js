@@ -771,10 +771,15 @@ export const THUJAS = [
 // Big broad-leaved trees off the junction, at the forest's edge north-west of the curve (outside
 // the play space: drawn only, no collider): r the canopy's radius, h its top, `low` its crown's
 // foot (a share of h; else 0.32). (W8, photos 02, 03: the first a big spreading broadleaf by the
-// gravel path's foot, east of where it stood; W8 fix: its leaves down to the ground as theirs.)
+// gravel path's foot, east of where it stood; W8 fix: its leaves down to the ground as theirs.
+// P1, photos 01-03: the west curve's big broadleaf masses north of the lay-by, crowns to the
+// ground; every crown in lobes round its limbs.)
 export const TREES = [
   { x: -12200, z: 2000, r: 820, h: 1900, low: 0.06 },
   { x: -13910, z: -1820, r: 800, h: 2000 },
+  { x: -13750, z: 2350, r: 780, h: 2100, low: 0.06 },
+  { x: -14700, z: 1300, r: 880, h: 2300, low: 0.06 },
+  { x: -13100, z: 950, r: 760, h: 2000, low: 0.06 },
 ];
 // The forest on the bank behind the north gardens (fir(): a seeded scatter of `count` firs and
 // `birches` birches over the band x0..x1, from z0 + slope x back to z1 + slope x: following the
@@ -795,7 +800,9 @@ export const TREES = [
 // named ones (`special`: the tall pine right behind north_1, one beyond the double garage, the big broadleaf by the footpath south-east of the
 // turning area); the ring outside by its own mix (`low`: lower and smaller south-east of the
 // turning area beyond the footpath's barrier, where photo 31 looks out over far low trees, 7-9 m
-// broadleaves and a few pines and birches: its own tops, least height and mix).
+// broadleaves and a few pines and birches: its own tops, least height and mix). P1 (photos 04,
+// 05, 12, 13, 23, 24: broadleaf and Scots pine, hardly a spruce): the bank's spruces 15 -> 6 %,
+// the ring's 30 -> 15 % (each spot where it stood, only its kind drawn anew).
 export const FOREST = {
   x0: -11600,
   x1: 9300,
@@ -804,12 +811,12 @@ export const FOREST = {
   slope: NORTH.slope,
   seed: 0x5ba77,
   rows: [[0, 0.1, 660], [0.18, 0.38, 700], [0.46, 0.7, 760], [0.76, 1, 860]],
-  mix: [0.42, 0.13, 0.3, 0.15],
+  mix: [0.5, 0.13, 0.31, 0.06],
   top: [2350, 3020],
   yards: [[-5470, -3700, 'broad', 2500], [-1810, -3150, 'pine', 2750], [1120, -3500, 'broad', 2600], [4445, -3650, 'pine', 2800]],
   special: [{ kind: 'pine', x: -6900, z: -4420, top: 3020 }, { kind: 'pine', x: 9300, z: -3200, top: 2950 }, { kind: 'broad', x: 7000, z: 3900, top: 1350, r: 480 }],
 };
-export const EDGE_FOREST = { count: 62, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 }, mix: [0.4, 0.1, 0.2, 0.3], top: [1900, 2900], low: { x0: 3000, z0: 2400, top: [1000, 1400], least: 900, r: 0.72, mix: [0.75, 0.1, 0.15, 0] } };
+export const EDGE_FOREST = { count: 62, from: 900, to: 2600, seed: 0x5ba78, clear: { x0: -1100, x1: 5000, z0: 4300 }, mix: [0.5, 0.12, 0.23, 0.15], top: [1900, 2900], low: { x0: 3000, z0: 2400, top: [1000, 1400], least: 900, r: 0.72, mix: [0.75, 0.1, 0.15, 0] } };
 export const COLUMN_TREES = [{ x: 1415, z: 6000, r: 230, h: 1650 }];
 
 // Lampposts (grey, an arm and a flat lamp head) where the photos have them, every one a climbable

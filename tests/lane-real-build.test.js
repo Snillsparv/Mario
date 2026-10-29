@@ -233,11 +233,14 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
     const { part, look } = buildLaneReal(lane, { store, tier, origin: AREA_DEFS.lane.origin, anisotropy: 2, detail });
     const D = {};
     part.object3D.getObjectByName('lane-detail').traverse((o) => o.isMesh && (D[o.name] = o));
-    assert.equal(Object.keys(D).length, detail.meshes.length + 2 * (tierName === 'high' ? 3 : 2) + (detail.grass ? 1 : 0) + 1, `${tierName}: a mesh each, the firs' two parts for the forest, the far tree line (and on high the edge's spruce), the grass, the bins`);
+    assert.equal(Object.keys(D).length, detail.meshes.length + 2 + (detail.grass ? 1 : 0) + 1, `${tierName}: a mesh each (the far canopy's among them), the firs' two parts (P1: one spruce, no far tree line), the grass, the bins`);
     // The bins: a mover, one bin instanced at each home, in the detail's paint, casting.
     const bins = D['lane-detail-bins'];
     assert.ok(bins.isInstancedMesh && bins.count === lane.BINS.length && bins === part.movers.bins && bins.material === D['lane-detail-paint'].material && bins.castShadow, `${tierName}: the bins' mover`);
-    assert.equal(D['lane-detail-fir-leaves-far'].castShadow, false, 'the far tree line casts none');
+    // (P1: the far canopy in the foliage material itself, no program or draw call more but its
+    // own, casting none: drawn once a frame.)
+    const canopy = D['lane-detail-canopy'];
+    assert.ok(canopy && canopy.material === D['lane-detail-foliage'].material && !canopy.castShadow, 'the far canopy: the foliage material, casting none');
     // (W1 fix) Every caster under the top of the heights the near shadow camera's depth holds
     // (RealLook shadowFar: shadowBox's, over the bank's firs' tops), the build's own boxes.
     part.object3D.updateMatrixWorld(true);
@@ -296,12 +299,11 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
       assert.ok(look.probes.get('north').at.z < AREA_DEFS.lane.origin.z, 'over the street in front of them');
     } else assert.deepEqual(look.probeNames(), [], 'no probes on low');
     const firs = D['lane-detail-fir-leaves'];
-    const edge = D['lane-detail-fir-leaves-edge'];
     assert.ok(firs.isInstancedMesh && firs.count === detail.firs.matrices.length / 16, `${firs.count} firs`);
-    // (W7: the forest a mixed canopy, ~15 % of the bank's and ~30 % of the edge's trees spruces: real/spots.js.)
-    assert.ok(firs.count + (edge?.count ?? 0) >= 25, `${firs.count} + ${edge?.count ?? 0} firs`);
-    assert.equal(!!edge, tierName === 'high', 'the edge\'s spruce on high');
-    if (edge) assert.ok(edge.isInstancedMesh && edge.material === firs.material && edge.castShadow && D['lane-detail-fir-core-edge'].material === D['lane-detail-fir-core'].material, 'the forest\'s materials: no program more');
+    // (W7: the forest a mixed canopy; P1: ~6 % of the bank's and ~15 % of the ring's trees
+    // spruces, one spruce on every tier: real/spots.js.)
+    assert.ok(firs.count >= 8 && firs.count <= 25, `${firs.count} firs`);
+    assert.ok(!Object.keys(D).some((n) => /-far$|-edge$/.test(n)), 'no far tree line, no second spruce');
     assert.equal(firs.castShadow, tierName !== 'low', 'the firs cast but on low');
     assert.ok(look.probeMaterials.includes(D['lane-detail-glass'].material), 'the detail\'s windows reflect the probe');
     if (tierName === 'high') {

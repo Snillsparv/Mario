@@ -1675,9 +1675,9 @@ trees' leaves).
   street name plate (realistic `real/clutter.js STREET_SIGN`, from `FAR_LAMPS[0]`: its place,
   height and facing; the classic a plain plate); on its inside the veranda house's two-rail fence along the edge (`FENCES`); a
   gravel path north from the side road's mouth to the forest (`GRAVEL_PATH`, a hard surface: in
-  the play space it is walked on); the forest's ring and the far tree line keep the old straight
-  run's draws (`real/spots.js oldDrawn`: every tree where it was) and drop the spots on the
-  curve, its lay-by and by the far houses (`offTheEnds`)).
+  the play space it is walked on); the forest's ring keeps the old straight run's draws
+  (`real/spots.js oldDrawn`: every tree where it was) and drops the spots on the curve, its
+  lay-by and by the far houses (`offTheEnds`; P1: the far canopy's masses stay off them too)).
 * **The street's wear and its edges** (W7, photos 09, 12, 13, 17-24, 41-44; `lane/surface.js`,
   data and outlines in the lane's chunk, never main (the worker only its `SHOULDER`, for the
   grass); `build.js surface` draws them in both looks, every flat piece in the asphalt's mesh,
@@ -2046,7 +2046,9 @@ trees' leaves).
   look's in folded steel), the blue sign (a white walking figure on it) and its barrier, the forest (W7, photos 01, 09, 12, 24-31, 41-44: a tall continuous mixed
   canopy, `real/spots.js forestSpots`, the realistic look's spots too): on the bank behind the
   north gardens four jittered rows of crowns that touch (`FOREST.rows`), each a kind drawn by
-  `FOREST.mix` (~40 % oaks and aspens, ~15 % birches, ~30 % Scots pines, ~15 % spruces), their
+  `FOREST.mix` (P1, photos 04, 05, 12, 13, 23, 24: ~50 % oaks and aspens, ~13 % birches, ~31 %
+  Scots pines, ~6 % spruces; the ring's 15 % spruces, from 15 and 30 %: every spot where it stood,
+  only its kind drawn anew), their
   tops 2350-3020 over the street (16-20 m: their cards under the shadows' box's top, look.js `FAR_TOP` 3200), the
   named ones (`FOREST.special`: a tall pine right behind north_1, one beyond the double garage, a
   big broadleaf by the footpath south-east of the turning area), a tree in each side yard
@@ -2056,12 +2058,16 @@ trees' leaves).
   its `low` sector south-east of the turning area, where photo 31 looks out beyond the footpath,
   7-9 m broadleaves with a few pines and birches, no spruce, their crowns ×0.72);
   classic: spruces skerries/props.js `fir()`, birches, broadleaves (a short trunk under two
-  golden-green blobs) and pines (a tall orange-brown trunk under a flat dark crown), one blob for
-  those deep in the bank and round the outside; drawn only but the side yards' trunks, so the
+  golden-green blobs) and pines (a tall orange-brown trunk under a flat dark crown), one plainer
+  blob (no shoulder, a three-sided trunk) for those deep in the bank and round the outside, their
+  tops gilt (P1, `props.js gilt`: the leaves' shade ramp turns its tint toward a gold over a
+  crown's upper part), the side yards' broadleaves in three lobes at different heights (P1,
+  photos 16, 23, 24, 28: clumps, not lollipops), low wide masses behind the bank's band and round
+  the west end (`props.js FAR_MASSES`, P1: the sky only over the forest); drawn only but the side yards' trunks, so the
   camera never looks out on nothing; none in its `clear` sector south of the dad's
   side (W4: x −1100 … 5000 beyond z 4300, the sky the photos show over the garage row and his roof
-  from the drive; those spots drawn and dropped, the others where they were, as in the realistic
-  look's far tree line), only one columnar tree far behind the garage row (`COLUMN_TREES`, out of
+  from the drive; those spots drawn and dropped, the others where they were; the realistic look's
+  far canopy none there either), only one columnar tree far behind the garage row (`COLUMN_TREES`, out of
   bounds, drawn only: W4 fix, photo 37's Lombardy poplar, out on the field on that photo's line of
   sight, 1650 tall, far enough that photos 33 and 35 do not show it over south_2's roof and near
   enough that the haze leaves it near as dark as 37 has it; photo 36, which shows none, has it near
@@ -3319,18 +3325,51 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   leaves both sides, not a smooth olive solid, which read as rock), airy
   golden birches without one, the pines a tall trunk grey-brown low and orange-brown up into a flat
   irregular crown of clumps; trunks of 6 / 5 / 4 sides, limbs only in the near ones; behind the
-  bank's front row its canopy masses (`canopyMasses`: low mounds every 700 along the band, their
-  tops well under the crowns', so the sky never shows through between them; W7 fix: each a leafy
-  skin in the crowns' tints a shade deeper over an olive core, a few cards ragging its outline,
-  where they had been smooth dark solids reading as grey rock on every tier). The big birch
+  bank's front row its canopy masses (`canopyMasses`, so the sky never shows through between the
+  crowns; W7 fix: each a leafy skin in the crowns' tints a shade deeper, a few cards ragging its
+  outline, where they had been smooth dark solids reading as grey rock on every tier; P1, photos
+  04, 05, 12, 13, 23, 24: every 480 in two staggered rows at 0.3 and 0.6 of the band's depth,
+  700-850 wide, 850-1000 tall, their tops ~82 % of the crowns' mean (the skyline still the trees'
+  own), from 2500 west of the band (behind north_west and the junction's north side) to its east
+  end, the front row's on an olive core (6 × 3), their skins darker than their cards (the shade
+  inside; big cards, 380 / 400 / 440, its texture), and a row of undergrowth along the band's foot
+  every 520, so no bare slope shows between the trunks). P1's **gold** (`goldOf`, photos 04, 05,
+  12, 13, 23, 24: the low sun gilds the crowns' tops): a forest card's or a leafy skin's tint
+  turned toward `GOLD_TOP` from 0.45 of its crown's height up (by its top `GOLD_K` 0.85 of the way)
+  and the more it faces the sun (`LANE_REAL.sunDir` across the ground), the lower and shaded sides
+  keeping their green: a function of where the card is, no stream of its own; the bank's crowns,
+  the masses, the far canopy and (a little less) the junction's trees. P1's **lobes** (`lobes`,
+  photos 16, 23, 24, 28: clumps, not lollipops): the side yards' broadleaves, the side yard's
+  garden broadleaf, the apple tree and the junction's trees have their crowns in 5-6 lobes round
+  their limbs (one over the top, the others at different heights from a low fork, 0.3 of the
+  height; gaps between them where the limbs show; no dark core in a lobe: through its cards it read
+  as a ball on a stick), the same cards as their old crowns (`sameCards`: the density that gives
+  the lobes as many cards as the old blobs had), the old crowns' cards still drawn into nothing
+  where they took the shared stream, so every plant after keeps its leaves; the ring's broadleaves
+  keep their ragged round crowns (photo 31: round and dense). The big birch
   east of the corner house (`bigBirch`: three white stems under a broad crown) and the side yard's
   broadleaf and north_5's cherry (`gardenBroad`: the cherry forking low into three crooked limbs,
-  an open crown, no core). The forest's **firs** (W7: now its spruces only, ~15 % of the bank's and
-  ~30 % of the ring's trees) are one spruce (`firGeometry`) instanced where
-  `spots.js forestSpots` plants them (the classic forest draws its cones from the same list),
-  plus a far tree line where the ground ends in the haze (`extras.js treeLine`, casting none;
-  neither in `EDGE_FOREST.clear`, W4; W7: a plainer spruce of its own, `FIR_SHAPES.C`, six
-  whorls, on every tier: the same materials, no draw call more).
+  an open crown, no core). The forest's **firs** (W7: now its spruces only; P1: ~6 % of the bank's
+  and ~15 % of the ring's trees) are one spruce (`firGeometry`, `FIR_SHAPES.A`; P1: the edge's on
+  high too, its second spruce `B` gone) instanced where `spots.js forestSpots` plants them (the
+  classic forest draws its cones from the same list). P1: the far tree line's spruces
+  (`extras.js treeLine`, 89 / 89 / 49, two instanced draw calls) gave way to the **far canopy**
+  (`foliage.js farCanopy`, detail.js's `canopy` mesh: the foliage material object itself, casting
+  none, drawn once a frame: one draw call, no program, no texture): broadleaf crown masses down to
+  the ground: each a round dome (never much taller than wide) over a foot down to the ground, a
+  leafy cut-out skin of the atlas's sprays (10 × 6 on high, 8 × 4 on mid, none on low) over a
+  solid, lumpy, mottled core skin a shade darker (`leafSkin`'s `solid`: every corner on one opaque
+  texel of the hedge cell, each vertex in or out and lighter or darker by a hash of where it is; a
+  cut-out alone a km off blended with the sky into a pale lattice; 8 × 5 / 6 × 4 / 6 × 4), gilt on
+  top, the side away from the lane left out, darker than the near crowns and darker still toward
+  the sun (the photos' backlit forest): three rows up the slope behind the bank's band to its east
+  end (their tops 2600-3400, ~1600-2400 over the bank's top: the hill's crowns over the band's,
+  the sky only above them; on the lane's ground), a wall round the west end outside the boundary
+  past the ring's trees among their tops (none by the road on past the junction, where the west
+  curve's `TREES` stand; the south and the east look out over the houses into an open sky, photos
+  11, 30, 31, 42), and a sparser ring 11.5-16 km off about the old far tree line's size, the core
+  alone (none in the ring's `low` or clear sectors; no edge of the ground seen from a
+  roof); its own stream (every tier's masses in the same places).
   Since the R fixes each whorl is a dense **skirt**: an opaque drooping star of five branch tips
   (`fir-core`, the twig set's texture tiled on it, a twig a branch, its stem out along it; dark
   under it) reaching ~0.6 of the branches' reach and hanging over the whorl below (its droop
@@ -3445,8 +3484,10 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   materials (no draw call of its own); the room's light painted onto their tints (`roomLight`).
   Per tier ~2.4k / 2.0k / 1.45k triangles (high 12-sided round things and 8 spokes a wheel, mid 8
   and 4, low 6, no spokes, no tools on the board, fewer tins).
-* `grass.js`: the **grass**: one clump of blades (`grassClump`: 4 blades of 3 segments on high,
-  3 of 2 on mid, none on low) instanced over a 128 × 128 grid of 12-unit cells (80 × 80 on mid)
+* `grass.js`: the **grass**: one clump of blades (`grassClump`: P1, the short mown lawn of photos
+  19, 21, 41: 5 blades of 2 segments on high (24 -> 20 triangles a clump, ~-46k a frame), 3 of 2
+  on mid, none on low; 2.2-4.5 tall, half 0.85 wide, a little darker at the foot than at the tip,
+  0.8 -> 1.05, the old 0.7 -> 1.25's mean over the tapering blade: no tall dark spikes) instanced over a 128 × 128 grid of 12-unit cells (80 × 80 on mid)
   that follows the camera (centred ahead of it, snapped to whole cells: `look.js grassGrid`, one
   uniform a frame); the vertex shader (`materials.js grassMaterial`) places each clump in its
   cell at a hash of the cell, turns and sizes it, stands it on the **lawn mask** (`lawnMask`: a
@@ -3458,7 +3499,7 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   the ground steps; B the road's wheel track, A where a lawn lies damp by the hedges: the
   weathering's ground map, below) and shrinks it to nothing off the lawns and toward the grid's
   radius (725 on high, W7: 735, its far ring ~6 % fewer clumps, the plan's lever for the
-  forest; W8: 725, ~3 % fewer, the lever for the two ends; no pop); its blades lighter toward their tips, longer in damp and unmown
+  forest; W8: 725, ~3 % fewer, the lever for the two ends; no pop); its blades a little lighter toward their tips, longer in damp and unmown
   patches, tinted with the lawn's own slow change of colour. The cells are ordered nearest the
   grid's middle first, so drawing the first n of them (`reach(share)`: the governor's) is a disc
   of a shorter reach.
@@ -3815,9 +3856,8 @@ the same street, not a new style (the plan's prototype, scratch only, chose ever
   'high ao8' and the whole mid tier drew 12 taps, not 8.
 * **First person** in the realistic look: the eye at the smaller hero's (the profile's
   `EYE_HEIGHT` 115).
-* **Details** (the worker): the forest edge's firs nearest the street a second spruce on high
-  (`foliage.js FIR_SHAPES.B`: more, shorter tiers, a hanging skirt, gaps; its own instanced meshes
-  in the forest's materials: `fir-leaves-edge`, `fir-core-edge`); the cars' lamps and lower
+* **Details** (the worker): (the forest edge's second spruce on high, `FIR_SHAPES.B`, went with
+  P1: the photos' few spruces, two draw calls); the cars' lamps and lower
   bumpers wrap round the corners on the body's own stations (`cars.js along`: on mid's coarser
   body the wraps' own fewer stations cut inside it, a step); the double garage's half-round
   gutters from barge board to barge board (W8 fix: its verges', not its eaves' 173), brackets
@@ -4007,6 +4047,44 @@ untouched (its bake keeps `LANE_SUN`, its materials and sky their own).
   cards already the photos' gold), north_west's front in its trees' shadow on high and mid, and
   north_1's blue lower floor (paint): the later packages'.
 
+**The forest wall and the mown lawn, round 2b (P1).** From the street and the drives the forest
+behind the villas and round the west end reads as one tall wall of golden-lit broadleaf and pine,
+the sky only above it (photos 02, 04, 05, 09, 12, 13, 23, 24, 43); the west curve has its big
+broadleaf masses (photos 01-03); the side yards' and the gardens' trees are clumps, not lollipops
+(16, 23, 24, 28); every lawn is short and mown (19, 21, 41). Both looks, every tier; no collider
+changed (the trunks and their prisms as they were, the west masses and the far canopy drawn only).
+* **The gold** (realistic: `foliage.js goldOf`; classic: `props.js gilt`), the **masses** in two
+  rows and the **undergrowth** (`canopyMasses`), the **far canopy** (`farCanopy`, the `canopy`
+  mesh in the foliage material, casting none: it replaced the far tree line's spruces), the
+  **lobes** (`lobes`, `sameCards`) and the forest's mix (hardly a spruce; the edge's second
+  spruce gone): above, under `foliage.js`. The classic look: the crowns' tops gilt, the side
+  yards' broadleaves, the garden broadleaf, the apple tree and the junction's trees in lobes
+  reaching in over their trunks (no limb in the classic tree: no lobe floats), the back rows' and
+  the ring's crowns plainer (no shoulder, three-sided trunks: the triangles the rest took) and low
+  wide masses behind the bank and round the west end (`FAR_MASSES`); still 15 meshes.
+* **The west curve** (`layout.js TREES`, photos 01-03): three more big broadleaves north of the
+  lay-by, crowns to the ground, out of bounds, drawn only; every junction tree in lobes from a
+  low fork (their old crowns' cards drawn into nothing on the shared stream, so every plant after
+  keeps its leaves).
+* **The lawn** (`grass.js grassClump`, `grassTiers.js`): above, under `grass.js`.
+* **Levers** (the plan's, in its order): the poplar's cards 2000/1400/900 -> 1400/900/600, the
+  thujas on mid 70 % of high's cards (the rest drawn into nothing on the shared stream), the
+  bank's card density -10 %.
+* **Measured** (E2E, 960 × 540): the fight's worst frame high 158 / 961,586 (was 163 / 988,564),
+  mid 139 / 479,894 (140 / 484,734), low 96 / 209,333 (97 / 214,871), classic 45 / 52,046; the five
+  views high 135-147 draw calls / 927-943k triangles (were 140-152 / 954-970k), mid 126-134 /
+  462-468k (127-135 / 467-473k), low 88-93 / 201-203k (89-94 / 207-209k); programs, texture bytes
+  and the skies at the views' top bands unchanged;
+  the detail high 397.7k triangles (the geometry test's cap 400k -> 420k), mid 236.7k, low 137.0k;
+  the classic build 42,983 triangles in its 15 meshes, its colliders unchanged. Against the photos
+  (scratch: the 15 north and west poses' upper 46 %): the sky's share 0.461 -> 0.430 (the photos'
+  0.281), the golden canopy's 0.096 -> 0.176 (0.342), every pose's sky down; the 44 poses on high:
+  the colour difference 29.5 -> 29.0, the edges' agreement 0.474 -> 0.442 (the before's edges were
+  largely the outlines of the sky's holes between the crowns and the spruces' spikes, which fell near
+  the photos' dense canopy edges; leaves over leaves give fewer). Not reached: photo 04/05's left
+  half (trees ~4 km off behind north_west, in the game's play space), the far ends' trees nearer
+  than the game's ground allows.
+
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its
 verdicts on synthetic frame-time series (with GPU times: no step up without the headroom; the
@@ -4059,14 +4137,15 @@ the cars' clusters and probes, no plate-shaped part on either end; the clutter o
 (every leaf within 2 of it, none under a collider, none on the road's middle 60 %), the weeds
 only in the kerbs' joints, at the walls' feet and on the path, the grit in the gutters, the
 street sign's plate blank, the clutter's share per tier; the walls' wear attribute in range,
-the streaks hanging from the dad's sills; the bird on the ridge; the forest edge's second
-spruce on high; R fixes: the firs dense (each whorl's skirt over half its branches' reach, the
+the streaks hanging from the dad's sills; the bird on the ridge; one spruce on every tier (P1:
+the edge's second spruce and the far tree line gone); R fixes: the firs dense (each whorl's skirt over half its branches' reach, the
 crown solid all the way up, needles to the top, the trunk inside: the old firs fail it), the
 red-leaf bed's stones along all four edges (W3), no kerb along it; the garage's rust under its pipes' clips and the loggias' boxes of flowers
 (W6; the balcony is bare wood now), not on low; W7: the mixed forest (the bank's spruces first,
-its shares of broadleaf, pine and spruce, every top under the shadows' box, only the side
-yards' trees inside the boundary and their trunks solid in the classic colliders, the far line's
-plainer spruce), no leaf under the trampoline), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
+its shares of broadleaf, pine and spruce (P1: hardly a spruce), every top under the shadows' box,
+only the side yards' trees inside the boundary and their trunks solid in the classic colliders;
+P1: the canopy masses' two rows every 480, leafy over each, the front row's cores under the
+crowns' least top), no leaf under the trampoline), `tests/glsl-minify.test.js` (every `/* glsl */` literal in `src/` minified to the same
 tokens; the plugin's output), `tests/real-materials.test.js` (the haze (the sun's glow coming into
 it with the distance: W4 fix) and the clamp in every material's patched shader, the sun's near and far shadow patch (none on low),
 the glass's F0 and premultiplied output, the leaf
@@ -4089,7 +4168,7 @@ with E2E=1 the built bundle's minified shaders compiling and drawing every look)
 
 **Bundle**: the generators and the realistic geometry builders are pure code in the worker's
 own chunk (`laneRealWorker-*.js`, ~116 kB with G2's cars, clutter and hardware and G3's details,
-~194.1 KiB with the photo-match packages' (W8), no three.js, no imports: under 196 KiB); the renderer side's code that the boot does not need is
+~194.1 KiB with the photo-match packages' (W8), 197.4 KiB with round 2b's P1, no three.js, no imports: under 200 KiB); the renderer side's code that the boot does not need is
 the lazy `realLook` chunk (above: ~47 kB with G1's post chain and G2's weathering and probes, its
 shaders minified since G3; imported by `main` only dynamically, importing only `main`: under 90
 kB; no modulepreload, `build.modulePreload: false`); `main` carries the boot part (R1 +~29 kB,
@@ -5261,18 +5340,18 @@ and every cap; the gzip sizes are printed, not asserted):
 
 | chunk | bytes | gzip -9 | cap |
 |---|---:|---:|---:|
-| main | 1,287,701 | 400 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
+| main | 1,287,819 | 400 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 106,460 | 43 kB | 104 KiB (from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
-| realLook | 51,804 | 18 kB | 60 KiB (from 90; R2-2: the golden hour's split, the cumulus and the environment's warm band, +1.65 kB; its fix round, the fill where the sun falls, the cumulus away from the sun, the direct path's own light, +0.7 kB) |
+| lane | 107,256 | 44 kB | 106 KiB (from 104, round 2b's P1: the classic forest's gilt tops, lobed crowns and far masses behind the bank and round the west end, both looks' west-curve broadleaves, 104.7 KiB; from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
+| realLook | 51,578 | 18 kB | 60 KiB (from 90; R2-2: the golden hour's split, the cumulus and the environment's warm band, +1.65 kB; its fix round, the fill where the sun falls, the cumulus away from the sun, the direct path's own light, +0.7 kB; round 2b's P1, the far tree line's and the edge's spruces' instanced meshes gone, −0.2 kB) |
 | laneBoss | 102,268 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
 | FaceScreen | 29,342 | 11 kB | 35 KiB |
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 199,288 | 82 kB | 196 KiB (from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB (its fix round's fill and direct-path numbers too)) |
+| laneRealWorker | 202,157 | 83 kB | 200 KiB (from 196, round 2b's P1, planned to cover P1-P4: the forest wall (the canopy masses' two rows, the undergrowth), the far canopy's masses, the crowns' gold and lobes, the short lawn's clump, the far tree line's spruces and the edge's second spruce gone with their code, 197.4 KiB; from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB (its fix round's fill and direct-path numbers too)) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

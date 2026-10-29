@@ -104,10 +104,11 @@ export function forestSpots(L) {
 }
 
 // (W8: the road drawn on past the junction as it ran before (straight, 2860 on) decides which
-// spots of the ring and the far tree line are drawn at all, so their trees keep their places; the
+// spots of the ring are drawn at all, so their trees keep their places (P1: the far tree line,
+// which it decided too, gone); the
 // spots on the curve it runs on now, its lay-by, by the veranda house and the far houses are
 // drawn and dropped, as the clear sector's.)
-export function oldDrawn(L) {
+function oldDrawn(L) {
   const [[ax, az], [bx, bz]] = L.ROAD.line;
   const l = Math.hypot(ax - bx, az - bz);
   return [[ax + ((ax - bx) / l) * 2860, az + ((az - bz) / l) * 2860], ...L.ROAD.line];
