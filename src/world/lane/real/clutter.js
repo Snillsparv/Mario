@@ -259,9 +259,8 @@ export function clutter(kit, L, ground) {
       flush(half);
     }
   }
-  // Between the path's stones (P2: on its drawn width).
-  const [d0, d1] = P.drawn;
-  for (let i = 0; i < 18; i++) weed(d0 + 10 + R() * (d1 - d0 - 20), G + 0.5, P.z0 + 40 + R() * (P.z1 - P.z0 - 80), 4 + R() * 4);
+  // Between the path's stones.
+  for (let i = 0; i < 18; i++) weed(P.x0 + 10 + R() * (P.x1 - P.x0 - 20), G + 0.5, P.z0 + 40 + R() * (P.z1 - P.z0 - 80), 4 + R() * 4);
 
   // ---------------------------------------------------------------- the lawns' flowers
   if (!low) {

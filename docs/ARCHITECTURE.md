@@ -1889,8 +1889,8 @@ trees' leaves).
   walking off its ridge onto the main roof); downpipes only where `pipes` lists them (none on the
   main back eave, none against the link). The patio between them (`PATIO`). In the **front
   garden**, on the door's line: the mossy grass-paver path (`DAD_PATH`, x 885 … 1125, from the
-  road's edge to the landing; P2: drawn x 940 … 1125 (`drawn`), the lawn over its west strip in
-  both looks, the realistic blades too, its collider the whole), the pedestal mailbox at its street end on its west side with a
+  road's edge to the landing, paved its whole width: P2 fix, photos 22, 39, 40), the pedestal
+  mailbox at its street end on its west side with a
   rose on three stakes beside it (`ROSE`, drawn only), the **red-leaf bed** east of the path
   (`BED`: a rectangle x 1125 … 1600 from the street's edge back to z 980, its back corners rounded
   r 120, `bedOutline()`, `inBed(x, z)`; raised 6, under the knee from the road; its collider a
@@ -1899,21 +1899,27 @@ trees' leaves).
   the biggest at its north-east corner by the sign's post, `real/plan.js bedStones`, both
   looks; the turning area's sign at that corner: `TURN_SIGN` below), the **red-leaf tree** in its
   middle (`RED_TREE`, (1390, 690): an old crab apple, its grey-brown trunk a climbable pole to
-  440, forking at 260 into six slim stems rising steeply (P2), `real/plan.js redTreeStems`, its
-  sparse vase crown (P2, photos 20, 38, 39: r 460 at its widest, high up, from 380 to 960,
-  `redTreeCrown`'s 18 blobs: a ring narrow low, none within ~100 of the trunk's top, widest
-  high, three over the middle at the top, three drooping at the rim, the lowest (none over the
-  street, where the camera follows him); five-sided in the classic look, like the ivy's and the
-  rose's), in red-browns and an orange, over the street and the eaves, open over the trunk's top
-  where Jonas stands; the flip onto the roof from 640 off the wall), the ivy over the north-east
+  440, forking at 260 into a wide Y of four stems (P2 fix), `real/plan.js redTreeStems`, its
+  rounded crown (P2 fix, photos 20, 38, 39: r 460, to 960, `redTreeCrown`'s 16 overlapping
+  blobs: three over the top, six round its upper middle, seven lower and wider, drooping toward
+  the house and the path (north-west, down to ~215, about 1.4 m: the middle ring lower there and
+  the low ring's blobs bigger); toward the street, where the pole's camera looks from while he
+  holds it or stands on its top (`POLES`: camYaw PI), its underside lifted to `canopy.open` (720),
+  so he is seen whole there (lane.test.js, both cameras: no blob across the view of him); none
+  round the trunk's top; five-sided in the classic look, like the ivy's and the rose's, each blob
+  three lumps inside it, clear of its stem's end on a limb on from it), in red-browns and an orange, over the street and the
+  eaves; the flip onto the roof from 640 off the wall), the ivy over the north-east
   pier from the ground to the gutter and round the corner (`IVY`: its foot on the lawn,
   `real/plan.js ivyMasses`: P2, a dark sheet hugging the pier ~90 deep, fuller at its foot, a lump
   round the corner and a narrower one along the gable, `away` from the walls; drawn only), the
   rhododendron out from the west pier (`RHODODENDRON`: rx 210 along the street, rz 330, P2: 370
-  high, a cone of three lumps, olive, its top out on the lawn so the gutter's rim over the wall
+  high, a cone of three lumps, olive (the classic look's two merged rounded mounds, its own tint
+  `dadRhodo`: south_2's keeps `rhodo`), its top out on the lawn so the gutter's rim over the wall
   stays clear; solid in two steps, deliberately: an eight-sided elliptic prism a little inside
-  its foot to 0.4 of its height and a narrower one to 0.78 (a hop up them and a jump from the top
-  toward the house is a way onto the roof, as the eave's grab is: lane-routes)); the two wheelie bins against the front of the east gable (`BINS`,
+  its foot to 0.4 of its height and a narrower one (0.35 × 0.3 of its radii) to 0.9 (P2 fix: was
+  0.78, and he stood in its leaves to his eyes; now to his knees, under its leaves' crown); a hop
+  up them and a jump from the top toward the house is a way onto the roof, as the eave's grab
+  is: lane-routes); the two wheelie bins against the front of the east gable (`BINS`,
   W4: the photos' four-compartment ones, 120 × 105, solid to 187, near-black blue-grey (the
   realistic look's `street.js BIN_TINT`, in the gable's shade near (17, 25, 34) on every tier as
   in the photos), their lids split, handles and wheels toward the street, 124 apart: they move, see
@@ -3294,15 +3300,19 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   blob stood): the hedges (single cards over their faces and tops), the thujas, the junction's
   trees, the apple tree (apples), the birches (white bark, an airy yellowing canopy), the shrub,
   the dad's red-leaf tree (W3: a grey trunk with lichen on it, P2: a darker grey-brown, 21 at
-  its foot, inside the pole's 28 as a lamppost's post is, forking into six slim bending stems and
-  on up as a slim leader to the pole's top, rounded there, where it forks again into seven thin
-  branches up into the crown (three on low); the trunk, each stem and each of those branches one
+  its foot, inside the pole's 28 as a lamppost's post is, forking into four bending stems and
+  on up as a slim leader to the pole's top, rounded there, where it forks again into three thin
+  branches up into the crown; the trunk, each stem and each of those branches one
   skin (`limb`: rings square to each bend's bisector on one frame carried along it, so no wedge of
   sky shows at a kink; each end rounded off), the bark set's dark brown under a tint and a lichen
   tone per vertex; in the classic look a slim lathe rounded at the pole's top, grey-brown in the
-  render's builder; limbs from the stems into the crown's blobs and fine bent twigs from the
-  limbs, 18 a blob on high, 10 on mid, 3 straight on low; sparse small sprays (P2: 25 across on
-  high, 34 mid, 40 low) of red-brown and orange, no core; the bed a flat carpet of fallen leaves
+  render's builder (its own tint `redBark`: the cherry keeps `redTrunk`); P2 fix: a crooked limb
+  into each of the crown's blobs from along the upper part of the stem nearest it (three
+  pieces, to its middle) and bent twigs from along the limbs out to inside the blob's skin, never
+  past it (12 a blob on high, 7 on mid, 2 straight on low); the leaves all through the crown
+  (inside its blobs, fewer toward its middle, one in three round a twig's end, none round the
+  trunk's top: `RED_LEAVES`, sprays 34 across, 2400 on high; 40, 1100 mid; 56, 420 low) in
+  red-brown and orange, no core (the sky through it); the bed a flat carpet of fallen leaves
   (P2, photo 39: flat cards of whole sprays, russet, brown-red and purple-red with a few green,
   each a hair over the last, 520 on high, 340 mid, 160 low, over the bed's litter) and its low cover:
   a few small crossed tufts, mostly green, their own seeded streams), the rhododendron down to
@@ -4139,22 +4149,32 @@ changed (the trunks and their prisms as they were, the west masses and the far c
   build 43,023 triangles; no collider, draw call, program or texture changed.
 
 **The dad's front garden, round 2b (P2).** The arrival and the door as photos 19-22 and 38-41 have
-them, both looks, every tier: the red-leaf tree a sparse vase of small red-brown and orange sprays
-on six slim stems, thin branches up from the leader and bent limbs (no spokes), its grey-brown
+them, both looks, every tier: the red-leaf tree's red-brown and orange sprays, its grey-brown
 trunk slimmer, the bed under it a flat carpet of fallen leaves (no spiky tufts); the ivy a dark
 sheet over the north-east pier from the ground to the gutter, round the corner and on along the
-gable to the bins; the rhododendron a taller olive cone (370), solid in two steps; the path narrower
-(drawn 185 of its 240, the lawn and its blades over the west strip) and mossy, the concrete grey,
-grass in its joints, no white blotches; the rose on its stakes leafier. Details above, under the
-front garden (`RED_TREE`, `IVY`, `RHODODENDRON`, `DAD_PATH.drawn`) and `foliage.js`.
+gable to the bins; the rhododendron a taller olive cone (370), solid in two steps; the path mossy,
+the concrete grey, no white blotches; the rose on its stakes leafier. Details above, under the
+front garden (`RED_TREE`, `IVY`, `RHODODENDRON`) and `foliage.js`.
+* **Fix round** (after two judges): the red tree's crown a rounded dome, leafy all through on a
+  wide Y of four stems (P2's vase of six slim stems read as a wire frame in the realistic look and
+  a broom in the classic: bare twigs out past its leaves, the leaves in pompoms at their ends, its
+  lower half bare), drooping toward the house, its underside on the street's side lifted over the
+  pole's top (a dome all round hid him there from the pole's camera, on both looks), the classic
+  look's blobs clumps of three lumps on limbs; the rhododendron's top step to 0.9 of its height (he stood in its leaves to
+  his eyes); the path paved its whole 240 again (the photos', the lawn no longer over its west
+  strip) and a yellow-olive grey as bright as the photos' (the pavers' options moss 0.36, olive
+  2.4, slab 0.7, grass 0.2; P2's was greener and half as bright); the classic look's tints for the
+  dad's rhododendron and the red tree's bark their own keys (P2 had recoloured south_2's
+  rhododendron and the cherry's trunk through the shared `rhodo` and `redTrunk`).
 * **Colliders**: only the rhododendron's (deliberately: its two prisms for one; lane-routes walks
   past it and up the link's drive, hops up its steps and from its top onto the roof, and off it);
-  the red tree's pole, the path's (the whole 240, its stone face as it was: the lawn drawn over its
-  strip only), the mailbox's unchanged; the realistic look's colliders still the classic build's.
+  the red tree's pole, the path's, the mailbox's unchanged; the realistic look's colliders still
+  the classic build's.
 * **Streams**: the rhododendron draws from its own stream and steps the plants' shared one on as
   the old lumps took it (`RHODO_SKIP`): the pot, the flower beds and every plant after keep their
-  leaves; the lawn's mask grows on the path's strip and in front of the slimmer ivy, so clutter's
-  plinth weeds and lawn flowers after the dad's front are drawn anew (its shared stream).
+  leaves; the lawn's mask grows in front of the slimmer ivy, so clutter's plinth weeds and lawn
+  flowers after the dad's front are drawn anew (its shared stream; the fix round's path, its
+  mask and its weeds as before P2).
 * **Measured** (E2E, 960 × 540): the five views high 135-147 / 938.7k-954.1k (were 135-147 /
   933-948k), mid 126-134 / 468.3k-474.6k (465-471k), low 88-93 / 204.3k-206.3k (203-206k);
   programs, texture bytes (the path's set the same size) and the skies unchanged (the views' sky
@@ -4166,6 +4186,13 @@ front garden (`RED_TREE`, `IVY`, `RHODODENDRON`, `DAD_PATH.drawn`) and `foliage.
   (+1.9k), low 139.9k (+0.8k); the classic build 43,209 triangles (+186) in its 15 meshes, its
   colliders 3,089 (+22: the second prism). Bytes: lane 107,781 (+502), laneRealWorker 203,564 (+507), main
   1,287,854 (+35): no cap raised.
+* **Measured, the fix round** (E2E, 960 × 540): the five views high 135-147 / 934.2k-949.6k, mid
+  126-134 / 466.6k-472.9k, low 88-93 / 204.2k-206.3k; the fight's worst frame high 158 / 968,342,
+  mid 139 / 484,308, low 96 / 212,140, classic 45 / 53,614 (the crown's lumps: +1.3k); programs,
+  texture bytes and draw calls as P2's. The detail high 403.2k triangles (-2.2k), mid 239.5k
+  (-0.8k), low 139.8k (-0.1k); the classic build 44,551 triangles in its 15 meshes, its colliders
+  3,089 (the rhododendron's top prism narrower, as many). Bytes: lane 108,190 (+409), laneRealWorker
+  203,682 (+118), main 1,287,848 (-6): no cap raised.
 
 **Tests**: `tests/real-tier.test.js` (the device guess, the render size's cap, the tiers' near
 and far shadows and post chains, the governor's ladder (the post chain's steps first) and its

@@ -19,7 +19,7 @@
 //   bedStones(L) -> [{ x, y, z, s, k, a, pink }]   // the dad's red-leaf bed's field stones (below)
 //   redTreeStems(T) -> [[x, y, z, w]]        // the red-leaf tree's stems (layout RED_TREE): from its
 //                                            // fork out to each end, w thick (both looks)
-//   redTreeCrown(T) -> [{ c, r }]            // its crown's blobs (middle, radii), sparse
+//   redTreeCrown(T) -> [{ c, r }]            // its crown's blobs (middle, radii): a dome
 //   ivyMasses(L) -> [{ c, r, away? }]        // the ivy's masses (layout IVY; away: the wall)
 //   climberMasses(L) -> [{ c, r }]           // the climber up the gable's back corner (CLIMBER)
 //   chainFaces(h) -> [face]                  // a chain house's drawn faces (a wing's joined end
@@ -319,28 +319,36 @@ export function bedStones(L) {
 }
 
 export function redTreeStems(T) {
-  // Stems leaning out from the fork, each [x, y, z, w] at its end, spread round the trunk (none
-  // straight over its top). (P2, photos 20, 38, 39: six slim ones rising steeply into a vase.)
+  // Four stems leaning out from the fork, each [x, y, z, w] at its end, spread round the trunk
+  // (none straight over its top): a wide Y of four up into the crown's middle (P2 fix, photos
+  // 20, 38, 39), the one toward the street the shortest.
   const C = T.canopy;
-  return [[0.45, 0.42, 700, 12], [1.5, 0.38, 660, 10.5], [2.6, 0.45, 720, 11.5], [3.7, 0.36, 640, 10], [4.8, 0.44, 690, 11], [5.7, 0.33, 740, 9.5]].map(([a, out, y, w]) => [T.x + Math.sin(a) * C.r * out, y, T.z + Math.cos(a) * C.r * out, w]);
+  return [[0.6, 0.5, 610, 15], [2.2, 0.48, 590, 14], [-0.9, 0.55, 620, 15], [3.7, 0.4, 600, 13]].map(([a, out, y, w]) => [T.x + Math.sin(a) * C.r * out, y, T.z + Math.cos(a) * C.r * out, w]);
 }
 
 export function redTreeCrown(T) {
-  // Small blobs (P2, photos 20, 38, 39): a ring narrow low and widest high, three over the middle
-  // at the top and three drooping at the rim, the lowest (none within ~100 of the trunk's top, none
-  // over the street).
+  // A rounded, irregular dome of overlapping blobs (P2 fix, photos 20, 38, 39): three over the
+  // top, six round its upper middle, seven lower and wider, those lowest toward the house and the
+  // path (north-west, photo 20: down to about 1.3 m); toward the street, where the pole's camera
+  // looks from while he holds it or stands on its top (layout POLES: camYaw PI), its underside
+  // lifted to C.open, clear over him there; none round the trunk's top.
   const C = T.canopy;
   const R = makeRng(4517);
   const out = [];
-  for (let i = 0; i < 18; i++) {
-    const [top, rim] = [i > 11 && i < 15, i > 14];
-    const u = top ? 1 : rim ? 0 : i / 11;
-    const a = (rim ? (i - 16) * 1.5 : i * 2.39996) + R() * 0.5; // (the rim's west, toward the house and east: none low over the street, where the camera follows him)
-    const r = C.r * (0.16 + 0.06 * u + 0.06 * R());
-    const ry = r * (0.55 + 0.2 * R());
-    const d = C.r * (top ? 0.12 + 0.2 * R() : rim ? 0.9 + 0.1 * R() : (0.48 + 0.48 * u ** 0.7) * (0.9 + 0.12 * R()));
-    const y = C.y0 + ry + (C.y1 - C.y0 - 2 * ry) * (top ? 0.97 : rim ? 0.04 * R() : 0.1 + 0.8 * u + 0.03 * R());
-    out.push({ c: [T.x + Math.sin(a) * d, y, T.z + Math.cos(a) * d], r: [r, ry, r] });
+  for (let i = 0; i < 16; i++) {
+    const [ring, k, n] = i < 3 ? [0, i, 3] : i < 9 ? [1, i - 3, 6] : [2, i - 9, 7];
+    const a = ((k + R() * 0.4) / n) * Math.PI * 2 + ring;
+    const r = C.r * [0.4, 0.36, 0.3][ring] * (0.9 + 0.2 * R());
+    const d = C.r * [0.22, 0.52, 0.76][ring] * (0.92 + 0.16 * R());
+    // (Toward the north-west the middle ring lower and the low ring's blobs bigger, from lower
+    // down up to the middle ring's: a drooping side.)
+    const low = ring ? Math.max(0, Math.cos(a + Math.PI / 4)) : 0;
+    const ry = r * (0.62 + 0.12 * R()) * (ring === 2 ? 1 + 0.7 * low : 1);
+    const y = [C.y1 - ry, C.y1 - 120 - ry - 120 * low, C.y0 + ry + 200 - 300 * low][ring];
+    // (The street's side: fully within 25 degrees of it, none past 53.)
+    const s = Math.min(1, Math.max(0, (-Math.cos(a) - 0.6) / 0.3));
+    const rx = ring === 2 ? r * (1 + 0.25 * low) : r;
+    out.push({ c: [T.x + Math.sin(a) * d, y + s * Math.max(0, C.open + ry - y), T.z + Math.cos(a) * d], r: [rx, ry, rx] });
   }
   return out;
 }

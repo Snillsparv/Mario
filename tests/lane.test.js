@@ -30,6 +30,7 @@ import { AREA_DEFS } from '../src/world/areas.js';
 import * as lane from '../src/world/lane/layout.js';
 import { hipOf, wallDrawnAt } from '../src/world/lane/facades.js';
 import { FORECOURT_WALL, GARDEN_THINGS, LINE_HEDGES } from '../src/world/lane/ends.js';
+import { redTreeCrown } from '../src/world/lane/real/plan.js';
 import { Player } from '../src/player/Player.js';
 import { ScriptedController } from '../src/player/physics/testCourse.js';
 import { CameraController } from '../src/camera/CameraController.js';
@@ -707,6 +708,47 @@ for (const [label, prof] of CAMERAS) {
       if (sides < 2) problems.push(`(${P.x}, ${P.z}): ${sides} open sides`);
     }
     assert.deepEqual(problems, []);
+  }));
+}
+
+for (const [label, prof] of CAMERAS) {
+  test('the red-leaf tree (P2 fix): climbed from the street to its top, Jonas is seen whole from the pole\'s camera, no blob of its crown across the view of him (the crown\'s underside lifted over him on the street\'s side)' + label, withCamera(prof, () => {
+    const T = lane.RED_TREE;
+    const blobs = redTreeCrown(T);
+    // (Each blob whole: the realistic look's leaves fill it, the classic look's three lumps
+    // stand inside it; the realistic look's hero 0.85 of the size.)
+    const tall = prof ? 0.85 : 1;
+    const { p, ctl, at } = hero(T.x, GROUND, T.z - 300, 0);
+    const cam = camera(p);
+    const tick = (input) => {
+      const c = ctl.next(input);
+      p.update(cam.playerInput(c), cam.getYaw());
+      cam.update(c, p);
+    };
+    for (let k = 0; k < 200 && p.action !== 'pole'; k++) {
+      const q = at();
+      tick({ ...toward(cam, Math.atan2(T.x - q.x, T.z - q.z)), A: Math.hypot(q.x - T.x, q.z - T.z) < 130 && p.grounded });
+    }
+    assert.equal(p.action, 'pole');
+    for (let k = 0; k < 400 && p.action !== 'pole_top'; k++) tick({ stickY: 1 });
+    assert.equal(p.action, 'pole_top');
+    const hidden = new Set();
+    for (let k = 0; k < 150; k++) {
+      tick({});
+      if (k % 10) continue;
+      const c = local(cam.pos);
+      for (const h of [10, 80, 140, 185]) {
+        const e = [T.x, T.y1 + h * tall, T.z];
+        for (let i = 0; i <= 100; i++) {
+          const t = i / 100;
+          const q = [c.x + (e[0] - c.x) * t, c.y + (e[1] - c.y) * t, c.z + (e[2] - c.z) * t];
+          blobs.forEach((b, j) => {
+            if (Math.hypot((q[0] - b.c[0]) / b.r[0], (q[1] - b.c[1]) / b.r[1], (q[2] - b.c[2]) / b.r[2]) < 1) hidden.add(`blob ${j} over his ${h}`);
+          });
+        }
+      }
+    }
+    assert.deepEqual([...hidden], []);
   }));
 }
 

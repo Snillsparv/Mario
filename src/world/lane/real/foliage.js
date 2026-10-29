@@ -844,15 +844,17 @@ function limb(g, pts, rs, sides, { tip = false, tone = null } = {}) {
 }
 
 // The dad's red-leaf tree in the middle of the bed (W3: an old crab apple): its grey-brown trunk
-// with lichen on it (the climbable pole) forking into slim stems leaning out and up and on up as a
-// slim leader to the pole's top, where Jonas stands, rounded off there, thin branches up from it,
-// limbs from the stems up into the crown and fine twigs out through it; a sparse vase crown of
-// small red-brown and orange sprays (P2, photos 20, 38, 39: the sky through it; open over the
-// trunk's top). Its own streams (the plants' R stepped on as before, so every plant after it keeps
-// its place).
-// (The crown's sprays per tier: their size, their density over the blobs' skins.)
-const RED_TREE_CARDS = { high: [25, 0.85], mid: [34, 0.62], low: [40, 0.3] };
-const TWIGS = { high: 18, mid: 10, low: 3 };
+// with lichen on it (the climbable pole) forking into four stems leaning out and up and on up as a
+// slim leader to the pole's top, where Jonas stands, rounded off there, three thin branches up
+// from it; from each stem crooked limbs out into the crown's blobs nearest it and from each limb
+// twigs bending out to inside the blob's skin, never past it; the leaves, small red-brown and
+// orange sprays, all through the crown, more toward its outside and round the twigs' ends, none
+// round the trunk's top (P2 fix, photos 20, 38, 39: a rounded crown leafy all through, the sky
+// through it, no bare twigs out past it). Its own streams (the plants' R stepped on as before, so
+// every plant after it keeps its place).
+// (Per tier: the sprays' size and how many; the twigs a limb.)
+const RED_LEAVES = { high: [34, 2400], mid: [40, 1100], low: [56, 420] };
+const TWIGS = { high: 12, mid: 7, low: 2 };
 const FALLEN = { high: 520, mid: 340, low: 160 }; // (the bed's flat cards)
 const RED_TINTS = [[0.75, 2.6, 2.0], [0.6, 1.9, 1.6], [1.0, 3.6, 1.9], [0.85, 2.2, 1.9]];
 function redTree(kit, R, L) {
@@ -871,72 +873,78 @@ function redTree(kit, R, L) {
   // one stem among the others) to the pole's top, where Jonas stands, rounded off there: one skin.
   const top = [T.x + 2, T.trunkTop + 20, T.z + 4];
   limb(kit.bark, [[T.x, bedTop - 4, T.z], [T.x - 3, bedTop + 50, T.z + 2], [T.x + 3, G + 170, T.z - 3], fork, [T.x + 6, fork[1] + 40, T.z - 3], [T.x + 3, G + 370, T.z + 2], top], [21, 18, 16.5, 16, 11, 9.5, 8.5], sides, { tip: true, tone: lichen });
-  // Stems leaning out from inside the fork, each bending up toward its end (a little crooked) in
-  // one skin, its end rounded; a side branch off each out toward the crown's rim.
-  const ends = redTreeStems(T);
-  const rims = [];
+  // The stems leaning out from inside the fork, each bending up toward its end (a little
+  // crooked) in one skin, its end rounded.
+  const stems = [];
   const inside = [fork[0], fork[1] - 18, fork[2]];
-  for (const [x, y, z, w] of ends) {
+  for (const [x, y, z, w] of redTreeStems(T)) {
     const at = (t, lift) => [fork[0] + (x - fork[0]) * t + (S() - 0.5) * 24, fork[1] + (y - fork[1]) * (t * t * 0.6 + t * 0.4) - lift, fork[2] + (z - fork[2]) * t + (S() - 0.5) * 24];
     const [a, b] = [at(0.35, 10), at(0.7, 14)];
     limb(kit.bark, [inside, a, b, [x, y, z]], [w * 0.72, w * 0.6, w * 0.48, w * 0.4], fine ? 6 : 5, { tip: true, tone: lichen });
-    const out = [x - T.x, z - T.z];
-    const l = Math.hypot(out[0], out[1]);
-    const turn = (S() - 0.5) * 1.4;
-    const [ox, oz] = [(out[0] * Math.cos(turn) - out[1] * Math.sin(turn)) / l, (out[0] * Math.sin(turn) + out[1] * Math.cos(turn)) / l];
-    const tip = [b[0] + ox * T.canopy.r * 0.5, b[1] + 90 + S() * 80, b[2] + oz * T.canopy.r * 0.5];
-    const bend = [(b[0] + tip[0]) / 2 + (S() - 0.5) * 40, (b[1] + tip[1]) / 2 + 30, (b[2] + tip[2]) / 2 + (S() - 0.5) * 40];
-    kit.bark.tube(b, bend, w * 0.3, w * 0.18, 5);
-    kit.bark.tube(bend, tip, w * 0.18, 1.5, 5);
-    rims.push(tip);
+    stems.push({ b, e: [x, y, z], w });
   }
-  // (Thin branches from the leader's top up and out between the stems, bending as they go: the
-  // leader forks again there, not a sawn stub with spikes.)
-  for (let k = 0; k < (fine ? 7 : 3); k++) {
-    const a = k * (fine ? 0.9 : 2.1) + S();
+  // (Three thin branches from the leader's top up and out between the stems, bending as they go:
+  // the leader forks again there, not a sawn stub with spikes.)
+  for (let k = 0; k < 3; k++) {
+    const a = k * 2.1 + S();
     const lift = S();
     const [dx, dz] = [Math.sin(a), Math.cos(a)];
     const p0 = [top[0], top[1] - 14, top[2]];
-    limb(kit.bark, [p0, [p0[0] + dx * 60, p0[1] + 90, p0[2] + dz * 60], [p0[0] + dx * (130 + lift * 60), p0[1] + 220 + lift * 90, p0[2] + dz * (130 + lift * 60)]], [5, 3.5, 1.8], fine ? 5 : 4, { tip: true, tone: lichen });
+    limb(kit.bark, [p0, [p0[0] + dx * 60, p0[1] + 90, p0[2] + dz * 60], [p0[0] + dx * (150 + lift * 60), p0[1] + 200 + lift * 70, p0[2] + dz * (150 + lift * 60)]], [5, 3.5, 1.8], fine ? 5 : 4, { tip: true, tone: lichen });
   }
-  // Limbs from each stem's end up and out into the blobs nearest it, twigs out through each blob.
+  // A limb into each blob from along the upper part of the stem nearest it, crooked in three
+  // pieces, to its middle; twigs from along the limb bending out to inside its skin.
   const blobs = redTreeCrown(T);
+  const C = T.canopy;
+  const mix = (p, q, t, j = 0, up = 0) => [p[0] + (q[0] - p[0]) * t + (S() - 0.5) * j, p[1] + (q[1] - p[1]) * t + up, p[2] + (q[2] - p[2]) * t + (S() - 0.5) * j];
+  const ends = [];
   for (const b of blobs) {
-    let best = ends[0];
-    for (const t of ends) if (Math.hypot(t[0] - b.c[0], t[2] - b.c[2]) + Math.abs(t[1] - b.c[1]) < Math.hypot(best[0] - b.c[0], best[2] - b.c[2]) + Math.abs(best[1] - b.c[1])) best = t;
-    const [x, y, z, w] = best;
-    // (P2: bent once, so the limbs sharing a stem's end fan out crooked, not as spokes.)
-    const mid = [(x + b.c[0]) / 2 + (S() - 0.5) * 60, (y + b.c[1]) / 2 + 20 + S() * 30, (z + b.c[2]) / 2 + (S() - 0.5) * 60];
-    kit.bark.tube([x, y, z], mid, w * 0.3, w * 0.2, fine ? 5 : 4);
-    kit.bark.tube(mid, b.c, w * 0.2, 2, fine ? 5 : 4);
-    // (Each twig from a point along the limb, in two pieces, bent, out past the blob's skin
-    // round it: a fine mesh, not spokes; on low straight.)
+    const gap = (s) => Math.hypot(s.e[0] - b.c[0], s.e[2] - b.c[2]) + Math.abs(s.e[1] - b.c[1]);
+    const st = stems.reduce((m, s) => (gap(s) < gap(m) ? s : m));
+    const p0 = mix(st.b, st.e, 0.5 + 0.5 * S());
+    const pts = [p0, mix(p0, b.c, 0.35, 50, 25), mix(p0, b.c, 0.7, 50, 15), b.c];
+    const rs = [st.w * 0.34, st.w * 0.26, st.w * 0.17, 2];
+    for (let k = 0; k < 3; k++) kit.bark.tube(pts[k], pts[k + 1], rs[k], rs[k + 1], fine ? 5 : 4);
     for (let k = 0; k < (TWIGS[kit.tier] ?? TWIGS.high); k++) {
-      const t = 0.35 + 0.65 * S();
-      const [e, f, g] = t < 0.5 ? [[x, y, z], mid, t * 2] : [mid, b.c, t * 2 - 1];
-      const p0 = [e[0] + (f[0] - e[0]) * g, e[1] + (f[1] - e[1]) * g, e[2] + (f[2] - e[2]) * g];
-      const a = S() * Math.PI * 2;
-      const up = (S() - 0.35) * 1.3;
-      const reach = 0.7 + 0.5 * S();
-      const q = [b.c[0] + Math.sin(a) * b.r[0] * reach * Math.cos(up), b.c[1] + Math.sin(up) * b.r[1] * reach, b.c[2] + Math.cos(a) * b.r[2] * reach * Math.cos(up)];
-      const m = [(p0[0] + q[0]) / 2 + (S() - 0.5) * 34, (p0[1] + q[1]) / 2 + 6 + S() * 16, (p0[2] + q[2]) / 2 + (S() - 0.5) * 34];
-      if (!fine) {
-        kit.bark.tube(p0, q, 1.5, 0.4, 3);
-        continue;
-      }
-      kit.bark.tube(p0, m, 1.4, 0.8, 3);
-      kit.bark.tube(m, q, 0.8, 0.3, 3);
+      const t = 1 + 2 * S();
+      const i = Math.min(2, Math.floor(t));
+      const p = mix(pts[i], pts[i + 1], t - i);
+      let d;
+      do d = [S() * 2 - 1, S() * 2 - 1, S() * 2 - 1];
+      while (dot(d, d) > 1 || d[1] < -0.5);
+      // (Short, out from the crown's middle and up a little: a fine mesh round its outside, no
+      // spokes; held inside the blob.)
+      d = norm(add(norm(d), norm(sub(p, [T.x, C.y0, T.z]))));
+      let q = add(p, mul(d, 60 + 100 * S()));
+      const f = Math.hypot((q[0] - b.c[0]) / b.r[0], (q[1] - b.c[1]) / b.r[1], (q[2] - b.c[2]) / b.r[2]);
+      if (f > 0.92) q = add(b.c, mul(sub(q, b.c), 0.92 / f));
+      const m = mix(p, q, 0.5, 24, 4 + S() * 8);
+      if (fine) {
+        kit.bark.tube(p, m, 1.4, 0.8, 3);
+        kit.bark.tube(m, q, 0.8, 0.3, 3);
+      } else kit.bark.tube(p, q, 1.5, 0.4, 3);
+      ends.push(q);
     }
   }
-  // The crown: sparse sprays on each blob's skin (no core: the light shows through), red-brown
-  // and orange over the atlas's dark red sprays.
-  const [size, density] = RED_TREE_CARDS[kit.tier] ?? RED_TREE_CARDS.high;
-  for (const b of blobs) {
-    const count = Math.round(((areaOf([b]) / (size * size)) * density) / (CLUSTERS[kit.tier] ?? 1));
-    shell(kit, S, { c: b.c, r: b.r, count, size, cell: CELL.red, tints: RED_TINTS, below: -0.6, outside: blobs.filter((o) => o !== b), sway: 5, core: null });
+  // The leaves: sprays all through the crown (inside its blobs), fewer toward its middle, one in
+  // three round a twig's end; none round the trunk's top, where Jonas stands.
+  const [size, n] = RED_LEAVES[kit.tier] ?? RED_LEAVES.high;
+  const [lo, hi] = blobs.reduce(([l, h], b) => [Math.min(l, b.c[1] - b.r[1]), Math.max(h, b.c[1] + b.r[1])], [Infinity, -Infinity]);
+  const O = [T.x, (lo + hi) / 2, T.z];
+  const E = [C.r + 70, (hi - lo) / 2 + 20, C.r + 70];
+  for (let placed = 0, tries = 0; placed < n && tries < n * 40; tries++) {
+    const p = placed % 3 ? O.map((o, k) => o + (S() * 2 - 1) * E[k]) : ends[Math.floor(S() * ends.length)].map((v) => v + (S() - 0.5) * 70);
+    if (!blobs.some((b) => ((p[0] - b.c[0]) / b.r[0]) ** 2 + ((p[1] - b.c[1]) / b.r[1]) ** 2 + ((p[2] - b.c[2]) / b.r[2]) ** 2 < 1)) continue;
+    if (Math.hypot(p[0] - T.x, (p[1] - T.y1 - 90) * 1.3, p[2] - T.z) < 190) continue;
+    const e = Math.hypot((p[0] - O[0]) / E[0], (p[1] - O[1]) / E[1], (p[2] - O[2]) / E[2]);
+    if (e < 0.55 && S() > 0.35) continue;
+    const d = norm(sub(p, [O[0], O[1] - 120, O[2]]));
+    const t = RED_TINTS[Math.floor(S() * RED_TINTS.length)];
+    const k = (0.6 + 0.4 * Math.min(1, e)) * (0.74 + 0.26 * (d[1] * 0.5 + 0.5)) * (0.85 + 0.3 * S());
+    kit.foliage.rgb(t[0] * k, t[1] * k, t[2] * k);
+    cluster(kit.foliage, S, p, d, size * (0.75 + 0.5 * S()), CELL.red, 5);
+    placed++;
   }
-  // (A few sprays out at the side branches' tips, past the blobs.)
-  for (const t of rims) shell(kit, S, { c: t, r: [70, 45, 70], count: Math.round((kit.tier === 'low' ? 6 : 14) / (CLUSTERS[kit.tier] ?? 1)), size, cell: CELL.red, tints: RED_TINTS, below: -0.6, sway: 5, core: null });
   // The bed (P2, photo 39): a flat carpet of fallen leaves over its litter, thickest under the
   // crown: flat cards of the atlas's sprays (a whole red cell each, a few of the hedge's green:
   // the low cover), russet, brown-red and purple-red, each a hair over the last (no fighting).

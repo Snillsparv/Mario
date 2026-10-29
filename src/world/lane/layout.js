@@ -565,7 +565,7 @@ export const SOUTH_2_WING = SOUTH_2_WINGS[1];
 // `top`), the car charger near the gable's back corner (DAD.charger) under its lamp (GABLE_LAMPS),
 // a climber up the corner (CLIMBER: drawn only); behind the house between the wings a patio of
 // grey slabs. The link's own short drive in front of its garage door.
-export const DAD_PATH = { x0: 885, x1: 1125, z0: SOUTH_EDGE, z1: LANDING.z0, drawn: [940, 1125] }; // (P2, photos 21, 39, 40: drawn narrower, the lawn over its west strip, the bed's stones at its east edge; its collider the whole)
+export const DAD_PATH = { x0: 885, x1: 1125, z0: SOUTH_EDGE, z1: LANDING.z0 }; // (P2 fix, photos 22, 39, 40: paved its whole width, from the mailbox's side to the bed's stones)
 // The bed: a rectangle x0..x1 from the street's edge (z0) back to z1, its back corners rounded
 // (r), its soil `raise` over the lawn (under the knee: walked onto from the road), field stones
 // along all four edges (real/plan.js bedStones).
@@ -586,11 +586,13 @@ export const inBed = (x, z) => {
   const cx = Math.min(Math.max(x, x0 + r), x1 - r);
   return z <= z1 - r || Math.hypot(x - cx, z - (z1 - r)) <= r;
 };
-// The red-leaf tree (an old crab apple): its trunk forking at `fork` into leaning stems, a sparse
-// vase crown (canopy: r at its widest, high up, from y0 to y1; P2, photos 20, 38, 39: narrow low,
-// open over the trunk's top) reaching over the street and the eaves; its trunk the climbable pole
-// up to y1 (a flip from its top toward the house lands on the roof).
-export const RED_TREE = { x: 1390, z: 690, y0: GROUND, y1: 440, radius: 28, trunkTop: 420, fork: 260, canopy: { r: 460, y0: 380, y1: 960 } };
+// The red-leaf tree (an old crab apple): its trunk forking at `fork` into four leaning stems, a
+// rounded crown (canopy: r, from y0, lower toward the house and the path, to y1; P2 fix, photos
+// 20, 38, 39: leafy all through, open over the trunk's top; its underside toward the street, where
+// the pole's camera looks from, at `open`, over him on its top) reaching over the street and the
+// eaves; its trunk the climbable pole up to y1 (a flip from its top toward the house lands on the
+// roof).
+export const RED_TREE = { x: 1390, z: 690, y0: GROUND, y1: 440, radius: 28, trunkTop: 420, fork: 260, canopy: { r: 460, y0: 300, y1: 960, open: 720 } };
 // The turning area's sign at the bed's corner by the asphalt, facing the street's way in (west):
 // a grey post (solid, `collider` round) carrying a yellow plate with a red rim (`plate`: w by h,
 // its foot at y0), "Vänd-" over "plats" on it in black and under them the round no-parking sign

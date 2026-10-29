@@ -29,7 +29,7 @@ const PINNED = {
     'boards:{}': '7e263730eff300d0',
     'tiles:{}': '45d44a788bada083',
     'pavers:{"cols":16,"seed":73,"setts":0.4}': 'ea3bb603bba6a7d7', // (W6: the villas' drives' granite setts in arcs, a new option: every other set's bytes unchanged; the old cobbles' were 7af87ac8440e7746)
-    'pavers:{"grass":0.8,"moss":0.32,"olive":1.6,"slab":0.6}': '0ec61d9dceef49cc', // (W3: the dad's path mossed over, olive; the plain set's bytes unchanged: 8c283e6c89994825. P2, photos 22, 39, 40: mossier and yellower, its bare concrete toned down and grass in its joints by two new options, `slab` and `grass`: every other set's bytes unchanged (W3's path set's still e39383ae37fa23f7), so TEXGEN_VERSION stays: a new key, nothing cached under it)
+    'pavers:{"grass":0.2,"moss":0.36,"olive":2.4,"slab":0.7}': 'c8cf119ffb9f6a85', // (W3: the dad's path mossed over, olive; the plain set's bytes unchanged: 8c283e6c89994825. P2, photos 22, 39, 40: mossier and yellower, its bare concrete toned down and grass in its joints by two new options, `slab` and `grass`: every other set's bytes unchanged (W3's path set's still e39383ae37fa23f7), so TEXGEN_VERSION stays: a new key, nothing cached under it; P2 fix: a yellow-olive moss, the joints' grass faint, new values of those options: again a new key)
     'tiles:{"relief":0}': '880063751491c992',
     'granite:{"fine":1}': 'f4976a1725f5f61a', // (W7: the kerbs' light fine-grained granite, a new option: every other set's bytes unchanged; the plain set's were 2e69c35083fd3dbd)
     'bark:{}': '98e8c8d71d224033',

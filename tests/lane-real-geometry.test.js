@@ -302,9 +302,8 @@ test('the grass\'s mask: blades on the lawns and the gardens (at their height), 
     return [m.data[(j * m.width + i) * 4], m.data[(j * m.width + i) * 4 + 1] * 4];
   };
   const { DAD, SOUTH_EDGE, HEDGES, PLOTS_N, APRON, wallZAt } = lane;
-  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [lane.DAD_PATH.x0 + 15, 800], [1450, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [5480, 1900]]; // (W5: south_2's front a gravel garden, W5 fix: slabs east of its path too: the lawn past its east end)
-  // (P2: the blades over the dad's path's west strip, the lawn drawn there, and up to the ivy's
-  // foot in front of the north-east pier.)
+  const lawns = [[DAD.x0 + 360, SOUTH_EDGE + 150], [600, 1050], [400, 1150], [1450, 1150], [-2500, HEDGES[0].z1 + 200], [(PLOTS_N[1].steps[1] + PLOTS_N[1].x1) / 2, -1000], [(PLOTS_N[2].steps[1] + PLOTS_N[2].x1) / 2, -1000], [2000, -1100], [-2000, 3000], [5480, 1900]]; // (W5: south_2's front a gravel garden, W5 fix: slabs east of its path too: the lawn past its east end)
+  // (P2: the blades up to the ivy's foot in front of the north-east pier.)
   for (const [x, z] of lawns) {
     const [grow, y] = at(x, z);
     assert.equal(grow, 255, `a lawn at ${x}, ${z}`);
@@ -398,7 +397,7 @@ test('the cars stand on their wheels inside their colliders; the bird stands on 
   assert.equal(bins.kerb, 0, 'no kerb along the bed');
 });
 
-test('the red-leaf tree (W3 fix): its trunk pale (a light tint over the bark set\'s dark brown) and inside the pole up to the fork, as a lamppost\'s post is; its leader rounded off at the pole\'s top, where Jonas stands, nothing over it there (P2: the crown\'s twigs cross over it high up)', () => {
+test('the red-leaf tree (W3 fix): its trunk a light tint over the bark set\'s dark brown (P2: grey-brown) and inside the pole up to the fork, as a lamppost\'s post is; its leader rounded off at the pole\'s top, where Jonas stands, nothing over it there (P2: the crown\'s twigs cross over it high up)', () => {
   const T = lane.RED_TREE;
   for (const [tier, d] of [['high', high], ['low', low]]) {
     const { position: p, color: c } = mesh(d, 'bark');
@@ -411,8 +410,8 @@ test('the red-leaf tree (W3 fix): its trunk pale (a light tint over the bark set
         wide = Math.max(wide, r);
         if (p[i + 1] < lane.GROUND + 20) foot = Math.max(foot, r);
       }
-      // (P2: the vase crown's twigs, ~400 over it, cross over the axis: the 250 over the pole's
-      // top, where Jonas stands, flips and turns the camera, clear.)
+      // (P2: the crown's limbs and twigs, 250 and more over it, cross over the axis: the 250 over
+      // the pole's top, where Jonas stands, flips and turns the camera, clear.)
       if (r < 16 && p[i + 1] < T.y1 + 250) top = Math.max(top, p[i + 1]);
     }
     assert.ok(n > 0 && wide <= T.radius, `${tier}: the trunk within the pole's ${T.radius} (${wide.toFixed(1)})`);

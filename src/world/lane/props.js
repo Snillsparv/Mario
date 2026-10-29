@@ -72,7 +72,8 @@ const TINT = {
   bin: 0x1d2839, // (the photos' near-black blue-grey: W4)
   hedge: 0x9a9040, // (over the green leaf texture: an olive, W1)
   thuja: 0x5e5a30,
-  rhodo: 0x4e5a34, // (P2: an olive green, photos 19, 41)
+  rhodo: 0x34522a,
+  dadRhodo: 0x4e5a34, // (the dad's: an olive green, P2, photos 19, 41; south_2's keeps its own)
   canopy: 0x5f8a34,
   apple: 0x6a9a3a,
   fruit: 0xc8342a,
@@ -95,7 +96,8 @@ const TINT = {
   shrub: [0xa83030, 0x8a2a2c],
   litter: 0x8a6c5c, // russet leaves fallen in the bed (W3: brown, not red)
   trunk: 0x6a5444,
-  redTrunk: 0x847a70, // (the red-leaf tree's grey-brown bark, over the render texture: W3 fix, P2 darker)
+  redTrunk: 0x948a80, // (the cherry's pale grey bark, over the render texture)
+  redBark: 0x847a70, // (the red-leaf tree's grey-brown bark, over the render texture: W3 fix, P2 darker)
   stones: 0xa8a49c,
   kerb: 0xb8b2a8, // (south_2's flush concrete edging: build.js's kerbs' light grey, W5 fix)
   pinkStone: 0xb89a8e, // (the corner bed's pinkish granite field stones)
@@ -692,40 +694,57 @@ function dadsGarden(kit, layout) {
     const [x2, z2] = outline[(i + 1) % outline.length];
     return [[x, GROUND - 10, z], [x2, GROUND - 10, z2], [x2, bedTop, z2], [x, bedTop, z]];
   })], 'grass');
-  // The tree: the trunk, its four stems from the fork leaning out and up into the crown, a
-  // branch off each.
+  // The tree: the trunk, its four stems from the fork leaning out and up into the crown, limbs
+  // off them.
   // (Its pale grey bark in the render's builder: the wood texture's browns under any tint read
   // dark brown.)
   const C = T.canopy;
-  crown.color(TINT.redTrunk);
+  crown.color(TINT.redBark);
   // (Slim, about 21 at the foot inside the pole's 28; rounded off at the pole's top, where Jonas
   // stands: W3 fix, P2 slimmer.)
   crown.lathe(T.x, T.z, [[T.radius - 7, bedTop - 4], [T.radius - 10, bedTop + 60], [T.radius - 16, T.trunkTop], [7, T.trunkTop + 15], [0, T.y1]], 7, { flat: true });
-  for (const [x, y, z, w] of redTreeStems(T)) {
-    const l = Math.hypot(x - T.x, z - T.z);
-    crown.solid(beamPolys([T.x, GROUND + T.fork, T.z], [x, y, z], [(z - T.z) / l, 0, (T.x - x) / l], w, w));
+  const stems = redTreeStems(T);
+  const fork = [T.x, GROUND + T.fork, T.z];
+  const beam = (p, q, w) => {
+    const l = Math.hypot(q[0] - p[0], q[2] - p[2]);
+    crown.solid(beamPolys(p, q, [(q[2] - p[2]) / l, 0, (p[0] - q[0]) / l], w, w));
+  };
+  for (const [x, y, z, w] of stems) beam(fork, [x, y, z], w);
+  // The crown: a rounded dome of blobs over the stems (P2 fix), each clear of the stem nearest
+  // it on a limb on from its end (none floats), each drawn as three lumps inside it (a clumpy
+  // crown, the sky between), in red-browns and an orange, darker underneath; five-sided, like
+  // the ivy's and the rose's (the classic look's few hundred triangles for the garden).
+  const blobs = redTreeCrown(T);
+  for (const { c, r } of blobs) {
+    const gap = ([x, y, z]) => Math.hypot((x - c[0]) / r[0], (y - c[1]) / r[1], (z - c[2]) / r[2]);
+    const [x, y, z, w] = stems.reduce((m, s) => (gap(s) < gap(m) ? s : m));
+    if (gap([x, y, z]) > 0.8) beam([x, y, z], c, w * 0.5);
   }
-  // The crown: small blobs in a vase over the stems (gaps between them: it is sparse), in
-  // red-browns and an orange, darker underneath; five-sided, like the ivy's and the rose's (the
-  // classic look's few hundred triangles for the garden).
   crown.shade = (px, y) => 0.62 + 0.42 * Math.min(1, Math.max(0, (y - C.y0) / (C.y1 - C.y0)));
-  redTreeCrown(T).forEach(({ c, r }, i) => {
+  blobs.forEach(({ c, r }, i) => {
     crown.color(TINT.redLeaf[i % TINT.redLeaf.length], 0.92 + (i % 3) * 0.06);
-    blob(crown, c[0], c[2], c[1], r[0] * 0.8, r[1] * 0.85, i * 2.1, 5);
+    blob(crown, c[0], c[2], c[1], r[0] * 0.62, r[1] * 0.72, i * 2.1, 5);
+    const a = Math.atan2(c[0] - T.x, c[2] - T.z);
+    for (const k of [-1, 1]) {
+      const b = a + k * (0.9 + 0.15 * (i % 3));
+      crown.color(TINT.redLeaf[(i + k + 3) % TINT.redLeaf.length], 0.92 + ((i + 1) % 3) * 0.06);
+      blob(crown, c[0] + Math.sin(b) * r[0] * 0.45, c[2] + Math.cos(b) * r[0] * 0.45, c[1] + k * r[1] * 0.15, r[0] * 0.45, r[1] * 0.55, i * 1.3 + k, 5);
+    }
   });
   crown.shade = null;
-  // The rhododendron (P2, photos 19, 41): two cones along it (it is longer across the lawn), an
-  // olive green, solid in two steps (eight-sided prisms a little inside it: the wide foot to 0.4
-  // of its height, the top's narrower one to 0.78, the gutter's rim clear over the wall).
-  leaves.color(TINT.rhodo);
+  // The rhododendron (P2, photos 19, 41): two rounded mounds along it (it is longer across the
+  // lawn), merged, an olive green, solid in two steps (eight-sided prisms a little inside it: the
+  // wide foot to 0.4 of its height, the top's narrower one to 0.9, under its leaves' crown: he
+  // stands in them to the knees, not the eyes; the gutter's rim clear over the wall).
+  leaves.color(TINT.dadRhodo);
   leaves.shade = (x, y) => 0.7 + 0.3 * Math.min(1, (y - GROUND) / R.h);
   for (const k of [-1, 1]) {
-    const [r, z] = [R.rx, R.z + k * (R.rz - R.rx) * 0.8];
-    leaves.lathe(R.x, z, [[r * 0.85, GROUND - 6], [r, GROUND + R.h * 0.25], [r * 0.78, GROUND + R.h * 0.5], [r * 0.45, GROUND + R.h * 0.8], [0, GROUND + R.h]], 8, { a0: 0.3 + k });
+    const [r, z] = [R.rx, R.z + k * (R.rz - R.rx) * 0.6];
+    leaves.lathe(R.x, z, [[r * 0.85, GROUND - 6], [r, GROUND + R.h * 0.3], [r * 0.82, GROUND + R.h * 0.62], [r * 0.5, GROUND + R.h * 0.88], [0, GROUND + R.h]], 8, { a0: 0.3 + k });
   }
   leaves.shade = null;
   solids.solid(ellipsePrism(R.x, R.z, R.rx * 0.85, R.rz * 0.8, 8, GROUND - 6, GROUND + R.h * 0.4), 'grass');
-  solids.solid(ellipsePrism(R.x, R.z - R.rz * 0.08, R.rx * 0.5, R.rz * 0.4, 8, GROUND + R.h * 0.35, GROUND + R.h * 0.78), 'grass');
+  solids.solid(ellipsePrism(R.x, R.z - R.rz * 0.08, R.rx * 0.35, R.rz * 0.3, 8, GROUND + R.h * 0.35, GROUND + R.h * 0.9), 'grass');
   // The ivy over the north-east pier and round the corner (P2: a dark sheet up to the gutter).
   const I = layout.IVY;
   leaves.color(TINT.ivy);

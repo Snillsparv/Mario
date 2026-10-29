@@ -205,9 +205,7 @@ export function lawnMask(L) {
     clear((x, z) => Math.abs((x - ox) * ux + (z - oz) * uz) < w / 2 + pad + m && Math.abs(-(x - ox) * uz + (z - oz) * ux) < d / 2 + pad + m, ox - reach, ox + reach, oz - reach, oz + reach);
   };
   for (const h of L.HOUSES) footprint(h, h.w, h.d);
-  for (const r of [L.LINK, L.CARPORT, L.DAD_DRIVE, L.LINK_DRIVE, L.PATIO]) rect(r, 10);
-  const [p0, p1] = L.DAD_PATH.drawn; // (P2: the dad's path drawn narrower, the lawn over its outer strips)
-  rect({ ...L.DAD_PATH, x0: p0, x1: p1 }, 6);
+  for (const r of [L.LINK, L.CARPORT, L.DAD_PATH, L.DAD_DRIVE, L.LINK_DRIVE, L.PATIO]) rect(r, 10);
   rect(L.FORECOURT, 10);
   // (W8: the forecourt's setts on down to its wall, the wall and its pillar; the hedges along a
   // line; the gravel path north from the side road's mouth; the shed and the picnic table.)

@@ -92,12 +92,6 @@ test('it draws exactly the classic faces but those it draws itself, the panes in
   const split = [...triangles(R['lane-render']), ...triangles(R['lane-glass']), ...triangles(R['lane-paint'], ROOM)];
   assert.deepEqual(split.sort(), triangles(C['lane-render']).sort(), 'render = render + glass + paint');
   assert.deepEqual([...triangles(R['lane-grass']), ...triangles(R['lane-path'])].sort(), triangles(C['lane-grass']).sort(), 'grass = grass + path');
-  // (P2, photos 21, 39, 40: the dad's path drawn narrower, the lawn over its west strip in both
-  // looks; its collider the whole, above.)
-  const px = R['lane-path'].geometry.attributes.position;
-  const xs = Array.from({ length: px.count }, (_, i) => px.getX(i));
-  const [d0, d1] = lane.DAD_PATH.drawn;
-  assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - (d1 - d0)) < 0.01 && d1 - d0 < lane.DAD_PATH.x1 - lane.DAD_PATH.x0, `the path drawn ${d1 - d0} wide`);
   // No room panel: every window with a room behind it, the villas' bays too, is the worker's (its
   // rooms are boxes behind real openings).
   const rooms = triangles(R['lane-paint']).length - triangles(R['lane-paint'], ROOM).length;

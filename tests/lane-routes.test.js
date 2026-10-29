@@ -161,12 +161,13 @@ test('the front eave: a standing jump within 100 of the front wall grabs the eav
 });
 
 // (P2, photos 19, 41: the rhododendron taller and conical, solid in two steps, its foot's to 0.4 of
-// its height, its top's narrower one to 0.78; deliberately: its outline. Its gutter's rim stays
+// its height, its top's narrower one to 0.9 (P2 fix: was 0.78, and he stood in its leaves to his
+// eyes); deliberately: its outline. Its gutter's rim stays
 // clear: the front eave's grab above holds. A hop up the steps and a jump from its top toward the
 // house is a way onto the roof, as the eave's grab is.)
 test('the rhododendron (P2): walked past along the dad\'s front, up the link\'s drive and between them; hopped onto its foot\'s step, then its top, a jump from there onto the roof (or, from its front, back onto the step); walked off its step back onto the lawn; unhurt, never stuck', () => {
   const R = lane.RHODODENDRON;
-  const [foot, top] = [GROUND + R.h * 0.4, GROUND + R.h * 0.78];
+  const [foot, top] = [GROUND + R.h * 0.4, GROUND + R.h * 0.9];
   const a = hero(-1000, GROUND, R.z - R.rz - 60, E);
   a.walk([[0, R.z - R.rz - 60]], 0.6);
   assert.ok(a.at().x > -60 && Math.abs(a.at().y - GROUND) < 1, `along the front: ${JSON.stringify(a.at())}`);
