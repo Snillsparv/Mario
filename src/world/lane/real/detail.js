@@ -33,7 +33,8 @@
 // tier: 'high' | 'mid' | 'low' (render/real/tier.js): on mid 70 % of the leaf clusters, plainer
 // cars, 60 % of the clutter; on low half of the clusters, no tile courses, no blades, plainer
 // windows and cars still, a quarter of the leaves on the ground and no weeds, fewer materials and
-// shadow casters (LOW_MERGE, LOW_CASTERS), no probes of its own (one paint, one glass).
+// shadow casters (LOW_MERGE, LOW_CASTERS), no probes of its own (one paint, one glass); on mid
+// two of its merges (MERGE.mid).
 
 import { Geo } from './geo.js';
 import { mailbox, kerbs, bedStones, turnSign, neighbourGround } from './garden.js';
@@ -87,13 +88,17 @@ const NORTH_PROBE = [0, 420, -350];
 // The low tier (phones): small plain parts share a few materials (fewer draw calls), and only
 // the houses and the cars cast the sun's shadow.
 const LOW_MERGE = { enamel: 'gloss', lamp: 'gloss', tail: 'gloss', drl: 'gloss', trim: 'tyre', rim: 'metal', steel: 'metal', bird: 'paint' };
+// (P4 fix: on mid the tail lamps in gloss, its roughness, and the mailbox's bird in paint: the
+// two draw calls north_4's van's paint and glass on the east end's probe cost in the fight.)
+const MERGE = { low: LOW_MERGE, mid: { tail: 'gloss', bird: 'paint' } };
 const LOW_CASTERS = new Set(['boards', 'brick', 'render', 'paint', 'roof', 'shadow', 'carPaint', 'carGlass', 'tyre']);
 
 export function buildLaneDetail(L, tier = 'high') {
   const kit = {};
   const low = tier === 'low';
   for (const name of Object.keys(MATERIALS)) kit[name] = new Geo();
-  if (low) for (const [name, into] of Object.entries(LOW_MERGE)) kit[name] = kit[into];
+  const merge = MERGE[tier] ?? {};
+  for (const [name, into] of Object.entries(merge)) kit[name] = kit[into];
   kit.canopy = new Geo(); // (P1: the far canopy, in the foliage material, casting none)
   kit.tier = tier;
   // Each cluster of cars' paint and glass, and the villas' panes, their own meshes reflecting
@@ -155,7 +160,7 @@ export function buildLaneDetail(L, tier = 'high') {
     delete kit.mark;
     hide[c.id] = {};
     for (const [name, g] of Object.entries(kit)) {
-      if (!(g instanceof Geo) || g.count === at.get(g) || (low && LOW_MERGE[name])) continue;
+      if (!(g instanceof Geo) || g.count === at.get(g) || merge[name]) continue;
       hide[c.id][name] = at.get(g);
     }
     if (cuts && c.id === L.LANE_BOSS?.car) robot = robotPieces(kit, L, c, cuts, zones, hide[c.id], own);
@@ -170,7 +175,7 @@ export function buildLaneDetail(L, tier = 'high') {
   const meshes = [];
   let triangles = 0;
   for (const [name, cast] of Object.entries(MATERIALS)) {
-    if (!kit[name].count || (low && LOW_MERGE[name])) continue;
+    if (!kit[name].count || merge[name]) continue;
     const buffers = kit[name].buffers();
     meshes.push({ name, material: name, cast: cast && (!low || LOW_CASTERS.has(name)), buffers, sphere: sphereOf(buffers.position) });
     triangles += kit[name].count / 3;

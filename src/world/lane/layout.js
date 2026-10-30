@@ -911,8 +911,8 @@ export const CARS = [
   parked('hatch', garageAt('north_3').x, garageAt('north_3').front + 40, Math.PI, 0x1f2124),
   // north_4's van, nose in at its garage door (P4, photo 26's solved pose: a large dark blue-grey
   // MPV in front of the door's middle, 130 off the house, its tail out in the forecourt's street
-  // half).
-  { ...parked('van', garageAt('north_4').x - 20, garageAt('north_4').front + 130, Math.PI, 0x434e62), classicTint: 0x2c3444 },
+  // half; P4 fix: its paint on the east end's probe, `cluster`, real/cars.js).
+  { ...parked('van', garageAt('north_4').x - 20, garageAt('north_4').front + 130, Math.PI, 0x434e62), classicTint: 0x2c3444, cluster: 'east' },
   // (P4, photos 29, 30: the estate a cool light silver; its body 1.45x bluer than the white pier
   // in the photos, where the game's reflected the warm forecourt: a cooler, lighter tint.)
   { kind: 'estate', x: FORECOURT.x1 - 5 - CAR_KINDS.estate.l / 2, z: EAST_GARAGE.cz + 260, yaw: Math.PI / 2, tint: 0x90acc4, classicTint: 0x92a0b0 },

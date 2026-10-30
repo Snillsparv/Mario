@@ -81,12 +81,14 @@ const SQUASH = 1.2; // the tyre's flattening under the car's weight (its patch o
 const ARCH = 7; // the arch's clearance round the tyre
 // A car's probe cluster (W2: by place, not by distance: on the 1.3 plan no one distance keeps
 // the four compact; a cluster spanning the street drew its cars in more views and shadows):
-// the dad's drive, the link's (the dad's side west of it), the north drives (north_4's van
-// with them: in view wherever they are), the east end (the estate on the double garage's
-// forecourt).
+// the dad's drive, the link's (the dad's side west of it), the north drives, the east end (the
+// estate on the double garage's forecourt).
 // (W8: a car with `cluster` 'north' joins the north drives' wherever it stands, its probe placed
-// by theirs: north_west's.)
-const clusterOf = (L, c) => (c.cluster === 'north' ? 2 : c.z > 0 ? (c.x >= L.DAD_DRIVE.x0 ? 0 : 1) : c.x < L.FORECOURT.x0 ? 2 : 3);
+// by theirs: north_west's; P4 fix: one with 'east' the east end's, north_4's van: the north
+// drives' probe, 5000 west over a lawn, turned its sides green; the east end's, by the estate,
+// sees the forecourt's setts and the street.)
+const placeOf = (L, c) => (c.z > 0 ? (c.x >= L.DAD_DRIVE.x0 ? 0 : 1) : c.x < L.FORECOURT.x0 ? 2 : 3);
+const clusterOf = (L, c) => ({ north: 2, east: 3 })[c.cluster] ?? placeOf(L, c);
 const PROBE_OVER = 40; // a cluster's probe this far over its highest roof
 
 const TYRE = [0.026, 0.026, 0.028];
@@ -117,24 +119,30 @@ export function carClusters(L) {
     if (!groups.has(r)) groups.set(r, []);
     groups.get(r).push(i);
   });
-  return [...groups.values()].map((cars) => {
-    const own = cars.filter((i) => !L.CARS[i].cluster);
+  return [...groups.entries()].map(([r, cars]) => {
+    // (Its probe placed by the cars standing in it, the far ones aside: north_4's van places the
+    // north drives' where it was, drawn in another's.)
+    const own = L.CARS.flatMap((c, i) => (!c.far && placeOf(L, c) === r ? [i] : []));
     const at = own.length ? own : cars;
     const x = at.reduce((s, i) => s + L.CARS[i].x, 0) / at.length;
     const z = at.reduce((s, i) => s + L.CARS[i].z, 0) / at.length;
     const top = Math.max(...at.map((i) => L.groundHeight(L.CARS[i].x, L.CARS[i].z) + L.CAR_KINDS[L.CARS[i].kind].roof));
-    return { cars, at: [x, top + PROBE_OVER, z] };
+    return { cars, at: [x, top + PROBE_OVER, z], r };
   });
 }
 
 // Every car but those with an id (the dad's: carOf, drawn last by detail.js, hideable).
 export function cars(kit, L) {
   const cluster = new Map();
-  carClusters(L).forEach((g, k) => g.cars.forEach((i) => cluster.set(i, k)));
-  L.CARS.forEach((c, i) => c.id || car(kit, L, c, cluster.get(i)));
+  const groups = carClusters(L);
+  groups.forEach((g, k) => g.cars.forEach((i) => cluster.set(i, k)));
+  // (P4 fix: a car drawn in another's cluster keeps its glass on the probe where it stands, the
+  // far ones aside: the east end's put south_2's red garden in the van's rear window.)
+  const glass = (c, i) => (c.far ? cluster.get(i) : groups.findIndex((g) => g.r === placeOf(L, c)));
+  L.CARS.forEach((c, i) => c.id || car(kit, L, c, cluster.get(i), glass(c, i)));
   // (W8: the lay-by's two out on the curve, drawn only, far, in north_west's estate's cluster;
   // W8 fix: on mid and low distCar's plain stand-ins, not left out: no car popping in or out.)
-  const k = cluster.get(L.CARS.findIndex((c) => c.cluster));
+  const k = cluster.get(L.CARS.findIndex((c) => c.cluster === 'north'));
   for (const c of LAYBY.cars) (kit.tier === 'high' ? car : distCar)(kit, L, { ...c, far: true }, k);
 }
 
@@ -214,7 +222,7 @@ function roundRect(a, b, r, per) {
 // A plan corner's inset at `end` from the car's end (a quarter circle of radius r).
 const corner = (end, r) => (end < r ? r - Math.sqrt(Math.max(0, r * r - (r - end) * (r - end))) : 0);
 
-function car(kit, L, c, probe) {
+function car(kit, L, c, probe, glassProbe = probe) {
   const K = L.CAR_KINDS[c.kind];
   const S = STYLE[c.style ?? c.kind];
   const EV = !!S.ev;
@@ -229,7 +237,7 @@ function car(kit, L, c, probe) {
   const D = c.far ? (c.cluster && kit.tier === 'high' ? LOD.low : LOD.far) : plain && kit.tier === 'low' ? LOD.plainLow : (LOD[plain ? { high: 'mid', mid: 'low' }[kit.tier] ?? kit.tier : kit.tier] ?? LOD.high);
   const { y0, R, axles, at: W0, fw, ac } = carFrame(L, c);
   const paint = kit[`carPaint@${probe}`] ?? kit.carPaint;
-  const glass = kit[`carGlass@${probe}`] ?? kit.carGlass;
+  const glass = kit[`carGlass@${glassProbe}`] ?? kit.carGlass;
   const { tyre, rim, trim, lamp, tail, metal, contact } = kit;
   const drl = kit.drl ?? lamp;
   const mark = kit.mark ?? NOOP;

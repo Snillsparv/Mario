@@ -452,8 +452,9 @@ function garage(kit, h) {
     }
   }
   const front = F.face('front').frame;
-  // (P4, photos 29, 30: light grey-white split-face, not tan.)
-  blocks.color(0xdcdad4, kit.look === 'real' ? 1.5 : 1.15);
+  // (P4, photos 29, 30: light grey-white split-face, not tan; P4 fix: the realistic tint cool, so
+  // the blocks material's own warm shade, real/jobs.js, leaves them grey-white in the shade.)
+  blocks.color(kit.look === 'real' ? 0xb0c5d4 : 0xdcdad4, kit.look === 'real' ? 1.5 : 1.15);
   for (const s of [-1, 1]) blocks.solid(localBoxPolys(front, s > 0 ? p0 : -p1, s > 0 ? p1 : -p0, -4, beam, 0, 14));
   paint.color(TINT.white);
   paint.solid(localBoxPolys(front, -p1 - 8, p1 + 8, beam, beam + 22, -2, 16), { faceShade: (n) => (n[1] < -0.5 ? 0.7 : 1) });

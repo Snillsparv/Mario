@@ -1874,7 +1874,7 @@ trees' leaves).
   (`overhang`, the verges `verges` 60) under broad white fascias and barge boards, white soffits
   (`soffit`, W8 fix), red-brown clay pantiles (the realistic look's `realRoof` 0x26110a, W8 fix:
   its tile set and the sky's sheen light a tint ~3-5x in linear terms, so W8's 0x4a2c20 came out
-  salmon, #9a6750 at p30 against the photo's #4a382d; it and the east house's now ~#56443e); its front split-face block `pillars` at the corners (P4, photos 29, 30: light grey-white, 0xdcdad4, in both looks, not tan) up to a white `beam` across them,
+  salmon, #9a6750 at p30 against the photo's #4a382d; it and the east house's now ~#56443e); its front split-face block `pillars` at the corners (P4, photos 29, 30: light grey-white, not tan: 0xdcdad4 in the classic look; P4 fix: the realistic look's 0xb0c5d4 × 1.5, a cool tint that the `blocks` material's own warm shade turns grey-white where the sun does not fall) up to a white `beam` across them,
   cream boards over it with their joints, two tall anthracite ribbed doors (`door` 400 × 346) in
   white casings either side of a white render `pier` with a wallbox and its coiled cable; its
   collider the walls to 509 under the roof: a perch, off every route) in front of **east_house**
@@ -2078,7 +2078,7 @@ trees' leaves).
   house; its coins up the drive west of the van; P4, photo 26: a large dark blue-grey MPV, `van`
   750 × 295, belt 150, roof 300, a short bonnet 120 and a raked windscreen 140, nose in in front
   of the garage door's middle, 130 off the house, its tail out in the forecourt's street half:
-  its box fitted to photo 26's solved pose; a collider change, deliberate); a silver estate on
+  its box fitted to photo 26's solved pose; a collider change, deliberate; P4 fix: its paint on the east end's probe, `cluster` 'east', its glass on the north drives'); a silver estate on
   the double garage's forecourt (P4, photos 29, 30: a cool light silver, `tint` 0x90acc4, the
   classic look's `classicTint` 0x92a0b0: the photos' body is ~1.45x bluer than the white pier
   beside it, where the game's took the warm forecourt's hue)), north_4's **basketball hoop** (`HOOP`, on its front wall west of its
@@ -3534,11 +3534,18 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   (`plainMaterial({ clearcoat })`: three's clearcoat lobe switched on in the standard material,
   `USE_CLEARCOAT`, without the physical material's class), dark opaque glass with ior 2's F0;
   each cluster's (`carClusters`, by place: `clusterOf`, the dad's drive, the west link, the
-  north drives (north_4's van with them), the east end's estate; W2: on the 1.3 plan no one
+  north drives, the east end's estate; W2: on the 1.3 plan no one
   distance kept four compact clusters, and a cluster spanning the street drew its cars in more
   views and shadows) on its own probe over
   its roofs (`carPaint@k`, `carGlass@k` meshes; on low one paint on the sky's environment): the
-  single probe in front of the dad's house painted his red wall into every bonnet as rust.
+  single probe in front of the dad's house painted his red wall into every bonnet as rust. A
+  car's `cluster` draws it in another cluster's meshes while the cars standing in each (`placeOf`,
+  the far ones aside) place its probe: north_west's estate in the north drives', north_4's van's
+  paint in the east end's (P4 fix: the north drives' probe, ~5,000 west of it over a lawn, turned
+  its big sides teal-green; the estate's, over the forecourt's setts, leaves them a neutral dark
+  grey), its glass on the north drives' where it stands (a car not `far` keeps its glass on the
+  probe of its place: the east end's put south_2's red garden in the van's rear window), the north
+  drives' probe where it was.
 * `clutter.js` (G2): fallen leaves (small atlas cards lying flat, curled at one end, tints at most
   1) drifting along every kerb (a slow wave of density, most at its foot, strays to 70, a few on
   the verge; kept clear of the kerbs, the cars, the fences and the course's edge; `KERB_LEAVES`
@@ -3654,10 +3661,13 @@ drawing as it draws it, `kit.mark(zone)`, and returns its cuts), which `look.js`
   and cars, the picket fence's pickets on its street side only, the villas' gutters without
   their insides, fewer materials (`LOW_MERGE`) and only the houses and the
   cars casting the sun's shadow (`LOW_CASTERS`); mid has 70 % of the leaf clusters, 4 segments a
-  roll and the smaller grass grid. (B4, the boss fight's draw calls: on mid and low a few small
+  roll and the smaller grass grid, and two of low's merges (`MERGE.mid`, P4 fix: the tail lamps
+  in `gloss`, the same roughness, the mailbox's bird in `paint`: the two draw calls the van's
+  paint and glass on the east end's probe cost in the fight). (B4, the boss fight's draw calls: on mid and low a few small
   things cast no sun shadow, `look.js QUIET`: the front door's leaf and the charger's cable; on
   mid the cars' lamps, T lights, tail lamps, rims and trim, inside their bodies' own shadow, the
-  sills' pots and the mailbox's carved bird; on low the signs and the flags, lost in its coarse
+  sills' pots and the mailbox's carved bird (P4 fix: the tail lamps and the bird now in gloss
+  and paint, which cast); on low the signs and the flags, lost in its coarse
   map: 9 and 4 depth passes fewer.) (G2: the junction's trees, the birches and the apple tree
   1.4 × their clusters on high, with a few smaller blobs round each canopy's outline from their
   own seeded stream, `foliage.js ragged`, not on low; the hedges' cores a little lighter; the
@@ -4334,7 +4344,8 @@ south and east of the turning area, as photos 11, 24-26 and 29-35 have them, bot
   tint darker and cooler), the slabs east of the path kept (photo 32 shows them); the raised bed's
   cover a dull yellow-olive; the big rhododendron by the footpath a dark olive, broader and
   flatter (480 x 320, 300 high, ~500 clear of the footpath's edge; its collider with it).
-* **The double garage's pillars** light grey-white split-face (0xdcdad4) in both looks; **the
+* **The double garage's pillars** light grey-white split-face (0xdcdad4; the realistic look's
+  cool 0xb0c5d4 since the fix round, below) in both looks; **the
   estate** on its forecourt a cool silver (`tint` 0x90acc4, `classicTint` 0x92a0b0; the classic
   `car()` now takes a car's `classicTint` too): the photos' body is ~1.45x bluer than the white
   pier beside it, the game's took the warm forecourt's hue from its cluster's probe (a bluer
@@ -5638,7 +5649,7 @@ and every cap; the gzip sizes are printed, not asserted):
 | main | 1,287,925 | 400 kB | 1,320,000 (`vite.config.js` MAIN_BUDGET; was 1,700,000 as one bundle, 1,560,000 with the areas lazy, 1,465,000 with the opt-in UI lazy, 1,350,000 with AI RACE's objects lazy) |
 | hall | 49,870 | 20 kB | 60 KiB |
 | skerries | 84,302 | 32 kB | 100 KiB (from 88: its sounds and its own props came in) |
-| lane | 111,482 | 45 kB | 109 KiB (round 2b's P4 within it: the young beeches' irregular stems, the south garden's tints, the backdrop's terraced row, the classic cars' own tints, 108.9 KiB, +0.65 kB; from 106, round 2b's P3, planned 108: the street's patches in groups with their islands, the long seal bands and the grated covers, drawn by the classic build for both looks, the bed walls' finer slabs and irregular cap, the beds' own mix per plot with their new kinds and flowers, 108.0 KiB, +2.4 kB, over the plan's +1.3 kB; 108.2 KiB with its fix round, the beds' plants clear of north_5's mailboxes, the forecourt wall's realistic tint; from 104, round 2b's P1: the classic forest's gilt tops, lobed crowns and far masses behind the bank and round the west end, both looks' west-curve broadleaves, 104.7 KiB; 104.8 KiB with its fix round, the far masses' skirts; from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
+| lane | 111,507 | 45 kB | 109 KiB (round 2b's P4 within it: the young beeches' irregular stems, the south garden's tints, the backdrop's terraced row, the classic cars' own tints, 108.9 KiB, +0.65 kB; its fix round, the realistic pillars' own tint, +25 B; from 106, round 2b's P3, planned 108: the street's patches in groups with their islands, the long seal bands and the grated covers, drawn by the classic build for both looks, the bed walls' finer slabs and irregular cap, the beds' own mix per plot with their new kinds and flowers, 108.0 KiB, +2.4 kB, over the plan's +1.3 kB; 108.2 KiB with its fix round, the beds' plants clear of north_5's mailboxes, the forecourt wall's realistic tint; from 104, round 2b's P1: the classic forest's gilt tops, lobed crowns and far masses behind the bank and round the west end, both looks' west-curve broadleaves, 104.7 KiB; 104.8 KiB with its fix round, the far masses' skirts; from 72, W5: the photo-match packages' builders for the neighbours, 72.0 KiB with its fix round; from 80, W6: the north villas' street faces, roofs and bed walls, `lane/facades.js` and the classic kit, the beds, north_2's hedge and bins, the enclosure, the trampoline's net, 80.1 KiB; from 84, W7: the street's wear and edges and the kerbside furniture, `lane/surface.js`, drawn by the classic build for both looks so the worker carries none of it, the mixed forest's classic crowns, the garden trees, 90.1 KiB; 90.3 KiB with its fix round; from 92, W8: the two ends' classic builders for both looks, north_west's ribbed front, porch and kicked eaves, the integrated motorhome, south_west's gables, the double garage's front, the dormer, the forecourt wall and mailbox, the hedges along lines, the garden things, the veranda house, the lay-by, lamppost B and the far houses, and `lane/ends.js`, their data, out of main, 103.3 KiB; 103.2 KiB with its fix round, its dead garage-door branches gone; round 2, R2-1: north_west and the motorhome re-placed, the classic creeper and roses, 103.5 KiB; its fix round, the motorhome's upright cab, rails and awning box drawn and solid for both looks, 103.96 KiB, 36 B free) |
 | realLook | 51,830 | 18 kB | 60 KiB (from 90; R2-2: the golden hour's split, the cumulus and the environment's warm band, +1.65 kB; its fix round, the fill where the sun falls, the cumulus away from the sun, the direct path's own light, +0.7 kB; round 2b's P1, the far tree line's and the edge's spruces' instanced meshes gone, −0.2 kB; round 2b's P3 fix round, a material's own shade, +0.25 kB) |
 | laneBoss | 102,268 | 38 kB | 110 KiB (from 100: it was at 99.6 KiB) |
 | aiRace | 129,950 | 48 kB | 160 KiB (from 140: its sounds and tracks came in) |
@@ -5646,7 +5657,7 @@ and every cap; the gzip sizes are printed, not asserted):
 | PhonePanel | 32,220 | 11 kB | 40 KiB |
 | Recorder | 11,729 | 5 kB | 15 KiB |
 | TouchController | 25,337 | 8 kB | 32 KiB |
-| laneRealWorker | 206,574 | 85 kB | 202 KiB (round 2b's P4 within it: the beeches' stems and small leaves, the creeper's strands, the gravel, the van's bonnet, 201.7 KiB, +1.0 kB; from 200, round 2b's P3: the beds' new kinds, their flowers, each plot's mix and the grasses' tall cards, the coping's lighter slabs, 200.5 KiB, +1.7 kB, over the plan's +0.8 kB; 200.8 KiB with its fix round, the beds' plants clear of north_5's mailboxes; from 196, round 2b's P1, planned to cover P1-P4: the forest wall (the canopy masses' two rows, the undergrowth), the far canopy's masses, the crowns' gold and lobes, the short lawn's clump, the far tree line's spruces and the edge's second spruce gone with their code, 197.4 KiB; 198.3 KiB with its fix round: the far tree line of card trees east of the lane and up the bank's foot, the west masses' skirts and rag cards, two dead paths gone; from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB (its fix round's fill and direct-path numbers too)) |
+| laneRealWorker | 206,756 | 85 kB | 202 KiB (round 2b's P4 within it: the beeches' stems and small leaves, the creeper's strands, the gravel, the van's bonnet, 201.7 KiB, +1.0 kB; its fix round, a car's paint on another cluster's probe, its glass and the probes' placing by where the cars stand, mid's two merges, 201.9 KiB, +182 B, 92 B free; from 200, round 2b's P3: the beds' new kinds, their flowers, each plot's mix and the grasses' tall cards, the coping's lighter slabs, 200.5 KiB, +1.7 kB, over the plan's +0.8 kB; 200.8 KiB with its fix round, the beds' plants clear of north_5's mailboxes; from 196, round 2b's P1, planned to cover P1-P4: the forest wall (the canopy masses' two rows, the undergrowth), the far canopy's masses, the crowns' gold and lobes, the short lawn's clump, the far tree line's spruces and the edge's second spruce gone with their code, 197.4 KiB; 198.3 KiB with its fix round: the far tree line of card trees east of the lane and up the bank's foot, the west masses' skirts and rag cards, two dead paths gone; from 160, W5: the photo-match packages' realistic builders, W3-W5, and layout.js in it, took it to 163.5 KiB; from 168, W6: the north villas' realistic kit, its programs, the beds' plants, the bins, the enclosure and the net, 173.9 KiB; from 176, W7: the forest's mixed canopy as card crowns, broadleaves, birches, Scots pines and the canopy masses, the garden trees, the lampposts' new heads, the kerbs' stones, 178.9 KiB; 179.8 KiB with its fix round's leafy skins; from 184, W8: the two ends' realistic builders, the integrated motorhome, the kicked hips' trim, the dormer, the gables' panels, the crazy paving, the hedges along lines, the small plants, the creeper, the far cars, the mailbox on its pillar, and `lane/ends.js`'s data, 194.1 KiB; 195.96 KiB with its fix round: the lay-by's plain cars on mid and low, the paving's cut at the pavement, the shiplap's turned boards, the deep verges, its dead proud windows gone; round 2, R2-1: an explicit pick of the layout's exports instead of the module namespace, 194.1 KiB; its fix round, the motorhome's cab, rails and awning, 194.3 KiB; R2-2, the golden hour's preset numbers in layout.js, 194.6 KiB (its fix round's fill and direct-path numbers too)) |
 | pad | 65,788 | 22 kB | 80 KiB (from 200: the QR library is no longer in it) |
 
 **Adding to the game.** A new area: its layout and entries in `world/<name>/layout.js`, its def in

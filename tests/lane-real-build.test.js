@@ -21,6 +21,7 @@ import { streetWear } from '../src/world/lane/surface.js';
 import { bedSpots } from '../src/world/lane/facades.js';
 import { terraceSpans } from '../src/world/lane/real/plan.js';
 import { buildLaneReal, laneJobs } from '../src/world/lane/real/look.js';
+import { CATALOGUE } from '../src/world/lane/real/jobs.js';
 import { buildLaneDetail } from '../src/world/lane/real/detail.js';
 import { TextureStore } from '../src/render/real/textureStore.js';
 import { generate } from '../src/render/real/texgen/sets.js';
@@ -264,6 +265,33 @@ test("south_2's flush edging (W5 fix) in the kerbs' light grey in both looks, ne
   }
 });
 
+test("P4 fix: the double garage's split-face pillars light grey-white in both looks (photos 29, 30, in the shade): the realistic tint times the blocks material's own shade near neutral (it warmed P4's 0xdcdad4 to peach), the classic one baked grey", () => {
+  const H = lane.EAST_GARAGE;
+  const x = H.cx - H.d / 2; // (its front, facing the forecourt)
+  const pillar = (part) => {
+    const m = meshes(part)['lane-blocks'];
+    const [p, c] = ['position', 'color'].map((k) => m.geometry.attributes[k]);
+    const sum = [0, 0, 0];
+    let n = 0;
+    for (let i = 0; i < p.count; i++) {
+      const u = Math.abs(p.getZ(i) - H.cz);
+      if (p.getX(i) < x - 15 || p.getX(i) > x + 1 || u < H.pillars[0] - 1 || u > H.pillars[1] + 1 || p.getY(i) < lane.GROUND + 150 || p.getY(i) > H.beam + 1) continue;
+      sum[0] += c.getX(i);
+      sum[1] += c.getY(i);
+      sum[2] += c.getZ(i);
+      n++;
+    }
+    assert.ok(n >= 16, `the pillars' faces (${n})`);
+    return sum.map((v) => v / n);
+  };
+  const S = CATALOGUE.blocks.shade;
+  const lit = pillar(real).map((v, k) => v * S[k]);
+  assert.ok(lit[0] / lit[2] > 0.9 && lit[0] / lit[2] < 1.12 && Math.abs(lit[1] / lit[2] - 1) < 0.12, `realistic: a light grey in the shade, not tan (${lit.map((v) => v.toFixed(3))})`);
+  assert.ok(lit[1] > 0.5, 'realistic: light');
+  const baked = pillar(classic);
+  assert.ok(baked[0] / baked[2] < 1.45 && baked[1] > 0.2, `classic: grey, baked under the low sun (${baked.map((v) => v.toFixed(3))})`);
+});
+
 test('the realistic lane: each mesh in its catalogue material, shadows cast by all but the ground and the glass (on low not by the small things either), the glass on the probe, the signs classic', () => {
   const tier = TIERS.low;
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
@@ -426,7 +454,7 @@ test('the worker\'s detail in the realistic lane: every mesh in its detail mater
   }
 });
 
-test('B4, the fight\'s budgets: on mid the front door\'s leaf, the charger\'s cable, the cars\' lamps, T lights, tail lamps, rims and trim, the sills\' pots and the mailbox\'s bird cast no sun shadow; the cars\' bodies, glass and tyres, the houses and the bins still do', () => {
+test('B4, the fight\'s budgets: on mid the front door\'s leaf, the charger\'s cable, the cars\' lamps, T lights, rims and trim and the sills\' pots cast no sun shadow (the tail lamps and the mailbox\'s bird merged into gloss and paint, P4 fix); the cars\' bodies, glass and tyres, the houses and the bins still do', () => {
   const tier = TIERS.mid;
   const store = new TextureStore({ worker: { postMessage() {}, terminate() {} } });
   for (const job of laneJobs(tier)) store.sets.set(jobKey(job), generate({ ...job, size: 16 }));
@@ -434,7 +462,11 @@ test('B4, the fight\'s budgets: on mid the front door\'s leaf, the charger\'s ca
   const { part, look } = buildLaneReal(lane, { store, tier, origin: AREA_DEFS.lane.origin, anisotropy: 2, detail });
   const M = {};
   part.object3D.traverse((o) => o.isMesh && (M[o.name] = o));
-  for (const name of ['lane-door', 'lane-cable', 'lane-detail-drl', 'lane-detail-lamp', 'lane-detail-tail', 'lane-detail-rim', 'lane-detail-trim', 'lane-detail-enamel', 'lane-detail-bird']) assert.equal(M[name]?.castShadow, false, `${name} casts none`);
+  for (const name of ['lane-door', 'lane-cable', 'lane-detail-drl', 'lane-detail-lamp', 'lane-detail-rim', 'lane-detail-trim', 'lane-detail-enamel']) assert.equal(M[name]?.castShadow, false, `${name} casts none`);
+  // (P4 fix: on mid the tail lamps in gloss, the bird in paint, as on low: two draw calls less
+  // in the fight, for north_4's van's paint and glass on the east end's probe.)
+  for (const name of ['lane-detail-tail', 'lane-detail-bird']) assert.equal(M[name], undefined, `${name} merged`);
+  assert.ok(M['lane-detail-gloss'] && M['lane-detail-paint'], 'into gloss and paint');
   for (const name of ['lane-signs', 'lane-cloth', 'lane-boards', 'lane-detail-carPaint@0', 'lane-detail-carGlass@0', 'lane-detail-tyre', 'lane-detail-bins', 'lane-detail-paint', 'lane-detail-roof']) assert.equal(M[name]?.castShadow, true, `${name} casts`);
   look.dispose();
 });

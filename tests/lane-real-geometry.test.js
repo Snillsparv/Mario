@@ -537,13 +537,16 @@ test('every car sits flat on its drive: each tyre\'s patch on the drawn surface 
 test('the cars\' bonnets and roofs lie on the colliders Jonas stands on (within 4), their parts in the probes\' clusters, no plate or badge on either end', () => {
   const clusters = carClusters(lane);
   assert.equal(clusters.length, 4, 'the dad\'s drive, the west link, the north drives, the east end');
-  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5, 6, 8], [7]]); // (W2: the van on north_4's drive with the north drives; W8: north_west's estate, far west, in theirs, their probe where it was)
+  // (W2: the van on north_4's drive with the north drives; W8: north_west's estate, far west, in
+  // theirs, their probe where it was; P4 fix: the van with the east end's estate, their probe
+  // where it was: the north drives', 5000 west over a lawn, turned its sides green.)
+  assert.deepEqual(clusters.map((g) => g.cars), [[0, 1], [2], [3, 4, 5, 8], [6, 7]]);
   assert.deepEqual(high.probes.map((p) => p.name), ['car0', 'car1', 'car2', 'car3', 'north']);
   assert.deepEqual(low.probes, [], 'no probes on low');
   for (const [k, g] of clusters.entries()) {
     assert.ok(high.meshes.some((m) => m.name === `carPaint@${k}` && m.probe === `car${k}`), `cluster ${k}: its own paint`);
-    const roofs = g.cars.map((i) => lane.groundHeight(lane.CARS[i].x, lane.CARS[i].z) + lane.CAR_KINDS[lane.CARS[i].kind].roof);
-    assert.ok(g.at[1] > Math.max(...roofs), 'its probe over the roofs');
+    const roofs = g.cars.filter((i) => !lane.CARS[i].cluster).map((i) => lane.groundHeight(lane.CARS[i].x, lane.CARS[i].z) + lane.CAR_KINDS[lane.CARS[i].kind].roof);
+    assert.ok(g.at[1] > Math.max(...roofs), 'its probe over the roofs (of the cars that place it)');
   }
   for (const d of [high, low]) {
     const paint = positionsOf(d, 'carPaint');
@@ -1179,7 +1182,7 @@ test('P3 fix: north_5\'s bed plants clear of its two mailboxes on their posts (n
   assert.ok(near.length >= 2 && near.every((p) => p.x > 4600), `the plants near them: ${near.map((p) => p.x.toFixed(0))}`);
 });
 
-test('P4: the young beech row irregular in both looks (photo 11: uneven steps with a gap, its own height and lean per stem, a few doubled, canes not on every one); north_4\'s van a large MPV in front of its garage door, inside its drive, clear of the drive\'s coins and the hoop; the backdrop\'s row low (eaves ~520 under pitched roofs, several units), the double garage\'s pillars and the estate cool', () => {
+test('P4: the young beech row irregular in both looks (photo 11: uneven steps with a gap, its own height and lean per stem, a few doubled, canes not on every one); north_4\'s van a large MPV in front of its garage door, inside its drive, clear of the drive\'s coins and the hoop; the backdrop\'s row low (eaves ~520 under pitched roofs, several units), the estate cool (the double garage\'s pillars: lane-real-build), the van\'s paint on the east end\'s probe, its glass on the north drives\'', () => {
   const stems = beechStems(lane);
   const B = lane.BEECH_ROW;
   const steps = stems.slice(1).map((s, i) => s.x - stems[i].x);
@@ -1204,6 +1207,19 @@ test('P4: the young beech row irregular in both looks (photo 11: uneven steps wi
   assert.ok(Math.abs(van.x - (v.cx + v.garage)) < 60 && Math.abs(van.z - K.l / 2 - v.front - 130) < 1, `in front of its garage door: ${van.x}, ${van.z}`);
   assert.ok(van.x - K.w / 2 > P.drive[0] + 220 + 150 && van.x + K.w / 2 < P.drive[1] - 20 && van.z + K.l / 2 < lane.wallZAt(van.x) - 50, 'inside its drive, the coins\' line (drive[0] + 220) clear');
   assert.ok(van.x - K.w / 2 - (lane.HOOP.x + lane.HOOP.w / 2) > 100, 'clear of the hoop');
+  // (P4 fix: its paint on the east end's probe, kept at the estate's place, ~2,600 away over
+  // the forecourt's setts, not on the north drives', 5,000 west over a lawn: green sides.)
+  const g = carClusters(lane).find((c) => c.cars.includes(lane.CARS.indexOf(van)));
+  assert.ok(g.cars.some((i) => lane.CARS[i].kind === 'estate' && lane.CARS[i].x > lane.FORECOURT.x0) && Math.hypot(g.at[0] - van.x, g.at[2] - van.z) < 2700, `the van's probe: ${g.at.map(Math.round)}`);
+  // (Its paint in the east end's meshes, its glass on the north drives' probe where it stands:
+  // the east end's put south_2's red garden in its rear window.)
+  const k = carClusters(lane).findIndex((c) => c.cars.includes(lane.CARS.indexOf(van)));
+  const near = (name) => ownOf(van, mesh(high, name).position, 0).length;
+  assert.ok(near(`carPaint@${k}`) > 500 && near(`carGlass@${k}`) === 0 && near('carGlass@2') >= 12 && near('carPaint@2') === 0, 'the van: its paint on the east end\'s probe, its glass on the north drives\'');
+  // (The north drives' probe where it was: the van, standing there, still places it.)
+  const placed = lane.CARS.filter((c) => !c.far && c.z < 0 && c.x < lane.FORECOURT.x0);
+  const north = carClusters(lane).find((c) => c.cars.includes(lane.CARS.findIndex((k) => k.cluster === 'north')));
+  assert.ok(placed.includes(van) && Math.abs(north.at[0] - placed.reduce((a, c) => a + c.x / placed.length, 0)) < 1 && Math.abs(north.at[2] - placed.reduce((a, c) => a + c.z / placed.length, 0)) < 1, `the north drives' probe: ${north.at.map(Math.round)}`);
   // The backdrop's terraced row: four units, eaves 520-540, pitched roofs to ~700 at most.
   const row = BACKDROP.filter((h) => Math.abs(h.yaw + 2.287) < 0.01);
   assert.ok(row.length >= 3 && row.every((h) => h.eave >= 500 && h.eave <= 540 && h.ridge - h.eave >= 100 && h.ridge <= 700), `the row: ${row.map((h) => `${h.eave}/${h.ridge}`)}`);
