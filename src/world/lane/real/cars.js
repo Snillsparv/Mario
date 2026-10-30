@@ -54,7 +54,7 @@ const STYLE = {
   cross: { tall: true, clear: 28, noseR: 16, tailR: 12, front: 42, rear: 32, rails: 'black', blackRear: true, crease: 16, rise: 13 },
   hatch: { tall: false, clear: 22, noseR: 18, tailR: 16, front: 46, rear: 38, rails: null, blackRear: false, crease: 15, rise: 9 },
   estate: { tall: false, clear: 22, noseR: 18, tailR: 12, front: 44, rear: 30, rails: 'silver', blackRear: false, crease: 15, rise: 9 },
-  van: { tall: true, clear: 26, noseR: 12, tailR: 8, front: 30, rear: 20, rails: 'black', blackRear: false, crease: 18, rise: 6 },
+  van: { tall: true, clear: 26, noseR: 12, tailR: 8, front: 34, rear: 20, rails: 'black', blackRear: false, crease: 18, rise: 6, slope: [1.5, -6] }, // (P4, photo 26: an MPV's short bonnet sloping to its nose)
   // The dad's compact electric crossover (CARS[0].style 'ev', the 'cross' kind's collider): a
   // bonnet sloping down to a rounded, raked nose (`rake`: its face leaning back RAKE over its
   // height), a gloss black roof and pillars, the window line kinked up at the rear pillar, a

@@ -53,7 +53,7 @@ import { makeRng } from '../../core/math.js';
 import { fir } from '../courseKit.js';
 import { frame, house } from './houses.js';
 import { forestSpots } from './real/spots.js';
-import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses, BEVEL, terraceSpans, fenceEnds } from './real/plan.js';
+import { bedStones, redTreeStems, redTreeCrown, ivyMasses, climberMasses, BEVEL, terraceSpans, fenceEnds, beechStems } from './real/plan.js';
 import { bedSpots } from './facades.js';
 import { kerbside, PLATE } from './surface.js';
 import { signFace } from './real/sign.js';
@@ -72,7 +72,7 @@ const TINT = {
   bin: 0x1d2839, // (the photos' near-black blue-grey: W4)
   hedge: 0x9a9040, // (over the green leaf texture: an olive, W1)
   thuja: 0x5e5a30,
-  rhodo: 0x34522a,
+  rhodo: 0x4a4c2c,
   dadRhodo: 0x4e5a34, // (the dad's: an olive green, P2, photos 19, 41; south_2's keeps its own)
   canopy: 0x5f8a34,
   apple: 0x6a9a3a,
@@ -867,16 +867,20 @@ function neighbours(kit, layout) {
   const { leaves, render, paint: pp, solids } = kit.drawn('plants');
   render.color(TINT.soil, 0.8);
   render.poly([[B.x0, G + 0.8, B.soil[0]], [B.x1, G + 0.8, B.soil[0]], [B.x1, G + 0.8, B.soil[1]], [B.x0, G + 0.8, B.soil[1]]], { facing: [0, 1, 0] });
+  // (P4, photo 11: the stems irregular, plan.js beechStems: each its own height and lean, a few
+  // doubled, most on a cane; the leaves small, light green.)
   const rng = makeRng(611);
-  for (let x = B.x0 + 20; x < B.x1; x += B.step) {
-    const z = B.z + (rng() - 0.5) * 16;
-    const h = B.h * (0.85 + rng() * 0.25);
-    pp.color(TINT.trunk);
-    pp.box(x - 2, x + 2, G, G + h, z - 2, z + 2, { bottom: false });
+  for (const b of beechStems(layout)) {
+    const stems = b.twin ? [[b.x, b.z, b.h, b.lean], [b.x + 7, b.z - 5, b.h * 0.8, [-b.lean[0] * 0.6 + 10, b.lean[1] * 0.5 - 6]]] : [[b.x, b.z, b.h, b.lean]];
+    for (const [x, z, h, [dx, dz]] of stems) {
+      pp.color(TINT.trunk);
+      pp.solid(beamPolys([x, G, z], [x + dx, G + h, z + dz], [1, 0, 0], 4, 4, { bottom: false }));
+      leaves.color(TINT.apple, 1.05 + rng() * 0.2);
+      for (const k of stems.length > 1 ? [0.7] : [0.45, 0.8]) blob(leaves, x + dx * k + (rng() - 0.5) * 10, z + dz * k, G + h * k, 14 + rng() * 6, h * 0.14, rng() * 6, 5);
+    }
+    if (!b.cane) continue;
     pp.color(0xd8c890);
-    pp.box(x + 4, x + 6, G, G + h * 0.9, z - 1, z + 1, { bottom: false });
-    leaves.color(TINT.apple, 0.9 + rng() * 0.2);
-    for (const k of [0.45, 0.8]) blob(leaves, x + (rng() - 0.5) * 14, z, G + h * k, 20 + rng() * 8, h * 0.16, rng() * 6, 5);
+    pp.box(b.x + 4, b.x + 6, G, G + b.h * 0.85, b.z - 1, b.z + 1, { bottom: false });
   }
   // The link's bins (their backs to the wall), solid.
   const { paint: bp, solids: bs } = kit.drawn('bins');
@@ -953,12 +957,12 @@ function neighbours(kit, layout) {
   }
   const gr = makeRng(613);
   for (let i = 0; i < 14; i++) {
-    leaves.color(TINT.tuft, 0.7 + gr() * 0.25);
+    leaves.color(0x7a8a40, 0.85 + gr() * 0.25); // (P4: a dull yellow-olive, photos 33, 35)
     blob(leaves, R.x0 + 60 + gr() * (R.x1 - R.x0 - 120), R.z0 + 60 + gr() * (R.z1 - R.z0 - 120), R.top + 14, 60 + gr() * 30, 22, gr() * 6, 5);
   }
   // The shrubs: the rhododendron (two domes, as the dad's) and the yew, solid; conifers, hostas.
   const Rh = S.rhododendron;
-  leaves.color(TINT.rhodo);
+  leaves.color(TINT.rhodo); // (P4: a dark olive, photos 31, 32)
   leaves.shade = (x, y) => 0.7 + 0.3 * Math.min(1, (y - G) / Rh.h);
   for (const k of [-1, 1]) leaves.lathe(Rh.x + k * (Rh.rx - Rh.rz) * 0.8, Rh.z, [[Rh.rz * 0.85, G - 6], [Rh.rz, G + Rh.h * 0.35], [Rh.rz * 0.8, G + Rh.h * 0.8], [Rh.rz * 0.3, G + Rh.h], [0, G + Rh.h + 6]], 8, { a0: 0.3 + k });
   const Y = S.yew;
@@ -1152,12 +1156,13 @@ function car(kit, layout, c, what = 'all', mark = null) {
   };
   const [r0, r1] = [-hl + K.tailTop, hl - K.hood - K.screen];
   const wm = (K.tail - K.hood) / 2 - 20; // the pillar between the side windows
+  const tint = c.classicTint ?? c.tint; // (P4: the classic look's own, where its bake needs it)
   paint.color(TINT.shadow);
   paint.poly(ring(-hl - 20, hl + 20, hw + 20, y0 + 1.5), { facing: [0, 1, 0], shade: 0.55 });
-  part(c.tint, body(y0 + CAR_CLEAR), (n) => (n[1] > 0.5 ? 1.12 : 0.92));
+  part(tint, body(y0 + CAR_CLEAR), (n) => (n[1] > 0.5 ? 1.12 : 0.92));
   part(TINT.glass, cabin(false), (n) => (n[1] > 0.3 ? 1.25 : 1));
   // (Two-tone, style 'two': its roof and pillars gloss black, W5.)
-  const top = c.style === 'two' ? TINT.evRoof : c.tint;
+  const top = c.style === 'two' ? TINT.evRoof : tint;
   part(top, hexa(ring(r0 - 4, r1 + 6, hw - 28, roof - 12), ring(r0 - 2, r1 + 4, hw - 30, roof + 3)), (n) => (n[1] > 0.5 ? 1.15 : 0.9));
   part(top, hexa(ring(wm - 14, wm + 14, hw - 9, belt), ring(wm - 14, wm + 14, hw - 31, roof - 10), { bottom: false, top: false }));
   // Pale headlights on the nose and red lights on the tail (on their sloping faces).

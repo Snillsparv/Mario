@@ -26,9 +26,9 @@ import { lawnMask, GRASS } from '../src/world/lane/real/grass.js';
 import { frameOf } from '../src/world/lane/real/house.js';
 import { cars, carOf, carFrame, carClusters } from '../src/world/lane/real/cars.js';
 import { Geo } from '../src/world/lane/real/geo.js';
-import { roadPieces, inside, terraceSpans } from '../src/world/lane/real/plan.js';
+import { roadPieces, inside, terraceSpans, beechStems } from '../src/world/lane/real/plan.js';
 import { FACADES, GARAGE_SET, DOOR_SET, FLOOR_SET, WEST_FRONTS, GABLES, bedSpots } from '../src/world/lane/facades.js';
-import { FAR_LAMPS, LAYBY } from '../src/world/lane/ends.js';
+import { FAR_LAMPS, LAYBY, BACKDROP } from '../src/world/lane/ends.js';
 
 const t0 = performance.now();
 const high = buildLaneDetail(lane, 'high');
@@ -1177,4 +1177,37 @@ test('P3 fix: north_5\'s bed plants clear of its two mailboxes on their posts (n
   // (On high the plants that stood in them are gone, the rest drawn whole or smaller.)
   const near = bedSpots(lane, terraceSpans(lane), 100).filter((p) => p.clear < 60);
   assert.ok(near.length >= 2 && near.every((p) => p.x > 4600), `the plants near them: ${near.map((p) => p.x.toFixed(0))}`);
+});
+
+test('P4: the young beech row irregular in both looks (photo 11: uneven steps with a gap, its own height and lean per stem, a few doubled, canes not on every one); north_4\'s van a large MPV in front of its garage door, inside its drive, clear of the drive\'s coins and the hoop; the backdrop\'s row low (eaves ~520 under pitched roofs, several units), the double garage\'s pillars and the estate cool', () => {
+  const stems = beechStems(lane);
+  const B = lane.BEECH_ROW;
+  const steps = stems.slice(1).map((s, i) => s.x - stems[i].x);
+  assert.ok(stems.length >= 8 && stems.every((s) => s.x > B.x0 && s.x < B.x1), `stems: ${stems.length}`);
+  assert.ok(Math.max(...steps) > B.step * 1.6 && Math.min(...steps) < B.step, `uneven steps with a gap: ${steps.map((d) => d.toFixed(0))}`);
+  const hs = stems.map((s) => s.h / B.h);
+  assert.ok(Math.min(...hs) >= 0.7 && Math.max(...hs) <= 1.15 && Math.max(...hs) - Math.min(...hs) > 0.25, `heights ${hs.map((h) => h.toFixed(2))}`);
+  assert.ok(stems.some((s) => s.twin) && stems.some((s) => !s.cane) && stems.filter((s) => s.cane).length > stems.length / 2, 'a few doubled, most on a cane');
+  // The realistic look's leaves small (the hedge cell's cards) and on every stem.
+  const leaf = mesh(high, 'foliage').position;
+  for (const s of stems) {
+    let n = 0;
+    for (let i = 0; i < leaf.length; i += 3) if (Math.abs(leaf[i] - s.x) < 30 && Math.abs(leaf[i + 2] - s.z) < 40 && leaf[i + 1] > lane.GROUND + 30 && leaf[i + 1] < lane.GROUND + s.h + 40) n++;
+    assert.ok(n > 60, `leaves on the stem at ${s.x.toFixed(0)}: ${n}`);
+  }
+  // The van (photo 26): a large MPV nose in at north_4's garage door, 130 off the house.
+  const v = lane.VILLAS.find((h) => h.id === 'north_4');
+  const P = lane.PLOTS_N[3];
+  const van = lane.CARS.find((c) => c.kind === 'van');
+  const K = lane.CAR_KINDS.van;
+  assert.ok(K.l >= 740 && K.w >= 290 && K.roof >= 300 && K.belt >= 145, 'an MPV\'s size');
+  assert.ok(Math.abs(van.x - (v.cx + v.garage)) < 60 && Math.abs(van.z - K.l / 2 - v.front - 130) < 1, `in front of its garage door: ${van.x}, ${van.z}`);
+  assert.ok(van.x - K.w / 2 > P.drive[0] + 220 + 150 && van.x + K.w / 2 < P.drive[1] - 20 && van.z + K.l / 2 < lane.wallZAt(van.x) - 50, 'inside its drive, the coins\' line (drive[0] + 220) clear');
+  assert.ok(van.x - K.w / 2 - (lane.HOOP.x + lane.HOOP.w / 2) > 100, 'clear of the hoop');
+  // The backdrop's terraced row: four units, eaves 520-540, pitched roofs to ~700 at most.
+  const row = BACKDROP.filter((h) => Math.abs(h.yaw + 2.287) < 0.01);
+  assert.ok(row.length >= 3 && row.every((h) => h.eave >= 500 && h.eave <= 540 && h.ridge - h.eave >= 100 && h.ridge <= 700), `the row: ${row.map((h) => `${h.eave}/${h.ridge}`)}`);
+  // The estate silver: bluer than it is red in both looks.
+  const est = lane.CARS.find((c) => c.kind === 'estate' && c.x > lane.FORECOURT.x0);
+  for (const t of [est.tint, est.classicTint]) assert.ok((t & 0xff) > (t >> 16) + 10, `a cool silver: ${t.toString(16)}`);
 });

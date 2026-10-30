@@ -335,26 +335,29 @@ export function turnSign({ steel, enamel, paint }, L) {
   }
 }
 
-// The neighbours' ground (W5): south_2's gravel (the granite set at a gravel's grain, over its
+// The neighbours' ground (W5): south_2's gravel (P4: the patches' aggregate, over its
 // hard surface, round its raised bed and its bed), the fresh dark soil of the young beech row and
 // the beds' soil (the raised bed's top: its blocks are the classic build's, both looks); the
 // link's two bins (the dad's bin turned round, their backs to the wall; boxes on low).
 export function neighbourGround(kit, L) {
   const { granite, paint } = kit;
   const G = L.GROUND;
-  const flat = (x0, x1, z0, z1, y, k = 3, tile = 500) => {
+  const flat = (x0, x1, z0, z1, y, k = 3, tile = 500, g = granite) => {
     for (let x = x0; x < x1 - 0.5; x += tile) {
       for (let z = z0; z < z1 - 0.5; z += tile) {
         const [a, b, c, d] = [Math.min(x1, x + tile), x, z, Math.min(z1, z + tile)];
-        granite.quad([a, y, c], [b, y, c], [b, y, d], [a, y, d], { uvs: [[a * k, c * k], [b * k, c * k], [b * k, d * k], [a * k, d * k]] });
+        g.quad([a, y, c], [b, y, c], [b, y, d], [a, y, d], { uvs: [[a * k, c * k], [b * k, c * k], [b * k, d * k], [a * k, d * k]] });
       }
     }
   };
   const P = L.S2_GARDEN;
   const [E, R, D, Gr] = [P.edging, P.raised, P.bed, P.gravel];
   const [z0, z1] = [E.z + E.w, Gr.z1];
-  granite.rgb(0.5, 0.48, 0.45);
-  for (const [x0, x1, za, zb] of [[Gr.x0, R.x0, z0, z1], [R.x0, R.x1, R.z1, z1], [R.x1, D.x0, z0, z1], [D.x0, Gr.x1, D.z1, z1], [D.x1, Gr.x1, z0, D.z1]]) flat(x0, x1, za, zb, G + 0.5);
+  // (P4, photos 32, 33: coarse grey gravel west of the path, a little darker and warmer than the
+  // road (the photos' 0.87-1.07 of its luma): the patches' aggregate at 2.5 x its size in
+  // a warm grey, not the fine granite, which read as a pale smooth slab.)
+  kit.patch.color(0x8a8580);
+  for (const [x0, x1, za, zb] of [[Gr.x0, R.x0, z0, z1], [R.x0, R.x1, R.z1, z1], [R.x1, D.x0, z0, z1], [D.x0, Gr.x1, D.z1, z1], [D.x1, Gr.x1, z0, D.z1]]) flat(x0, x1, za, zb, G + 0.5, 0.4, 500, kit.patch);
   granite.rgb(0.2, 0.13, 0.08);
   const B = L.BEECH_ROW;
   flat(B.x0, B.x1, B.soil[0], B.soil[1], G + 0.8, 2);

@@ -22,6 +22,7 @@
 //   redTreeCrown(T) -> [{ c, r }]            // its crown's blobs (middle, radii): a dome
 //   ivyMasses(L) -> [{ c, r, away? }]        // the ivy's masses (layout IVY; away: the wall)
 //   climberMasses(L) -> [{ c, r }]           // the climber up the gable's back corner (CLIMBER)
+//   beechStems(L) -> [{ x, z, h, lean, cane, twin }]   // the young beech row's stems (BEECH_ROW)
 //   chainFaces(h) -> [face]                  // a chain house's drawn faces (a wing's joined end
 //                                            // left out: lane/layout.js DAD_WINGS)
 //   brickSpans(h, face, half) -> [[u0, u1, brick?]]   // a face's spans, split at its brick
@@ -419,4 +420,19 @@ export function fenceEnds(L, f) {
   const h = L.HOUSES.find((o) => o.id === f.house);
   const [c, sn] = [Math.cos(h.yaw ?? 0), Math.sin(h.yaw ?? 0)];
   return [f.from, f.to].map(([u, w]) => [h.cx + u * c + w * sn, 0, h.cz - u * sn + w * c]);
+}
+
+// The young beech row's stems (layout BEECH_ROW; P4, photo 11: irregular, both looks): at uneven
+// steps (step +- 18, now and then a gap), each its own height (0.7 .. 1.15 of h) and lean ([dx, dz]
+// at its top), about one in six doubled (`twin`: a second stem beside it), most tied to a bamboo
+// cane.
+export function beechStems(L) {
+  const B = L.BEECH_ROW;
+  const R = makeRng(6145);
+  const out = [];
+  for (let x = B.x0 + 20; x < B.x1; x += B.step + (R() - 0.5) * 36) {
+    const [gap, h, z, dx, dz, cane, twin] = [R() < 0.08, 0.7 + 0.45 * R(), B.z + (R() - 0.5) * 22, (R() - 0.5) * 36, (R() - 0.5) * 24, R() < 0.75, R() < 0.17];
+    if (!gap) out.push({ x, z, h: B.h * h, lean: [dx, dz], cane, twin });
+  }
+  return out;
 }

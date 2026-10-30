@@ -452,7 +452,8 @@ function garage(kit, h) {
     }
   }
   const front = F.face('front').frame;
-  blocks.color(0xc8c0b4, kit.look === 'real' ? 1.45 : 1);
+  // (P4, photos 29, 30: light grey-white split-face, not tan.)
+  blocks.color(0xdcdad4, kit.look === 'real' ? 1.5 : 1.15);
   for (const s of [-1, 1]) blocks.solid(localBoxPolys(front, s > 0 ? p0 : -p1, s > 0 ? p1 : -p0, -4, beam, 0, 14));
   paint.color(TINT.white);
   paint.solid(localBoxPolys(front, -p1 - 8, p1 + 8, beam, beam + 22, -2, 16), { faceShade: (n) => (n[1] < -0.5 ? 0.7 : 1) });

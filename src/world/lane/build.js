@@ -110,7 +110,7 @@ const TINT = {
   setts: 0xa09a90, // (W8: the double garage's grey-brown granite setts, photo 29)
   railing: 0x2a2a2a,
   patio: 0xa8a6a0,
-  gravel: 0xb0aa9e, // (south_2's grey gravel: W5)
+  gravel: 0x9c9e9c, // (south_2's grey gravel: W5; P4 a darker cooler grey, photos 32, 33)
   slabs: 0xb4b2ac, // (its path's concrete slabs)
   paving: 0xb4b2ac, // (W5 fix: the slabs' bed east of its path, plain grey)
   floor: 0x9a9890, // (the store room's concrete)

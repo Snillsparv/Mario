@@ -20,7 +20,7 @@
 // trampoline (with the jump button held every bounce rises to 852, a 'boing' each time, and takes
 // the 1-up high over it; a jump from its mat, bouncing without the button or a triple jump on the
 // terrace beside it falls short of the 1-up; bouncing off it every way never leaves the
-// boundary), the hoop's board as a perch (a hop from the van's roof), and the dad's cars (a jump
+// boundary), the hoop's board as a perch (a double jump from the forecourt; P4), and the dad's cars (a jump
 // from the drive onto the blue car's roof, a hop from there onto the carport's).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -569,21 +569,38 @@ test('the trampoline: with the jump button held every bounce rises to 852 with a
   }
 });
 
-test("the hoop's board, a perch: a hop from the van's roof toward it lands on its top (the stick part way or all the way), and a jump off it lands unhurt", () => {
+// (P4: the van moved to where photo 26 has it, in front of the garage door's middle and out from
+// the house, its roof ~350 from the board: no hop from it reaches the board any more. The perch's
+// other way, HOOP's: a double jump from the forecourt in front of it grabs its edge, pulled up
+// onto it; the van's roof is still reached, a jump from its tail grabs its edge.)
+test("the hoop's board, a perch: a double jump from the forecourt in front of it grabs its edge and he pulls up onto its top; a jump off it lands unhurt; the van's roof (P4: too far from it for a hop) reached by a jump from its tail grabbing its edge", () => {
   const H = lane.HOOP;
-  const van = lane.CARS.find((c) => c.kind === 'van');
-  const roof = GROUND + lane.CAR_KINDS.van.roof;
-  for (const push of [0.5, 1]) {
-    const yaw = Math.atan2(H.x - (van.x - 80), H.z + 40 - (van.z - 160));
-    const h = hero(van.x - 80, roof, van.z - 160, yaw);
+  for (const d of [60, 140]) {
+    const h = hero(H.x, GROUND, H.z + H.out + d, N);
     h.rest(2);
-    h.tick({ stickY: push, A: true }, yaw);
-    for (let t = 0; t < 60; t++) h.tick({ stickY: push, A: true }, yaw);
-    h.rest(30);
+    for (let j = 0; j < 2 && h.p.action !== 'ledge_hang'; j++) {
+      h.tick({ stickY: 0.3 }, N);
+      h.tick({ stickY: 0.3, A: true }, N);
+      for (let t = 0; t < 90 && !(h.p.grounded && t > 2) && h.p.action !== 'ledge_hang'; t++) h.tick({ stickY: 0.3, A: true }, N);
+    }
+    assert.equal(h.p.action, 'ledge_hang', `from ${d}: a hang from the board's edge ${JSON.stringify(h.at())}`);
+    h.tick({ stickY: 1 }, N);
+    for (let t = 0; t < 40; t++) h.tick({ stickY: 1 }, N);
+    h.rest(20);
     const q = h.at();
-    assert.ok(Math.abs(q.y - H.board - H.h) < 1 && h.p.grounded && Math.abs(q.x - H.x) <= H.w / 2, `stick ${push}: on the board ${JSON.stringify(q)}`);
+    assert.ok(Math.abs(q.y - H.board - H.h) < 1 && h.p.grounded && Math.abs(q.x - H.x) <= H.w / 2, `from ${d}: on the board ${JSON.stringify(q)}`);
     jump(h, S, { after: 30 });
-    assert.ok(h.at().y < roof && h.p.health === MAX_HEALTH, `down again: ${JSON.stringify(h.at())}`);
+    assert.ok(h.at().y < H.board && h.p.health === MAX_HEALTH, `down again: ${JSON.stringify(h.at())}`);
+  }
+  const van = lane.CARS.find((c) => c.kind === 'van');
+  const K = lane.CAR_KINDS.van;
+  const roof = GROUND + K.roof;
+  for (const push of [0.4, 1]) {
+    const v = hero(van.x, GROUND, van.z + K.l / 2 + 70, N);
+    v.rest(2);
+    jump(v, N, { push, after: 0 });
+    v.rest(20);
+    assert.ok(Math.abs(v.at().y - roof) < 1 && v.p.grounded, `stick ${push}: on the van's roof ${JSON.stringify(v.at())}`);
   }
 });
 

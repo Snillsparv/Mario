@@ -84,7 +84,9 @@ const CHUNKS = {
   // cap, the beds' own mix per plot with their new kinds and flowers (facades.js, props.js):
   // 110,584 B, 108.0 KiB, +2.4 kB, over the plan's +1.3 kB by ~1.1 kB (it was at 108,190 B); the
   // extra KiB keeps round 2b's P4 its planned +0.6 kB. Its fix round, the beds' plants clear of
-  // north_5's mailboxes and the forecourt wall's realistic tint: 110,833 B, +0.25 kB.)
+  // north_5's mailboxes and the forecourt wall's realistic tint: 110,833 B, +0.25 kB. Round 2b's
+  // P4 within it, no raise: the young beeches' irregular stems, south_2's garden's tints, the
+  // backdrop's terraced row, the classic cars' own tints: 111,482 B, 108.9 KiB, +0.65 kB.)
   lane: { parent: 'main', cap: 109 * KiB, min: 40000 },
   // (60 KiB, from 90 when it was the one lazy chunk.)
   realLook: { parent: 'lane', cap: 60 * KiB, min: 30000 },
@@ -176,7 +178,9 @@ test('the game: main, its planned lazy chunks (each importing only its ancestors
   // coneflowers with their flowers, box balls, boulders, maples, pink plumes, the grasses' tall
   // cards) and each plot's mix, the coping's lighter slabs: 205,353 B, 200.5 KiB, +1.7 kB, over the
   // plan's +0.8 kB (it was at 203,682 B); its fix round, the beds' plants clear of north_5's
-  // mailboxes, 205,597 B, +0.25 kB; P4 keeps ~1.2 kB.)
+  // mailboxes, 205,597 B, +0.25 kB; P4 keeps ~1.2 kB. Round 2b's P4 within it, no raise: the
+  // beeches' stems and small leaves, the creeper's strands, the gravel, the van's bonnet: 206,574 B,
+  // 201.7 KiB, +1.0 kB.)
   assert.ok(size('laneRealWorker') < 202 * KiB, `the worker stays small (${size('laneRealWorker')} bytes)`);
   assert.ok(size('pad') < 80 * KiB, `the pad stays small (${size('pad')} bytes)`);
   assert.ok(!/qrcode|addData/.test(src.pad), 'no QR code library on the phone');

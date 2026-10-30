@@ -694,7 +694,7 @@ export const S2_GARDEN = {
   path: { x0: 4570, x1: 4830, z0: APRON.z1 - 10, z1: SOUTH_2.cz - SOUTH_2.d / 2 },
   raised: { x0: 2800, x1: 3220, z0: APRON.z1 + 22, z1: 1770, top: GROUND + 26 }, // (just under the knee: walked up onto)
   bed: { x0: 4250, x1: 4560, z0: APRON.z1 + 24, z1: 1520 },
-  rhododendron: { x: 5190, z: 1818, rx: 230, rz: 160, h: 340 },
+  rhododendron: { x: 5190, z: 1818, rx: 240, rz: 160, h: 300 }, // (P4, photos 31, 32: broader and flatter, its top ~2 m)
   yew: { x: 5029, z: 1384, r: 100, h: 190 },
   conifers: [{ x: 3095, z: 1640, r: 38, h: 110 }, { x: 4480, z: 1300, r: 30, h: 85 }],
   hostas: [[5300, 1300], [5370, 1370], [5235, 1385], [4320, 1420], [4410, 1265], [4290, 1290]],
@@ -878,14 +878,14 @@ export const PATH_SIGN = footpathAt(100, 300);
 // them: the drive's front half empty), the electric one nose out, the SUV nose in, the red door
 // and its strip between them, a strip one Jonas wide behind them along the doors (CAR_GAP); the
 // west neighbour's at the link; on the villas'
-// drives (north_4's the van: its coins on its forecourt's west part; north_5's none) and at the
+// drives (north_4's the van: its coins on its forecourt's west part, clear of it; north_5's none) and at the
 // double garage, noses in.
 export const CAR_KINDS = {
   suv: { l: 660, w: 270, belt: 140, roof: 250, hood: 175, screen: 95, tail: 25, tailTop: 55, wheel: 58 },
   cross: { l: 630, w: 265, belt: 130, roof: 235, hood: 165, screen: 110, tail: 35, tailTop: 95, wheel: 55 },
   hatch: { l: 590, w: 255, belt: 115, roof: 215, hood: 155, screen: 120, tail: 30, tailTop: 85, wheel: 50 },
   estate: { l: 690, w: 260, belt: 115, roof: 210, hood: 180, screen: 115, tail: 20, tailTop: 45, wheel: 50 },
-  van: { l: 700, w: 285, belt: 135, roof: 290, hood: 70, screen: 90, tail: 10, tailTop: 20, wheel: 55 },
+  van: { l: 750, w: 295, belt: 150, roof: 300, hood: 120, screen: 140, tail: 10, tailTop: 22, wheel: 56 }, // (P4, photo 26: a large MPV, its box fitted to the photo)
 };
 const parked = (kind, x, noseZ, yaw, tint) => ({ kind, x, z: noseZ - Math.cos(yaw) * (CAR_KINDS[kind].l / 2), yaw, tint });
 export const CAR_GAP = 2 * 50 + 10; // (the dad's cars off the garage doors: Jonas's width and a little)
@@ -909,9 +909,13 @@ export const CARS = [
   parked('hatch', garageAt('north_1').x, garageAt('north_1').front + 40, Math.PI, 0xb6babe),
   { ...parked('cross', garageAt('north_2').x + 70, garageAt('north_2').front + 780, 0, 0x45484c), style: 'two' }, // (W6: nose out on its drive, its roof and cladding black: photos 13, 43, 44)
   parked('hatch', garageAt('north_3').x, garageAt('north_3').front + 40, Math.PI, 0x1f2124),
-  // north_4's van, nose in beside its garage door (the hoop's perch from its roof: HOOP).
-  parked('van', garageAt('north_4').x - 130, garageAt('north_4').front + 40, Math.PI, 0x24272b),
-  { kind: 'estate', x: FORECOURT.x1 - 5 - CAR_KINDS.estate.l / 2, z: EAST_GARAGE.cz + 260, yaw: Math.PI / 2, tint: 0x8e9296 },
+  // north_4's van, nose in at its garage door (P4, photo 26's solved pose: a large dark blue-grey
+  // MPV in front of the door's middle, 130 off the house, its tail out in the forecourt's street
+  // half).
+  { ...parked('van', garageAt('north_4').x - 20, garageAt('north_4').front + 130, Math.PI, 0x434e62), classicTint: 0x2c3444 },
+  // (P4, photos 29, 30: the estate a cool light silver; its body 1.45x bluer than the white pier
+  // in the photos, where the game's reflected the warm forecourt: a cooler, lighter tint.)
+  { kind: 'estate', x: FORECOURT.x1 - 5 - CAR_KINDS.estate.l / 2, z: EAST_GARAGE.cz + 260, yaw: Math.PI / 2, tint: 0x90acc4, classicTint: 0x92a0b0 },
   // (W8: north_west's white estate nose in at its wide door, photos 04-07; in the north drives'
   // probe cluster, `cluster`: no probe of its own; out at the west end, `far`: plainer.)
   { kind: 'estate', x: -9069, z: 132, yaw: Math.PI + WEST_YAW, tint: 0xe4e2dc, cluster: 'north', far: true },
@@ -950,7 +954,7 @@ export const LANE_BOSS = {
 // house), a children's one: a black post `out` in front of the wall, a white board (w by h, its
 // foot at `board` up, at the top of the rendered floor) on an arm to the wall, an orange ring of
 // `ring` radius at `rim` up; the board and its arm are one solid block from the wall (a perch: a
-// double jump from the forecourt grabs its edge, a hop from the van's roof lands on it).
+// double jump from the forecourt grabs its edge; P4: the van stands too far east for a hop).
 export const HOOP = { x: garageAt('north_4').x - 340, z: garageAt('north_4').front, out: 70, board: GROUND + 390, w: 130, h: 110, rim: GROUND + 400, ring: 32 };
 
 // The trampoline in north_5's front garden (objects/Trampoline.js bounces Jonas off its mat:
@@ -966,7 +970,7 @@ export const ONE_UP = { x: TRAMPOLINE.x, y: 1020, z: TRAMPOLINE.z };
 // A tree or two in the gardens (drawn by props.js, their trunks solid): an apple tree on
 // north_4's terrace, the big birch east of the corner house (W7, photos 05, 08, 11: three stems,
 // a broad golden crown over its roof, at R1 of their rays' meeting), a Virginia creeper hanging
-// as a deep red curtain from a pergola beam (`from` the double garage's south pillar `to` a post
+// in deep red strands (P4) from a pergola beam (`from` the double garage's south pillar `to` a post
 // in the east house's garden, at `top`; W8, photos 29, 30: drawn only), a round broadleaf in the side yard between north_1 and north_2 (the aerial),
 // the ornamental cherry on north_5's terrace between its trampoline and its arched door (photos
 // 27, 28: a grey trunk forking low into leaning limbs, a broad open crown over its bed and its

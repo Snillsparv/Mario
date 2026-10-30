@@ -77,8 +77,19 @@ export const VERANDA_HOUSE = { kit: 'chain', cx: -10712, cz: 4702, w: 1800, d: 1
 export const LAYBY = { pts: [[-13045, 3573], [-13501, 4130], [-14090, 3649], [-13634, 3092]], cars: [{ kind: 'estate', x: -13680, z: 3726, yaw: 0.885, tint: 0xa9adb1 }, { kind: 'suv', x: -13454, z: 3472, yaw: 0.885, tint: 0x2a4ab8 }] };
 export const FAR_LAMPS = [{ id: 'LB', x: -13700, z: 4180, yaw: 0.885, plate: 500 }];
 export const GRAVEL_PATH = { x: -11011, z: 1910, dir: [-0.578, -0.816], len: 3200, half: 60 };
-const ROW = [-1400, -1000, -600, -200, 200, 600, 1000, 1400];
+// (P4, photos 30, 31: beyond the footpath a low two-storey terraced row, not a slab: four units
+// along its line, each a little in or out, eaves ~520 under low dark roofs, the north-east end's
+// grey vertical boards, the others light cream; two rows of windows on their fronts, none behind.)
+const ROW_U = [-1275, -425, 425, 1275];
+const ROW_OUT = [0, 70, -30, 50];
+const ROW_TINT = [0xa8aeb2, 0xe2d8c2, 0xd8d0bc, 0xe6dece];
+const rowUnit = (k) => {
+  const [c, s] = [Math.cos(-2.287), Math.sin(-2.287)];
+  const [u, o] = [ROW_U[k], ROW_OUT[k]];
+  const win = k ? [-260, 40, 290] : [-200];
+  return { kit: 'chain', cx: Math.round(12400 + c * u + s * o), cz: Math.round(6300 - s * u + c * o), w: 850, d: 900, yaw: -2.287, y0: GROUND, eave: 520 + (k % 2) * 15, ridge: 650 + (k % 2) * 15, boards: ROW_TINT[k], roof: 0x3a3c40, frame: 0xf2f0ea, plinth: 60, windows: [...win, ...win], backWindows: [], panes: win.map((_, i) => ({ i: i + win.length, sill: 300 })) };
+};
 export const BACKDROP = [
   { kit: 'chain', cx: 6900, cz: 3750, w: 1250, d: 900, yaw: -0.9, y0: GROUND, eave: 380, ridge: 540, boards: 0x8a96a0, roof: 0x6a6c70, frame: 0xf2f0ea, windows: [-300, 300] },
-  { kit: 'chain', cx: 12400, cz: 6300, w: 3400, d: 900, yaw: -2.287, y0: GROUND, eave: 720, ridge: 770, boards: 0x7e8a92, roof: 0x4a4c50, frame: 0xf2f0ea, plinth: 60, windows: [...ROW, ...ROW], panes: ROW.map((_, i) => ({ i: i + 8, sill: 470 })) }, // (its two storeys' rows)
+  ...[0, 1, 2, 3].map(rowUnit),
 ];
