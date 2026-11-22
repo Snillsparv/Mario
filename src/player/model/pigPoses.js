@@ -29,8 +29,8 @@ function idle(p, c) {
   const glance = smoothstep(2.2, 2.8, u) * (1 - smoothstep(3.4, 4.0, u));
   p.hipsY = -1 + 0.9 * breath;
   p.headYaw = c.externalLook ? 0 : 0.42 * glance;
-  p.headRoll = -0.07 * glance;
-  p.headPitch = -0.025 - 0.035 * breath;
+  p.headRoll = 0.035 - 0.10 * glance;
+  p.headPitch = 0.012 - 0.032 * breath;
   plant(p, p.hipsY);
 }
 
@@ -177,10 +177,10 @@ export const PIG_POSES = {
   pole_handstand: handstand,
 };
 
-function poseLeg({ upper, hoof }, swing, bend, spread, swell) {
-  upper.rotation.set(-swing, 0, spread);
-  hoof.rotation.x = bend;
-  hoof.scale.setScalar(1 + 0.52 * swell);
+function poseLeg(limb, swing, bend, spread, swell) {
+  limb.upper.rotation.set(-swing, 0, spread);
+  limb.setBend(bend);
+  limb.hoof.scale.setScalar(1 + 0.52 * swell);
 }
 
 export function applyPigPose(r, p, rs, animator, dt) {
@@ -203,14 +203,28 @@ export function applyPigPose(r, p, rs, animator, dt) {
   const speed = clamp(Math.abs(rs.forwardVel) / 32, 0, 1);
   const wind = 0.65 * speed + 0.44 * clamp(rs.vy / 55, -1, 1) - 1.5 * p.squash;
   r.wind += (wind - r.wind) * (1 - Math.exp(-12 * dt));
+  // At rest the pig checks to the side a moment before his head follows.
+  const glanceTime = rs.animTime % 7.4;
+  const glance = rs.anim === 'idle' ? smoothstep(1.96, 2.19, glanceTime) * (1 - smoothstep(3.15, 3.55, glanceTime)) : 0;
+  r.gazeYaw += (clamp(0.22 * glance + 0.24 * rs.headYaw, -0.32, 0.32) - r.gazeYaw) * (1 - Math.exp(-16 * dt));
   for (let i = 0; i < r.ears.length; i++) {
     const side = i === 0 ? 1 : -1;
     const twitch = Math.max(0, Math.cos(1.5 * t + i * 2.4)) ** 16 * Math.sin(20 * t + i);
-    r.ears[i].rotation.x = -0.12 - 0.30 * r.wind + 0.10 * twitch;
-    r.ears[i].rotation.z = -side * (0.38 + i * 0.07 + 0.08 * twitch - 0.15 * p.squash);
+    r.eyes[i].gaze.rotation.set(-0.045 - 0.075 * glance, r.gazeYaw, 0, 'YXZ');
+    r.ears[i].rotation.x = -0.13 - 0.28 * r.wind + 0.10 * twitch + side * 0.05 * glance;
+    r.ears[i].rotation.z = -side * (0.51 + i * 0.17 + 0.08 * twitch - 0.17 * p.squash);
   }
   r.tail.rotation.y = (0.26 + speed * 0.24) * Math.sin(t * 6.4);
   r.tail.rotation.x = -0.1 + 0.14 * Math.sin(t * 5 - 0.6);
   r.ribbon.rotation.x = 0.11 + 0.62 * r.wind + (0.1 + 0.14 * speed) * Math.sin(t * 6 + animator.gaitPhase * TAU);
   r.ribbon.rotation.y = 0.18 * Math.sin(t * 3.7);
+}
+
+export function updatePigEyelids(rig, face, dt) {
+  const target = face === 'blink' || face === 'sleep' ? 0 : face === 'half' || face === 'hurt' ? 0.52 : 1;
+  rig.eyeOpen += (target - rig.eyeOpen) * (1 - Math.exp(-55 * dt));
+  for (const { lid, lowerLid } of rig.eyes) {
+    lid.rotation.x = 0.36 - 1.39 * rig.eyeOpen;
+    lowerLid.rotation.x = 0.18 + 1.10 * rig.eyeOpen;
+  }
 }

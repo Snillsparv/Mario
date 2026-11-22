@@ -24,7 +24,7 @@ import { physicsStride } from './model/physicsLink.js';
 import { gaitStride } from './model/strides.js';
 import { HatWings } from './model/wings.js';
 import { buildPigRig } from './model/pigRig.js';
-import { applyPigPose, PIG_POSES } from './model/pigPoses.js';
+import { applyPigPose, PIG_POSES, updatePigEyelids } from './model/pigPoses.js';
 
 // Fallback stride length (units per cycle) when the RenderState has no cyclePhase.
 const FALLBACK_STRIDE = 150;
@@ -52,6 +52,7 @@ export class PlayerModel {
     this.object3D = this.rig.object3D;
     this.animator = new Animator(this.character === 'pig' ? PIG_POSES : undefined);
     this.shadow = new BlobShadow();
+    if (this.character === 'pig') this.shadow.mesh.geometry.scale(1, 1, 1.36).translate(0, 0, -8);
     this.object3D.add(this.shadow.mesh);
     this.smoke = new SeatSmoke(); // hot-foot puffs ('burn')
     this.object3D.add(this.smoke.mesh);
@@ -153,8 +154,7 @@ export class PlayerModel {
     if (this.blinkIn < -0.15) this.blinkIn = 2 + Math.random() * 3;
     if (face === 'open' && this.blinkIn < 0) face = this.blinkIn > -0.04 || this.blinkIn < -0.11 ? 'half' : 'blink';
     if (this.character === 'pig') {
-      const openness = face === 'blink' || face === 'sleep' ? 0.07 : face === 'half' || face === 'hurt' ? 0.48 : 1;
-      for (const eye of this.rig.eyes) eye.scale.y += (openness - eye.scale.y) * (1 - Math.exp(-55 * dt));
+      updatePigEyelids(this.rig, face, dt);
       return;
     }
     const map = this.faces(face);

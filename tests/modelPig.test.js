@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Vector3 } from 'three';
+import { Raycaster, Vector3 } from 'three';
 import { PlayerModel } from '../src/player/PlayerModel.js';
 import { ANIM_NAMES } from '../src/player/model/animations.js';
 import { HANG_DEPTH, WALL_DIST } from '../src/player/model/physicsLink.js';
@@ -63,8 +63,22 @@ test('the pig follows every game pose, blinks and wears the pickup only while po
   advance(pig, 'idle', 30);
   pig.blinkIn = 0;
   advance(pig, 'idle', 5);
-  assert.ok(pig.rig.eyes.every(eye => eye.scale.y < 0.3));
+  assert.ok(pig.rig.eyes.every(({ lid, lowerLid }) => lid.rotation.x >= lowerLid.rotation.x), 'both lids meet');
   advance(pig, 'idle', 20);
-  assert.ok(pig.rig.eyes.every(eye => eye.scale.y > 0.97));
+  assert.ok(pig.rig.eyes.every(({ lid }) => lid.rotation.x < -0.97), 'the lids uncover the pupils');
   assert.equal(pig.rig.hat.visible, false);
+});
+
+test('the nostril wells remain recessed in the assembled head', () => {
+  const { head, object3D } = new PlayerModel('pig').rig;
+  object3D.updateMatrixWorld(true);
+  const skin = head.children.find(part => part.isMesh);
+  const surface = x => {
+    const origin = head.localToWorld(new Vector3(x, -0.95, 100));
+    const ray = new Raycaster(origin, new Vector3(0, 0, -1));
+    const hit = ray.intersectObject(skin, false)[0];
+    return head.worldToLocal(hit.point).z;
+  };
+  const bridge = surface(0);
+  for (const x of [-7, 7]) assert.ok(bridge - surface(x) > 4, 'the cheek must not fill the nostril');
 });

@@ -30,23 +30,23 @@ const JONAS = {
 
 const PIG = {
   rows: [
-    '.ss........ss.',
-    '.srs......srs.',
-    '.srrs.ss.srrs.',
-    '..rssssssssr..',
-    '..spppppppps..',
-    '.spppppppppps.',
+    '..........ss..',
+    '.sss.....srrs.',
+    '.srrsssssrrs..',
+    '..srphhhhpss..',
+    '..sppbhhbpps..',
+    '.sppbppppbpps.',
     '.spweppppewps.',
-    '.spweppppewps.',
-    '.scpprrrrppcs.',
-    '..srrnrrnrrs..',
-    '..srrnrrnrrs..',
-    '...srrrrrrs...',
-    '...ttsssstt...',
-    '....TTttTT....',
+    '.scwephhpewcs.',
+    '.sccprhhhrpcs.',
+    '..sprnrrnrps..',
+    '..spprrrrpps..',
+    '...sppmmppst..',
+    '...tTsssstTt..',
+    '....tTTTTt....',
   ],
-  palette: { s: '#ee899e', p: '#ffb3b2', r: '#f197a1', n: '#86475f', w: '#fff5dc',
-    e: '#382536', c: '#ef8194', t: '#207f88', T: '#6ad8c3' },
+  palette: { s: '#e49298', p: '#f9aeaa', h: '#ffd3b6', r: '#ef939b', n: '#894c60', w: '#fff4d9',
+    e: '#472f3c', c: '#e88e92', b: '#99636a', m: '#b9757b', t: '#207f88', T: '#94d7bc' },
 };
 
 // Rasterise a shading function over a size×size grid into palette rows.
