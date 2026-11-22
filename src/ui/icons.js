@@ -28,6 +28,27 @@ const JONAS = {
   },
 };
 
+const PIG = {
+  rows: [
+    '..........ss..',
+    '.sss.....srrs.',
+    '.srrsssssrrs..',
+    '..srphhhhpss..',
+    '..sppbhhbpps..',
+    '.sppbppppbpps.',
+    '.spweppppewps.',
+    '.scwephhpewcs.',
+    '.sccprhhhrpcs.',
+    '..sprnrrnrps..',
+    '..spprrrrpps..',
+    '...sppmmppst..',
+    '...tTsssstTt..',
+    '....tTTTTt....',
+  ],
+  palette: { s: '#e49298', p: '#f9aeaa', h: '#ffd3b6', r: '#ef939b', n: '#894c60', w: '#fff4d9',
+    e: '#472f3c', c: '#e88e92', b: '#99636a', m: '#b9757b', t: '#207f88', T: '#94d7bc' },
+};
+
 // Rasterise a shading function over a size×size grid into palette rows.
 // shade(x, y) returns a palette key or '.'; x, y are pixel centres.
 function procedural(size, palette, shade) {
@@ -110,6 +131,7 @@ function starIcon() {
 
 export const ICONS = {
   hero: { ...JONAS, w: 14, h: 14 },
+  pig: { ...PIG, w: 14, h: 14 },
   coin: { ...COIN, w: 14, h: 14 },
   star: { ...starIcon(), w: 14, h: 14 },
 };

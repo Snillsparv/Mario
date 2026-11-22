@@ -23,6 +23,8 @@ import { COLORS } from './model/palette.js';
 import { physicsStride } from './model/physicsLink.js';
 import { gaitStride } from './model/strides.js';
 import { HatWings } from './model/wings.js';
+import { buildPigRig } from './model/pigRig.js';
+import { applyPigPose, PIG_POSES, updatePigEyelids } from './model/pigPoses.js';
 
 // Fallback stride length (units per cycle) when the RenderState has no cyclePhase.
 const FALLBACK_STRIDE = 150;
@@ -36,16 +38,21 @@ const NO_FLICKER_ANIMS = new Set(['death']);
 const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
 
 export class PlayerModel {
-  constructor() {
-    this.faces = createFaceTextures();
-    for (const f of FACES) this.faces(f); // paint every expression up front (no hitch later)
-    const map = this.faces('open');
-    this.faceMaterial = new THREE.MeshLambertMaterial({ map, color: map ? 0xffffff : COLORS.skin });
-
-    this.rig = buildRig(this.faceMaterial);
+  constructor(character = 'jonas') {
+    this.character = character === 'pig' ? 'pig' : 'jonas';
+    if (this.character === 'pig') {
+      this.rig = buildPigRig();
+    } else {
+      this.faces = createFaceTextures();
+      for (const f of FACES) this.faces(f); // paint every expression up front (no hitch later)
+      const map = this.faces('open');
+      this.faceMaterial = new THREE.MeshLambertMaterial({ map, color: map ? 0xffffff : COLORS.skin });
+      this.rig = buildRig(this.faceMaterial);
+    }
     this.object3D = this.rig.object3D;
-    this.animator = new Animator();
+    this.animator = new Animator(this.character === 'pig' ? PIG_POSES : undefined);
     this.shadow = new BlobShadow();
+    if (this.character === 'pig') this.shadow.mesh.geometry.scale(1, 1, 1.36).translate(0, 0, -8);
     this.object3D.add(this.shadow.mesh);
     this.smoke = new SeatSmoke(); // hot-foot puffs ('burn')
     this.object3D.add(this.smoke.mesh);
@@ -75,7 +82,8 @@ export class PlayerModel {
 
     this.updateBank(rs, dt);
     const pose = this.animator.update(rs, dt, this.bank);
-    applyPose(this.rig, pose, rs.pitch, rs.roll, rs.headYaw);
+    if (this.character === 'pig') applyPigPose(this.rig, pose, rs, this.animator, dt);
+    else applyPose(this.rig, pose, rs.pitch, rs.roll, rs.headYaw);
     this.updateFace(pose.face, dt);
 
     o.updateMatrixWorld(true);
@@ -83,6 +91,7 @@ export class PlayerModel {
     this.shadow.update(rs, this.worldQuat);
     this.smoke.update(dt, rs, this.rig.hips, o);
     this.wings.update(rs, dt, this.animator.time);
+    if (this.character === 'pig') this.rig.hat.visible = this.wings.mesh.visible;
 
     // Invincibility: the body flickers at a fixed rate whatever the display refresh; the
     // shadow stays. Not while dying (see NO_FLICKER_ANIMS).
@@ -144,6 +153,10 @@ export class PlayerModel {
     this.blinkIn -= dt;
     if (this.blinkIn < -0.15) this.blinkIn = 2 + Math.random() * 3;
     if (face === 'open' && this.blinkIn < 0) face = this.blinkIn > -0.04 || this.blinkIn < -0.11 ? 'half' : 'blink';
+    if (this.character === 'pig') {
+      updatePigEyelids(this.rig, face, dt);
+      return;
+    }
     const map = this.faces(face);
     if (map && this.faceMaterial.map !== map) this.faceMaterial.map = map;
   }

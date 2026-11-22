@@ -32,6 +32,10 @@ browser once with `npx playwright install chromium`.
 
 ## How to play
 
+* **Play as Jonas or Grisen.** Click or tap a portrait on the title screen, or select one
+  with Left/Right or the gamepad D-pad, then press Start. Grisen is a four-legged piglet with a
+  teal scarf and the same moves as Jonas. The game remembers your choice. Open with
+  `?character=pig` to preselect Grisen or `?character=pig&skipTitle=1` to jump straight in.
 * **Jonas's stretchy face**: open the game with `?face=1` for a start screen with Jonas's big face: grab and pull his cheeks, nose, glasses, ears or cap (they wobble back when let go), drag the sky to turn his head, scroll or pinch to zoom, then press Start to play.
 * **Collect the 8 red coins** scattered around the grounds: when the last one is taken a
   **star** appears in the air above the courtyard in front of the castle door. Jump up and

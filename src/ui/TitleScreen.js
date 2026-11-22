@@ -1,5 +1,5 @@
 // Title card shown over the live 3D scene: an extruded, bevelled 'CASTLE GROUNDS' logo that
-// drops in and gently bobs, 'starring JONAS', a blinking PRESS START with the start keys
+// drops in and gently bobs, a playable character picker, a blinking PRESS START with the start keys
 // spelled out, and a controls hint.
 //
 //   const title = new TitleScreen(uiRoot, { events, audio });
@@ -31,7 +31,8 @@
 // the game like a gamepad (no user gesture: audio stays as it is).
 
 import { BIG_FONT, SMALL_FONT } from './bitmapFont.js';
-import { textCanvas } from './raster.js';
+import { makeCanvas, drawIcon, drawText, SpriteCache, textCanvas, textWidth } from './raster.js';
+import { ICONS } from './icons.js';
 import { renderLogoWord } from './logo.js';
 import {
   hudMetrics,
@@ -71,8 +72,16 @@ const RELEASE_TIMEOUT_MS = 2000; // never wait forever for a key-up that got los
 // Castle-and-lawn palette: brick and gold for CASTLE, grass and sky for GROUNDS.
 const CASTLE_COLORS = ['#e4553a', '#f4b828'];
 const GROUNDS_COLORS = ['#3cb44a', '#2a94dc'];
-// The hero's name in his cap's light blue and his t-shirt's red.
-const HERO_COLORS = ['#52b4ee', '#e8382c'];
+const HEROES = { jonas: { name: HERO_NAME, icon: 'hero' }, pig: { name: 'GRISEN', icon: 'pig' } };
+
+function characterBadge({ name, icon }, px) {
+  const cache = new SpriteCache();
+  const canvas = makeCanvas(22 * px + textWidth(BIG_FONT, name, px), 20 * px);
+  const ctx = canvas.getContext('2d');
+  drawIcon(ctx, cache, ICONS[icon], icon, Math.round(2 * px), Math.round(3 * px), px);
+  drawText(ctx, cache, BIG_FONT, name, Math.round(20 * px), Math.round(6 * px), { px, style: 'white' });
+  return canvas;
+}
 // The smooth-shaded logo is first rendered at no more than this many device px per font
 // pixel (its shading cost grows with the square of the size) and scaled up by CSS; a
 // full-resolution render from the logo worker replaces it when it is ready.
@@ -91,7 +100,14 @@ const CSS = `
   filter: drop-shadow(0 calc(var(--u) * 3) calc(var(--u) * 2) rgba(0,0,30,0.35)); }
 .cg-bob { display:flex; flex-direction:column; align-items:center;
   animation: cg-drop 0.75s cubic-bezier(.2,1.5,.45,1) both, cg-bob 3.4s ease-in-out 0.75s infinite; }
-.cg-starring { display:flex; align-items:center; justify-content:center; }
+.cg-starring { position:absolute; left:50%; transform:translateX(-50%); display:flex; align-items:center;
+  justify-content:center; gap:calc(var(--u) * 4); }
+.cg-character { cursor:pointer; padding:0 calc(var(--u) * 3); margin:0; touch-action:manipulation;
+  border:max(1px, calc(var(--u) * 0.8)) solid #8995af; border-radius:calc(var(--u) * 4);
+  background:rgba(16,24,49,.85); box-shadow:0 calc(var(--u) * 1.4) 0 rgba(13,15,33,.8); }
+.cg-character[aria-checked=true] { border-color:#ffe58c; background:#453656; }
+.cg-character:focus-visible { outline:2px solid white; outline-offset:2px; }
+.cg-character canvas { pointer-events:none; }
 .cg-press, .cg-wake { position:absolute; left:50%; transform:translateX(-50%); }
 .cg-press { animation: cg-blink 1.2s steps(1) infinite; }
 .cg-out .cg-press { animation: cg-blink 0.12s steps(1) infinite; }
@@ -229,11 +245,12 @@ class LogoWorker {
 }
 
 export class TitleScreen {
-  constructor(root, { events, audio, phone = null } = {}) {
+  constructor(root, { events, audio, phone = null, character = 'jonas' } = {}) {
     this.root = root;
     this.events = events;
     this.audio = audio;
     this.phone = phone;
+    this.character = Object.hasOwn(HEROES, character) ? character : 'jonas';
     this.el = null;
     this.viewport = null;
   }
@@ -291,7 +308,7 @@ export class TitleScreen {
           this.logoWorker.dispose();
           this.el.remove();
           this.el = null;
-          resolve();
+          resolve(this.character);
         });
       };
 
@@ -303,6 +320,13 @@ export class TitleScreen {
         'keydown',
         (e) => {
           if (this.phone?.isOpen) return; // the panel takes the keys
+          if (!gate.starting && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!e.repeat) this._pick(e.code === 'ArrowLeft' ? 'jonas' : 'pig', true);
+            if (gate.unlock(hasBeenActive())) wake();
+            return;
+          }
           const start = START_KEYS.has(e.code);
           if (start) {
             e.preventDefault();
@@ -327,6 +351,13 @@ export class TitleScreen {
       listen(window, 'pointerup', onPointer(false), true);
       listen(window, 'touchend', onPointer(false), true);
       listen(this.el, 'click', () => gate.click() === 'begin' && begin(Promise.resolve()));
+      for (const [id, button] of Object.entries(this.heroButtons)) {
+        listen(button, 'click', (e) => {
+          e.stopPropagation();
+          gate.pressLocked = false;
+          if (!gate.starting && !this.phone?.isOpen) this._pick(id);
+        });
+      }
       // The phone button opens the panel; its click is not a click on the card.
       if (this.phoneBtn) {
         listen(this.phoneBtn, 'click', (e) => {
@@ -355,6 +386,10 @@ export class TitleScreen {
         let remoteHeld = null;
         cleanups.push(
           this.events.on('remotePress', (e) => {
+            if (!gate.starting && !this.phone?.isOpen && (e?.button === 'CL' || e?.button === 'CR')) {
+              this._pick(e.button === 'CL' ? 'jonas' : 'pig');
+              return;
+            }
             if (!e || gate.starting) return;
             if (this.phone?.isOpen) {
               if (REMOTE_CLOSE_BUTTONS.has(e.button)) this.phone.close();
@@ -371,8 +406,16 @@ export class TitleScreen {
 
       // Gamepad Start/A, polled every frame; waits for release like the keyboard path.
       let padRelease = null;
+      let heldDirection = 0;
       let padCloseHeld = this._pressedPadButtons(PAD_CLOSE_BUTTONS);
       const poll = () => {
+        const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.connected);
+        const direction = pad?.buttons[14]?.pressed || pad?.axes?.[0] < -0.6 ? -1
+          : pad?.buttons[15]?.pressed || pad?.axes?.[0] > 0.6 ? 1 : 0;
+        if (direction && direction !== heldDirection && !gate.starting && !this.phone?.isOpen) {
+          this._pick(direction < 0 ? 'jonas' : 'pig');
+        }
+        heldDirection = direction;
         // A new devicePixelRatio with the same CSS size (the window moved to a monitor with
         // another scale) never reaches the ResizeObserver: redraw the card at it.
         if (pixelRatio() !== this._dpr) this._layout();
@@ -437,6 +480,15 @@ export class TitleScreen {
     if (this.phoneBtn) this.phoneBtn.hidden = !this.phone?.available || !!this.touch;
   }
 
+  _pick(character, focus = false) {
+    this.character = character;
+    for (const [id, button] of Object.entries(this.heroButtons)) {
+      button.setAttribute('aria-checked', String(id === character));
+      button.tabIndex = id === character ? 0 : -1;
+    }
+    if (focus) this.heroButtons[character].focus({ preventScroll: true });
+  }
+
   // Create the card's elements once; _layout() sizes and places them.
   _build() {
     this.logoWorker = new LogoWorker();
@@ -449,8 +501,7 @@ export class TitleScreen {
     this.pieces = {
       castle: logoWord('CASTLE', 3.3, { colors: CASTLE_COLORS, arc: 0.32 }),
       grounds: logoWord('GROUNDS', 3.6, { colors: GROUNDS_COLORS, arc: 0.22 }),
-      hero: logoWord(HERO_NAME, 2.2, { colors: HERO_COLORS, jitter: 0.08 }),
-      starring: new Piece('cg-pixel', (px) => textCanvas(SMALL_FONT, 'starring', 1.5 * px, 'white')),
+      starring: new Piece('cg-pixel', (px) => textCanvas(SMALL_FONT, 'Play as', px, 'white')),
       press: new Piece('cg-press cg-if-ready cg-pixel', (px) => textCanvas(BIG_FONT, START_PRESS, 1.2 * px, 'gold')),
       prompt: new Piece('cg-prompt cg-if-ready cg-pixel', (px) => textCanvas(SMALL_FONT, START_PROMPT, px, 'white')),
       wake: new Piece('cg-wake cg-if-locked cg-pixel', (px) => textCanvas(BIG_FONT, UNLOCK_PRESS, 1.2 * px, 'gold')),
@@ -465,10 +516,25 @@ export class TitleScreen {
     };
     this.touch = null;
     this._setTouch(touchUi.active, false);
-    const { castle, grounds, hero, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
-    this.starringRow = div('cg-starring', [starring.el, hero.el]);
-    this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el, this.starringRow])]);
-    this.el.append(this.logo, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
+    const { castle, grounds, starring, press, prompt, wake, wakePrompt, hint } = this.pieces;
+    this.heroButtons = {};
+    this.starringRow = div('cg-starring', [starring.el]);
+    this.starringRow.setAttribute('role', 'radiogroup');
+    this.starringRow.setAttribute('aria-label', 'Play as');
+    for (const [id, hero] of Object.entries(HEROES)) {
+      const badge = this.pieces[id] = new Piece('cg-pixel', px => characterBadge(hero, px));
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cg-character';
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-label', hero.name);
+      button.append(badge.el);
+      this.starringRow.append(button);
+      this.heroButtons[id] = button;
+    }
+    this._pick(this.character);
+    this.logo = div('cg-logo', [div('cg-bob', [castle.el, grounds.el])]);
+    this.el.append(this.logo, this.starringRow, press.el, prompt.el, wake.el, wakePrompt.el, hint.el);
     this.phoneBtn = null;
     if (this.phone) {
       this.pieces.phone = new Piece('cg-pixel', (px) => renderPhoneBadge(px, PHONE_BUTTON));
@@ -517,8 +583,7 @@ export class TitleScreen {
     for (const piece of Object.values(p)) piece.fit(px, dpr);
     this.logo.style.top = at(12);
     p.grounds.el.style.marginTop = at(-16);
-    p.hero.el.style.marginLeft = at(-2);
-    this.starringRow.style.marginTop = at(-8);
+    this.starringRow.style.top = at(H * 0.54);
     p.press.el.style.top = p.wake.el.style.top = at(H * 0.73);
     p.prompt.el.style.top = p.wakePrompt.el.style.top = at(H * 0.73 + 16);
     p.hint.el.style.bottom = at(8);
