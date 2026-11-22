@@ -44,8 +44,8 @@ export function bodyMaterial() {
 // Bakes one palette colour into a geometry (converted to the linear working space, like a
 // material colour would be). Returns the geometry for chaining.
 const tmpColor = new THREE.Color();
-export function paint(geometry, name) {
-  tmpColor.set(COLORS[name]);
+export function paint(geometry, color) {
+  tmpColor.set(COLORS[color] ?? color);
   const n = geometry.attributes.position.count;
   const rgb = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) rgb.set([tmpColor.r, tmpColor.g, tmpColor.b], i * 3);

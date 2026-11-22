@@ -5,6 +5,7 @@
 //   ?test=1        do not run the real-time loop; drive it via window.__game.step() (no menus)
 //   ?face=1        open Pip's stretchy face screen instead of the title card (it is opt-in)
 //   ?mute=1        no audio
+//   ?character=pig / jonas   preselect a playable character
 //   ?pad=1 / 0     force / turn off the phone controller probe (net/RemotePad.js; ?test=1
 //                  leaves it off unless ?pad=1)
 //
@@ -51,6 +52,13 @@ import { Meltdown } from './fx/Meltdown.js';
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
+const CHARACTER_KEY = 'castle-grounds.character';
+function initialCharacter() {
+  const selected = params.get('character');
+  if (selected === 'pig' || selected === 'jonas') return selected;
+  try { return localStorage.getItem(CHARACTER_KEY) === 'pig' ? 'pig' : 'jonas'; }
+  catch { return 'jonas'; }
+}
 // The menus before play: the title card (or the face screen with ?face=1; none with ?test /
 // ?skipTitle).
 const MENUS = menuPlan(location.search);
@@ -75,7 +83,8 @@ async function start() {
   const level = buildLevel(scene);
   view.setWaterLevelFn((x, z) => level.collision.waterLevelAt(x, z));
   const player = new Player({ collision: level.collision, events, spawn: level.spawn });
-  const model = new PlayerModel();
+  let model = new PlayerModel(initialCharacter());
+  const models = new Map([[model.character, model]]);
   scene.add(model.object3D);
 
   const cam = new CameraController({ collision: level.collision, camera, events });
@@ -88,7 +97,7 @@ async function start() {
   // AI RACE's 40-second clock: not stopped in time, the sky catches fire and the world burns
   // white (it listens to 'darkMode'; ticked below while playing; its 'over' ends the game).
   const meltdown = new Meltdown({ events, targets: { view, level, fx, audio, shake }, trees: level.trees });
-  const hud = new HUD(uiRoot, { events });
+  const hud = new HUD(uiRoot, { events, character: model.character });
   // Sign dialogs: the Player enters 'reading' and emits 'signRead'; the box takes the input
   // until its last page, then Pip is released (the closing press never reaches him).
   const dialog = new DialogBox(uiRoot, { events });
@@ -168,7 +177,7 @@ async function start() {
     state.mode = 'title';
     hud.setVisible(false);
     model.object3D.visible = false;
-    const title = new TitleScreen(uiRoot, { events, audio, phone });
+    const title = new TitleScreen(uiRoot, { events, audio, phone, character: model.character });
     let raf = 0;
     const titleLoop = (t) => {
       const sec = t / 1000;
@@ -181,8 +190,16 @@ async function start() {
       raf = requestAnimationFrame(titleLoop);
     };
     raf = requestAnimationFrame(titleLoop);
-    await title.show();
+    const selected = await title.show();
     cancelAnimationFrame(raf);
+    if (model.character !== selected) {
+      scene.remove(model.object3D);
+      if (!models.has(selected)) models.set(selected, new PlayerModel(selected));
+      model = models.get(selected);
+      model.object3D.visible = false;
+      scene.add(model.object3D);
+    }
+    try { localStorage.setItem(CHARACTER_KEY, selected); } catch { /* Storage is optional. */ }
     // Audio: TitleScreen unlocks on the start press, and AudioEngine's 'gameStart' handler
     // unlocks with sticky user activation (not after a gamepad-only start, which is no gesture).
   }
@@ -311,6 +328,7 @@ async function start() {
     objects.update({ player, frame: state.frame, camera: cam });
     cam.update(controller, player);
     hud.update({
+      character: model.character,
       lives: state.lives,
       coins: player.coins,
       stars: player.stars,
@@ -353,7 +371,7 @@ async function start() {
     input,
     hud,
     audio,
-    model,
+    get model() { return model; },
     dialog,
     fx,
     meltdown, // AI RACE's 40-second clock (fx/Meltdown.js): meltdown.skipTo(seconds), .phase, .levels

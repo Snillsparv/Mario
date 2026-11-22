@@ -40,8 +40,8 @@ const CANNON_HINTS = {
 };
 
 export class HUD {
-  constructor(root, { events } = {}) {
-    this.state = { lives: 4, coins: 0, stars: 0, health: 8, showPower: false, breath: 1 };
+  constructor(root, { events, character = 'jonas' } = {}) {
+    this.state = { character, lives: 4, coins: 0, stars: 0, health: 8, showPower: false, breath: 1 };
     this.meter = new PowerMeterLogic();
     this.coinCounter = new RollingCounter(0);
     this.paused = false;
@@ -94,7 +94,7 @@ export class HUD {
     if (this.coinCounter.tick(this.state.coins)) this.bumps.coins = 0;
     this.meter.tick(this.state, TICK);
     // Repaint only when something on screen changes, not on every tick.
-    const shown = [this.state.lives, this.coinCounter.shown, this.state.stars, this.meter.visible, this.meter.displayHealth].join();
+    const shown = [this.state.character, this.state.lives, this.coinCounter.shown, this.state.stars, this.meter.visible, this.meter.displayHealth].join();
     if (shown !== this._shown || !this.active) this.dirty = true;
     this._shown = shown;
     this.active = true;
@@ -272,7 +272,8 @@ export class HUD {
     const { W } = this;
     const st = this.state;
     const groupW = (digits) => ICON + 2 + 8 + digits * 9 - 1; // icon, gap, ×, digits
-    this._counter(ICONS.hero, 'hero', Math.max(0, st.lives), MARGIN, this.bumps.lives);
+    const portrait = st.character === 'pig' ? 'pig' : 'hero';
+    this._counter(ICONS[portrait], portrait, Math.max(0, st.lives), MARGIN, this.bumps.lives);
     const starX = W - MARGIN - groupW(2);
     const coinX = starX - 10 - groupW(3);
     this._counter(ICONS.coin, 'coin', this.coinCounter.shown, coinX, this.bumps.coins);

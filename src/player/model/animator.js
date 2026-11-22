@@ -49,7 +49,8 @@ const FLIP_IN_SLACK = 0.6;
 const flipWrap = (d, last) => (Number.isNaN(last) ? 0 : d - last > Math.PI ? -1 : d - last < -Math.PI ? 1 : 0);
 
 export class Animator {
-  constructor() {
+  constructor(poses = {}) {
+    this.poses = poses;
     this.pose = createPose(); // output
     this.from = createPose(); // snapshot at the last anim change
     this.target = createPose();
@@ -120,7 +121,8 @@ export class Animator {
     c.externalLook = this.externalLook;
     c.pitch = rs.pitch;
     c.roll = rs.roll;
-    def.pose(resetPose(this.target), c);
+    const pose = this.poses[name] ?? def.pose;
+    pose(resetPose(this.target), c);
 
     const k = this.blendDur > 0 ? Math.min(1, this.blendTime / this.blendDur) : 1;
     if (k >= 1) copyPose(this.pose, this.target);
